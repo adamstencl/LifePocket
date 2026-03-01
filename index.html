@@ -475,6 +475,49 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
   .journal-sidebar{width:100%;height:220px;border-right:none;border-bottom:1px solid var(--border)}
   .journal-wrap{flex-direction:column}
 }
+
+/* COOKING */
+.cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+.cook-prompt-label{font-size:14px;color:var(--text2);margin-bottom:10px;font-weight:600}
+.cook-inp-row{display:flex;gap:8px;margin-bottom:12px}
+.cook-inp{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;transition:border-color .2s}
+.cook-inp:focus{border-color:var(--accent)}
+.cook-mic-btn{background:var(--card2);border:1px solid var(--border2);border-radius:10px;width:44px;height:44px;font-size:18px;cursor:pointer;transition:all .2s;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.cook-mic-btn:hover{border-color:var(--accent)}
+.cook-mic-btn.rec{background:var(--red);border-color:var(--red);animation:pulse 1s infinite}
+.cook-options-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cook-opt-btn{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
+.cook-opt-btn:hover{border-color:var(--border2)}
+.cook-opt-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.08)}
+.cook-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:12px}
+.cook-recipe-name{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);margin-bottom:4px;font-weight:700}
+.cook-recipe-meta{font-size:13px;color:var(--text3);margin-bottom:14px}
+.cook-section{font-size:13px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px}
+.cook-ingredient{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:15px}
+.cook-ing-check{width:18px;height:18px;border-radius:4px;border:2px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .2s;flex-shrink:0}
+.cook-ing-check.done{background:var(--green);border-color:var(--green);color:white}
+.cook-step{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:15px;line-height:1.6;color:var(--text2);display:flex;gap:10px}
+.cook-step-num{color:var(--accent);font-weight:700;flex-shrink:0;font-family:'Playfair Display',serif}
+.cook-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.saved-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .2s}
+.saved-recipe-card:hover{border-color:var(--accent2)}
+.saved-recipe-name{font-size:15px;font-weight:600;color:var(--text)}
+.saved-recipe-meta{font-size:12px;color:var(--text3);margin-top:2px}
+
+/* SHOPPING */
+.shop-add-row{display:flex;gap:8px;margin-bottom:16px}
+.shop-category{margin-bottom:16px}
+.shop-cat-label{font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding:0 4px}
+.shop-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;transition:all .2s}
+.shop-item.done{opacity:.5}
+.shop-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s;flex-shrink:0}
+.shop-check.done{background:var(--green);border-color:var(--green);color:white}
+.shop-item-name{flex:1;font-size:15px;color:var(--text);transition:all .2s}
+.shop-item.done .shop-item-name{text-decoration:line-through;color:var(--text3)}
+.shop-item-qty{font-size:13px;color:var(--text3);margin-right:4px}
+.shop-item-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px;transition:color .2s}
+.shop-item-del:hover{color:var(--red)}
+.shop-from-recipe{font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -782,21 +825,70 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 
     <!-- COOKING placeholder -->
     <div class="page" id="p-cooking">
-      <div class="ptitle">🍽️ Vaření</div>
-      <div class="coming-soon">
-        <div class="cs-icon">🍽️</div>
-        <div class="cs-title">Vaření & Recepty</div>
-        <div class="cs-sub">Brzy k dispozici — plánování jídel, recepty a nákupní seznam s AI.</div>
+      <div class="gh">
+        <div class="ptitle">🍽️ Vaření</div>
+      </div>
+
+      <!-- AI prompt -->
+      <div class="cook-prompt-wrap">
+        <div class="cook-prompt-label">Co chceš vařit? Řekni mi jídlo nebo téma:</div>
+        <div class="cook-inp-row">
+          <input class="cook-inp" type="text" id="cook-inp" placeholder="Svíčková, rychlá večeře pro 2, zdravý oběd…" onkeydown="if(event.key==='Enter')askRecipe()">
+          <button class="cook-mic-btn" id="cook-mic-btn" onclick="toggleCookMic()" title="Hlasově">🎤</button>
+          <button class="btn-p" style="width:auto;padding:10px 20px;flex-shrink:0" onclick="askRecipe()">🍳 Navrhnout</button>
+        </div>
+        <div class="cook-options-row">
+          <span style="font-size:13px;color:var(--text3)">Počet porcí:</span>
+          <button class="cook-opt-btn active" data-p="2" onclick="setPortions(2,this)">2</button>
+          <button class="cook-opt-btn" data-p="4" onclick="setPortions(4,this)">4</button>
+          <button class="cook-opt-btn" data-p="6" onclick="setPortions(6,this)">6</button>
+          <span style="font-size:13px;color:var(--text3);margin-left:10px">Typ:</span>
+          <button class="cook-opt-btn active" data-t="any" onclick="setCookType('any',this)">Vše</button>
+          <button class="cook-opt-btn" data-t="quick" onclick="setCookType('quick',this)">⚡ Rychlé</button>
+          <button class="cook-opt-btn" data-t="healthy" onclick="setCookType('healthy',this)">🥗 Zdravé</button>
+          <button class="cook-opt-btn" data-t="cheap" onclick="setCookType('cheap',this)">💰 Levné</button>
+        </div>
+      </div>
+
+      <!-- Recipe result -->
+      <div id="cook-result" style="display:none">
+        <div class="cook-recipe-card" id="cook-recipe-card"></div>
+        <div class="cook-actions">
+          <button class="btn-p" onclick="sendToShopping()" style="width:auto;padding:10px 22px">🛒 Přidat do nákupu</button>
+          <button class="btn-s" onclick="askRecipe()" style="width:auto;padding:10px 22px">🔄 Jiný návrh</button>
+        </div>
+      </div>
+
+      <!-- Saved recipes -->
+      <div class="sec-lbl" style="margin-top:24px" id="saved-recipes-lbl">Uložené recepty</div>
+      <div id="saved-recipes-list"></div>
+      <div id="cook-loading" style="display:none;text-align:center;padding:30px;color:var(--text2)">
+        <div style="font-size:32px;animation:pb 1s ease-in-out infinite">🍳</div>
+        <div style="margin-top:10px;font-style:italic">Rex vaří recept…</div>
       </div>
     </div>
 
-    <!-- SHOPPING placeholder -->
     <div class="page" id="p-shopping">
-      <div class="ptitle">🛒 Nákupy</div>
-      <div class="coming-soon">
-        <div class="cs-icon">🛒</div>
-        <div class="cs-title">Nákupní seznam</div>
-        <div class="cs-sub">Brzy k dispozici — chytrý nákupní seznam s AI který ví co doma chybí.</div>
+      <div class="gh">
+        <div class="ptitle">🛒 Nákupy</div>
+        <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()">✓ Vymazat splněné</button>
+      </div>
+
+      <!-- Quick add -->
+      <div class="shop-add-row">
+        <input class="finp" type="text" id="shop-inp" placeholder="Přidat položku… (Enter)" onkeydown="if(event.key==='Enter')addShopItem()">
+        <button class="btn-p" style="width:auto;padding:10px 18px;flex-shrink:0" onclick="addShopItem()">+ Přidat</button>
+      </div>
+
+      <!-- Categories -->
+      <div id="shop-list"></div>
+
+      <!-- Empty state -->
+      <div id="shop-empty" class="empty-st" style="display:none">
+        <div style="font-size:44px">🛒</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--text2);margin-top:10px">Seznam je prázdný</div>
+        <div style="font-size:14px;color:var(--text3);margin-top:6px">Přidej položky nebo nech Rexe vytvořit seznam z receptu</div>
+        <button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="sp('cooking')">🍽️ Vybrat recept</button>
       </div>
     </div>
 
@@ -1735,7 +1827,7 @@ function rAvPage(){
   if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
   if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${m.emoji}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
 }
-function initApp(){buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();initSet();ss('app');sp('dashboard');}
+function initApp(){buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();initSet();ss('app');sp('dashboard');}
 
 function buildNav(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
@@ -1993,16 +2085,262 @@ window.send=async()=>{
   document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const gCtx=goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%, ${g.category}${g.deadline?', do '+g.deadline:''})`).join('\n');
-  const sys=`Jsi ${av.name}, AI společník v LifePocket. Mluvíš česky, přátelsky, stručně (max 4 věty).
-Uživatel: ${prof.nickname}${prof.vision?'\nVize: "'+prof.vision+'"':''}
-${gCtx?'Cíle:\n'+gCtx:'Zatím žádné cíle.'}`;
+  const sys=`Jsi ${av.name}, AI společník v LifePocket. Mluvíš česky, přátelsky, stručně (max 4 věty).\nUživatel: ${prof.nickname}${prof.vision?'\nVize: "'+prof.vision+'"':''}\n${gCtx?'Cíle:\n'+gCtx:'Zatím žádné cíle.'}\n\nPokud uživatel zmíní jídlo nebo vaření (chci vařit, dám si, uvařím, k obědu, k večeři apod.), přidej na konec odpovědi tag: [FOOD:název jídla]. Příklad: Skvělé! [FOOD:svíčková]`;
   try{
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:500,messages:[{role:'system',content:sys},...chatH.slice(-10)]})});
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:600,messages:[{role:'system',content:sys},...chatH.slice(-10)]})});
     const d=await r.json();if(d.error)throw new Error(d.error.message);
-    const rep=d.choices[0].message.content;chatH.push({role:'assistant',content:rep});
+    let rep=d.choices[0].message.content;
+    const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
+    rep=rep.replace(/\[FOOD:[^\]]+\]/g,'').trim();
+    chatH.push({role:'assistant',content:rep});
     appendMsg('bot',rep,av.name,av.emoji);
+    if(foodMatch){
+      const food=foodMatch[1].trim();
+      const c=document.getElementById('chatmsgs');
+      const btns=document.createElement('div');
+      btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
+      const esc2=food.replace(/'/g,"\\'");
+      btns.innerHTML=`<button onclick="cookFromRex('${esc2}',this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:8px 14px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer;transition:all .2s">🍳 Recept na ${food}</button><button onclick="shopFromRex('${esc2}',this.parentElement)" style="background:rgba(76,217,100,.1);border:1px solid rgba(76,217,100,.3);border-radius:10px;padding:8px 14px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer;transition:all .2s">🛒 Do nákupu</button>`;
+      c.appendChild(btns);scrollChat();
+    }
   }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
   document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
+};
+window.cookFromRex=(food,btnEl)=>{btnEl?.remove();sp('cooking');setTimeout(()=>{const i=document.getElementById('cook-inp');if(i){i.value=food;askRecipe();}},300);};
+window.shopFromRex=async(food,btnEl)=>{btnEl?.remove();if(!CU)return;await addDoc(collection(db,'users',CU.uid,'shopItems'),{name:food,qty:'',category:'Ostatní',done:false,fromRecipe:'Rex',createdAt:new Date().toISOString()});toast(`✅ "${food}" přidáno do nákupu!`);};
+
+
+// ── COOKING & SHOPPING ────────────────────────────────
+let shopItems=[], unsubShop=null;
+let cookPortions=2, cookType='any';
+let cookMicRec=null, cookMicOn=false;
+let lastRecipe=null; // posledni vygenerovany recept
+
+function subShop(){
+  if(!CU||unsubShop)return;
+  unsubShop=onSnapshot(collection(db,'users',CU.uid,'shopItems'),snap=>{
+    shopItems=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderShop();
+  });
+}
+
+// ── SHOPPING ──────────────────────────────────────────
+function renderShop(){
+  const list=document.getElementById('shop-list');
+  const empty=document.getElementById('shop-empty');
+  if(!list||!empty)return;
+  if(!shopItems.length){list.innerHTML='';empty.style.display='flex';return;}
+  empty.style.display='none';
+
+  // Group by category
+  const cats={};
+  shopItems.forEach(i=>{
+    const c=i.category||'Ostatní';
+    if(!cats[c])cats[c]=[];
+    cats[c].push(i);
+  });
+
+  // Sort: unchecked first within each category
+  const catOrder=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
+  const sortedCats=Object.keys(cats).sort((a,b)=>{
+    const ai=catOrder.indexOf(a), bi=catOrder.indexOf(b);
+    return (ai===-1?99:ai)-(bi===-1?99:bi);
+  });
+
+  list.innerHTML=sortedCats.map(cat=>{
+    const items=cats[cat].sort((a,b)=>a.done===b.done?0:a.done?1:-1);
+    return `<div class="shop-category">
+      <div class="shop-cat-label">${cat}</div>
+      ${items.map(i=>`
+        <div class="shop-item ${i.done?'done':''}">
+          <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${i.id}',${i.done})">${i.done?'✓':''}</div>
+          <span class="shop-item-name">${i.name}</span>
+          ${i.qty?`<span class="shop-item-qty">${i.qty}</span>`:''}
+          ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
+          <button class="shop-item-del" onclick="delShopItem('${i.id}')">×</button>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+window.addShopItem=async()=>{
+  const inp=document.getElementById('shop-inp');
+  const name=inp.value.trim();
+  if(!name)return;
+  const item={name,done:false,category:'Ostatní',createdAt:new Date().toISOString()};
+  await addDoc(collection(db,'users',CU.uid,'shopItems'),item);
+  inp.value='';
+  toast('✓ Přidáno');
+};
+
+window.toggleShopItem=async(id,wasDone)=>{
+  const item=shopItems.find(i=>i.id===id);
+  if(!item)return;
+  await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
+};
+
+window.delShopItem=async(id)=>{
+  await deleteDoc(doc(db,'users',CU.uid,'shopItems',id));
+};
+
+window.clearDoneItems=async()=>{
+  const done=shopItems.filter(i=>i.done);
+  if(!done.length){toast('Žádné splněné položky');return;}
+  for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  toast(`✓ Smazáno ${done.length} položek`);
+};
+
+// ── COOKING ───────────────────────────────────────────
+window.setPortions=(n,btn)=>{
+  cookPortions=n;
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+};
+
+window.setCookType=(t,btn)=>{
+  cookType=t;
+  document.querySelectorAll('[data-t]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+};
+
+window.askRecipe=async()=>{
+  const inp=document.getElementById('cook-inp');
+  const query=inp.value.trim();
+  if(!query){toast('⚠️ Napiš co chceš vařit');return;}
+  const k=localStorage.getItem('lp_key')||'';
+  if(!k){toast('⚠️ Nastav Groq API klíč v Nastavení ⚙️');sp('settings');return;}
+
+  document.getElementById('cook-result').style.display='none';
+  document.getElementById('cook-loading').style.display='block';
+
+  const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
+    cookType==='healthy'?'Recept musí být zdravý a výživný.':
+    cookType==='cheap'?'Recept musí být levný z dostupných surovin.':'';
+
+  const sys=`Jsi kuchařský asistent. Odpovídej POUZE v JSON formátu, bez markdown, bez backticks.
+Vrať JSON objekt s těmito poli:
+{
+  "name": "Název jídla",
+  "time": "30 minut",
+  "difficulty": "Snadné",
+  "portions": ${cookPortions},
+  "ingredients": [
+    {"name": "Kuřecí prsa", "qty": "400 g", "category": "Maso & ryby"},
+    {"name": "Cibule", "qty": "1 ks", "category": "Zelenina & ovoce"}
+  ],
+  "steps": ["Krok 1...", "Krok 2..."],
+  "tip": "Tip kuchaře..."
+}
+Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
+${typeHint}`;
+
+  try{
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1500,
+        messages:[{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}]})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error.message);
+    let raw=d.choices[0].message.content.trim();
+    // Strip markdown if present
+    raw=raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const recipe=JSON.parse(raw);
+    lastRecipe=recipe;
+    renderRecipe(recipe);
+  }catch(e){
+    document.getElementById('cook-loading').style.display='none';
+    toast('❌ Chyba: '+e.message);
+  }
+};
+
+function renderRecipe(r){
+  document.getElementById('cook-loading').style.display='none';
+  document.getElementById('cook-result').style.display='block';
+  document.getElementById('cook-recipe-card').innerHTML=`
+    <div class="cook-recipe-name">${r.name}</div>
+    <div class="cook-recipe-meta">⏱ ${r.time} · 👨‍🍳 ${r.difficulty} · 🍽 ${r.portions} porcí</div>
+    <div class="cook-section">Suroviny</div>
+    ${r.ingredients.map((ing,i)=>`
+      <div class="cook-ingredient">
+        <div class="cook-ing-check" id="cing-${i}" onclick="toggleIng(${i})"></div>
+        <span id="ing-name-${i}">${ing.name}</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:14px">${ing.qty}</span>
+      </div>`).join('')}
+    <div class="cook-section">Postup</div>
+    ${r.steps.map((s,i)=>`
+      <div class="cook-step">
+        <span class="cook-step-num">${i+1}.</span>
+        <span>${s}</span>
+      </div>`).join('')}
+    ${r.tip?`<div style="margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)">💡 ${r.tip}</div>`:''}
+  `;
+}
+
+window.toggleIng=(i)=>{
+  const el=document.getElementById(`cing-${i}`);
+  const nm=document.getElementById(`ing-name-${i}`);
+  const done=el.classList.toggle('done');
+  el.textContent=done?'✓':'';
+  nm.style.textDecoration=done?'line-through':'none';
+  nm.style.color=done?'var(--text3)':'var(--text)';
+};
+
+window.sendToShopping=async()=>{
+  if(!lastRecipe){toast('Nejprve vygeneruj recept');return;}
+  const k=localStorage.getItem('lp_key')||'';
+  let added=0;
+  for(const ing of lastRecipe.ingredients){
+    // Check if already in list
+    const exists=shopItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
+    if(!exists){
+      await addDoc(collection(db,'users',CU.uid,'shopItems'),{
+        name:ing.name, qty:ing.qty,
+        category:ing.category||'Ostatní',
+        done:false,
+        fromRecipe:lastRecipe.name,
+        createdAt:new Date().toISOString()
+      });
+      added++;
+    }
+  }
+  toast(`✅ ${added} surovin přidáno do nákupu!`);
+  setTimeout(()=>sp('shopping'),800);
+};
+
+// ── COOKING MIC ───────────────────────────────────────
+window.toggleCookMic=()=>{
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
+    toast('❌ Vyžaduje Chrome');return;
+  }
+  if(cookMicOn){cookMicRec?.stop();cookMicOn=false;return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  cookMicRec=new SR();cookMicRec.lang='cs-CZ';cookMicRec.continuous=false;cookMicRec.interimResults=false;
+  let transcript='';
+  cookMicRec.onresult=e=>{transcript=e.results[0][0].transcript;};
+  cookMicRec.onstart=()=>{
+    cookMicOn=true;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.add('rec');b.textContent='⏹';}
+    toast('🎤 Poslouchám…');
+  };
+  cookMicRec.onend=()=>{
+    cookMicOn=false;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(transcript){
+      document.getElementById('cook-inp').value=transcript;
+      askRecipe();
+    }
+  };
+  cookMicRec.onerror=e=>{
+    cookMicOn=false;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(e.error!=='no-speech')toast('❌ Mikrofon: '+e.error);
+  };
+  try{cookMicRec.start();}catch(err){toast('❌ '+err.message);}
 };
 
 function appendMsg(role,text,nm='',em=''){
