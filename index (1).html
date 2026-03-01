@@ -1,0 +1,2425 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LifePocket</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Crimson+Pro:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f12;--card:#1a1a20;--card2:#222228;
+  --border:#2a2a35;--border2:#35353f;
+  --accent:#f5c842;--accent2:#e0954a;
+  --text:#ffffff;--text2:#a0a0b0;--text3:#606070;
+  --green:#4cd964;--red:#ff6b6b;--blue:#5b9cf6;
+}
+body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,serif;min-height:100vh}
+.orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:.07;pointer-events:none;z-index:0}
+.orb1{width:500px;height:500px;background:var(--accent);top:-150px;right:-150px}
+.orb2{width:400px;height:400px;background:var(--accent2);bottom:-150px;left:-150px}
+
+/* SCREENS */
+.screen{display:none;position:relative;z-index:10;width:100%;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+.screen.active{display:flex;animation:sIn .45s cubic-bezier(.16,1,.3,1) both}
+@keyframes sIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.card{background:rgba(26,26,32,.94);border:1px solid var(--border);border-radius:24px;padding:44px 40px;width:480px;max-width:96vw;backdrop-filter:blur(20px);box-shadow:0 40px 80px rgba(0,0,0,.5)}
+.card-wide{width:620px}
+
+/* LOGIN */
+.paw{font-size:52px;text-align:center;display:block;animation:pb 2.5s ease-in-out infinite}
+@keyframes pb{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-8px) rotate(4deg)}}
+.logo-name{font-family:'Playfair Display',serif;font-style:italic;font-size:38px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;margin-top:10px}
+.logo-tag{text-align:center;color:var(--text2);font-size:16px;font-style:italic;margin-top:8px;line-height:1.5}
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:28px 0}
+.google-btn{width:100%;background:#fff;color:#1a1a1a;border:none;border-radius:14px;padding:15px 24px;font-size:16px;font-family:'Crimson Pro',serif;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;transition:all .2s;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.google-btn:hover{transform:translateY(-2px)}.google-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.feats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:24px}
+.feat{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:7px}
+.err{background:rgba(255,100,100,.1);border:1px solid rgba(255,100,100,.3);border-radius:10px;padding:10px 14px;font-size:14px;color:#ff8080;margin-top:14px;display:none}
+.err.show{display:block}
+.privacy{text-align:center;font-size:12px;color:var(--text3);margin-top:18px}
+
+/* ONBOARDING */
+.steps{display:flex;gap:6px;justify-content:center;margin-bottom:28px}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:all .3s}
+.sdot.active{background:var(--accent);width:24px;border-radius:4px}
+.sdot.done{background:var(--green)}
+.stitle{font-family:'Playfair Display',serif;font-style:italic;font-size:26px;font-weight:700;color:var(--text);margin-bottom:6px}
+.ssub{font-size:15px;color:var(--text2);margin-bottom:24px;line-height:1.5}
+.name-inp{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:14px 18px;color:var(--text);font-family:'Playfair Display',serif;font-size:22px;font-style:italic;outline:none;transition:border-color .2s;margin-bottom:20px}
+.name-inp:focus{border-color:var(--accent)}.name-inp::placeholder{color:var(--text3)}
+.gender-row{display:flex;gap:12px;margin-bottom:24px}
+.gender-btn{flex:1;background:var(--card2);border:2px solid var(--border2);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:16px}
+.gender-btn.sel{border-color:var(--accent);background:rgba(245,200,66,.06);color:var(--text)}
+.ge{font-size:32px}
+.av-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px}
+.av-card{background:var(--card2);border:2px solid var(--border2);border-radius:16px;padding:14px 8px;cursor:pointer;transition:all .25s;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.av-card:hover{border-color:var(--border);transform:translateY(-2px)}
+.av-card.sel{border-color:var(--accent);background:rgba(245,200,66,.06);transform:translateY(-3px);box-shadow:0 8px 24px rgba(245,200,66,.15)}
+.av-em{font-size:36px;line-height:1}
+.av-nm{font-family:'Playfair Display',serif;font-size:14px;color:var(--text);font-weight:700}
+.av-vb{font-size:11px;color:var(--text2);line-height:1.3}
+.slabel{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:10px;margin-top:20px}
+.slabel:first-of-type{margin-top:0}
+.mod-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mod-card{background:var(--card2);border:2px solid var(--border2);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:12px}
+.mod-card:hover{border-color:var(--border)}
+.mod-card.sel{border-color:var(--accent);background:rgba(245,200,66,.06)}
+.mod-card.sel .mchk{background:var(--accent);border-color:var(--accent);color:#1a1a1a}
+.mem{font-size:22px;flex-shrink:0}.mnm{font-size:15px;color:var(--text);font-weight:600}.mds{font-size:12px;color:var(--text2);margin-top:1px}
+.mchk{width:22px;height:22px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .2s;flex-shrink:0;color:transparent}
+.more-tog{background:none;border:1px dashed var(--border2);border-radius:10px;color:var(--text3);font-family:'Crimson Pro',serif;font-size:14px;padding:10px;width:100%;cursor:pointer;transition:all .2s;margin-top:12px}
+.more-tog:hover{border-color:var(--border);color:var(--text2)}
+.extra-mods{display:none}.extra-mods.open{display:block}
+
+/* BUTTONS */
+.btn-p{width:100%;background:var(--accent);color:#1a1a1a;border:none;border-radius:14px;padding:15px;font-family:'Playfair Display',serif;font-size:18px;font-style:italic;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-p:hover{opacity:.9;transform:translateY(-1px)}.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-s{background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:10px 18px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s}
+.btn-s:hover{border-color:var(--border);color:var(--text)}
+.btn-xs{background:none;border:none;cursor:pointer;color:var(--text3);font-size:15px;padding:4px 6px;border-radius:6px;transition:all .15s}
+.btn-xs:hover{color:var(--text);background:var(--border)}
+
+/* APP */
+#app{display:none;flex-direction:column;min-height:100vh}
+#app.active{display:flex}
+.hdr{background:rgba(15,15,18,.97);border-bottom:1px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);flex-shrink:0;gap:8px}
+.hlogo{font-family:'Playfair Display',serif;font-style:italic;font-size:19px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap;cursor:pointer;flex-shrink:0}
+.hnav{display:flex;gap:1px;flex:1;justify-content:center;overflow-x:auto;padding:0 4px}
+.hnav::-webkit-scrollbar{display:none}
+.nbtn{background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:13px;padding:6px 9px;border-radius:10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0}
+.nbtn:hover{background:var(--card2);color:var(--text)}.nbtn.active{background:var(--card2);color:var(--accent)}
+.hright{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.upill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:50px;padding:4px 10px 4px 4px;cursor:pointer;transition:all .2s}
+.upill:hover{border-color:var(--accent2)}.upill img{width:24px;height:24px;border-radius:50%;object-fit:cover}.upill span{font-size:13px;color:var(--text2)}
+.lbtn{background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text3);font-family:'Crimson Pro',serif;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.lbtn:hover{border-color:var(--red);color:var(--red)}
+.abody{flex:1;overflow-y:auto}
+.page{display:none;padding:24px 24px 60px;max-width:900px;margin:0 auto}
+.page.active{display:block;animation:pIn .3s cubic-bezier(.16,1,.3,1) both}
+@keyframes pIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.sec-lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:12px;margin-top:24px}
+.ptitle{font-family:'Playfair Display',serif;font-style:italic;font-size:26px;font-weight:700;color:var(--text)}
+
+/* DASHBOARD */
+.dgreet{font-family:'Playfair Display',serif;font-style:italic;font-size:28px;color:var(--text);margin-bottom:18px}
+.dgreet span{color:var(--accent)}
+.avbanner{background:linear-gradient(135deg,rgba(245,200,66,.08),rgba(224,149,74,.06));border:1px solid rgba(245,200,66,.15);border-radius:20px;padding:20px 24px;display:flex;align-items:center;gap:18px;margin-bottom:20px;cursor:pointer;transition:border-color .2s}
+.avbanner:hover{border-color:rgba(245,200,66,.3)}
+.avbig{font-size:48px;line-height:1}
+.avsnm{font-family:'Playfair Display',serif;font-size:16px;color:var(--accent);font-weight:700;margin-bottom:4px}
+.avtxt{font-size:15px;color:var(--text2);line-height:1.6;font-style:italic}
+.modtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.modtile{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 12px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;user-select:none}
+.modtile:hover{border-color:var(--accent);transform:translateY(-2px);background:var(--card2);box-shadow:0 6px 20px rgba(245,200,66,0.1)}
+.modtile:active{transform:translateY(0)}
+.modtem{font-size:26px;line-height:1}
+.modtnm{font-size:13px;color:var(--text);font-weight:600}
+.mtile{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 12px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.mtile:hover{border-color:var(--accent);transform:translateY(-2px);background:var(--card2)}
+.mtem{font-size:26px}.mtnm{font-size:13px;color:var(--text);font-weight:600}
+
+/* GOALS */
+.gh{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.vcard{background:linear-gradient(135deg,rgba(245,200,66,.1),rgba(224,149,74,.08));border:1px solid rgba(245,200,66,.25);border-radius:18px;padding:20px 24px;margin-bottom:24px;position:relative}
+.vlbl{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:7px}
+.vtxt{font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--text);line-height:1.5}
+.vtxt.empty{color:var(--text3);font-size:16px}
+.vedit{position:absolute;top:14px;right:14px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:4px 10px;color:var(--accent);font-size:12px;cursor:pointer;font-family:'Crimson Pro',serif;transition:all .2s}
+.vedit:hover{background:rgba(245,200,66,.2)}
+.gcard{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden;transition:border-color .2s}
+.ghdr{padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.gdot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.gem{font-size:20px;flex-shrink:0}
+.ginf{flex:1;min-width:0}
+.gnm{font-size:16px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmeta{display:flex;gap:8px;margin-top:2px;flex-wrap:wrap}
+.gtag{font-size:11px;color:var(--text3)}
+.gpw{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.gpct{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;min-width:38px;text-align:right}
+.gpbar{width:70px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.gpfill{height:100%;border-radius:3px;transition:width .4s}
+.gacts{display:flex;gap:2px}
+.gsubs{padding:0 18px 14px 46px;display:none}.gsubs.open{display:block}
+.si{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:5px}
+.schk{width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .2s;flex-shrink:0;color:transparent}
+.schk.done{background:var(--green);border-color:var(--green);color:white}
+.snm{flex:1;font-size:14px;color:var(--text)}.snm.done{text-decoration:line-through;color:var(--text3)}
+.sarow{display:flex;gap:7px;margin-top:7px}
+.sainp{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;outline:none;transition:border-color .2s}
+.sainp:focus{border-color:var(--accent)}.sainp::placeholder{color:var(--text3)}
+.btn-ads{background:var(--accent);color:#1a1a1a;border:none;border-radius:9px;padding:8px 14px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.add-goal{background:linear-gradient(135deg,rgba(245,200,66,.1),rgba(224,149,74,.06));border:1px dashed rgba(245,200,66,.3);border-radius:14px;padding:14px;width:100%;cursor:pointer;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px}
+.add-goal:hover{background:rgba(245,200,66,.15)}
+.empty{text-align:center;padding:40px 20px;color:var(--text3)}
+.ei{font-size:44px;margin-bottom:12px;opacity:.7}
+.et{font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--text2);margin-bottom:7px}
+.es{font-size:14px}
+
+/* AVATAR PAGE */
+.avhero{text-align:center;padding:28px 20px 24px}
+.avhem{font-size:80px;line-height:1;margin-bottom:14px;display:block;animation:af 3s ease-in-out infinite}
+@keyframes af{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.avhnm{font-family:'Playfair Display',serif;font-style:italic;font-size:30px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.avbadge{display:inline-flex;align-items:center;gap:6px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.2);border-radius:50px;padding:6px 14px;font-size:14px;color:var(--text2);margin-bottom:20px}
+.avmsg{background:linear-gradient(135deg,rgba(245,200,66,.08),rgba(224,149,74,.06));border:1px solid rgba(245,200,66,.2);border-radius:18px;padding:20px 24px;margin-bottom:20px}
+.avmtxt{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--text);line-height:1.7;text-align:center}
+.avsg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.avsc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.avsn{font-family:'Playfair Display',serif;font-size:26px;color:var(--accent);font-weight:700;line-height:1}
+.avsl{font-size:12px;color:var(--text2);margin-top:4px}
+.avmoods{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
+.amood{background:var(--card);border:2px solid var(--border);border-radius:12px;padding:10px 14px;text-align:center;min-width:72px;cursor:pointer;transition:all .2s}
+.amood:hover{border-color:var(--border2)}.amood.active{border-color:var(--accent);background:rgba(245,200,66,.06)}
+.amem{font-size:22px;display:block;margin-bottom:4px}.amlbl{font-size:11px;color:var(--text3)}
+.amood.active .amlbl{color:var(--accent)}
+.qchat{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1a1a;border:none;border-radius:12px;padding:14px;font-family:'Playfair Display',serif;font-size:17px;font-style:italic;font-weight:700;cursor:pointer;transition:all .2s}
+.qchat:hover{opacity:.9;transform:translateY(-1px)}
+
+/* ASSISTANT */
+.asswrap{display:flex;flex-direction:column;height:calc(100vh - 56px)}
+@media(max-width:640px){.asswrap{height:calc(100vh - 56px - 68px)}.cinput-bar{padding-bottom:max(16px,env(safe-area-inset-bottom))}}
+.asstop{padding:14px 24px 0;flex-shrink:0}
+.dsum-bar{background:linear-gradient(135deg,rgba(91,156,246,.1),rgba(191,90,242,.08));border:1px solid rgba(91,156,246,.25);border-radius:14px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dsum-bar span{flex:1;font-size:15px;color:var(--text2);min-width:160px;font-style:italic}
+.btn-rec{background:linear-gradient(135deg,var(--blue),#7b5af2);color:white;border:none;border-radius:10px;padding:10px 18px;font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.btn-rec:hover{opacity:.9;transform:translateY(-1px)}
+.btn-rec.rec{background:var(--red);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.vrec-banner{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:10px;padding:10px 16px;display:none;align-items:center;gap:10px;margin-bottom:8px}
+.vrec-banner.active{display:flex}
+.vdot{width:8px;height:8px;background:var(--red);border-radius:50%;animation:pulse 1s infinite;flex-shrink:0}
+.av-chat-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:rgba(245,200,66,0.04);flex-wrap:wrap;gap:10px;flex-shrink:0}
+.av-chat-left{display:flex;align-items:center;gap:12px}
+.av-chat-em{font-size:36px;line-height:1;animation:avatarFloat 3s ease-in-out infinite}
+.av-chat-name{font-family:'Playfair Display',serif;font-style:italic;font-size:17px;font-weight:700;color:var(--accent)}
+.av-chat-msg{font-size:13px;color:var(--text2);font-style:italic;margin-top:2px;max-width:400px}
+.av-chat-moods{display:flex;gap:5px}
+.av-mood-btn{background:var(--card2);border:2px solid var(--border);border-radius:10px;padding:6px 10px;cursor:pointer;transition:all 0.2s;font-size:16px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.av-mood-btn:hover{border-color:var(--border2)}
+.av-mood-btn.active{border-color:var(--accent);background:rgba(245,200,66,0.08)}
+.av-mood-lbl{font-size:10px;color:var(--text3)}
+.av-mood-btn.active .av-mood-lbl{color:var(--accent)}
+.vtxt2{font-size:14px;color:var(--red);flex:1}
+.vstop{background:var(--red);color:white;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer}
+.chatmsgs{flex:1;overflow-y:auto;padding:0 24px 12px;display:flex;flex-direction:column;gap:12px}
+.chatmsgs::-webkit-scrollbar{width:4px}.chatmsgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.cwelcome{text-align:center;padding:28px 20px}
+.cwem{font-size:48px;display:block;margin-bottom:10px}
+.cwtitle{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);margin-bottom:7px;font-weight:700}
+.cwsub{font-size:14px;color:var(--text2);margin-bottom:18px}
+.chips{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+.chip{background:var(--card2);border:1px solid var(--border2);border-radius:20px;padding:7px 14px;font-size:13px;color:var(--text2);cursor:pointer;transition:all .2s}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.msg{max-width:78%;padding:11px 15px;border-radius:14px;line-height:1.7;font-size:15px;animation:mIn .3s ease}
+@keyframes mIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg.user{background:var(--card2);border:1px solid var(--border);align-self:flex-end}
+.msg.bot{background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.15);align-self:flex-start}
+.msg.sys{background:rgba(91,156,246,.08);border:1px solid rgba(91,156,246,.2);align-self:center;font-size:13px;color:var(--blue);max-width:90%;text-align:center;border-radius:10px}
+.mlbl{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;font-weight:600}
+.typing{align-self:flex-start;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.15);border-radius:14px;padding:12px 16px;display:none}
+.typing.active{display:flex;gap:5px;align-items:center}
+.td{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:tb 1.2s infinite}
+.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
+@keyframes tb{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+.cinput-bar{padding:10px 24px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end;background:rgba(15,15,18,.97);flex-shrink:0}
+.cta{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:10px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5;resize:none;outline:none;min-height:44px;max-height:130px;transition:border-color .2s}
+.cta:focus{border-color:var(--accent)}.cta::placeholder{color:var(--text3)}
+.btn-mic{background:var(--card2);border:1px solid var(--border2);color:var(--text2);border-radius:12px;width:44px;height:44px;font-size:18px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.btn-mic:hover{border-color:var(--accent);color:var(--accent)}.btn-mic.rec{background:var(--red);border-color:var(--red);color:white;animation:pulse 1.2s infinite}
+.btn-send{background:var(--accent);color:#1a1a1a;border:none;border-radius:12px;width:44px;height:44px;font-size:18px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.btn-send:hover{opacity:.85}.btn-send:disabled{opacity:.4;cursor:not-allowed}
+
+/* SETTINGS */
+.setsec{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:14px}
+.setsec-t{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:4px}
+.setsec-d{font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.5}
+.setrow{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.setlbl{font-size:14px;color:var(--text2);font-weight:600;min-width:110px}
+.setinp{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;transition:border-color .2s;min-width:160px}
+.setinp:focus{border-color:var(--accent)}.setinp::placeholder{color:var(--text3)}
+.btn-sv{background:var(--accent);color:#1a1a1a;border:none;border-radius:10px;padding:10px 18px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-sv:hover{opacity:.85}
+.togrow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.togrow:last-child{border-bottom:none;padding-bottom:0}
+.toginf{flex:1}.tognm{font-size:15px;color:var(--text);font-weight:600}.togds{font-size:12px;color:var(--text3);margin-top:2px}
+.togswitch{position:relative;width:44px;height:24px;flex-shrink:0}
+.togswitch input{opacity:0;width:0;height:0}
+.togsl{position:absolute;inset:0;background:var(--border2);border-radius:24px;cursor:pointer;transition:all .3s}
+.togsl:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:all .3s}
+.togswitch input:checked+.togsl{background:var(--accent)}
+.togswitch input:checked+.togsl:before{transform:translateX(20px)}
+.avprofile{display:flex;align-items:center;gap:16px;padding:14px 0}
+.avpem{font-size:48px}.avpnm{font-family:'Playfair Display',serif;font-size:20px;color:var(--accent);font-weight:700}
+.avpsub{font-size:14px;color:var(--text2);margin-top:3px}
+.btn-chav{background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:8px 16px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer;transition:all .2s}
+.btn-chav:hover{border-color:var(--accent);color:var(--accent)}
+.keystatus{font-size:13px;margin-top:6px}
+.keystatus.ok{color:var(--green)}.keystatus.miss{color:var(--text3)}
+
+/* MODAL */
+.moverlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+.moverlay.open{display:flex;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:20px;padding:26px;width:480px;max-width:96vw;box-shadow:0 30px 60px rgba(0,0,0,.6);animation:mIn2 .3s cubic-bezier(.16,1,.3,1)}
+@keyframes mIn2{from{opacity:0;transform:scale(.94) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.mtitle{font-family:'Playfair Display',serif;font-style:italic;font-size:21px;font-weight:700;color:var(--text);margin-bottom:18px}
+.fg{margin-bottom:14px}
+.flbl{font-size:13px;color:var(--text2);font-weight:600;margin-bottom:5px;display:block;letter-spacing:.04em}
+.finp{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:10px 13px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;transition:border-color .2s}
+.finp:focus{border-color:var(--accent)}.finp::placeholder{color:var(--text3)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.epick{display:flex;gap:5px;flex-wrap:wrap}
+.epbtn{background:var(--card2);border:2px solid var(--border2);border-radius:8px;width:36px;height:36px;font-size:17px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.epbtn:hover{transform:scale(1.1)}.epbtn.sel{border-color:var(--accent);background:rgba(245,200,66,.1)}
+.cpick{display:flex;gap:7px;flex-wrap:wrap}
+.cpbtn{width:26px;height:26px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:all .15s}
+.cpbtn:hover{transform:scale(1.15)}.cpbtn.sel{border-color:white;transform:scale(1.15)}
+.macts{display:flex;gap:10px;margin-top:18px}
+.macts .btn-p{flex:1;padding:11px;font-size:16px}
+.vtarea{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:12px;color:var(--text);font-family:'Playfair Display',serif;font-size:17px;font-style:italic;outline:none;resize:none;min-height:90px;line-height:1.6;transition:border-color .2s}
+.vtarea:focus{border-color:var(--accent)}.vtarea::placeholder{color:var(--text3)}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card2);border:1px solid var(--accent);border-radius:12px;padding:11px 18px;color:var(--text);font-size:14px;z-index:1000;transform:translateY(80px);opacity:0;transition:all .3s;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast.show{transform:translateY(0);opacity:1}
+.spin{width:16px;height:16px;border:2px solid rgba(0,0,0,.15);border-top-color:#1a1a1a;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* BOTTOM NAV */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(15,15,18,.97);border-top:1px solid var(--border);z-index:200;backdrop-filter:blur(10px);padding:6px 0 max(6px,env(safe-area-inset-bottom))}
+.bottom-nav-inner{display:flex;justify-content:space-around;align-items:center}
+.bnbtn{background:none;border:none;color:var(--text3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;border-radius:10px;transition:all .2s;min-width:48px}
+.bnbtn .bn-em{font-size:22px;line-height:1}
+.bnbtn .bn-lbl{font-size:9px;font-family:'Crimson Pro',serif;font-weight:600;letter-spacing:0.03em}
+.bnbtn.active{color:var(--accent)}
+.bnbtn.active .bn-em{transform:scale(1.15)}
+.bn-more-panel{display:none;position:fixed;bottom:68px;left:0;right:0;background:rgba(20,20,24,.98);border-top:1px solid var(--border);padding:16px;backdrop-filter:blur(10px);z-index:199;flex-wrap:wrap;gap:10px;justify-content:center}
+.bn-more-panel.open{display:flex}
+.bn-more-item{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;min-width:70px;text-align:center}
+.bn-more-item.active,.bn-more-item:hover{border-color:var(--accent);color:var(--accent)}
+.bn-more-em{font-size:24px}
+.bn-more-lbl{font-size:12px;font-family:'Crimson Pro',serif;font-weight:600}
+
+@media(max-width:640px){
+  .nbtn .nl{display:none}
+  .hnav{display:none}
+  .bottom-nav{display:block}
+  .page{padding:14px 14px 90px}
+  .frow{grid-template-columns:1fr}
+  .av-grid{grid-template-columns:repeat(3,1fr)}
+  .avsg{grid-template-columns:repeat(3,1fr)}
+  .cinput-bar,.chatmsgs,.asstop{padding-left:14px;padding-right:14px}
+  .journal-sidebar{width:100%;height:210px;border-right:none;border-bottom:1px solid var(--border)}
+  .journal-wrap{flex-direction:column}
+}
+
+/* DASHBOARD */
+.dash-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px}
+.dstat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center}
+.dstat-num{font-family:'Playfair Display',serif;font-size:28px;color:var(--accent);line-height:1;font-weight:700}
+.dstat-lbl{font-size:12px;color:var(--text2);margin-top:4px}
+.dash-event{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:7px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color 0.2s}
+.dash-event:hover{border-color:var(--accent2)}
+.dash-event-icon{font-size:22px;flex-shrink:0}
+.dash-event-info{flex:1}
+.dash-event-name{font-size:15px;color:var(--text);font-weight:600}
+.dash-event-date{font-size:12px;color:var(--text2);margin-top:2px}
+.dash-event-badge{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
+.badge-soon{background:rgba(255,107,107,0.15);color:var(--red);border:1px solid rgba(255,107,107,0.3)}
+.badge-upcoming{background:rgba(245,200,66,0.1);color:var(--accent);border:1px solid rgba(245,200,66,0.2)}
+.dash-goal-row{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:7px;cursor:pointer;transition:border-color 0.2s}
+.dash-goal-row:hover{border-color:var(--accent)}
+.dash-goal-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.dash-goal-name{font-size:15px;color:var(--text);font-weight:600}
+.dash-goal-pct{font-family:'Playfair Display',serif;font-size:16px;font-weight:700}
+.dash-goal-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.dash-goal-fill{height:100%;border-radius:3px;transition:width 0.4s}
+/* CALENDAR */
+.cal-nav-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.cal-month-lbl{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700}
+.cal-nav-btn{background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:8px 16px;font-size:18px;cursor:pointer;transition:all 0.2s}
+.cal-nav-btn:hover{background:var(--border)}
+.cal-grid-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:20px}
+.cal-day-names{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:8px}
+.cal-day-names span{text-align:center;font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.07em;padding:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;cursor:pointer;transition:all 0.15s;position:relative;font-size:14px;color:var(--text);font-weight:500;border:2px solid transparent}
+.cal-cell:hover{background:var(--card2)}
+.cal-cell.today{border-color:var(--accent);color:var(--accent);font-weight:700}
+.cal-cell.other-month{color:var(--text3);opacity:0.4}
+.cal-cell.has-event::after{content:'';width:5px;height:5px;background:var(--accent);border-radius:50%;position:absolute;bottom:3px}
+.cal-cell.selected{background:var(--card2);border-color:var(--accent2)}
+.cal-cell-dot{font-size:10px;line-height:1;position:absolute;bottom:2px}
+.ev-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 16px;margin-bottom:7px;display:flex;align-items:center;gap:12px;transition:border-color 0.2s}
+.ev-card:hover{border-color:var(--accent2)}
+.ev-icon{font-size:20px;flex-shrink:0}
+.ev-info{flex:1}
+.ev-name{font-size:15px;color:var(--text);font-weight:600}
+.ev-date{font-size:12px;color:var(--text2);margin-top:2px}
+.ev-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px;border-radius:6px;transition:color 0.2s}
+.ev-del:hover{color:var(--red)}
+/* Event modal type selector */
+.ev-type-row{display:flex;gap:7px;flex-wrap:wrap}
+.ev-type-btn{background:var(--card2);border:2px solid var(--border2);border-radius:10px;padding:8px 14px;cursor:pointer;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);transition:all 0.2s}
+.ev-type-btn:hover{border-color:var(--border)}
+.ev-type-btn.sel{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.06)}
+
+/* HABITS */
+.habit-day-nav{display:flex;align-items:center;gap:10px}
+.habit-day-lbl{font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:var(--accent);font-weight:700;min-width:80px;text-align:center}
+.add-habit-toggle{width:100%;background:var(--card);border:2px dashed var(--border);border-radius:14px;padding:14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer;transition:all 0.2s;margin-bottom:14px}
+.add-habit-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.add-habit-wrap{margin-bottom:14px}
+.add-habit-form{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.add-habit-actions{display:flex;gap:10px}
+.habit-type-row{display:flex;gap:8px}
+.habit-emoji-row{display:flex;gap:6px;flex-wrap:wrap}
+.emoji-pick-btn{background:var(--card2);border:2px solid var(--border);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;justify-content:center}
+.emoji-pick-btn:hover{border-color:var(--border2);transform:scale(1.1)}
+.emoji-pick-btn.sel{border-color:var(--accent);background:rgba(245,200,66,0.1)}
+/* Habit card */
+.habit-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px;transition:border-color 0.2s}
+.habit-card:hover{border-color:var(--border2)}
+.habit-card-top{display:flex;align-items:center;gap:14px}
+.habit-emoji{font-size:26px;flex-shrink:0}
+.habit-info{flex:1;min-width:0}
+.habit-name{font-size:16px;color:var(--text);font-weight:600}
+.habit-streak{font-size:12px;color:var(--text3);margin-top:2px}
+.habit-streak-fire{color:#f4a435}
+/* Yes/No check */
+.habit-check{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:all 0.2s;flex-shrink:0;background:var(--card2)}
+.habit-check:hover{border-color:var(--accent)}
+.habit-check.done{background:var(--green);border-color:var(--green);color:white}
+/* Counter */
+.habit-counter{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.cnt-btn{background:var(--card2);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0;font-weight:700}
+.cnt-btn:hover{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.cnt-val{font-family:'Playfair Display',serif;font-size:22px;color:var(--accent);min-width:40px;text-align:center;font-weight:700}
+.cnt-clickable{border-bottom:2px dashed rgba(245,200,66,0.4);transition:border-color 0.2s;}
+.cnt-clickable:hover{border-color:var(--accent)}
+.cnt-goal{font-size:11px;color:var(--text3);text-align:center;margin-top:1px}
+/* Progress bar */
+.habit-progress{margin-top:10px}
+.habit-prog-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.habit-prog-fill{height:100%;border-radius:2px;background:var(--green);transition:width 0.4s}
+.habit-prog-pct{font-size:11px;color:var(--text3);text-align:right;margin-top:3px}
+/* Week dots */
+.habit-week{display:flex;gap:4px;margin-top:8px;align-items:center}
+.week-dot{width:10px;height:10px;border-radius:50%;background:var(--border);transition:background 0.2s}
+.week-dot.done{background:var(--green)}
+.week-dot.partial{background:rgba(76,217,100,0.35)}
+.habit-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px;border-radius:6px;transition:color 0.2s;flex-shrink:0}
+.habit-del:hover{color:var(--red)}
+.empty-st{text-align:center;padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:8px}
+
+/* FREQUENCY */
+.freq-type-row{display:flex;gap:7px;flex-wrap:wrap}
+.freq-times-row{display:flex;gap:6px;flex-wrap:wrap}
+.freq-num-btn{background:var(--card2);border:2px solid var(--border);border-radius:10px;padding:7px 14px;cursor:pointer;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);transition:all 0.15s;font-weight:600}
+.freq-num-btn:hover{border-color:var(--border2)}
+.freq-num-btn.sel{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.08)}
+.freq-days-row{display:flex;gap:6px;flex-wrap:wrap}
+.freq-day-btn{background:var(--card2);border:2px solid var(--border);border-radius:10px;padding:7px 11px;cursor:pointer;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);transition:all 0.15s;font-weight:600}
+.freq-day-btn:hover{border-color:var(--border2)}
+.freq-day-btn.sel{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.08)}
+.habit-freq-badge{font-size:11px;color:var(--text3);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.habit-week-wrap{display:flex;align-items:center;gap:8px;margin-top:8px}
+.week-dot-lbl{font-size:10px;color:var(--text3);width:14px;text-align:center}
+.week-dot-inactive{background:rgba(255,255,255,0.05)!important;opacity:0.4}
+
+/* COMING SOON placeholder */
+.coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;gap:14px;max-width:400px;margin:0 auto}
+.cs-icon{font-size:56px;opacity:0.6}
+.cs-title{font-family:'Playfair Display',serif;font-style:italic;font-size:24px;color:var(--text);font-weight:700}
+.cs-sub{font-size:15px;color:var(--text2);line-height:1.6}
+.cs-badge{background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.3);color:var(--accent);font-size:12px;padding:4px 12px;border-radius:20px;font-weight:600}
+
+/* JOURNAL */
+.journal-wrap{display:flex;height:100%;overflow:hidden}
+.journal-sidebar{width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--card);flex-shrink:0}
+.journal-sidebar-top{display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid var(--border)}
+.j-search-wrap{padding:10px 12px;border-bottom:1px solid var(--border)}
+.j-search{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;transition:border-color 0.2s}
+.j-search:focus{border-color:var(--accent)}
+.j-list{flex:1;overflow-y:auto;padding:8px}
+.j-item{padding:10px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;border:1px solid transparent;margin-bottom:4px}
+.j-item:hover{background:var(--bg)}
+.j-item.active{background:var(--bg);border-color:var(--accent)}
+.j-item-date{font-size:11px;color:var(--accent);font-weight:600;margin-bottom:3px}
+.j-item-title{font-size:14px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.j-item-preview{font-size:12px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.j-item-mood{margin-right:4px}
+.journal-editor{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.j-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+.j-edit-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.j-edit-top{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.j-title-inp{flex:1;background:none;border:none;color:var(--text);font-family:'Playfair Display',serif;font-size:20px;font-style:italic;outline:none;min-width:160px}
+.j-title-inp::placeholder{color:var(--text3)}
+.j-edit-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.j-mic-btn{background:var(--card2);border:1px solid var(--border);border-radius:10px;width:38px;height:38px;font-size:17px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center}
+.j-mic-btn:hover{border-color:var(--accent)}
+.j-mic-btn.rec{background:var(--red);border-color:var(--red);animation:pulse 1s infinite}
+.j-meta{display:flex;align-items:center;gap:14px;padding:8px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.j-date{font-size:13px;color:var(--text3);font-weight:600}
+.j-mood-row{display:flex;align-items:center;gap:6px}
+.j-mood-btn{background:none;border:2px solid transparent;border-radius:8px;padding:2px 5px;font-size:18px;cursor:pointer;transition:all 0.15s}
+.j-mood-btn:hover{transform:scale(1.15)}
+.j-mood-btn.sel{border-color:var(--accent);background:rgba(245,200,66,0.1)}
+.j-voice-bar{display:flex;align-items:center;gap:10px;padding:8px 20px;background:rgba(255,107,107,0.07);border-bottom:1px solid var(--border);font-size:14px;color:var(--red)}
+.j-textarea{flex:1;padding:20px;background:none;border:none;color:var(--text);font-family:'Crimson Pro',serif;font-size:18px;line-height:1.8;outline:none;resize:none}
+.j-textarea::placeholder{color:var(--text3)}
+.j-dirty-dot{width:7px;height:7px;background:var(--accent);border-radius:50%;display:inline-block;margin-left:6px}
+@media(max-width:640px){
+  .journal-sidebar{width:100%;height:220px;border-right:none;border-bottom:1px solid var(--border)}
+  .journal-wrap{flex-direction:column}
+}
+
+/* COOKING */
+.cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+.cook-prompt-label{font-size:14px;color:var(--text2);margin-bottom:10px;font-weight:600}
+.cook-inp-row{display:flex;gap:8px;margin-bottom:12px}
+.cook-inp{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;transition:border-color .2s}
+.cook-inp:focus{border-color:var(--accent)}
+.cook-mic-btn{background:var(--card2);border:1px solid var(--border2);border-radius:10px;width:44px;height:44px;font-size:18px;cursor:pointer;transition:all .2s;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.cook-mic-btn:hover{border-color:var(--accent)}
+.cook-mic-btn.rec{background:var(--red);border-color:var(--red);animation:pulse 1s infinite}
+.cook-options-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cook-opt-btn{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
+.cook-opt-btn:hover{border-color:var(--border2)}
+.cook-opt-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.08)}
+.cook-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:12px}
+.cook-recipe-name{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);margin-bottom:4px;font-weight:700}
+.cook-recipe-meta{font-size:13px;color:var(--text3);margin-bottom:14px}
+.cook-section{font-size:13px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px}
+.cook-ingredient{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:15px}
+.cook-ing-check{width:18px;height:18px;border-radius:4px;border:2px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .2s;flex-shrink:0}
+.cook-ing-check.done{background:var(--green);border-color:var(--green);color:white}
+.cook-step{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:15px;line-height:1.6;color:var(--text2);display:flex;gap:10px}
+.cook-step-num{color:var(--accent);font-weight:700;flex-shrink:0;font-family:'Playfair Display',serif}
+.cook-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.saved-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .2s}
+.saved-recipe-card:hover{border-color:var(--accent2)}
+.saved-recipe-name{font-size:15px;font-weight:600;color:var(--text)}
+.saved-recipe-meta{font-size:12px;color:var(--text3);margin-top:2px}
+
+/* SHOPPING */
+.shop-add-row{display:flex;gap:8px;margin-bottom:16px}
+.shop-category{margin-bottom:16px}
+.shop-cat-label{font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding:0 4px}
+.shop-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;transition:all .2s}
+.shop-item.done{opacity:.5}
+.shop-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s;flex-shrink:0}
+.shop-check.done{background:var(--green);border-color:var(--green);color:white}
+.shop-item-name{flex:1;font-size:15px;color:var(--text);transition:all .2s}
+.shop-item.done .shop-item-name{text-decoration:line-through;color:var(--text3)}
+.shop-item-qty{font-size:13px;color:var(--text3);margin-right:4px}
+.shop-item-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px;transition:color .2s}
+.shop-item-del:hover{color:var(--red)}
+.shop-from-recipe{font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="orb orb1"></div><div class="orb orb2"></div>
+
+<!-- LOGIN -->
+<div class="screen active" id="s-login">
+  <div class="card">
+    <span class="paw">🐾</span>
+    <div class="logo-name">LifePocket</div>
+    <div class="logo-tag">Tvůj osobní AI společník<br>pro návyky, zápisky a plánování</div>
+    <div class="divider"></div>
+    <button class="google-btn" id="login-btn" onclick="doLogin()">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg>
+      Přihlásit se přes Google
+    </button>
+    <div class="err" id="login-err"></div>
+    <div class="feats">
+      <div class="feat"><span>🎯</span><span>Návyky & cíle</span></div>
+      <div class="feat"><span>📝</span><span>Zápisník</span></div>
+      <div class="feat"><span>🐾</span><span>AI Společník</span></div>
+      <div class="feat"><span>📅</span><span>Kalendář</span></div>
+    </div>
+    <div class="privacy">🔒 Tvoje data jsou pouze tvoje.</div>
+  </div>
+</div>
+
+<!-- STEP 1 -->
+<div class="screen" id="s-step1">
+  <div class="card">
+    <div class="steps"><div class="sdot active"></div><div class="sdot"></div><div class="sdot"></div></div>
+    <div class="stitle">Jak ti máme říkat?</div>
+    <div class="ssub">Tvůj společník tě bude zdravit jménem.</div>
+    <input class="name-inp" type="text" id="u-nick" placeholder="Tvoje jméno…" maxlength="30" oninput="v1()">
+    <div class="gender-row">
+      <button class="gender-btn" id="gm" onclick="sg('m')"><span class="ge">👨</span><span>Muž</span></button>
+      <button class="gender-btn" id="gf" onclick="sg('f')"><span class="ge">👩</span><span>Žena</span></button>
+    </div>
+    <button class="btn-p" id="btn-s1" onclick="gS2()" disabled>Pokračovat →</button>
+  </div>
+</div>
+
+<!-- STEP 2 -->
+<div class="screen" id="s-step2">
+  <div class="card card-wide">
+    <div class="steps"><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div></div>
+    <div class="stitle">Vyber si svého společníka</div>
+    <div class="ssub">Kdo tě bude provázet životem?</div>
+    <div class="av-grid" id="av-grid"></div>
+    <button class="btn-p" id="btn-s2" onclick="gS3()" disabled>Pokračovat →</button>
+  </div>
+</div>
+
+<!-- STEP 3 -->
+<div class="screen" id="s-step3">
+  <div class="card card-wide">
+    <div class="steps"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div></div>
+    <div class="stitle" id="s3-title">Co chceš sledovat?</div>
+    <div class="ssub">Předvybrali jsme to nejlepší. Klidně uprav.</div>
+    <div class="slabel">⭐ Připraveno pro tebe</div>
+    <div class="mod-grid" id="mods-primary"></div>
+    <button class="more-tog" id="more-tog" onclick="togMore()">+ Zobrazit další možnosti</button>
+    <div class="extra-mods" id="extra-mods">
+      <div class="slabel" style="margin-top:14px">➕ Další moduly</div>
+      <div class="mod-grid" id="mods-extra"></div>
+    </div>
+    <button class="btn-p" style="margin-top:18px" onclick="finishOnboard()">🐾 Jdeme na to!</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header class="hdr">
+    <div class="hlogo" onclick="sp('dashboard')">🐾 LifePocket</div>
+    <nav class="hnav" id="hnav"></nav>
+    <div class="hright">
+      <div class="upill" id="upill" onclick="sp('settings')"></div>
+      <button class="lbtn" onclick="doLogout()">Odhlásit</button>
+    </div>
+  </header>
+  <!-- BOTTOM NAV (mobile) -->
+  <div class="bottom-nav" id="bottom-nav">
+    <div class="bottom-nav-inner" id="bottom-nav-inner"></div>
+  </div>
+  <div class="bn-more-panel" id="bn-more-panel"></div>
+
+  <div class="abody" id="abody">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="p-dashboard">
+      <div class="dgreet" id="d-greet">Ahoj!</div>
+      <!-- Rex banner -->
+      <div class="avbanner" onclick="sp('avatar')">
+        <div class="avbig" id="d-avem">🐾</div>
+        <div style="flex:1">
+          <div class="avsnm" id="d-avnm"></div>
+          <div class="avtxt" id="d-avtxt"></div>
+        </div>
+        <div style="color:var(--text3);font-size:12px">→</div>
+      </div>
+      <!-- Quick stats -->
+      <div class="dash-stats" id="d-stats"></div>
+      <!-- Upcoming 14 days -->
+      <div class="sec-lbl" id="d-events-lbl" style="display:none">📅 Nadcházejících 14 dní</div>
+      <div id="d-events"></div>
+      <!-- Goals progress -->
+      <div class="sec-lbl" id="d-goals-lbl" style="display:none">🌟 Moje cíle</div>
+      <div id="d-goals-dash"></div>
+      <!-- Modules -->
+      <div class="sec-lbl">📱 Moduly</div>
+      <div class="modtiles" id="d-mods"></div>
+    </div>
+
+
+    <!-- HABITS -->
+    <div class="page" id="p-habits">
+      <div class="gh">
+        <div class="ptitle">🎯 Návyky</div>
+        <!-- Day navigation -->
+        <div class="habit-day-nav">
+          <button class="cal-nav-btn" onclick="habitPrevDay()">‹</button>
+          <div class="habit-day-lbl" id="habit-day-lbl">Dnes</div>
+          <button class="cal-nav-btn" onclick="habitNextDay()">›</button>
+        </div>
+      </div>
+
+      <!-- Add habit form -->
+      <div class="add-habit-wrap" id="add-habit-wrap" style="display:none">
+        <div class="add-habit-form">
+          <div class="fg">
+            <label class="flbl">Název návyku</label>
+            <input class="finp" type="text" id="habit-name-inp" placeholder="Cvičení, voda, meditace…">
+          </div>
+          <div class="fg">
+            <label class="flbl">Typ</label>
+            <div class="habit-type-row">
+              <button class="ev-type-btn sel" id="htype-yesno" onclick="setHabitType('yesno',this)">✓ Ano/Ne</button>
+              <button class="ev-type-btn" id="htype-count" onclick="setHabitType('count',this)">🔢 Počet</button>
+            </div>
+          </div>
+          <div class="fg" id="habit-goal-wrap" style="display:none">
+            <label class="flbl">Denní cíl (počet)</label>
+            <input class="finp" type="number" id="habit-goal-inp" placeholder="10" min="1" max="9999" value="10">
+          </div>
+          <div class="fg">
+            <label class="flbl">Emoji</label>
+            <div class="habit-emoji-row" id="habit-emoji-row">
+              <button class="emoji-pick-btn sel" data-e="🏃" onclick="setHabitEmoji('🏃',this)">🏃</button>
+              <button class="emoji-pick-btn" data-e="💧" onclick="setHabitEmoji('💧',this)">💧</button>
+              <button class="emoji-pick-btn" data-e="📚" onclick="setHabitEmoji('📚',this)">📚</button>
+              <button class="emoji-pick-btn" data-e="🧘" onclick="setHabitEmoji('🧘',this)">🧘</button>
+              <button class="emoji-pick-btn" data-e="🥗" onclick="setHabitEmoji('🥗',this)">🥗</button>
+              <button class="emoji-pick-btn" data-e="😴" onclick="setHabitEmoji('😴',this)">😴</button>
+              <button class="emoji-pick-btn" data-e="🚭" onclick="setHabitEmoji('🚭',this)">🚭</button>
+              <button class="emoji-pick-btn" data-e="💪" onclick="setHabitEmoji('💪',this)">💪</button>
+              <button class="emoji-pick-btn" data-e="🎵" onclick="setHabitEmoji('🎵',this)">🎵</button>
+              <button class="emoji-pick-btn" data-e="✍️" onclick="setHabitEmoji('✍️',this)">✍️</button>
+            </div>
+          </div>
+          <div class="fg">
+            <label class="flbl">Frekvence</label>
+            <div class="freq-type-row">
+              <button class="ev-type-btn sel" data-f="daily" onclick="setFreqType('daily',this)">📅 Každý den</button>
+              <button class="ev-type-btn" data-f="weekly" onclick="setFreqType('weekly',this)">🔢 X× týdně</button>
+              <button class="ev-type-btn" data-f="days" onclick="setFreqType('days',this)">📆 Konkrétní dny</button>
+            </div>
+          </div>
+          <div class="fg" id="freq-weekly-wrap" style="display:none">
+            <label class="flbl">Kolikrát týdně</label>
+            <div class="freq-times-row">
+              <button class="freq-num-btn sel" data-n="1" onclick="setFreqTimes(1,this)">1×</button>
+              <button class="freq-num-btn" data-n="2" onclick="setFreqTimes(2,this)">2×</button>
+              <button class="freq-num-btn" data-n="3" onclick="setFreqTimes(3,this)">3×</button>
+              <button class="freq-num-btn" data-n="4" onclick="setFreqTimes(4,this)">4×</button>
+              <button class="freq-num-btn" data-n="5" onclick="setFreqTimes(5,this)">5×</button>
+              <button class="freq-num-btn" data-n="6" onclick="setFreqTimes(6,this)">6×</button>
+            </div>
+          </div>
+          <div class="fg" id="freq-days-wrap" style="display:none">
+            <label class="flbl">Které dny</label>
+            <div class="freq-days-row">
+              <button class="freq-day-btn" data-d="1" onclick="toggleFreqDay(1,this)">Po</button>
+              <button class="freq-day-btn" data-d="2" onclick="toggleFreqDay(2,this)">Út</button>
+              <button class="freq-day-btn" data-d="3" onclick="toggleFreqDay(3,this)">St</button>
+              <button class="freq-day-btn" data-d="4" onclick="toggleFreqDay(4,this)">Čt</button>
+              <button class="freq-day-btn" data-d="5" onclick="toggleFreqDay(5,this)">Pá</button>
+              <button class="freq-day-btn" data-d="6" onclick="toggleFreqDay(6,this)">So</button>
+              <button class="freq-day-btn" data-d="0" onclick="toggleFreqDay(0,this)">Ne</button>
+            </div>
+          </div>
+          <div class="add-habit-actions">
+            <button class="btn-s" onclick="toggleAddHabit()">Zrušit</button>
+            <button class="btn-p" style="flex:1" onclick="saveHabit()">Přidat návyk</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toggle add form button -->
+      <button class="add-habit-toggle" id="add-habit-toggle" onclick="toggleAddHabit()">+ Přidat návyk</button>
+
+      <!-- Habits list -->
+      <div id="habits-list"></div>
+
+      <!-- Empty state -->
+      <div class="empty-st" id="habits-empty" style="display:none">
+        <div style="font-size:44px">🎯</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--text2);margin-top:10px">Zatím žádné návyky</div>
+        <div style="font-size:14px;color:var(--text3);margin-top:6px">Klikni na "+ Přidat návyk" a začni</div>
+      </div>
+    </div>
+
+    <!-- CALENDAR -->
+    <div class="page" id="p-calendar">
+      <div class="gh">
+        <div class="ptitle">📅 Kalendář</div>
+        <button class="btn-p" style="width:auto;padding:9px 18px;font-size:15px" onclick="openEvModal()">+ Přidat událost</button>
+      </div>
+      <!-- Month nav -->
+      <div class="cal-nav-row">
+        <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+        <div class="cal-month-lbl" id="cal-month-lbl">Březen 2025</div>
+        <button class="cal-nav-btn" onclick="calNext()">›</button>
+      </div>
+      <!-- Calendar grid -->
+      <div class="cal-grid-wrap">
+        <div class="cal-day-names">
+          <span>Po</span><span>Út</span><span>St</span><span>Čt</span><span>Pá</span><span>So</span><span>Ne</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+      <!-- Upcoming events -->
+      <div class="sec-lbl" style="margin-top:20px">Nadcházející události</div>
+      <div id="cal-events-list"></div>
+    </div>
+
+
+    <!-- JOURNAL placeholder -->
+    <div class="page" id="p-journal" style="padding:0;max-width:100%;height:calc(100vh - 60px)">
+      <div class="journal-wrap">
+
+        <!-- LEFT: list -->
+        <div class="journal-sidebar" id="j-sidebar">
+          <div class="journal-sidebar-top">
+            <div class="ptitle" style="font-size:18px;margin:0">📝 Zápisník</div>
+            <button class="btn-p" style="width:auto;padding:7px 14px;font-size:14px" onclick="newEntry()">+ Nový</button>
+          </div>
+          <div class="j-search-wrap">
+            <input class="j-search" type="text" id="j-search" placeholder="🔍 Hledat…" oninput="filterEntries()">
+          </div>
+          <div class="j-list" id="j-list"></div>
+        </div>
+
+        <!-- RIGHT: editor -->
+        <div class="journal-editor" id="j-editor">
+          <!-- Empty state -->
+          <div class="j-empty" id="j-empty">
+            <div style="font-size:48px">📖</div>
+            <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--text2);margin-top:12px">Vyber zápisek nebo vytvoř nový</div>
+            <button class="btn-p" style="margin-top:16px;width:auto;padding:10px 24px" onclick="newEntry()">✍️ Nový zápisek</button>
+          </div>
+
+          <!-- Editor -->
+          <div class="j-edit-area" id="j-edit-area" style="display:none">
+            <div class="j-edit-top">
+              <input class="j-title-inp" type="text" id="j-title" placeholder="Název zápisku…" oninput="markDirty()">
+              <div class="j-edit-actions">
+                <button class="j-mic-btn" id="j-mic-btn" onclick="toggleJournalMic()" title="Hlasový záznam">🎤</button>
+                <button class="btn-s" onclick="deleteEntry()" style="color:var(--red);border-color:var(--red)">Smazat</button>
+                <button class="btn-p" style="width:auto;padding:7px 18px" onclick="saveEntry()">Uložit</button>
+              </div>
+            </div>
+            <div class="j-meta">
+              <span class="j-date" id="j-date"></span>
+              <div class="j-mood-row">
+                <span style="font-size:12px;color:var(--text3)">Nálada:</span>
+                <button class="j-mood-btn" data-m="😄" onclick="setEntryMood('😄',this)">😄</button>
+                <button class="j-mood-btn" data-m="🙂" onclick="setEntryMood('🙂',this)">🙂</button>
+                <button class="j-mood-btn" data-m="😐" onclick="setEntryMood('😐',this)">😐</button>
+                <button class="j-mood-btn" data-m="😔" onclick="setEntryMood('😔',this)">😔</button>
+                <button class="j-mood-btn" data-m="😤" onclick="setEntryMood('😤',this)">😤</button>
+                <button class="j-mood-btn" data-m="😴" onclick="setEntryMood('😴',this)">😴</button>
+              </div>
+            </div>
+            <div class="j-voice-bar" id="j-voice-bar" style="display:none">
+              <div class="vdot"></div>
+              <span id="j-voice-txt">Poslouchám… mluv volně.</span>
+              <button class="vstop" onclick="stopJournalMic()">⏹ Hotovo</button>
+            </div>
+            <textarea class="j-textarea" id="j-text" placeholder="Piš co tě napadá… nebo klikni na 🎤 a mluv." oninput="markDirty()"></textarea>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOOD placeholder -->
+    <div class="page" id="p-mood">
+      <div class="ptitle">😊 Zdraví & Stav</div>
+      <div class="coming-soon">
+        <div class="cs-icon">❤️</div>
+        <div class="cs-title">Zdraví & Stav</div>
+        <div class="cs-sub">Brzy k dispozici — nálada, spánek, energie, kroky a data z hodinek na jednom místě.</div>
+      </div>
+    </div>
+
+    <!-- COOKING placeholder -->
+    <div class="page" id="p-cooking">
+      <div class="gh">
+        <div class="ptitle">🍽️ Vaření</div>
+      </div>
+
+      <!-- AI prompt -->
+      <div class="cook-prompt-wrap">
+        <div class="cook-prompt-label">Co chceš vařit? Řekni mi jídlo nebo téma:</div>
+        <div class="cook-inp-row">
+          <input class="cook-inp" type="text" id="cook-inp" placeholder="Svíčková, rychlá večeře pro 2, zdravý oběd…" onkeydown="if(event.key==='Enter')askRecipe()">
+          <button class="cook-mic-btn" id="cook-mic-btn" onclick="toggleCookMic()" title="Hlasově">🎤</button>
+          <button class="btn-p" style="width:auto;padding:10px 20px;flex-shrink:0" onclick="askRecipe()">🍳 Navrhnout</button>
+        </div>
+        <div class="cook-options-row">
+          <span style="font-size:13px;color:var(--text3)">Počet porcí:</span>
+          <button class="cook-opt-btn active" data-p="2" onclick="setPortions(2,this)">2</button>
+          <button class="cook-opt-btn" data-p="4" onclick="setPortions(4,this)">4</button>
+          <button class="cook-opt-btn" data-p="6" onclick="setPortions(6,this)">6</button>
+          <span style="font-size:13px;color:var(--text3);margin-left:10px">Typ:</span>
+          <button class="cook-opt-btn active" data-t="any" onclick="setCookType('any',this)">Vše</button>
+          <button class="cook-opt-btn" data-t="quick" onclick="setCookType('quick',this)">⚡ Rychlé</button>
+          <button class="cook-opt-btn" data-t="healthy" onclick="setCookType('healthy',this)">🥗 Zdravé</button>
+          <button class="cook-opt-btn" data-t="cheap" onclick="setCookType('cheap',this)">💰 Levné</button>
+        </div>
+      </div>
+
+      <!-- Recipe result -->
+      <div id="cook-result" style="display:none">
+        <div class="cook-recipe-card" id="cook-recipe-card"></div>
+        <div class="cook-actions">
+          <button class="btn-p" onclick="sendToShopping()" style="width:auto;padding:10px 22px">🛒 Přidat do nákupu</button>
+          <button class="btn-s" onclick="askRecipe()" style="width:auto;padding:10px 22px">🔄 Jiný návrh</button>
+        </div>
+      </div>
+
+      <!-- Saved recipes -->
+      <div class="sec-lbl" style="margin-top:24px" id="saved-recipes-lbl">Uložené recepty</div>
+      <div id="saved-recipes-list"></div>
+      <div id="cook-loading" style="display:none;text-align:center;padding:30px;color:var(--text2)">
+        <div style="font-size:32px;animation:pb 1s ease-in-out infinite">🍳</div>
+        <div style="margin-top:10px;font-style:italic">Rex vaří recept…</div>
+      </div>
+    </div>
+
+    <div class="page" id="p-shopping">
+      <div class="gh">
+        <div class="ptitle">🛒 Nákupy</div>
+        <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()">✓ Vymazat splněné</button>
+      </div>
+
+      <!-- Quick add -->
+      <div class="shop-add-row">
+        <input class="finp" type="text" id="shop-inp" placeholder="Přidat položku… (Enter)" onkeydown="if(event.key==='Enter')addShopItem()">
+        <button class="btn-p" style="width:auto;padding:10px 18px;flex-shrink:0" onclick="addShopItem()">+ Přidat</button>
+      </div>
+
+      <!-- Categories -->
+      <div id="shop-list"></div>
+
+      <!-- Empty state -->
+      <div id="shop-empty" class="empty-st" style="display:none">
+        <div style="font-size:44px">🛒</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--text2);margin-top:10px">Seznam je prázdný</div>
+        <div style="font-size:14px;color:var(--text3);margin-top:6px">Přidej položky nebo nech Rexe vytvořit seznam z receptu</div>
+        <button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="sp('cooking')">🍽️ Vybrat recept</button>
+      </div>
+    </div>
+
+    <!-- FINANCE placeholder -->
+    <div class="page" id="p-finance">
+      <div class="ptitle">💰 Finance</div>
+      <div class="coming-soon">
+        <div class="cs-icon">💰</div>
+        <div class="cs-title">Finance</div>
+        <div class="cs-sub">Brzy k dispozici — sledování výdajů, příjmů a finančních cílů.</div>
+      </div>
+    </div>
+    <!-- GOALS -->
+    <div class="page" id="p-goals">
+      <div class="gh">
+        <div class="ptitle">🌟 Cíle</div>
+        <button class="btn-p" style="width:auto;padding:9px 18px;font-size:15px" onclick="openGM()">+ Nový cíl</button>
+      </div>
+      <div class="vcard">
+        <div class="vlbl">✦ Moje vize</div>
+        <div class="vtxt empty" id="vtxt">Klikni a napiš svoji velkou životní vizi…</div>
+        <button class="vedit" onclick="openVM()">✏️ Upravit</button>
+      </div>
+      <div id="goals-list"></div>
+      <button class="add-goal" onclick="openGM()">+ Přidat nový cíl</button>
+    </div>
+
+    <!-- AVATAR + ASSISTANT (spojeno) -->
+    <div class="page" id="p-avatar" style="padding:0;max-width:100%">
+      <div class="asswrap">
+        <!-- Avatar header -->
+        <div class="av-chat-header" id="av-chat-header">
+          <div class="av-chat-left">
+            <span class="av-chat-em" id="av-em">🐾</span>
+            <div>
+              <div class="av-chat-name" id="av-nm">Společník</div>
+              <div class="av-chat-msg" id="av-msg">Vítej! Jsem tady pro tebe každý den.</div>
+            </div>
+          </div>
+          <div class="av-chat-moods" id="av-moods"></div>
+        </div>
+        <!-- Day summary bar -->
+        <div class="asstop">
+          <div class="dsum-bar">
+            <span>🎙️ <strong>Přehled dne</strong> — řekni co jsi dělal a já to zaznamenám</span>
+            <button class="btn-rec" id="dsBtn" onclick="togDS()">🎤 Nahrát přehled dne</button>
+          </div>
+          <div class="vrec-banner" id="vrec-banner">
+            <div class="vdot"></div>
+            <span class="vtxt2" id="vrec-txt">Poslouchám… Řekni co jsi dnes dělal.</span>
+            <button class="vstop" onclick="stopDS()">⏹ Hotovo</button>
+          </div>
+        </div>
+        <!-- Chat -->
+        <div class="chatmsgs" id="chatmsgs">
+          <div class="cwelcome" id="cwelcome">
+            <span class="cwem" id="cwem">🐾</span>
+            <div class="cwtitle" id="cwtitle">Čím ti mohu pomoci?</div>
+            <div class="cwsub">Ptej se na cíle, návyky nebo nahraj přehled dne.</div>
+            <div class="chips">
+              <div class="chip" onclick="askC('Jak plním své cíle?')">Jak plním cíle?</div>
+              <div class="chip" onclick="askC('Co bych měl dnes udělat pro svou vizi?')">Co dělat dnes?</div>
+              <div class="chip" onclick="askC('Poraď mi jak zůstat motivovaný')">Jak být motivovaný?</div>
+              <div class="chip" onclick="askC('Shrň moje cíle a pokrok')">Shrnutí pokroku</div>
+              <div class="chip" onclick="askC('Jaká je moje nálada tento týden?')">Moje nálada</div>
+            </div>
+          </div>
+        </div>
+        <div class="typing" id="typing"><div class="td"></div><div class="td"></div><div class="td"></div></div>
+        <div class="cinput-bar">
+          <button class="btn-mic" id="mic-btn" onclick="togMic()" title="Hlasový vstup">🎤</button>
+          <textarea class="cta" id="c-inp" placeholder="Napiš zprávu nebo klikni 🎤…" rows="1" onkeydown="ck(event)" oninput="ar(this)"></textarea>
+          <button class="btn-send" id="send-btn" onclick="send()">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="p-settings">
+      <div class="ptitle" style="margin-bottom:20px">⚙️ Nastavení</div>
+
+      <div class="setsec">
+        <div class="setsec-t">👤 Profil & Avatar</div>
+        <div class="setsec-d">Tvoje osobní nastavení.</div>
+        <div class="avprofile">
+          <div class="avpem" id="set-avem">🐾</div>
+          <div style="flex:1"><div class="avpnm" id="set-avnm">—</div><div class="avpsub" id="set-avsub">—</div></div>
+          <button class="btn-chav" onclick="openAVC()">Změnit avatara</button>
+        </div>
+        <div class="setrow">
+          <span class="setlbl">Přezdívka</span>
+          <input class="setinp" type="text" id="set-nick" placeholder="Tvoje jméno…">
+          <button class="btn-sv" onclick="saveNick()">Uložit</button>
+        </div>
+      </div>
+
+      <div class="setsec">
+        <div class="setsec-t">🔑 AI Asistent — Groq API</div>
+        <div class="setsec-d">Groq je zdarma. Klíč získáš na <a href="https://console.groq.com" target="_blank" style="color:var(--accent)">console.groq.com</a> — registrace zabere 1 minutu.</div>
+        <div class="setrow">
+          <span class="setlbl">API klíč</span>
+          <input class="setinp" type="password" id="set-key" placeholder="gsk_...">
+          <button class="btn-sv" onclick="saveKey()">Uložit</button>
+        </div>
+        <div class="keystatus miss" id="keystatus">⚠️ Klíč není nastaven</div>
+      </div>
+
+      <div class="setsec">
+        <div class="setsec-t">📱 Moduly</div>
+        <div class="setsec-d">Zapni nebo vypni části aplikace.</div>
+        <div id="set-mods"></div>
+      </div>
+
+      <div class="setsec">
+        <div class="setsec-t">🚪 Odhlášení</div>
+        <div class="setrow">
+          <span class="setlbl">Účet</span>
+          <button class="btn-sv" style="background:var(--red);color:white" onclick="doLogout()">Odhlásit se</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="moverlay" id="m-vision">
+  <div class="modal">
+    <div class="mtitle">✦ Moje vize</div>
+    <div class="fg"><label class="flbl">Co chceš v životě dosáhnout?</label>
+      <textarea class="vtarea" id="vi-inp" placeholder="Chci být zdravý a fit ve 50 letech…" rows="4"></textarea></div>
+    <div class="macts"><button class="btn-s" onclick="cm('m-vision')">Zrušit</button><button class="btn-p" onclick="saveV()">Uložit vizi</button></div>
+  </div>
+</div>
+
+<div class="moverlay" id="m-goal">
+  <div class="modal">
+    <div class="mtitle" id="gm-title">🌟 Nový cíl</div>
+    <div class="fg"><label class="flbl">Název cíle</label><input class="finp" type="text" id="g-name" placeholder="Zhubnout 10 kg…"></div>
+    <div class="frow">
+      <div class="fg"><label class="flbl">Kategorie</label>
+        <select class="finp" id="g-cat">
+          <option value="zdraví">💪 Zdraví</option><option value="práce">💼 Práce</option>
+          <option value="rodina">👨‍👩‍👧 Rodina</option><option value="finance">💰 Finance</option>
+          <option value="vzdělání">📚 Vzdělání</option><option value="koníčky">🎨 Koníčky</option>
+          <option value="osobní">🌱 Osobní rozvoj</option><option value="ostatní">⭐ Ostatní</option>
+        </select></div>
+      <div class="fg"><label class="flbl">Deadline</label><input class="finp" type="date" id="g-dl"></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="flbl">Emoji</label>
+        <div class="epick" id="g-epick">
+          <button class="epbtn sel" data-e="🌟" onclick="sGE('🌟',this)">🌟</button>
+          <button class="epbtn" data-e="💪" onclick="sGE('💪',this)">💪</button>
+          <button class="epbtn" data-e="📚" onclick="sGE('📚',this)">📚</button>
+          <button class="epbtn" data-e="🏃" onclick="sGE('🏃',this)">🏃</button>
+          <button class="epbtn" data-e="💰" onclick="sGE('💰',this)">💰</button>
+          <button class="epbtn" data-e="❤️" onclick="sGE('❤️',this)">❤️</button>
+          <button class="epbtn" data-e="🎯" onclick="sGE('🎯',this)">🎯</button>
+          <button class="epbtn" data-e="✈️" onclick="sGE('✈️',this)">✈️</button>
+        </div></div>
+      <div class="fg"><label class="flbl">Barva</label>
+        <div class="cpick" id="g-cpick">
+          <div class="cpbtn sel" data-c="#f5c842" style="background:#f5c842" onclick="sGC('#f5c842',this)"></div>
+          <div class="cpbtn" data-c="#e0954a" style="background:#e0954a" onclick="sGC('#e0954a',this)"></div>
+          <div class="cpbtn" data-c="#4cd964" style="background:#4cd964" onclick="sGC('#4cd964',this)"></div>
+          <div class="cpbtn" data-c="#5b9cf6" style="background:#5b9cf6" onclick="sGC('#5b9cf6',this)"></div>
+          <div class="cpbtn" data-c="#ff6b6b" style="background:#ff6b6b" onclick="sGC('#ff6b6b',this)"></div>
+          <div class="cpbtn" data-c="#bf5af2" style="background:#bf5af2" onclick="sGC('#bf5af2',this)"></div>
+          <div class="cpbtn" data-c="#ff9f0a" style="background:#ff9f0a" onclick="sGC('#ff9f0a',this)"></div>
+        </div></div>
+    </div>
+    <div class="fg"><label class="flbl">Počáteční progres: <span id="g-pval">0%</span></label>
+      <input class="finp" type="range" id="g-prog" min="0" max="100" value="0" oninput="document.getElementById('g-pval').textContent=this.value+'%'" style="accent-color:var(--accent);padding:6px 0"></div>
+    <div class="macts"><button class="btn-s" onclick="cm('m-goal')">Zrušit</button><button class="btn-p" onclick="saveG()">Uložit cíl</button></div>
+  </div>
+</div>
+
+<div class="moverlay" id="m-avchange">
+  <div class="modal" style="width:580px">
+    <div class="mtitle">🐾 Změnit společníka</div>
+    <div class="av-grid" id="av-change-grid"></div>
+    <div class="macts"><button class="btn-s" onclick="cm('m-avchange')">Zrušit</button><button class="btn-p" onclick="saveAVC()">Uložit</button></div>
+  </div>
+</div>
+
+
+<div class="moverlay" id="m-event">
+  <div class="modal">
+    <div class="mtitle">📅 Nová událost</div>
+    <div class="fg">
+      <label class="flbl">Název</label>
+      <input class="finp" type="text" id="ev-name-inp" placeholder="Narozeniny maminky…">
+    </div>
+    <div class="fg">
+      <label class="flbl">Typ</label>
+      <div class="ev-type-row">
+        <button class="ev-type-btn sel" data-t="birthday" onclick="selEvType('birthday',this)">🎂 Narozeniny</button>
+        <button class="ev-type-btn" data-t="event" onclick="selEvType('event',this)">📌 Událost</button>
+        <button class="ev-type-btn" data-t="reminder" onclick="selEvType('reminder',this)">🔔 Připomínka</button>
+        <button class="ev-type-btn" data-t="anniversary" onclick="selEvType('anniversary',this)">❤️ Výročí</button>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label class="flbl">Datum</label>
+        <input class="finp" type="date" id="ev-date-inp">
+      </div>
+      <div class="fg">
+        <label class="flbl">Opakovat každý rok</label>
+        <select class="finp" id="ev-repeat-inp">
+          <option value="yes">Ano (narozeniny, výročí…)</option>
+          <option value="no">Ne (jednorázová událost)</option>
+        </select>
+      </div>
+    </div>
+    <div class="macts">
+      <button class="btn-s" onclick="cm('m-event')">Zrušit</button>
+      <button class="btn-p" onclick="saveEvent()">Uložit událost</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
+const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
+
+const AVS=[
+  {id:'rex',emoji:'⚔️',name:'Rex',vibe:'Tvrdý trénink,\njasné cíle.'},
+  {id:'sage',emoji:'🌿',name:'Sage',vibe:'Ticho, moudrost,\nhloubka.'},
+  {id:'ash',emoji:'🔥',name:'Ash',vibe:'Nový začátek\nkaždý den.'},
+  {id:'nora',emoji:'🏡',name:'Nora',vibe:'Teplo domova,\npéče o blízké.'},
+  {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
+];
+const MODS=[
+  {id:'habits',emoji:'🎯',name:'Návyky',desc:'Sleduj denní rutiny'},
+  {id:'journal',emoji:'📝',name:'Zápisník',desc:'Piš si myšlenky'},
+  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Plánuj dny a události'},
+  {id:'goals',emoji:'🌟',name:'Cíle',desc:'Vize a dlouhodobé cíle'},
+  {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Recepty a jídelníček'},
+  {id:'shopping',emoji:'🛒',name:'Nákupy',desc:'Nákupní seznamy s AI'},
+  {id:'mood',emoji:'😊',name:'Nálada',desc:'Sleduj jak se cítíš'},
+  {id:'finance',emoji:'💰',name:'Finance',desc:'Výdaje a spoření'},
+];
+const AVMODS={rex:['habits','goals','journal'],sage:['journal','mood','goals'],ash:['habits','goals','mood'],nora:['cooking','shopping','calendar'],rio:['journal','calendar','mood']};
+const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
+const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
+const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
+
+let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
+let micRec=null,micOn=false,dsRec=null,dsOn=false;
+
+onAuthStateChanged(auth,async u=>{
+  if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
+  else{CU=null;if(unsub){unsub();unsub=null;}ss('s-login');}
+});
+
+function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
+function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+
+// ── JOURNAL ───────────────────────────────────────────
+let entries=[], unsubEntries=null;
+let curEntryId=null, entryMood='', entryDirty=false;
+let jRec=null, jRecOn=false;
+
+function subEntries(){
+  if(!CU)return;
+  if(unsubEntries)unsubEntries();
+  unsubEntries=onSnapshot(
+    query(collection(db,'users',CU.uid,'entries'),orderBy('createdAt','desc')),
+    snap=>{
+      entries=snap.docs.map(d=>({id:d.id,...d.data()}));
+      renderEntryList();
+    }
+  );
+}
+
+function renderEntryList(filter=''){
+  const list=document.getElementById('j-list');
+  if(!list)return;
+  const f=filter.toLowerCase();
+  const filtered=!f?entries:entries.filter(e=>
+    (e.title||'').toLowerCase().includes(f)||(e.text||'').toLowerCase().includes(f)
+  );
+  if(!filtered.length){
+    list.innerHTML=`<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px">${f?'Žádné výsledky':'Zatím žádné zápisky'}</div>`;
+    return;
+  }
+  list.innerHTML=filtered.map(e=>{
+    const d=new Date(e.createdAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short',year:'numeric'});
+    const preview=(e.text||'').slice(0,50);
+    return `<div class="j-item ${e.id===curEntryId?'active':''}" onclick="openEntry('${e.id}')">
+      <div class="j-item-date">${d}</div>
+      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}</div>
+      ${preview?`<div class="j-item-preview">${preview}…</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+window.filterEntries=()=>renderEntryList(document.getElementById('j-search').value);
+
+window.newEntry=()=>{
+  curEntryId=null; entryMood=''; entryDirty=false;
+  document.getElementById('j-title').value='';
+  document.getElementById('j-text').value='';
+  document.getElementById('j-date').textContent=new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.remove('sel'));
+  document.getElementById('j-empty').style.display='none';
+  document.getElementById('j-edit-area').style.display='flex';
+  renderEntryList();
+  setTimeout(()=>document.getElementById('j-title').focus(),100);
+};
+
+window.openEntry=(id)=>{
+  const e=entries.find(x=>x.id===id);
+  if(!e)return;
+  curEntryId=id; entryMood=e.mood||''; entryDirty=false;
+  document.getElementById('j-title').value=e.title||'';
+  document.getElementById('j-text').value=e.text||'';
+  document.getElementById('j-date').textContent=new Date(e.createdAt).toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.toggle('sel',b.dataset.m===entryMood));
+  document.getElementById('j-empty').style.display='none';
+  document.getElementById('j-edit-area').style.display='flex';
+  renderEntryList();
+};
+
+window.saveEntry=async()=>{
+  const title=document.getElementById('j-title').value.trim()||'Bez názvu';
+  const text=document.getElementById('j-text').value;
+  const now=new Date().toISOString();
+  if(curEntryId){
+    const idx=entries.findIndex(e=>e.id===curEntryId);
+    if(idx>=0){
+      entries[idx]={...entries[idx],title,text,mood:entryMood,updatedAt:now};
+      await setDoc(doc(db,'users',CU.uid,'entries',curEntryId),entries[idx]);
+    }
+  } else {
+    const e={title,text,mood:entryMood,createdAt:now,updatedAt:now};
+    const ref=await addDoc(collection(db,'users',CU.uid,'entries'),e);
+    curEntryId=ref.id;
+  }
+  entryDirty=false;
+  renderEntryList();
+  toast('✓ Uloženo');
+};
+
+window.deleteEntry=async()=>{
+  if(!curEntryId||!confirm('Smazat zápisek?'))return;
+  await deleteDoc(doc(db,'users',CU.uid,'entries',curEntryId));
+  entries=entries.filter(e=>e.id!==curEntryId);
+  curEntryId=null; entryMood='';
+  document.getElementById('j-edit-area').style.display='none';
+  document.getElementById('j-empty').style.display='flex';
+  renderEntryList();
+  toast('Zápisek smazán');
+};
+
+window.setEntryMood=(m,btn)=>{
+  entryMood=entryMood===m?'':m;
+  document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.toggle('sel',b.dataset.m===entryMood));
+  markDirty();
+};
+
+window.markDirty=()=>{ entryDirty=true; };
+
+// Auto-save every 30s when dirty
+setInterval(()=>{ if(entryDirty&&curEntryId)saveEntry(); },30000);
+
+// ── JOURNAL VOICE ──────────────────────────────────────
+let jMicBase=''; // text před aktuální session — mimo closure!
+const jIsMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
+
+function startJRec(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  jRec=new SR();
+  jRec.lang='cs-CZ';
+  jRec.continuous=!jIsMobile;
+  jRec.interimResults=true;
+  jRec.maxAlternatives=1;
+  const ta=document.getElementById('j-text');
+  jRec.onresult=e=>{
+    let fin='',int='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';
+      else int=e.results[i][0].transcript;
+    }
+    if(fin)jMicBase+=fin;
+    ta.value=jMicBase+int;
+    markDirty();
+  };
+  jRec.onstart=()=>{
+    jRecOn=true;
+    const btn=document.getElementById('j-mic-btn');
+    if(btn){btn.classList.add('rec');btn.textContent='⏹';}
+    const bar=document.getElementById('j-voice-bar');
+    if(bar)bar.style.display='flex';
+    if(jIsMobile)toast('🎤 Poslouchám…');
+  };
+  jRec.onend=()=>{
+    if(jIsMobile&&jRecOn){
+      try{setTimeout(()=>{if(jRecOn)jRec.start();},200);}
+      catch(e){stopJournalMic();}
+    } else stopJournalMic();
+  };
+  jRec.onerror=e=>{
+    if(e.error==='no-speech')return;
+    if(e.error==='not-allowed')toast('❌ Povol mikrofon v nastavení prohlížeče');
+    else toast('❌ Mikrofon: '+e.error);
+    stopJournalMic();
+  };
+  try{jRec.start();}catch(err){toast('❌ Nelze spustit mikrofon: '+err.message);}
+}
+
+window.toggleJournalMic=()=>{
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
+    toast('❌ Hlasový vstup vyžaduje Chrome'); return;
+  }
+  if(jRecOn){stopJournalMic();return;}
+  // Nastav base na aktuální obsah textarey
+  const ta=document.getElementById('j-text');
+  jMicBase=ta.value;
+  if(jMicBase&&!jMicBase.endsWith(' '))jMicBase+=' ';
+  // Spustit přímo — SpeechRecognition si sám vyžádá mikrofon
+  startJRec();
+};
+
+window.stopJournalMic=()=>{
+  jRecOn=false;
+  if(jRec)jRec.stop();
+  const btn=document.getElementById('j-mic-btn');
+  if(btn){btn.classList.remove('rec');btn.textContent='🎤';}
+  const bar=document.getElementById('j-voice-bar');
+  if(bar)bar.style.display='none';
+};
+
+// ── HABITS ────────────────────────────────────────────
+let habits=[], habitLogs=[], unsubHabits=null, unsubLogs=null;
+let habitDay=new Date().toISOString().slice(0,10);
+let selHabitType='yesno', selHabitEmoji='🏃';
+let selFreqType='daily', selFreqTimes=3, selFreqDays=new Set();
+
+function toDS(d){return d.toISOString().slice(0,10);}
+
+function subHabits(){
+  if(!CU)return;
+  if(unsubHabits)unsubHabits();
+  if(unsubLogs)unsubLogs();
+  unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),snap=>{
+    habits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderHabits();
+  });
+  unsubLogs=onSnapshot(collection(db,'users',CU.uid,'habitLogs'),snap=>{
+    habitLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderHabits();
+  });
+}
+
+function habitDayLabel(){
+  const today=toDS(new Date());
+  const yesterday=toDS(new Date(Date.now()-86400000));
+  const tomorrow=toDS(new Date(Date.now()+86400000));
+  if(habitDay===today)return'Dnes';
+  if(habitDay===yesterday)return'Včera';
+  if(habitDay===tomorrow)return'Zítra';
+  return new Date(habitDay+'T12:00:00').toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'});
+}
+
+function renderHabits(){
+  const lbl=document.getElementById('habit-day-lbl');
+  const list=document.getElementById('habits-list');
+  const empty=document.getElementById('habits-empty');
+  if(!lbl||!list||!empty)return;
+  lbl.textContent=habitDayLabel();
+
+  if(!habits.length){
+    list.innerHTML=''; empty.style.display='flex'; return;
+  }
+  empty.style.display='none';
+
+  list.innerHTML=habits.map(h=>{
+    const logId=h.id+'_'+habitDay;
+    const log=habitLogs.find(l=>l.id===logId);
+    const done=log&&log.done;
+    const val=log?log.value:0;
+    const goal=h.goal||1;
+
+    // Streak — count consecutive days backwards
+    let streak=0;
+    let sd=new Date(habitDay+'T12:00:00');
+    for(let i=0;i<365;i++){
+      const ds=toDS(sd);
+      const l=habitLogs.find(l=>l.id===h.id+'_'+ds);
+      if(l&&l.done)streak++;
+      else break;
+      sd.setDate(sd.getDate()-1);
+    }
+
+    // Last 7 days dots with frequency awareness
+    const DAY_NAMES=['Ne','Po','Út','St','Čt','Pá','So'];
+    const dots=[];
+    for(let i=6;i>=0;i--){
+      const d=new Date(habitDay+'T12:00:00');
+      d.setDate(d.getDate()-i);
+      const ds=toDS(d);
+      const dayOfWeek=d.getDay(); // 0=Sun,1=Mon...
+      const l=habitLogs.find(l=>l.id===h.id+'_'+ds);
+      const freq=h.freq||{type:'daily'};
+      // Is this day "active" for this habit?
+      let active=true;
+      if(freq.type==='days') active=(freq.days||[]).includes(dayOfWeek);
+      dots.push({
+        done:l&&l.done, partial:l&&l.value>0&&!l.done,
+        active, label:DAY_NAMES[dayOfWeek]
+      });
+    }
+    
+    // Weekly completion for weekly-type habits
+    let weeklyStatus='';
+    if(h.freq&&h.freq.type==='weekly'){
+      // Count done in current week (Mon-Sun containing habitDay)
+      const hd=new Date(habitDay+'T12:00:00');
+      const dow=(hd.getDay()+6)%7; // 0=Mon
+      const weekStart=new Date(hd); weekStart.setDate(hd.getDate()-dow);
+      let weekDone=0;
+      for(let i=0;i<7;i++){
+        const d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
+        const ds=toDS(d);
+        const l=habitLogs.find(l=>l.id===h.id+'_'+ds);
+        if(l&&l.done)weekDone++;
+      }
+      const target=h.freq.times||3;
+      weeklyStatus=`${weekDone}/${target}× tento týden`;
+    }
+
+    const freq=h.freq||{type:'daily'};
+    const freqLabel=freq.type==='daily'?'každý den'
+      :freq.type==='weekly'?`${freq.times||3}× týdně`
+      :freq.type==='days'?(freq.days||[]).map(d=>['Ne','Po','Út','St','Čt','Pá','So'][d]).join(', ')
+      :'každý den';
+
+    const streakHtml=(streak>0
+      ?`<span class="habit-streak-fire">🔥</span> ${streak} dní v řadě`
+      :(weeklyStatus||'Začni dnes!'))
+      +`<span class="habit-freq-badge">${freqLabel}</span>`;
+
+    const weekHtml=dots.map(d=>`
+      <div class="week-dot-lbl">${d.label}</div>
+      <div class="week-dot ${d.done?'done':d.partial?'partial':''} ${!d.active?'week-dot-inactive':''}"></div>
+    `).join('');
+
+    let controlHtml='';
+    if(h.type==='count'){
+      const pct=Math.min(Math.round(val/goal*100),100);
+      controlHtml=`
+        <div class="habit-counter">
+          <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',-1,${goal})">−</button>
+          <div onclick="directInput('${h.id}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+            <div class="cnt-val cnt-clickable">${val}</div>
+            <div class="cnt-goal">/ ${goal} ✎</div>
+          </div>
+          <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',1,${goal})">+</button>
+        </div>`;
+      const progressHtml=`
+        <div class="habit-progress">
+          <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
+          <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
+        </div>`;
+      return `<div class="habit-card">
+        <div class="habit-card-top">
+          <div class="habit-emoji">${h.emoji||'🎯'}</div>
+          <div class="habit-info">
+            <div class="habit-name">${h.name}</div>
+            <div class="habit-streak">${streakHtml}</div>
+          </div>
+          ${controlHtml}
+          <button class="habit-del" onclick="deleteHabit('${h.id}')">🗑️</button>
+        </div>
+        ${progressHtml}
+        <div class="habit-week-wrap">${weekHtml}</div>
+      </div>`;
+    } else {
+      // yes/no
+      controlHtml=`<div class="habit-check ${done?'done':''}" onclick="toggleHabit('${h.id}','${habitDay}',${done})">${done?'✓':''}</div>`;
+      return `<div class="habit-card">
+        <div class="habit-card-top">
+          <div class="habit-emoji">${h.emoji||'🎯'}</div>
+          <div class="habit-info">
+            <div class="habit-name">${h.name}</div>
+            <div class="habit-streak">${streakHtml}</div>
+          </div>
+          ${controlHtml}
+          <button class="habit-del" onclick="deleteHabit('${h.id}')">🗑️</button>
+        </div>
+        <div class="habit-week-wrap">${weekHtml}</div>
+      </div>`;
+    }
+  }).join('');
+}
+
+window.habitPrevDay=()=>{
+  const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()-1);
+  habitDay=toDS(d); renderHabits();
+};
+window.habitNextDay=()=>{
+  const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()+1);
+  habitDay=toDS(d); renderHabits();
+};
+
+window.toggleHabit=async(hid,date,wasDone)=>{
+  const logId=hid+'_'+date;
+  if(wasDone){
+    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+    habitLogs=habitLogs.filter(l=>l.id!==logId);
+  } else {
+    const log={id:logId,habitId:hid,date,done:true,value:1};
+    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
+    const ex=habitLogs.find(l=>l.id===logId);
+    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+  }
+  renderHabits();
+};
+
+window.adjustHabit=async(hid,date,delta,goal)=>{
+  const logId=hid+'_'+date;
+  const ex=habitLogs.find(l=>l.id===logId);
+  const cur=ex?ex.value:0;
+  const newVal=Math.max(0,cur+delta);
+  if(newVal===0){
+    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+    habitLogs=habitLogs.filter(l=>l.id!==logId);
+  } else {
+    const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
+    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
+    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+  }
+  renderHabits();
+};
+
+window.toggleAddHabit=()=>{
+  const wrap=document.getElementById('add-habit-wrap');
+  const btn=document.getElementById('add-habit-toggle');
+  const showing=wrap.style.display!=='none';
+  wrap.style.display=showing?'none':'block';
+  btn.textContent=showing?'+ Přidat návyk':'✕ Zrušit';
+  if(!showing) setTimeout(()=>document.getElementById('habit-name-inp').focus(),100);
+};
+
+window.setHabitType=(type,btn)=>{
+  selHabitType=type;
+  document.querySelectorAll('.habit-type-row .ev-type-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  document.getElementById('habit-goal-wrap').style.display=type==='count'?'block':'none';
+};
+
+window.setHabitEmoji=(e,btn)=>{
+  selHabitEmoji=e;
+  document.querySelectorAll('.emoji-pick-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+};
+
+window.setFreqType=(type,btn)=>{
+  selFreqType=type;
+  document.querySelectorAll('.freq-type-row .ev-type-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  document.getElementById('freq-weekly-wrap').style.display=type==='weekly'?'block':'none';
+  document.getElementById('freq-days-wrap').style.display=type==='days'?'block':'none';
+};
+window.setFreqTimes=(n,btn)=>{
+  selFreqTimes=n;
+  document.querySelectorAll('.freq-num-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+};
+window.toggleFreqDay=(d,btn)=>{
+  if(selFreqDays.has(d))selFreqDays.delete(d);
+  else selFreqDays.add(d);
+  btn.classList.toggle('sel',selFreqDays.has(d));
+};
+
+window.saveHabit=async()=>{
+  const name=document.getElementById('habit-name-inp').value.trim();
+  if(!name){toast('⚠️ Zadej název návyku');return;}
+  if(selFreqType==='days'&&selFreqDays.size===0){toast('⚠️ Vyber alespoň jeden den');return;}
+  const goal=selHabitType==='count'?parseInt(document.getElementById('habit-goal-inp').value)||10:1;
+  const freq={type:selFreqType};
+  if(selFreqType==='weekly')freq.times=selFreqTimes;
+  if(selFreqType==='days')freq.days=[...selFreqDays];
+  const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,createdAt:new Date().toISOString()};
+  await addDoc(collection(db,'users',CU.uid,'habits'),h);
+  document.getElementById('habit-name-inp').value='';
+  document.getElementById('habit-goal-inp').value='10';
+  // Reset frequency UI
+  selFreqType='daily'; selFreqTimes=3; selFreqDays=new Set();
+  document.querySelectorAll('.freq-type-row .ev-type-btn').forEach((b,i)=>b.classList.toggle('sel',i===0));
+  document.getElementById('freq-weekly-wrap').style.display='none';
+  document.getElementById('freq-days-wrap').style.display='none';
+  document.querySelectorAll('.freq-day-btn').forEach(b=>b.classList.remove('sel'));
+  toggleAddHabit();
+  toast('✓ Návyk přidán!');
+};
+
+window.directInput=async(hid,date,curVal,goal)=>{
+  const input=prompt(`Zadej počet (cíl: ${goal}):`, curVal||'');
+  if(input===null)return; // cancelled
+  const newVal=parseInt(input);
+  if(isNaN(newVal)||newVal<0){toast('⚠️ Zadej platné číslo');return;}
+  const logId=hid+'_'+date;
+  if(newVal===0){
+    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+    habitLogs=habitLogs.filter(l=>l.id!==logId);
+  } else {
+    const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
+    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
+    const ex=habitLogs.find(l=>l.id===logId);
+    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+  }
+  renderHabits();
+  toast(`✓ Zaznamenáno: ${newVal}`);
+};
+
+window.deleteHabit=async(id)=>{
+  if(!confirm('Smazat návyk a všechny záznamy?'))return;
+  await deleteDoc(doc(db,'users',CU.uid,'habits',id));
+  habits=habits.filter(h=>h.id!==id);
+  const logsToDelete=habitLogs.filter(l=>l.habitId===id);
+  for(const l of logsToDelete) await deleteDoc(doc(db,'users',CU.uid,'habitLogs',l.id));
+  habitLogs=habitLogs.filter(l=>l.habitId!==id);
+  renderHabits(); toast('Návyk smazán');
+};
+
+// ── CALENDAR ─────────────────────────────────────────
+let events=[], calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
+let selEvType_val='birthday', unsubEvents=null;
+
+const EV_ICONS={birthday:'🎂',event:'📌',reminder:'🔔',anniversary:'❤️'};
+const EV_LABELS={birthday:'Narozeniny',event:'Událost',reminder:'Připomínka',anniversary:'Výročí'};
+
+function subEvents(){
+  if(!CU)return;
+  if(unsubEvents)unsubEvents();
+  unsubEvents=onSnapshot(collection(db,'users',CU.uid,'events'),snap=>{
+    events=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderCal();renderDashEvents();
+  });
+}
+
+function renderCal(){
+  const lbl=document.getElementById('cal-month-lbl');
+  if(!lbl)return;
+  const d=new Date(calYear,calMonth,1);
+  lbl.textContent=d.toLocaleDateString('cs-CZ',{month:'long',year:'numeric'});
+  const today=new Date(); today.setHours(0,0,0,0);
+  const dim=new Date(calYear,calMonth+1,0).getDate();
+  let start=(d.getDay()+6)%7; // Monday=0
+  const prev=new Date(calYear,calMonth,0).getDate();
+  let html='';
+  // Prev month days
+  for(let i=start-1;i>=0;i--) html+=`<div class="cal-cell other-month">${prev-i}</div>`;
+  // Current month
+  for(let day=1;day<=dim;day++){
+    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday=today.getFullYear()===calYear&&today.getMonth()===calMonth&&today.getDate()===day;
+    const dayEvs=getEventsForDate(ds);
+    const hasEv=dayEvs.length>0;
+    html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
+      ${day}
+      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?EV_ICONS[dayEvs[0].type]||'•':''}</span>`:''}
+    </div>`;
+  }
+  // Next month
+  const total=start+dim; const remaining=(7-total%7)%7;
+  for(let i=1;i<=remaining;i++) html+=`<div class="cal-cell other-month">${i}</div>`;
+  document.getElementById('cal-grid').innerHTML=html;
+  renderEvList();
+}
+
+function getEventsForDate(ds){
+  return events.filter(ev=>{
+    if(ev.repeat==='yes') return ev.date.slice(5)===ds.slice(5); // same month-day
+    return ev.date===ds;
+  });
+}
+
+function getUpcoming14(){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const future=new Date(today); future.setDate(future.getDate()+14);
+  const result=[];
+  events.forEach(ev=>{
+    let evDate=new Date(ev.date+'T12:00:00');
+    if(ev.repeat==='yes'){
+      // Check this year and next year
+      const thisYear=new Date(today.getFullYear(),evDate.getMonth(),evDate.getDate());
+      const nextYear=new Date(today.getFullYear()+1,evDate.getMonth(),evDate.getDate());
+      if(thisYear>=today&&thisYear<=future) result.push({...ev,_date:thisYear});
+      else if(nextYear>=today&&nextYear<=future) result.push({...ev,_date:nextYear});
+    } else {
+      if(evDate>=today&&evDate<=future) result.push({...ev,_date:evDate});
+    }
+  });
+  return result.sort((a,b)=>a._date-b._date);
+}
+
+function renderDashEvents(){
+  const upcoming=getUpcoming14();
+  const lbl=document.getElementById('d-events-lbl');
+  const container=document.getElementById('d-events');
+  if(!lbl||!container)return;
+  if(!upcoming.length){lbl.style.display='none';container.innerHTML='';return;}
+  lbl.style.display='block';
+  const today=new Date(); today.setHours(0,0,0,0);
+  container.innerHTML=upcoming.map(ev=>{
+    const diff=Math.round((ev._date-today)/86400000);
+    const diffLbl=diff===0?'Dnes! 🔥':diff===1?'Zítra':'Za '+diff+' dní';
+    const badgeCls=diff<=2?'badge-soon':'badge-upcoming';
+    return `<div class="dash-event" onclick="sp('calendar')">
+      <div class="dash-event-icon">${EV_ICONS[ev.type]||'📌'}</div>
+      <div class="dash-event-info">
+        <div class="dash-event-name">${ev.name}</div>
+        <div class="dash-event-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'long'})}${ev.repeat==='yes'?' · každý rok':''}</div>
+      </div>
+      <span class="dash-event-badge ${badgeCls}">${diffLbl}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderEvList(){
+  const upcoming=getUpcoming14();
+  const container=document.getElementById('cal-events-list');
+  if(!container)return;
+  if(!upcoming.length){container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">Žádné události v příštích 14 dnech</div>';return;}
+  container.innerHTML=upcoming.map(ev=>`
+    <div class="ev-card">
+      <div class="ev-icon">${EV_ICONS[ev.type]||'📌'}</div>
+      <div class="ev-info">
+        <div class="ev-name">${ev.name}</div>
+        <div class="ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.repeat==='yes'?' · každý rok':''}</div>
+      </div>
+      <button class="ev-del" onclick="delEvent('${ev.id}')">🗑️</button>
+    </div>`).join('');
+}
+
+window.calPrev=()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();};
+window.calNext=()=>{calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCal();};
+window.calDayClick=(ds)=>{
+  document.getElementById('ev-date-inp').value=ds;
+  om('m-event');
+  setTimeout(()=>document.getElementById('ev-name-inp').focus(),100);
+};
+
+window.openEvModal=()=>{
+  document.getElementById('ev-name-inp').value='';
+  document.getElementById('ev-date-inp').value=new Date().toISOString().slice(0,10);
+  selEvType_val='birthday';
+  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='birthday'));
+  om('m-event');
+};
+
+window.selEvType=(t,btn)=>{
+  selEvType_val=t;
+  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+};
+
+window.saveEvent=async()=>{
+  const name=document.getElementById('ev-name-inp').value.trim();
+  const date=document.getElementById('ev-date-inp').value;
+  const repeat=document.getElementById('ev-repeat-inp').value;
+  if(!name){toast('⚠️ Zadej název');return;}
+  if(!date){toast('⚠️ Vyber datum');return;}
+  const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString()};
+  await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  cm('m-event');
+  toast('✓ Událost přidána');
+};
+
+window.delEvent=async(id)=>{
+  if(!confirm('Smazat událost?'))return;
+  await deleteDoc(doc(db,'users',CU.uid,'events',id));
+  toast('Smazáno');
+};
+
+function om(id){document.getElementById(id).classList.add('open');}
+function cm(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('moverlay'))e.target.classList.remove('open');});
+
+window.doLogin=async()=>{
+  const b=document.getElementById('login-btn'),e=document.getElementById('login-err');
+  e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> Přihlašuji…';
+  try{await signInWithPopup(auth,gp);}
+  catch(ex){b.disabled=false;b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Přihlásit se přes Google';if(ex.code!=='auth/popup-closed-by-user'){e.textContent='Chyba: '+ex.message;e.classList.add('show');}};
+};
+window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await signOut(auth);};
+
+window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m');document.getElementById('gf').classList.toggle('sel',g==='f');v1();};
+window.v1=()=>{document.getElementById('btn-s1').disabled=!(document.getElementById('u-nick').value.trim()&&selG);};
+window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;rAvGrid('av-grid',false);ss('s-step2');};
+function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" onclick="${isC?'sTmpAv':'selAv2'}('${a.id}')"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
+window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
+window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
+window.gS3=()=>{prof.avatarId=selAv;selMods=new Set(AVMODS[selAv]||[]);rMods();ss('s-step3');};
+function rMods(){
+  document.getElementById('s3-title').textContent=`Co chceš sledovat, ${prof.nickname}?`;
+  const p=AVMODS[prof.avatarId]||[];
+  document.getElementById('mods-primary').innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
+  document.getElementById('mods-extra').innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
+}
+function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${m.id}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
+window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
+window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();};
+
+
+function rAvPage(){
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const msgs=AVMSGS[av.id]||['Vítej!'];
+  const msg=msgs[new Date().getDate()%msgs.length];
+  const el_em=document.getElementById('av-em');
+  const el_nm=document.getElementById('av-nm');
+  const el_msg=document.getElementById('av-msg');
+  const el_cwem=document.getElementById('cwem');
+  const el_cwtitle=document.getElementById('cwtitle');
+  const el_moods=document.getElementById('av-moods');
+  if(el_em)el_em.textContent=av.emoji;
+  if(el_nm)el_nm.textContent=av.name;
+  if(el_msg)el_msg.textContent=msg;
+  // av-msg already updated above
+  if(el_cwem)el_cwem.textContent=av.emoji;
+  if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
+  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${m.emoji}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
+}
+function initApp(){buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();initSet();ss('app');sp('dashboard');}
+
+function buildNav(){
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const fixed=[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}];
+  const hasUI=['goals','journal','calendar','habits','mood','cooking','shopping','finance'];
+  const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
+  const all=[...fixed,...uMods,{id:'settings',emoji:'⚙️',label:'Nastavení'}];
+  document.getElementById('hnav').innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${p.id}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
+  // Build bottom nav - 4 primary + More
+  const primary=all.slice(0,4);
+  const more=all.slice(4);
+  document.getElementById('bottom-nav-inner').innerHTML=
+    primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${p.id}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')
+    +(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
+  document.getElementById('bn-more-panel').innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${p.id}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
+}
+
+window.togBnMore=()=>{
+  document.getElementById('bn-more-panel').classList.toggle('open');
+};
+window.closeBnMore=()=>{
+  document.getElementById('bn-more-panel').classList.remove('open');
+};
+document.addEventListener('click',e=>{
+  const panel=document.getElementById('bn-more-panel');
+  if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&e.target.id!=='bn-more')
+    panel.classList.remove('open');
+});
+
+window.sp=id=>{
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nbtn').forEach(b=>b.classList.remove('active'));
+  const pg=document.getElementById('p-'+id);if(pg)pg.classList.add('active');
+  const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
+  document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
+  if(id==='settings'){initSet();rSetMods();}
+  if(id==='avatar')rAvPage();
+  if(id==='calendar')renderCal();
+  if(id==='habits')renderHabits();
+  if(id==='journal'){renderEntryList();}
+  if(id==='dashboard')rDash();
+};
+
+function rDash(){
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const g=prof.gender==='f'?'f':'m';
+  const gr=AVGREET[av.id]?.[g]?.(prof.nickname)||`Vítej, ${prof.nickname}!`;
+  const h=new Date().getHours();
+  const tg=h<12?'Dobré ráno':h<18?'Ahoj':'Dobrý večer';
+  document.getElementById('d-greet').innerHTML=`${tg}, <span style="color:var(--accent)">${prof.nickname}</span>!`;
+  document.getElementById('upill').innerHTML=`<img src="${CU.photoURL||''}" style="width:24px;height:24px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"><span style="font-size:13px;color:var(--text2)">${CU.displayName?.split(' ')[0]||''}</span>`;
+  document.getElementById('d-avem').textContent=av.emoji;
+  document.getElementById('d-avnm').textContent=av.name;
+  document.getElementById('d-avtxt').textContent=gr;
+  
+  // Quick stats
+  const doneGoals=goals.filter(g=>g.progress>=100).length;
+  const avgProgress=goals.length?Math.round(goals.reduce((s,g)=>s+(g.progress||0),0)/goals.length):0;
+  document.getElementById('d-stats').innerHTML=`
+    <div class="dstat"><div class="dstat-num">${goals.length}</div><div class="dstat-lbl">Aktivních cílů</div></div>
+    <div class="dstat"><div class="dstat-num">${doneGoals}</div><div class="dstat-lbl">Splněných cílů</div></div>
+    <div class="dstat"><div class="dstat-num">${avgProgress}%</div><div class="dstat-lbl">Průměrný pokrok</div></div>
+    <div class="dstat"><div class="dstat-num">${events.length}</div><div class="dstat-lbl">Událostí</div></div>
+  `;
+  
+  // Goals on dashboard
+  const glbl=document.getElementById('d-goals-lbl');
+  const gc=document.getElementById('d-goals-dash');
+  if(goals.length){
+    glbl.style.display='block';
+    gc.innerHTML=goals.slice(0,3).map(g=>`
+      <div class="dash-goal-row" onclick="sp('goals')">
+        <div class="dash-goal-top">
+          <div class="dash-goal-name">${g.emoji||'🌟'} ${g.name}</div>
+          <div class="dash-goal-pct" style="color:${g.color||'var(--accent)'}">${g.progress||0}%</div>
+        </div>
+        <div class="dash-goal-bar"><div class="dash-goal-fill" style="width:${g.progress||0}%;background:${g.color||'var(--accent)'}"></div></div>
+      </div>`).join('');
+  } else {
+    glbl.style.display='none';
+    gc.innerHTML='';
+  }
+  
+  // Modules tiles
+  const mods=MODS.filter(m=>(prof.modules||[]).includes(m.id));
+  document.getElementById('d-mods').innerHTML=mods.map(m=>`
+    <div class="modtile" onclick="sp('${m.id}')">
+      <div class="modtem">${m.emoji}</div>
+      <div class="modtnm">${m.name}</div>
+    </div>`).join('');
+    
+  // Render upcoming events on dashboard
+  renderDashEvents();
+}
+window.selMood=em=>{mood=em;rAvPage();toast(`Nálada ${em} zaznamenána`);};
+
+window.openVM=()=>{document.getElementById('vi-inp').value=prof.vision||'';om('m-vision');};
+window.saveV=async()=>{const v=document.getElementById('vi-inp').value.trim();prof.vision=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);const el=document.getElementById('vtxt');if(v){el.textContent=v;el.classList.remove('empty');}else{el.textContent='Klikni a napiš svoji velkou životní vizi…';el.classList.add('empty');}cm('m-vision');toast('✓ Vize uložena');};
+function loadV(){const el=document.getElementById('vtxt');if(prof.vision){el.textContent=prof.vision;el.classList.remove('empty');}}
+
+function subGoals(){loadV();if(unsub)unsub();unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),async snap=>{goals=snap.docs.map(d=>({id:d.id,...d.data()}));for(const g of goals){if(!subs[g.id]){const ss2=await getDocs(collection(db,'users',CU.uid,'goals',g.id,'subgoals'));subs[g.id]=ss2.docs.map(d=>({id:d.id,...d.data()}));}}rGoals();rAvPage();rDash();});}
+
+window.openGM=(gid=null)=>{
+  editGId=gid;document.getElementById('gm-title').textContent=gid?'✏️ Upravit cíl':'🌟 Nový cíl';
+  if(gid){const g=goals.find(x=>x.id===gid);document.getElementById('g-name').value=g.name||'';document.getElementById('g-cat').value=g.category||'zdraví';document.getElementById('g-dl').value=g.deadline||'';document.getElementById('g-prog').value=g.progress||0;document.getElementById('g-pval').textContent=(g.progress||0)+'%';sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);}
+  else{document.getElementById('g-name').value='';document.getElementById('g-cat').value='zdraví';document.getElementById('g-dl').value='';document.getElementById('g-prog').value=0;document.getElementById('g-pval').textContent='0%';sGE('🌟',null);sGC('#f5c842',null);}
+  om('m-goal');
+};
+window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-epick [data-e="${e}"]`);if(t)t.classList.add('sel');};
+window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
+window.saveG=async()=>{
+  const nm=document.getElementById('g-name').value.trim();if(!nm){toast('⚠️ Zadej název');return;}
+  const d={name:nm,category:document.getElementById('g-cat').value,deadline:document.getElementById('g-dl').value,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
+  if(editGId){await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);toast('✓ Cíl upraven');}
+  else{d.createdAt=new Date().toISOString();const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);subs[r.id]=[];toast('✓ Cíl přidán');}
+  cm('m-goal');
+};
+window.delG=async id=>{if(!confirm('Smazat cíl?'))return;await deleteDoc(doc(db,'users',CU.uid,'goals',id));delete subs[id];toast('Cíl smazán');};
+window.togSubs=gid=>document.getElementById('gs-'+gid)?.classList.toggle('open');
+window.addSub=async gid=>{const inp=document.getElementById('si-'+gid),nm=inp.value.trim();if(!nm)return;const d={name:nm,done:false,createdAt:new Date().toISOString()};const r=await addDoc(collection(db,'users',CU.uid,'goals',gid,'subgoals'),d);if(!subs[gid])subs[gid]=[];subs[gid].push({id:r.id,...d});inp.value='';rGoals();toast('✓ Dílčí cíl přidán');};
+window.togSub=async(gid,sid)=>{const s=subs[gid]?.find(x=>x.id===sid);if(!s)return;s.done=!s.done;await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});const arr=subs[gid]||[];if(arr.length>0){const pct=Math.round(arr.filter(x=>x.done).length/arr.length*100);await updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});}rGoals();};
+window.delSub=async(gid,sid)=>{await deleteDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid));subs[gid]=subs[gid]?.filter(x=>x.id!==sid)||[];rGoals();};
+function rGoals(){
+  const c=document.getElementById('goals-list');
+  if(!goals.length){c.innerHTML='<div class="empty"><div class="ei">🌟</div><div class="et">Zatím žádné cíle</div><div class="es">Přidej svůj první cíl!</div></div>';return;}
+  const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
+  c.innerHTML=goals.map(g=>{
+    const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
+    return`<div class="gcard"><div class="ghdr" onclick="togSubs('${g.id}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${g.name}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${g.id}')">✏️</button><button class="btn-xs" onclick="delG('${g.id}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${g.id}','${s.id}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${s.name}</div><button class="btn-xs" onclick="delSub('${g.id}','${s.id}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${g.id}')"><button class="btn-ads" onclick="addSub('${g.id}')">+ Přidat</button></div></div></div>`;
+  }).join('');
+}
+
+// SETTINGS
+function initSet(){
+  const k=localStorage.getItem('lp_key')||'';
+  document.getElementById('keystatus').textContent=k?'✅ API klíč je nastaven':'⚠️ Klíč není nastaven';
+  document.getElementById('keystatus').className='keystatus '+(k?'ok':'miss');
+  document.getElementById('set-nick').value=prof.nickname||'';
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  document.getElementById('set-avem').textContent=av.emoji;
+  document.getElementById('set-avnm').textContent=av.name;
+  document.getElementById('set-avsub').textContent=prof.nickname||'';
+}
+function rSetMods(){
+  document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${m.name}</div><div class="togds">${m.desc}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
+}
+window.togModSet=async(id,on)=>{const ms=new Set(prof.modules||[]);on?ms.add(id):ms.delete(id);prof.modules=[...ms];await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();toast(on?`✓ ${id} zapnut`:`${id} vypnut`);};
+window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej přezdívku');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);rDash();initSet();toast('✓ Přezdívka uložena');};
+window.saveKey=()=>{const v=document.getElementById('set-key').value.trim();if(!v){toast('⚠️ Vlož API klíč');return;}localStorage.setItem('lp_key',v);document.getElementById('set-key').value='';initSet();toast('✅ API klíč uložen');};
+window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
+window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
+
+// VOICE — chat mic
+window.togMic=()=>{
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
+    toast('❌ Hlasový vstup vyžaduje Chrome nebo Safari');return;
+  }
+  if(micOn){micRec?.stop();micOn=false;return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  micRec=new SR();
+  micRec.lang='cs-CZ';
+  micRec.continuous=false;
+  micRec.interimResults=true;
+  micRec.maxAlternatives=1;
+  const ta=document.getElementById('c-inp');
+  let transcript='';
+  let sent=false;
+  micRec.onresult=e=>{
+    transcript='';
+    let interim='';
+    for(let i=0;i<e.results.length;i++){
+      if(e.results[i].isFinal)transcript+=e.results[i][0].transcript;
+      else interim+=e.results[i][0].transcript;
+    }
+    ta.value=transcript+interim;
+    ar(ta);
+  };
+  micRec.onstart=()=>{
+    micOn=true;sent=false;transcript='';
+    const b=document.getElementById('mic-btn');
+    if(b){b.classList.add('rec');b.textContent='⏹';}
+    toast('🎤 Poslouchám…');
+  };
+  micRec.onend=()=>{
+    micOn=false;
+    const b=document.getElementById('mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(transcript.trim()&&!sent){sent=true;setTimeout(()=>send(),400);}
+  };
+  micRec.onerror=e=>{
+    micOn=false;
+    const b=document.getElementById('mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(e.error==='not-allowed')toast('❌ Povol mikrofon v nastavení prohlížeče');
+    else if(e.error!=='no-speech')toast('❌ Mikrofon: '+e.error);
+  };
+  try{micRec.start();}catch(err){toast('❌ Nelze spustit mikrofon: '+err.message);}
+};
+
+// DAY SUMMARY
+window.togDS=()=>{
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){toast('❌ Vyžaduje Chrome');return;}
+  if(dsOn){stopDS();return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  dsRec=new SR();dsRec.lang='cs-CZ';dsRec.continuous=true;dsRec.interimResults=true;
+      let fin='';
+      dsRec.onresult=e=>{let int='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';else int=e.results[i][0].transcript;}document.getElementById('vrec-txt').textContent='Poslouchám… '+(fin+int).slice(-60);}
+      dsRec.onstart=()=>{dsOn=true;document.getElementById('dsBtn').classList.add('rec');document.getElementById('dsBtn').textContent='⏹ Nahrávám…';document.getElementById('vrec-banner').classList.add('active');};
+      dsRec.onend=()=>{if(dsOn&&fin.trim()){dsOn=false;finishDS(fin.trim());}};
+      dsRec.onerror=e=>{toast('❌ Chyba mikrofonu: '+e.error);stopDS();};
+      dsRec.start();
+};
+window.stopDS=()=>{dsOn=false;dsRec?.stop();document.getElementById('dsBtn').classList.remove('rec');document.getElementById('dsBtn').textContent='🎤 Nahrát přehled dne';document.getElementById('vrec-banner').classList.remove('active');};
+
+async function finishDS(text){
+  stopDS();
+  document.getElementById('cwelcome')?.remove();
+  appendMsg('user','🎙️ '+text);
+  chatH.push({role:'user',content:text});
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  document.getElementById('typing').classList.add('active');scrollChat();
+  const k=localStorage.getItem('lp_key')||'';
+  if(!k){appendMsg('sys','⚠️ Nastav Groq API klíč v Nastavení ⚙️');document.getElementById('typing').classList.remove('active');return;}
+  const gCtx=goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%, ${g.category})`).join('\n');
+  const sys=`Jsi ${av.name}, AI společník v LifePocket. Mluvíš česky, přátelsky.
+Uživatel: ${prof.nickname}${prof.vision?'\nVize: "'+prof.vision+'"':''}
+${gCtx?'Cíle:\n'+gCtx:''}
+
+Uživatel ti řekl přehled svého dne. Tvůj úkol:
+1. Pochval ho za co udělal
+2. Poznamenej konkrétní aktivity které zmínil (cvičení, práce, jídlo apod.)
+3. Navrhni jak to odpovídá jeho cílům
+4. Buď stručný, max 4-5 vět.`;
+  try{
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:500,messages:[{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}]})});
+    const d=await r.json();if(d.error)throw new Error(d.error.message);
+    const rep=d.choices[0].message.content;chatH.push({role:'assistant',content:rep});
+    appendMsg('bot',rep,av.name,av.emoji);
+    appendMsg('sys','📝 Aktivita zaznamenaná. Chceš ji přidat do cílů?');
+  }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
+  document.getElementById('typing').classList.remove('active');scrollChat();
+}
+
+// CHAT SEND
+window.askC=t=>{document.getElementById('c-inp').value=t;send();};
+window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
+window.ar=el=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px';};
+window.send=async()=>{
+  const inp=document.getElementById('c-inp'),t=inp.value.trim();if(!t)return;
+  const k=localStorage.getItem('lp_key')||'';
+  if(!k){toast('⚠️ Nastav Groq API klíč v Nastavení ⚙️');sp('settings');return;}
+  document.getElementById('cwelcome')?.remove();
+  inp.value='';inp.style.height='auto';
+  appendMsg('user',t);chatH.push({role:'user',content:t});
+  document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const gCtx=goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%, ${g.category}${g.deadline?', do '+g.deadline:''})`).join('\n');
+  const sys=`Jsi ${av.name}, AI společník v LifePocket. Mluvíš česky, přátelsky, stručně (max 4 věty).\nUživatel: ${prof.nickname}${prof.vision?'\nVize: "'+prof.vision+'"':''}\n${gCtx?'Cíle:\n'+gCtx:'Zatím žádné cíle.'}\n\nPokud uživatel zmíní jídlo nebo vaření (chci vařit, dám si, uvařím, k obědu, k večeři apod.), přidej na konec odpovědi tag: [FOOD:název jídla]. Příklad: Skvělé! [FOOD:svíčková]`;
+  try{
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:600,messages:[{role:'system',content:sys},...chatH.slice(-10)]})});
+    const d=await r.json();if(d.error)throw new Error(d.error.message);
+    let rep=d.choices[0].message.content;
+    const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
+    rep=rep.replace(/\[FOOD:[^\]]+\]/g,'').trim();
+    chatH.push({role:'assistant',content:rep});
+    appendMsg('bot',rep,av.name,av.emoji);
+    if(foodMatch){
+      const food=foodMatch[1].trim();
+      const c=document.getElementById('chatmsgs');
+      const btns=document.createElement('div');
+      btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
+      const esc2=food.replace(/'/g,"\\'");
+      btns.innerHTML=`<button onclick="rexRecipe('${esc2}',this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${food}</b></button>`;
+      c.appendChild(btns);scrollChat();
+    }
+  }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
+  document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
+};
+window.rexRecipe=async(food,btnEl)=>{
+  btnEl?.remove();
+  const k=localStorage.getItem('lp_key')||'';
+  if(!k){toast('⚠️ Nastav API klíč v Nastavení');sp('settings');return;}
+  // Zobraz loading v chatu
+  const c=document.getElementById('chatmsgs');
+  const loading=document.createElement('div');
+  loading.className='msg bot';
+  loading.innerHTML='<div class="mlbl">🍳 Vařím recept…</div><div style="color:var(--text3);font-style:italic">Připravuji recept, chvilku strpení…</div>';
+  c.appendChild(loading);scrollChat();
+  const sys=`Jsi kuchařský asistent. Odpovídej POUZE v JSON formátu, bez markdown, bez backticks.
+Vrať JSON objekt:
+{"name":"Název jídla","time":"30 minut","difficulty":"Snadné","portions":4,"ingredients":[{"name":"Ingredience","qty":"200 g","category":"Maso & ryby"}],"steps":["Krok 1..."],"tip":"Tip..."}
+Kategorie: "Zelenina & ovoce","Maso & ryby","Mléčné výrobky","Pečivo","Trvanlivé","Ostatní"`;
+  try{
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1500,
+        messages:[{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}]})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error.message);
+    let raw=d.choices[0].message.content.trim();
+    raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
+    const recipe=JSON.parse(raw);
+    lastRecipe=recipe;
+    // Nahraď loading za kartu receptu v chatu
+    loading.innerHTML=`<div class="mlbl">🍳 Navrhovaný recept</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${recipe.name}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${recipe.time} · 👨‍🍳 ${recipe.difficulty} · 🍽 ${recipe.portions} porcí</div>
+      <div style="font-size:13px;color:var(--text2);font-weight:700;margin-bottom:8px">SUROVINY:</div>
+      ${recipe.ingredients.map(i=>`<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;display:flex;justify-content:space-between"><span>• ${i.name}</span><span style="color:var(--text3)">${i.qty}</span></div>`).join('')}
+      <div style="font-size:13px;color:var(--text2);font-weight:700;margin:12px 0 8px">POSTUP:</div>
+      ${recipe.steps.map((s,i)=>`<div style="padding:5px 0;font-size:14px;color:var(--text2)"><span style="color:var(--accent);font-weight:700">${i+1}.</span> ${s}</div>`).join('')}
+      ${recipe.tip?`<div style="margin-top:10px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text2)">💡 ${recipe.tip}</div>`:''}`;
+    // Přidej potvrzovací tlačítka
+    const confirm=document.createElement('div');
+    confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
+    confirm.innerHTML=`
+      <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">✅ Použít — přidat suroviny do nákupu</button>
+      <button onclick="rexRecipe('${food.replace(/'/g,"\'")}',this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
+    c.appendChild(confirm);scrollChat();
+  }catch(e){
+    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${e.message}`;
+  }
+};
+
+window.confirmRecipeToShop=async(btnEl)=>{
+  if(!lastRecipe){toast('Nejprve nechej Rexe navrhnout recept');return;}
+  btnEl?.remove();
+  let added=0;
+  for(const ing of lastRecipe.ingredients){
+    const exists=shopItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
+    if(!exists){
+      await addDoc(collection(db,'users',CU.uid,'shopItems'),{
+        name:ing.name, qty:ing.qty,
+        category:ing.category||'Ostatní',
+        done:false, fromRecipe:lastRecipe.name,
+        createdAt:new Date().toISOString()
+      });
+      added++;
+    }
+  }
+  const c=document.getElementById('chatmsgs');
+  const done=document.createElement('div');
+  done.className='msg bot';
+  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  done.innerHTML=`<div class="mlbl">${av.emoji} ${av.name}</div>✅ Přidal jsem <b>${added} surovin</b> do nákupního seznamu! Dobrou chuť 😋 <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`;
+  c.appendChild(done);scrollChat();
+  toast(`✅ ${added} surovin přidáno do nákupu!`);
+};
+
+
+// ── COOKING & SHOPPING ────────────────────────────────
+let shopItems=[], unsubShop=null;
+let cookPortions=2, cookType='any';
+let cookMicRec=null, cookMicOn=false;
+let lastRecipe=null; // posledni vygenerovany recept
+
+function subShop(){
+  if(!CU||unsubShop)return;
+  unsubShop=onSnapshot(collection(db,'users',CU.uid,'shopItems'),snap=>{
+    shopItems=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderShop();
+  });
+}
+
+// ── SHOPPING ──────────────────────────────────────────
+function renderShop(){
+  const list=document.getElementById('shop-list');
+  const empty=document.getElementById('shop-empty');
+  if(!list||!empty)return;
+  if(!shopItems.length){list.innerHTML='';empty.style.display='flex';return;}
+  empty.style.display='none';
+
+  // Group by category
+  const cats={};
+  shopItems.forEach(i=>{
+    const c=i.category||'Ostatní';
+    if(!cats[c])cats[c]=[];
+    cats[c].push(i);
+  });
+
+  // Sort: unchecked first within each category
+  const catOrder=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
+  const sortedCats=Object.keys(cats).sort((a,b)=>{
+    const ai=catOrder.indexOf(a), bi=catOrder.indexOf(b);
+    return (ai===-1?99:ai)-(bi===-1?99:bi);
+  });
+
+  list.innerHTML=sortedCats.map(cat=>{
+    const items=cats[cat].sort((a,b)=>a.done===b.done?0:a.done?1:-1);
+    return `<div class="shop-category">
+      <div class="shop-cat-label">${cat}</div>
+      ${items.map(i=>`
+        <div class="shop-item ${i.done?'done':''}">
+          <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${i.id}',${i.done})">${i.done?'✓':''}</div>
+          <span class="shop-item-name">${i.name}</span>
+          ${i.qty?`<span class="shop-item-qty">${i.qty}</span>`:''}
+          ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
+          <button class="shop-item-del" onclick="delShopItem('${i.id}')">×</button>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+window.addShopItem=async()=>{
+  const inp=document.getElementById('shop-inp');
+  const name=inp.value.trim();
+  if(!name)return;
+  const item={name,done:false,category:'Ostatní',createdAt:new Date().toISOString()};
+  await addDoc(collection(db,'users',CU.uid,'shopItems'),item);
+  inp.value='';
+  toast('✓ Přidáno');
+};
+
+window.toggleShopItem=async(id,wasDone)=>{
+  const item=shopItems.find(i=>i.id===id);
+  if(!item)return;
+  await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
+};
+
+window.delShopItem=async(id)=>{
+  await deleteDoc(doc(db,'users',CU.uid,'shopItems',id));
+};
+
+window.clearDoneItems=async()=>{
+  const done=shopItems.filter(i=>i.done);
+  if(!done.length){toast('Žádné splněné položky');return;}
+  for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  toast(`✓ Smazáno ${done.length} položek`);
+};
+
+// ── COOKING ───────────────────────────────────────────
+window.setPortions=(n,btn)=>{
+  cookPortions=n;
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+};
+
+window.setCookType=(t,btn)=>{
+  cookType=t;
+  document.querySelectorAll('[data-t]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+};
+
+window.askRecipe=async()=>{
+  const inp=document.getElementById('cook-inp');
+  const query=inp.value.trim();
+  if(!query){toast('⚠️ Napiš co chceš vařit');return;}
+  const k=localStorage.getItem('lp_key')||'';
+  if(!k){toast('⚠️ Nastav Groq API klíč v Nastavení ⚙️');sp('settings');return;}
+
+  document.getElementById('cook-result').style.display='none';
+  document.getElementById('cook-loading').style.display='block';
+
+  const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
+    cookType==='healthy'?'Recept musí být zdravý a výživný.':
+    cookType==='cheap'?'Recept musí být levný z dostupných surovin.':'';
+
+  const sys=`Jsi kuchařský asistent. Odpovídej POUZE v JSON formátu, bez markdown, bez backticks.
+Vrať JSON objekt s těmito poli:
+{
+  "name": "Název jídla",
+  "time": "30 minut",
+  "difficulty": "Snadné",
+  "portions": ${cookPortions},
+  "ingredients": [
+    {"name": "Kuřecí prsa", "qty": "400 g", "category": "Maso & ryby"},
+    {"name": "Cibule", "qty": "1 ks", "category": "Zelenina & ovoce"}
+  ],
+  "steps": ["Krok 1...", "Krok 2..."],
+  "tip": "Tip kuchaře..."
+}
+Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
+${typeHint}`;
+
+  try{
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
+      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1500,
+        messages:[{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}]})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error.message);
+    let raw=d.choices[0].message.content.trim();
+    // Strip markdown if present
+    raw=raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const recipe=JSON.parse(raw);
+    lastRecipe=recipe;
+    renderRecipe(recipe);
+  }catch(e){
+    document.getElementById('cook-loading').style.display='none';
+    toast('❌ Chyba: '+e.message);
+  }
+};
+
+function renderRecipe(r){
+  document.getElementById('cook-loading').style.display='none';
+  document.getElementById('cook-result').style.display='block';
+  document.getElementById('cook-recipe-card').innerHTML=`
+    <div class="cook-recipe-name">${r.name}</div>
+    <div class="cook-recipe-meta">⏱ ${r.time} · 👨‍🍳 ${r.difficulty} · 🍽 ${r.portions} porcí</div>
+    <div class="cook-section">Suroviny</div>
+    ${r.ingredients.map((ing,i)=>`
+      <div class="cook-ingredient">
+        <div class="cook-ing-check" id="cing-${i}" onclick="toggleIng(${i})"></div>
+        <span id="ing-name-${i}">${ing.name}</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:14px">${ing.qty}</span>
+      </div>`).join('')}
+    <div class="cook-section">Postup</div>
+    ${r.steps.map((s,i)=>`
+      <div class="cook-step">
+        <span class="cook-step-num">${i+1}.</span>
+        <span>${s}</span>
+      </div>`).join('')}
+    ${r.tip?`<div style="margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)">💡 ${r.tip}</div>`:''}
+  `;
+}
+
+window.toggleIng=(i)=>{
+  const el=document.getElementById(`cing-${i}`);
+  const nm=document.getElementById(`ing-name-${i}`);
+  const done=el.classList.toggle('done');
+  el.textContent=done?'✓':'';
+  nm.style.textDecoration=done?'line-through':'none';
+  nm.style.color=done?'var(--text3)':'var(--text)';
+};
+
+window.sendToShopping=async()=>{
+  if(!lastRecipe){toast('Nejprve vygeneruj recept');return;}
+  const k=localStorage.getItem('lp_key')||'';
+  let added=0;
+  for(const ing of lastRecipe.ingredients){
+    // Check if already in list
+    const exists=shopItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
+    if(!exists){
+      await addDoc(collection(db,'users',CU.uid,'shopItems'),{
+        name:ing.name, qty:ing.qty,
+        category:ing.category||'Ostatní',
+        done:false,
+        fromRecipe:lastRecipe.name,
+        createdAt:new Date().toISOString()
+      });
+      added++;
+    }
+  }
+  toast(`✅ ${added} surovin přidáno do nákupu!`);
+  setTimeout(()=>sp('shopping'),800);
+};
+
+// ── COOKING MIC ───────────────────────────────────────
+window.toggleCookMic=()=>{
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
+    toast('❌ Vyžaduje Chrome');return;
+  }
+  if(cookMicOn){cookMicRec?.stop();cookMicOn=false;return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  cookMicRec=new SR();cookMicRec.lang='cs-CZ';cookMicRec.continuous=false;cookMicRec.interimResults=false;
+  let transcript='';
+  cookMicRec.onresult=e=>{transcript=e.results[0][0].transcript;};
+  cookMicRec.onstart=()=>{
+    cookMicOn=true;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.add('rec');b.textContent='⏹';}
+    toast('🎤 Poslouchám…');
+  };
+  cookMicRec.onend=()=>{
+    cookMicOn=false;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(transcript){
+      document.getElementById('cook-inp').value=transcript;
+      askRecipe();
+    }
+  };
+  cookMicRec.onerror=e=>{
+    cookMicOn=false;
+    const b=document.getElementById('cook-mic-btn');
+    if(b){b.classList.remove('rec');b.textContent='🎤';}
+    if(e.error!=='no-speech')toast('❌ Mikrofon: '+e.error);
+  };
+  try{cookMicRec.start();}catch(err){toast('❌ '+err.message);}
+};
+
+function appendMsg(role,text,nm='',em=''){
+  const c=document.getElementById('chatmsgs'),d=document.createElement('div');d.className='msg '+role;
+  if(role==='bot')d.innerHTML=`<div class="mlbl">${em} ${nm}</div>${esc(text).replace(/\n/g,'<br>')}`;
+  else d.textContent=text;
+  c.appendChild(d);
+}
+function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.scrollHeight;}
+</script>
+</body>
+</html>
