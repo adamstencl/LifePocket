@@ -1,0 +1,25 @@
+{
+  "name": "LifePocket",
+  "short_name": "LifePocket",
+  "description": "Tvůj osobní AI společník pro návyky, cíle a život",
+  "start_url": "/LifePocket/",
+  "scope": "/LifePocket/",
+  "display": "standalone",
+  "background_color": "#0f0f12",
+  "theme_color": "#f5c842",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/LifePocket/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/LifePocket/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
