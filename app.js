@@ -57,6 +57,7 @@ async function callClaude(messages, maxTokens = 500) {
     throw new Error(err?.error?.message || `Claude API chyba: ${response.status}`);
   }
   const data = await response.json();
+  if (!data.content?.length) throw new Error('Claude API: prázdná odpověď');
   return data.content[0].text;
 }
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
@@ -69,6 +70,7 @@ onAuthStateChanged(auth,async u=>{
     // Unsubscribe všechny Firebase listenery
     [unsub,unsubEntries,unsubHabits,unsubLogs,unsubEvents,unsubShop,unsubSavedRecipes,unsubHealthLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal].forEach(u=>{if(u)u();});
     unsub=null; unsubEntries=null; unsubHabits=null; unsubLogs=null; unsubEvents=null; unsubShop=null; unsubSavedRecipes=null; unsubHealthLogs=null;
+    unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null;
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[];
     ss('s-login');
@@ -2732,7 +2734,7 @@ function renderMealPlan() {
   const isShared = canShareMeal && mealViewMode === 'shared';
   const plan = isShared ? familyMealPlan : (prof.mealPlan || {});
 
-  const canEdit = !isShared || (familyData?.members?.[CU.uid]?.role==='admin') || true; // oba mohou editovat
+  const canEdit = !isShared || (familyData?.members?.[CU.uid]?.role==='admin');
 
   // Zjisti jestli je plán úplně prázdný
   const hasAnyMeal = Object.values(plan).some(day =>
@@ -2900,7 +2902,7 @@ window.openAddFoodLog = () => {
   const plannedBtns = planned.length ? `
     <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:monospace;letter-spacing:.5px;text-transform:uppercase">Z dnešního plánu</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-      ${planned.map(p=>`<button onclick="addFoodFromPlan('${p.name.replace(/'/g,"\'")}','${p.key}')" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${p.name}</button>`).join('')}
+      ${planned.map(p=>`<button onclick="addFoodFromPlan(${JSON.stringify(p.name)},${JSON.stringify(p.key)})" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
     </div>` : '';
 
   const modal = document.createElement('div');
@@ -3086,7 +3088,7 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
   const recipes = savedRecipes || [];
   const recipesHTML = recipes.length
     ? recipes.map(r => `
-        <div onclick="pickMeal('${dayKey}','${mealKey}','${r.name.replace(/'/g,"\\'")}',this)"
+        <div onclick="pickMeal(${JSON.stringify(dayKey)},${JSON.stringify(mealKey)},${JSON.stringify(r.name)},this)"
           style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:border-color .2s"
           onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span style="font-size:20px">🍽️</span>
@@ -3871,7 +3873,7 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
     confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
     confirm.innerHTML=`
       <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">✅ Použít — přidat suroviny do nákupu</button>
-      <button onclick="rexRecipe('${food.replace(/'/g,"\'")}',this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
+      <button onclick="rexRecipe(${JSON.stringify(food)},this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
     loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${e.message}`;
@@ -3984,7 +3986,7 @@ function renderShop(){
         <div class="shop-item ${i.done?'done':''}">
           <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${i.id}',${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${i.name}</span>
-          ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${i.id}','${(i.qty||'').replace(/'/g,"\\'")}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${i.qty}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${i.id}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
+          ${i.qty?`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},${JSON.stringify(i.qty||'')},this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},'',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
           <button class="shop-item-del" onclick="delShopItem('${i.id}')">×</button>
         </div>`).join('')}
