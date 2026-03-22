@@ -1159,20 +1159,17 @@ function renderCal(){
 }
 
 function getEventsForDate(ds){
-  return events.filter(ev=>{
-    if(ev.repeat==='yes') return ev.date.slice(5)===ds.slice(5); // same month-day
-    return ev.date===ds;
-  });
+  const match = ev => ev.repeat==='yes' ? ev.date.slice(5)===ds.slice(5) : ev.date===ds;
+  return [...events.filter(match), ...familyEvents.filter(match)];
 }
 
 function getUpcoming14(){
   const today=new Date(); today.setHours(0,0,0,0);
   const future=new Date(today); future.setDate(future.getDate()+14);
   const result=[];
-  events.forEach(ev=>{
+  [...events, ...familyEvents].forEach(ev=>{
     let evDate=new Date(ev.date+'T12:00:00');
     if(ev.repeat==='yes'){
-      // Check this year and next year
       const thisYear=new Date(today.getFullYear(),evDate.getMonth(),evDate.getDate());
       const nextYear=new Date(today.getFullYear()+1,evDate.getMonth(),evDate.getDate());
       if(thisYear>=today&&thisYear<=future) result.push({...ev,_date:thisYear});
@@ -1203,10 +1200,10 @@ function renderEvList(){
     <div class="ev-card">
       <div class="ev-icon">${ev.source==='google'?'📅':EV_ICONS[ev.type]||'📌'}</div>
       <div class="ev-info">
-        <div class="ev-name">${ev.name}${ev.source==='google'?'<span class="gcal-badge">Google</span>':''}</div>
+        <div class="ev-name">${esc(ev.name)}${ev.source==='google'?'<span class="gcal-badge">Google</span>':''}${ev.shared?'<span class="gcal-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
         <div class="ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
-      ${ev.source!=='google'?`<button class="ev-del" onclick="delEvent('${ev.id}')">🗑️</button>`:''}
+      ${ev.source!=='google'&&!ev.shared?`<button class="ev-del" onclick="delEvent('${ev.id}')">🗑️</button>`:''}
     </div>`).join('');
 }
 
@@ -2505,6 +2502,9 @@ let familyShopItems = [];
 let familyMealPlan = {};
 let mealViewMode = 'shared'; // 'shared' | 'personal'
 window.setMealView = (mode) => { mealViewMode = mode; renderMealPlan(); };
+let shopViewMode = 'shared'; // 'shared' | 'personal'
+window.setShopView = (mode) => { shopViewMode = mode; renderShop(); };
+function isShopShared() { return !!(familyId && familyData?.shareShop && shopViewMode === 'shared'); }
 let familyEvents = [];
 
 function genFamilyCode() {
@@ -2626,7 +2626,7 @@ function subscribeSharedCal() {
   unsubFamilyCal = onSnapshot(collection(db,'families',familyId,'events'), snap => {
     familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true}));
     // Sloučit s osobními eventi
-    if(typeof renderCalendar==='function') renderCalendar();
+    renderCal();
   });
 }
 
@@ -3016,7 +3016,7 @@ window.mealplanToShopping = async () => {
 
   if(!mealNames.length){ toast('Jídelníček je prázdný — nejdřív vyplň jídla'); return; }
 
-  const isSharedShop = !!(familyId && familyData?.shareShop);
+  const isSharedShop = isShopShared();
   const activeShopItems = isSharedShop ? familyShopItems : shopItems;
 
   let addedCount = 0;
@@ -3884,7 +3884,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
   if(!lastRecipe){toast('Nejprve nechej Rexe navrhnout recept');return;}
   btnEl?.remove();
   let added=0;
-  const isShared = !!(familyId && familyData?.shareShop);
+  const isShared = isShopShared();
   const activeItems = isShared ? familyShopItems : shopItems;
   for(const ing of lastRecipe.ingredients){
     const exists=activeItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
@@ -3937,11 +3937,27 @@ function renderShop(){
   const list=document.getElementById('shop-list');
   const empty=document.getElementById('shop-empty');
   if(!list||!empty)return;
-  // Použij sdílené položky pokud je aktivní sdílení
-  const isShared = !!(familyId && familyData?.shareShop);
-  const activeItems = isShared ? familyShopItems : shopItems;
+  const canShareShop = !!(familyId && familyData?.shareShop);
+  const shopToggle = document.getElementById('shop-view-toggle');
   const badge = document.getElementById('shop-shared-badge');
-  if(badge) badge.style.display = isShared ? 'flex' : 'none';
+  if(canShareShop) {
+    if(badge) badge.style.display = 'none';
+    if(shopToggle) {
+      shopToggle.style.display = 'flex';
+      const selStyle = 'background:var(--accent);color:var(--tc);font-weight:600';
+      const defStyle = 'background:transparent;color:var(--text2)';
+      const btnS = document.getElementById('shop-toggle-shared');
+      const btnP = document.getElementById('shop-toggle-personal');
+      if(btnS) btnS.style.cssText = shopViewMode==='shared' ? selStyle : defStyle;
+      if(btnP) btnP.style.cssText = shopViewMode==='personal' ? selStyle : defStyle;
+    }
+  } else {
+    if(badge) badge.style.display = 'none';
+    if(shopToggle) shopToggle.style.display = 'none';
+    shopViewMode = 'personal';
+  }
+  const isShared = isShopShared();
+  const activeItems = isShared ? familyShopItems : shopItems;
   if(!activeItems.length){
     list.innerHTML='';empty.style.display='flex';
     document.getElementById('shop-progress-wrap').style.display='none';
@@ -4000,8 +4016,7 @@ window.addShopItem=async()=>{
   if(!name)return;
   const cat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
   inp.value='';
-  // Pokud je aktivní rodinné sdílení nákupů → piš do family
-  if(familyId && familyData?.shareShop) {
+  if(isShopShared()) {
     await addShopItemToFamily(name, cat);
     toast('✓ Přidáno do sdíleného seznamu 👨‍👩‍👧');
   } else {
@@ -4012,7 +4027,7 @@ window.addShopItem=async()=>{
 };
 
 window.toggleShopItem=async(id,wasDone)=>{
-  if(familyId && familyData?.shareShop) {
+  if(isShopShared()) {
     await toggleFamilyShopItem(id,wasDone); return;
   }
   const item=shopItems.find(i=>i.id===id);
@@ -4032,7 +4047,7 @@ window.editShopQty = (id, currentQty, el) => {
   const save = async () => {
     const newQty = inp.value.trim();
     try {
-      if(familyId && familyData?.shareShop) {
+      if(isShopShared()) {
         await updateDoc(doc(db,'families',familyId,'shopItems',id), {qty: newQty});
       } else {
         await updateDoc(doc(db,'users',CU.uid,'shopItems',id), {qty: newQty});
@@ -4044,7 +4059,7 @@ window.editShopQty = (id, currentQty, el) => {
 };
 
 window.delShopItem=async(id)=>{
-  if(familyId && familyData?.shareShop) {
+  if(isShopShared()) {
     await deleteFamilyShopItem(id); return;
   }
   await deleteDoc(doc(db,'users',CU.uid,'shopItems',id));
@@ -4079,9 +4094,14 @@ window.shareShoppingList=()=>{
 };
 
 window.clearDoneItems=async()=>{
-  const done=shopItems.filter(i=>i.done);
+  const activeItems = isShopShared() ? familyShopItems : shopItems;
+  const done=activeItems.filter(i=>i.done);
   if(!done.length){toast('Žádné splněné položky');return;}
-  for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  if(isShopShared()) {
+    for(const i of done) await deleteDoc(doc(db,'families',familyId,'shopItems',i.id));
+  } else {
+    for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  }
   toast(`✓ Smazáno ${done.length} položek`);
 };
 
