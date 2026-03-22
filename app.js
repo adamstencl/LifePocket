@@ -36,15 +36,12 @@ async function callClaude(messages, maxTokens = 500) {
   if (!claudeKey) {
     // Zkusit načíst klíč znovu (fallback pokud initApp fetch selhal)
     try {
-      console.log('[LP] claudeKey null, fetching from Firestore...');
       const ks = await getDoc(doc(db,'config','secrets'));
       const d = ks.data();
-      console.log('[LP] exists:', ks.exists(), '| fields:', Object.keys(d || {}));
       const k = d ? (d['claudeKey'] || d['cladeKey'] || d['ClaudeKey'] || d['claude_key']) : null;
-      console.log('[LP] k=', JSON.stringify(k));
-      if (k) { claudeKey = k; console.log('[LP] claudeKey SET OK'); }
-    } catch(e) { console.warn('[LP] claudeKey fetch failed:', e); }
-    if (!claudeKey) { console.log('[LP] claudeKey still null, giving up'); return null; }
+      if (k) claudeKey = k;
+    } catch(e) { /* tiché selhání */ }
+    if (!claudeKey) return null;
   }
   // Claude API vyžaduje system prompt odděleně od messages
   const systemMsg = messages.find(m => m.role === 'system');
@@ -5051,16 +5048,31 @@ window.sp = id => {
 };
 
 // Kontaktní formulář
-window.sendContactMsg = () => {
+window.sendContactMsg = async () => {
   const msg = document.getElementById('contact-msg')?.value?.trim();
+  const emailEl = document.getElementById('contact-email');
+  const replyEmail = emailEl?.value?.trim() || 'neuveden';
   if(!msg) { toast('⚠️ Napiš zprávu'); return; }
-  // TODO: nahradit e-mail nebo přidat Formspree endpoint
-  const email = 'stencladam@seznam.cz';
-  const subject = encodeURIComponent('LifePocket zpětná vazba');
-  const body = encodeURIComponent(msg);
-  window.open(`mailto:${email}?subject=${subject}&body=${body}`);
-  document.getElementById('contact-msg').value = '';
-  toast('✓ Otevírám e-mailového klienta');
+  const btn = document.querySelector('[onclick="sendContactMsg()"]');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Odesílám…'; }
+  try {
+    const res = await fetch('https://formspree.io/f/xlgpyjaa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ email: replyEmail, message: msg, user: prof.nickname || CU?.email || 'anon' })
+    });
+    if(res.ok) {
+      document.getElementById('contact-msg').value = '';
+      if(emailEl) emailEl.value = '';
+      toast('✓ Zpráva odeslána, díky!');
+    } else {
+      toast('❌ Chyba při odesílání, zkus to znovu');
+    }
+  } catch(e) {
+    toast('❌ Chyba: ' + e.message);
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = '📨 Odeslat zprávu'; }
+  }
 };
 
 // Restart tour z nastavení
