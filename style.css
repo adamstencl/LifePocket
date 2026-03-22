@@ -559,6 +559,40 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
   .sarow{flex-direction:column!important;gap:8px}
   .sarow .sainp{width:100%!important;min-width:0!important}
   .sarow .btn-s{width:100%!important}
+
+  /* ── KALENDÁŘ — stack layout on mobile ── */
+  .cal-layout{flex-direction:column;gap:16px}
+  .cal-left{max-width:100%}
+  .cal-right{width:100%}
+  .cal-nav-row{max-width:100%}
+  .cal-grid-wrap{max-width:100%}
+
+  /* ── KALENDÁŘ — kompaktnější buňky ── */
+  .cal-cell{height:34px;font-size:12px}
+
+  /* ── HABIT KARTA — kompaktnější header ── */
+  .habit-card-top{gap:6px;flex-wrap:nowrap}
+  .habit-done-badge{font-size:10px;padding:3px 7px}
+  .habit-name{font-size:13px}
+  .habit-streak{font-size:11px}
+  .habit-freq-badge{font-size:10px;padding:1px 6px;margin-left:2px}
+  .cnt-btn{width:24px;height:24px;font-size:14px}
+  .cnt-val{font-size:14px;min-width:24px}
+
+  /* ── HABIT TABULKA — kompaktnější ── */
+  .habit-table th{font-size:8px;padding:1px 0}
+  .htd-dot{width:18px;height:18px;font-size:9px;border-radius:4px}
+  .htd-val{font-size:9px}
+
+  /* ── HABIT DETAIL — chart labels ── */
+  .hd-streak-lbl{font-size:8px;overflow:hidden;white-space:nowrap;max-width:100%}
+  .hd-stat-num{font-size:22px}
+  .hd-stat-lbl{font-size:10px}
+
+  /* ── VIEW TOGGLES — shop/meal ── */
+  #shop-view-toggle,#meal-view-toggle{padding:2px;gap:1px}
+  #shop-toggle-shared,#shop-toggle-personal,
+  #meal-toggle-shared,#meal-toggle-personal{padding:3px 8px;font-size:11px}
 }
 
 /* DASHBOARD */
