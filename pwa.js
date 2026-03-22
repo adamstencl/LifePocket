@@ -81,9 +81,7 @@ self.addEventListener('notificationclick', e => {
 `;
 
 if ('serviceWorker' in navigator) {
-  const swBlob = new Blob([swCode], {type: 'application/javascript'});
-  const swURL = URL.createObjectURL(swBlob);
-  navigator.serviceWorker.register(swURL, {scope: '/LifePocket/'})
+  navigator.serviceWorker.register('/LifePocket/sw.js', {scope: '/LifePocket/'})
     .then(() => {})
     .catch(() => {});
 

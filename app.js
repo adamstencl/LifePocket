@@ -29,7 +29,36 @@ const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
 let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
-let groqKey = null; // načítá se z Firestore config/secrets
+let claudeKey = null; // načítá se z Firestore config/secrets
+
+// ── CLAUDE API HELPER ──────────────────────────────────
+async function callClaude(messages, maxTokens = 500) {
+  if (!claudeKey) return null;
+  // Claude API vyžaduje system prompt odděleně od messages
+  const systemMsg = messages.find(m => m.role === 'system');
+  const userMsgs = messages.filter(m => m.role !== 'system');
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': claudeKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: systemMsg?.content || '',
+      messages: userMsgs
+    })
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Claude API chyba: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.content[0].text;
+}
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
 let entries=[], unsubEntries=null;
 
@@ -1526,8 +1555,8 @@ let isDark = false;
 const THEMES = {
   'dark-gold':  { emoji:'🌑', label:'Dark Gold',    bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
   'warm-night': { emoji:'🌙', label:'Warm Night',   bg:'#1a1510', accent:'#f5a623', tc:'#1a1510' },
-  'obsidian':   { emoji:'💎', label:'Obsidian Pro', bg:'#080810', accent:'#7c6af5', tc:'#080810' },
   'sunshine':   { emoji:'☀️', label:'Sunshine',     bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
+  'morning':    { emoji:'🌤️', label:'Morning',      bg:'#f0f4f8', accent:'#2e86ab', tc:'#f0f4f8' },
 };
 
 window.setTheme = (id) => {
@@ -1548,7 +1577,7 @@ window.setTheme = (id) => {
 
 window.toggleTheme = () => {
   const cur = localStorage.getItem('lp_theme') || 'dark-gold';
-  const order = ['dark-gold','warm-night','obsidian','sunshine'];
+  const order = ['dark-gold','warm-night','sunshine','morning'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
 };
@@ -2048,7 +2077,6 @@ function checkEventReminders() {
 
 // Proaktivní zpráva od Rexe po přihlášení
 async function rexProactiveGreeting() {
-  const k = groqKey;
   const lastGreet = localStorage.getItem('lp_rex_greet');
   const today = new Date().toISOString().slice(0, 10);
   if (lastGreet === today) return; // jednou denně
@@ -2082,17 +2110,8 @@ Ráno pozdravi uživatele ${prof?.nickname || ''} a zmíň 1-2 relevantní věci
 Buď konkrétní, ne obecný. Nezačínej s "Ahoj".`;
 
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k},
-      body: JSON.stringify({model: 'llama-3.3-70b-versatile', max_tokens: 150,
-        messages: [{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}]})
-    });
-    const d = await r.json();
-    if (d.error) return;
-    const msg = d.choices[0].message.content;
-    // Zobraz jako zprávu od Rexe v chat oblasti, ale jen pokud jsme na dashboard nebo rex stránce
-    showRexDashboardMessage(msg);
+    const msg = await callClaude([{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}], 150);
+    if (msg) showRexDashboardMessage(msg);
   } catch(e) { /* tiše selhat */ }
 }
 
@@ -2144,7 +2163,6 @@ function showRexDashboardMessage(msg) {
 
 // Týdenní report — zavolej z chatu
 window.getRexWeeklyReport = async () => {
-  const k = groqKey;
 
   appendMsg('user', 'Dej mi týdenní report', '', '');
   chatH.push({role:'user', content:'Dej mi týdenní report'});
@@ -2175,20 +2193,12 @@ Data posledních 7 dní:\n${weekStr}\nVzory v návycích: ${patterns || 'zatím 
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
 
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:500,
-        messages:[{role:'system',content:sys},{role:'user',content:'Týdenní report'}]})
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    const rep = d.choices[0].message.content;
+    const rep = await callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní report'}], 500);
+    if (!rep) throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     chatH.push({role:'assistant',content:rep});
     appendMsg('bot', rep, av.name, av.emoji || '⭐');
-    // Ulož report pro dashboard
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString()}));
-    rDash(); // aktualizuj dashboard
+    rDash();
   } catch(e) { appendMsg('bot','❌ '+e.message,'Chyba','⚠️'); }
   document.getElementById('typing')?.classList.remove('active');
   scrollChat();
@@ -2211,7 +2221,6 @@ function checkAutoWeeklyReport() {
 }
 
 async function generateWeeklyReportSilent() {
-  const k = groqKey;
   const today = new Date();
   const week = [];
   for (let i = 6; i >= 0; i--) {
@@ -2229,24 +2238,12 @@ async function generateWeeklyReportSilent() {
   const av = AVS.find(a => a.id === prof?.avatarId) || {name:'Rex'};
   const sys = `Jsi ${av.name} v LifePocket. Napiš krátký, přátelský týdenní souhrn pro ${prof?.nickname||'uživatele'} (max 5 vět). Buď konkrétní a motivující. Data týdne:\n${weekStr}\nPRAVIDLO: Piš VÝHRADNĚ česky.`;
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:300,
-        messages:[{role:'system',content:sys},{role:'user',content:'Týdenní souhrn'}]})
-    });
-    const d = await r.json();
-    if(d.error) return;
-    const rep = d.choices[0].message.content;
+    const rep = await callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní souhrn'}], 300);
+    if (!rep) return;
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString(), avatar: av.emoji||'⭐', avatarName: av.name}));
     rDash();
-    // Push notifikace
     if(Notification.permission === 'granted') {
-      sendNotif(
-        `${av.emoji||'⭐'} Tvůj týdenní report je ready!`,
-        `${av.name} připravil souhrn tohoto týdne — otevři LifePocket a podívej se.`,
-        av.emoji||'⭐'
-      );
+      sendNotif(`${av.emoji||'⭐'} Tvůj týdenní report je ready!`, `${av.name} připravil souhrn tohoto týdne — otevři LifePocket a podívej se.`, av.emoji||'⭐');
     }
   } catch(e) { /* tiše selhat */ }
 }
@@ -2665,19 +2662,14 @@ window.saveMealPlanItem = async (dayKey, mealKey, val) => {
 };
 
 window.generateMealPlanAI = async () => {
-  const k = groqKey;
   toast('✨ Generuji jídelníček…');
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:800,
-        messages:[{role:'system',content:'Odpovídej POUZE v JSON formátu, bez markdown. Vygeneruj týdenní jídelníček. PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova.'},{
-          role:'user',content:'Vygeneruj jídelníček na 7 dní (d0-d6), každý den má snídani (m0), oběd (m1) a večeři (m2). Format: {"d0":{"m0":"...","m1":"...","m2":"..."},...}'
-        }]})
-    });
-    const data = await r.json();
-    const text = data.choices[0].message.content.replace(/```json|```/g,'').trim();
+    const raw = await callClaude([
+      {role:'system',content:'Odpovídej POUZE v JSON formátu, bez markdown. Vygeneruj týdenní jídelníček. PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova.'},
+      {role:'user',content:'Vygeneruj jídelníček na 7 dní (d0-d6), každý den má snídani (m0), oběd (m1) a večeři (m2). Format: {"d0":{"m0":"...","m1":"...","m2":"..."},...}'}
+    ], 800);
+    if (!raw) throw new Error('AI není k dispozici');
+    const text = raw.replace(/```json|```/g,'').trim();
     const plan = JSON.parse(text);
     // Uložit
     if(familyId && familyData?.shareMeal) {
@@ -2815,21 +2807,15 @@ window.openAddFoodLog = () => {
 window.aiEstimateFoodLog = async () => {
   const name = document.getElementById('fl-name').value.trim();
   if(!name) { toast('⚠️ Nejprve zadej název jídla'); return; }
-  const k = groqKey;
-  if(!k) { toast('⚠️ Chybí API klíč'); return; }
+  if(!claudeKey) { toast('⚠️ Chybí API klíč — bude nastaven brzy'); return; }
   toast('✨ AI odhaduje kalorie…');
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:100,
-        messages:[
-          {role:'system',content:'Odpovídej POUZE JSON. Bez markdown. Odhadni nutriční hodnoty pro 1 porci jídla. Formát: {"kcal":380,"protein":18,"carbs":62,"fat":8}'},
-          {role:'user',content:'Jídlo: '+name}
-        ]})
-    });
-    const d = await r.json();
-    const txt = d.choices[0].message.content.replace(/```json|```/g,'').trim();
+    const raw = await callClaude([
+      {role:'system',content:'Odpovídej POUZE JSON. Bez markdown. Odhadni nutriční hodnoty pro 1 porci jídla. Formát: {"kcal":380,"protein":18,"carbs":62,"fat":8}'},
+      {role:'user',content:'Jídlo: '+name}
+    ], 100);
+    if (!raw) throw new Error('AI není k dispozici');
+    const txt = raw.replace(/```json|```/g,'').trim();
     const est = JSON.parse(txt);
     document.getElementById('fl-kcal').value = est.kcal||'';
     document.getElementById('fl-p').value = est.protein||'';
@@ -2840,21 +2826,15 @@ window.aiEstimateFoodLog = async () => {
 };
 
 window.addFoodFromPlan = async (name, mealKey) => {
-  const k = groqKey;
-  if(!k) { toast('⚠️ Chybí API klíč'); return; }
+  if(!claudeKey) { toast('⚠️ Chybí API klíč — bude nastaven brzy'); return; }
   toast('✨ AI odhaduje kalorie pro "'+name+'"…');
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:100,
-        messages:[
-          {role:'system',content:'Odpovídej POUZE JSON. Bez markdown. Odhadni nutriční hodnoty pro 1 porci jídla. Formát: {"kcal":380,"protein":18,"carbs":62,"fat":8}'},
-          {role:'user',content:'Jídlo: '+name}
-        ]})
-    });
-    const d = await r.json();
-    const txt = d.choices[0].message.content.replace(/```json|```/g,'').trim();
+    const raw = await callClaude([
+      {role:'system',content:'Odpovídej POUZE JSON. Bez markdown. Odhadni nutriční hodnoty pro 1 porci jídla. Formát: {"kcal":380,"protein":18,"carbs":62,"fat":8}'},
+      {role:'user',content:'Jídlo: '+name}
+    ], 100);
+    if (!raw) throw new Error('AI není k dispozici');
+    const txt = raw.replace(/```json|```/g,'').trim();
     const est = JSON.parse(txt);
     const today = new Date().toISOString().slice(0,10);
     const now = new Date().toTimeString().slice(0,5);
@@ -3105,17 +3085,16 @@ window.hdNavMonth = (hid, dir) => {
 
 
 async function initApp(){
-  // Načti Groq API klíč z Firestore (config/secrets)
+  // Načti Claude API klíč z Firestore (config/secrets)
   try {
     const ks = await getDoc(doc(db,'config','secrets'));
-    if(ks.exists() && ks.data().groqKey) {
-      groqKey = ks.data().groqKey;
+    if(ks.exists() && ks.data().claudeKey) {
+      claudeKey = ks.data().claudeKey;
     } else {
-      // fallback na localStorage pokud uživatel klíč vložil ručně
-      groqKey = localStorage.getItem('lp_key') || null;
+      claudeKey = localStorage.getItem('lp_claude_key') || null;
     }
   } catch(e) {
-    groqKey = localStorage.getItem('lp_key') || null;
+    claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
   loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);setTimeout(checkAutoWeeklyReport,10000);
@@ -3605,7 +3584,6 @@ async function finishDS(text){
   chatH.push({role:'user',content:text});
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   document.getElementById('typing').classList.add('active');scrollChat();
-  const k=groqKey;
   const today=new Date().toISOString().slice(0,10);
   const gCtx=goals.length ? goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%)`).join('\n') : 'Žádné';
   const todayHabits=habits.map(h=>{
@@ -3625,9 +3603,9 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
 3. Krátce povzbuď na zbytek dne nebo večer
 4. Max 4-5 vět, buď osobní a konkrétní.`;
   try{
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:500,messages:[{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}]})});
-    const d=await r.json();if(d.error)throw new Error(d.error.message);
-    const rep=d.choices[0].message.content;chatH.push({role:'assistant',content:rep});
+    const rep=await callClaude([{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}],500);
+    if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
+    chatH.push({role:'assistant',content:rep});
     appendMsg('bot',rep,av.name,av.emoji);
     appendMsg('sys','📝 Aktivita zaznamenaná. Chceš ji přidat do cílů?');
   }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
@@ -3640,7 +3618,6 @@ window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
 window.ar=el=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px';};
 window.send=async()=>{
   const inp=document.getElementById('c-inp'),t=inp.value.trim();if(!t)return;
-  const k=groqKey;
   document.getElementById('cwelcome')?.remove();
   inp.value='';inp.style.height='auto';
   appendMsg('user',t);chatH.push({role:'user',content:t});
@@ -3721,9 +3698,8 @@ Pokud uživatel potřebuje motivaci nebo se ptá jak se daří, komentuj konkré
 
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
   try{
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:600,messages:[{role:'system',content:sys},...chatH.slice(-10)]})});
-    const d=await r.json();if(d.error)throw new Error(d.error.message);
-    let rep=d.choices[0].message.content;
+    let rep=await callClaude([{role:'system',content:sys},...chatH.slice(-10)],600);
+    if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
     rep=rep.replace(/\[FOOD:[^\]]+\]/g,'').trim();
     chatH.push({role:'assistant',content:rep});
@@ -3742,7 +3718,6 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
 };
 window.rexRecipe=async(food,btnEl)=>{
   btnEl?.remove();
-  const k=groqKey;
   // Zobraz loading v chatu
   const c=document.getElementById('chatmsgs');
   const {row:loadingRow,bubble:loading}=makeBotBubble('<div style="color:var(--text3);font-style:italic">Připravuji recept, chvilku strpení…</div>','🍳','Vařím recept…');
@@ -3753,15 +3728,9 @@ Vrať JSON objekt:
 Kategorie: "Zelenina & ovoce","Maso & ryby","Mléčné výrobky","Pečivo","Trvanlivé","Ostatní"
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
   try{
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1500,
-        messages:[{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}]})
-    });
-    const d=await r.json();
-    if(d.error)throw new Error(d.error.message);
-    let raw=d.choices[0].message.content.trim();
+    const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}],1500);
+    if(!rawRecipe)throw new Error('AI není k dispozici');
+    let raw=rawRecipe.trim();
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
@@ -4008,7 +3977,6 @@ window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
   const query=inp.value.trim();
   if(!query){toast('⚠️ Napiš co chceš vařit');return;}
-  const k=groqKey;
 
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
@@ -4037,17 +4005,9 @@ ${typeHint}
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
 
   try{
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+k},
-      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1500,
-        messages:[{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}]})
-    });
-    const d=await r.json();
-    if(d.error)throw new Error(d.error.message);
-    let raw=d.choices[0].message.content.trim();
-    // Strip markdown if present
-    raw=raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}],1500);
+    if(!rawR)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
+    let raw=rawR.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
@@ -4253,8 +4213,6 @@ function renderSavedRecipes(){
 let plannedMeals = []; // [{name, source, date}]
 
 window.detectFoodsInEntry = async (text) => {
-  const k = groqKey;
-
   const sys = `Jsi asistent pro detekci jídel. Analyzuj text zápisníku a najdi jídla která uživatel PLÁNUJE vařit nebo jíst v budoucnu.
 Ignoruj jídla která již snědl (minulý čas). Hledej budoucí záměry: "chci vařit", "dám si", "plánuji", "tento týden", "zítra" apod.
 Odpovídej POUZE v JSON: {"foods": ["jídlo1", "jídlo2"]} nebo {"foods": []} pokud žádná nejsou.
@@ -4262,16 +4220,9 @@ Maximálně 5 jídel.
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
 
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k},
-      body: JSON.stringify({model: 'llama-3.3-70b-versatile', max_tokens: 200,
-        messages: [{role: 'system', content: sys}, {role: 'user', content: text}]})
-    });
-    const d = await r.json();
-    if (d.error) return;
-    let raw = d.choices[0].message.content.trim();
-    raw = raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const rawF = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 200);
+    if (!rawF) return;
+    let raw = rawF.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const result = JSON.parse(raw);
     if (result.foods && result.foods.length > 0) {
       showFoodDetectBanner(result.foods);
@@ -4391,8 +4342,6 @@ window.autoDetectMood = async () => {
   const text = document.getElementById('j-text').value.trim();
   if (text.length < 20) { toast('⚠️ Nejprve něco napiš'); return; }
 
-  const k = groqKey;
-
   const btn = document.getElementById('auto-mood-btn');
   btn.textContent = '⏳';
   btn.classList.add('loading');
@@ -4405,16 +4354,9 @@ Vyber JEDNU náladu která nejlépe odpovídá celkovému vyznění textu.
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
 
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k},
-      body: JSON.stringify({model: 'llama-3.3-70b-versatile', max_tokens: 100,
-        messages: [{role:'system',content:sys},{role:'user',content:text}]})
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
-    let raw = d.choices[0].message.content.trim();
-    raw = raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const rawM = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 100);
+    if (!rawM) throw new Error('AI není k dispozici');
+    let raw = rawM.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const result = JSON.parse(raw);
 
     // Zobraz návrh
@@ -4455,7 +4397,6 @@ window.acceptMood = (mood) => {
 
 // ── ZÁPISNÍK → NÁVYKY PROPOJENÍ ───────────────────────
 window.detectHabitsInEntry = async (text) => {
-  const k = groqKey;
 
   // Připrav kontext existujících návyků
   const habitCtx = habits.length
@@ -4489,16 +4430,9 @@ Odpovídej POUZE v JSON (bez markdown):
 - PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
 
   try {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + k},
-      body: JSON.stringify({model: 'llama-3.3-70b-versatile', max_tokens: 400,
-        messages: [{role: 'system', content: sys}, {role: 'user', content: text}]})
-    });
-    const d = await r.json();
-    if (d.error) return;
-    let raw = d.choices[0].message.content.trim();
-    raw = raw.replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    const rawH = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 400);
+    if (!rawH) return;
+    let raw = rawH.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const result = JSON.parse(raw);
     const hasCompleted = result.completed && result.completed.length > 0;
     const hasNew = result.newHabits && result.newHabits.length > 0;
