@@ -2501,6 +2501,8 @@ let unsubFamilyMeal = null;
 let unsubFamilyCal = null;
 let familyShopItems = [];
 let familyMealPlan = {};
+let mealViewMode = 'shared'; // 'shared' | 'personal'
+window.setMealView = (mode) => { mealViewMode = mode; renderMealPlan(); };
 let familyEvents = [];
 
 function genFamilyCode() {
@@ -2706,10 +2708,28 @@ function renderMealPlan() {
   const el = document.getElementById('mealplan-content');
   if(!el) return;
 
-  const isShared = !!(familyId && familyData?.shareMeal);
+  const canShareMeal = !!(familyId && familyData?.shareMeal);
   const badge = document.getElementById('meal-shared-badge');
-  if(badge) badge.style.display = isShared ? 'flex' : 'none';
+  const toggle = document.getElementById('meal-view-toggle');
 
+  if(canShareMeal) {
+    if(badge) badge.style.display = 'none';
+    if(toggle) {
+      toggle.style.display = 'flex';
+      const btnShared = document.getElementById('meal-toggle-shared');
+      const btnPersonal = document.getElementById('meal-toggle-personal');
+      const selStyle = 'background:var(--accent);color:var(--tc);font-weight:600';
+      const defStyle = 'background:transparent;color:var(--text2)';
+      if(btnShared) btnShared.style.cssText = mealViewMode==='shared' ? selStyle : defStyle;
+      if(btnPersonal) btnPersonal.style.cssText = mealViewMode==='personal' ? selStyle : defStyle;
+    }
+  } else {
+    if(badge) badge.style.display = 'none';
+    if(toggle) toggle.style.display = 'none';
+    mealViewMode = 'personal';
+  }
+
+  const isShared = canShareMeal && mealViewMode === 'shared';
   const plan = isShared ? familyMealPlan : (prof.mealPlan || {});
 
   const canEdit = !isShared || (familyData?.members?.[CU.uid]?.role==='admin') || true; // oba mohou editovat
@@ -2751,7 +2771,7 @@ function renderMealPlan() {
 
 window.saveMealPlanItem = async (dayKey, mealKey, val) => {
   if(!CU) return;
-  if(familyId && familyData?.shareMeal) {
+  if(familyId && familyData?.shareMeal && mealViewMode === 'shared') {
     // Uložit do rodinného prostoru
     const update = {}; update[dayKey+'.'+mealKey] = val;
     await setDoc(doc(db,'families',familyId,'mealplan','week'), update, {merge:true});
@@ -2775,7 +2795,7 @@ window.generateMealPlanAI = async () => {
     const text = raw.replace(/```json|```/g,'').trim();
     const plan = JSON.parse(text);
     // Uložit
-    if(familyId && familyData?.shareMeal) {
+    if(familyId && familyData?.shareMeal && mealViewMode === 'shared') {
       await setDoc(doc(db,'families',familyId,'mealplan','week'), plan);
     } else {
       prof.mealPlan = plan;

@@ -630,9 +630,13 @@
     <!-- JÍDELNÍČEK (sdílený) -->
     <div class="page" id="p-mealplan">
       <div class="gh">
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="ptitle">🍽️ Jídelníček</div>
           <div class="shared-badge" id="meal-shared-badge" style="display:none">👨‍👩‍👧 sdíleno</div>
+          <div id="meal-view-toggle" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px;display:flex;gap:2px">
+            <button id="meal-toggle-shared" onclick="setMealView('shared')" style="border:none;border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .2s">👨‍👩‍👧 Rodina</button>
+            <button id="meal-toggle-personal" onclick="setMealView('personal')" style="border:none;border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .2s">👤 Moje</button>
+          </div>
         </div>
         <button class="btn-p" style="width:auto;padding:8px 16px;font-size:14px;white-space:nowrap" onclick="mealplanToShopping()">🛒 Přidat do nákupu</button>
       </div>
