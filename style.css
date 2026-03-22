@@ -584,6 +584,10 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
   .htd-dot{width:18px;height:18px;font-size:9px;border-radius:4px}
   .htd-val{font-size:9px}
 
+  /* ── HABIT DETAIL — month grid fix ── */
+  .hd-month-grid{width:100%}
+  .hd-day-cell{aspect-ratio:unset;height:38px;min-width:0}
+
   /* ── HABIT DETAIL — chart labels ── */
   .hd-streak-lbl{font-size:8px;overflow:hidden;white-space:nowrap;max-width:100%}
   .hd-stat-num{font-size:22px}
