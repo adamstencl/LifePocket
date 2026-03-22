@@ -446,7 +446,6 @@ function buildHabitCard(h){
           </div>`
         : `<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${h.id}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`
       }
-      <button class="habit-arch" onclick="archiveHabit('${h.id}')" title="Archivovat návyk" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:4px;border-radius:6px;transition:all .15s;margin-right:2px" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">📦</button>
       <button class="habit-del" onclick="deleteHabit('${h.id}')">🗑️</button>
     </div>
     <table class="habit-table" style="margin-top:10px"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>
@@ -699,6 +698,12 @@ function renderHabitDetail(h) {
         <button class="btn-p" onclick="saveHabitReminder('${h.id}',document.getElementById('hd-notif-time').value)">💾 Uložit</button>
       </div>
     </div>
+
+    <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn-s" style="flex:1;min-width:120px" onclick="archiveHabit('${h.id}')">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
+      <button class="btn-s" style="flex:1;min-width:120px;color:var(--red);border-color:var(--red)" onclick="deleteHabit('${h.id}')">🗑️ Smazat návyk</button>
+    </div>
   `;
 }
 
@@ -926,13 +931,14 @@ window.directInput=async(hid,date,curVal,goal)=>{
 };
 
 window.deleteHabit=async(id)=>{
-  if(!CU||!confirm('Smazat návyk a všechny záznamy?'))return;
+  if(!CU||!confirm('Smazat návyk a všechny záznamy? Tuto akci nelze vrátit.'))return;
   await deleteDoc(doc(db,'users',CU.uid,'habits',id));
   habits=habits.filter(h=>h.id!==id);
   const logsToDelete=habitLogs.filter(l=>l.habitId===id);
   for(const l of logsToDelete) await deleteDoc(doc(db,'users',CU.uid,'habitLogs',l.id));
   habitLogs=habitLogs.filter(l=>l.habitId!==id);
   renderHabits(); toast('Návyk smazán');
+  window.closeHabitDetail();
 };
 
 let _showArchived = false;
@@ -942,10 +948,13 @@ window.archiveHabit = async (id) => {
   const h = habits.find(h => h.id === id);
   if (!h) return;
   const isArchived = h.archived || false;
+  const msg = isArchived ? 'Obnovit tento návyk?' : 'Archivovat tento návyk? Můžeš ho kdykoliv obnovit.';
+  if (!confirm(msg)) return;
   await updateDoc(doc(db, 'users', CU.uid, 'habits', id), { archived: !isArchived });
   h.archived = !isArchived;
   toast(isArchived ? '✅ Návyk obnoven' : '📦 Návyk archivován');
   renderHabits();
+  if (!isArchived) window.closeHabitDetail();
 };
 
 window.toggleArchivedHabits = () => {
