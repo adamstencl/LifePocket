@@ -36,10 +36,12 @@ async function callClaude(messages, maxTokens = 500) {
   if (!claudeKey) {
     // Zkusit načíst klíč znovu (fallback pokud initApp fetch selhal)
     try {
+      console.log('[LP] claudeKey null, fetching from Firestore...');
       const ks = await getDoc(doc(db,'config','secrets'));
+      console.log('[LP] exists:', ks.exists(), '| data:', JSON.stringify(ks.data()));
       if (ks.exists() && ks.data().claudeKey) claudeKey = ks.data().claudeKey;
-    } catch(e) { console.warn('claudeKey fetch failed:', e); }
-    if (!claudeKey) return null;
+    } catch(e) { console.warn('[LP] claudeKey fetch failed:', e); }
+    if (!claudeKey) { console.log('[LP] claudeKey still null, giving up'); return null; }
   }
   // Claude API vyžaduje system prompt odděleně od messages
   const systemMsg = messages.find(m => m.role === 'system');
