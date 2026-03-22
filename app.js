@@ -15,13 +15,13 @@ const AVS=[
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
 const MODS=[
-  {id:'habits',emoji:'🎯',name:'Návyky',desc:'Sleduj denní rutiny'},
-  {id:'journal',emoji:'📝',name:'Zápisník',desc:'Piš si myšlenky'},
-  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Plánuj dny a události'},
-  {id:'goals',emoji:'🌟',name:'Cíle',desc:'Vize a dlouhodobé cíle'},
-  {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Recepty a jídelníček'},
-  {id:'shopping',emoji:'🛒',name:'Nákupy',desc:'Nákupní seznamy s AI'},
-  {id:'mealplan',emoji:'🍽️',name:'Jídelníček',desc:'Plán jídel na týden'},
+  {id:'habits',emoji:'🎯',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
+  {id:'journal',emoji:'📝',name:'Zápisník',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
+  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Události, narozeniny a Google Kalendář na jednom místě.'},
+  {id:'goals',emoji:'🌟',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
+  {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
+  {id:'shopping',emoji:'🛒',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
+  {id:'mealplan',emoji:'🍽️',name:'Jídelníček',desc:'Plánuj jídla na celý týden a sdílej jídelníček s rodinou.'},
 ];
 const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
 const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
@@ -2619,6 +2619,17 @@ window.copyFamilyCode = () => {
   navigator.clipboard.writeText(familyId).then(()=>toast('📋 Kód zkopírován!'));
 };
 
+window.shareFamilyCode = async () => {
+  if(!familyId) return;
+  const text = `Připoj se k naší rodině v LifePocket!\nKód skupiny: ${familyId}\nhttps://adamstencl.github.io/LifePocket/`;
+  if(navigator.share) {
+    try { await navigator.share({title:'LifePocket – rodinná skupina', text}); }
+    catch(e) { if(e.name!=='AbortError') toast('❌ Sdílení selhalo'); }
+  } else {
+    navigator.clipboard.writeText(familyId).then(()=>toast('📋 Kód zkopírován do schránky'));
+  }
+};
+
 window.saveFamilyPrefs = async () => {
   if(!familyId) return;
   const shareShop = document.getElementById('fshare-shop')?.checked ?? true;
@@ -5024,6 +5035,19 @@ window.sp = id => {
   if(id !== 'dashboard' && id !== 'settings') {
     setTimeout(() => showModuleHint(id), 500);
   }
+};
+
+// Kontaktní formulář
+window.sendContactMsg = () => {
+  const msg = document.getElementById('contact-msg')?.value?.trim();
+  if(!msg) { toast('⚠️ Napiš zprávu'); return; }
+  // TODO: nahradit e-mail nebo přidat Formspree endpoint
+  const email = 'stencladam@seznam.cz';
+  const subject = encodeURIComponent('LifePocket zpětná vazba');
+  const body = encodeURIComponent(msg);
+  window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+  document.getElementById('contact-msg').value = '';
+  toast('✓ Otevírám e-mailového klienta');
 };
 
 // Restart tour z nastavení
