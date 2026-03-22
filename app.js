@@ -563,6 +563,7 @@ window.openHabitDetail = (hid) => {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('p-habit-detail').classList.add('active');
   document.getElementById('abody').scrollTop = 0;
+  history.pushState({type:'screen',id:'p-habit-detail'}, '');
 };
 
 window.closeHabitDetail = () => {
@@ -1361,8 +1362,26 @@ window.delEvent=async(id)=>{
   toast('Smazáno');
 };
 
-function om(id){document.getElementById(id).classList.add('open');}
+function om(id){document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')}
 function cm(id){document.getElementById(id).classList.remove('open');}
+
+// ── Android back button (popstate) ──────────────────────────────────────
+window.addEventListener('popstate', () => {
+  // 1. Zavři otevřený modal
+  const openModal = document.querySelector('.moverlay.open, .modal-wrap.open');
+  if(openModal) { cm(openModal.id); return; }
+  // 2. Zavři habit detail
+  if(document.getElementById('p-habit-detail')?.classList.contains('active')) {
+    window.closeHabitDetail(); return;
+  }
+  // 3. Vrať se na dashboard pokud nejsme na root stránce
+  const activePage = document.querySelector('.page.active');
+  if(activePage && activePage.id !== 'p-dashboard') {
+    sp('dashboard'); return;
+  }
+  // 4. Nic neotevřeného — nenech browser odejít, pushni nový stav
+  history.pushState(null, '');
+});
 
 window.resetAndCloseEventModal = () => {
   const nameInp = document.getElementById('ev-name-inp');
@@ -3223,6 +3242,8 @@ window.hdNavMonth = (hid, dir) => {
 
 
 async function initApp(){
+  // Init history state pro Android back button
+  history.replaceState({type:'root'}, '');
   // Načti Claude API klíč z Firestore (config/secrets)
   try {
     const ks = await getDoc(doc(db,'config','secrets'));
