@@ -474,7 +474,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
   .add-habit-actions .btn-p{flex:1;min-width:120px}
   .habit-type-row{flex-wrap:wrap}
   .habit-day-nav{flex-wrap:wrap;gap:6px}
-  .habit-day-nav .habit-day-lbl{min-width:unset;font-size:14px}
+  .habit-day-nav .habit-day-lbl{min-width:55px;font-size:14px}
 
   /* ── NÁVYKY — detail / reminder ── */
   .hd-notif-row{flex-direction:column!important;align-items:stretch!important}
