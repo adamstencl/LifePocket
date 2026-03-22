@@ -2771,11 +2771,11 @@ function renderMealPlan() {
         const mealEmoji = ['🌅','☀️','🌙'][mi];
         return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
           <div style="font-size:11px;color:var(--text3);min-width:58px;font-weight:600">${mealEmoji} ${meal}</div>
-          <div onclick="openMealPicker('${dayKey}','${mealKey}','${day}','${meal}')"
-            style="flex:1;background:var(--card3,var(--bg));border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:${val?'var(--text)':'var(--text3)'};font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer;min-height:34px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s"
-            onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-            <span>${val || 'Klikni pro výběr…'}</span>
-            ${val ? `<span onclick="event.stopPropagation();saveMealPlanItem('${dayKey}','${mealKey}','')" style="color:var(--text3);font-size:12px;padding:2px 4px;border-radius:4px" title="Smazat">✕</span>` : '<span style="font-size:11px;color:var(--accent);opacity:.6">+</span>'}
+          <div ${canEdit?`onclick="openMealPicker('${dayKey}','${mealKey}','${day}','${meal}')"`:``}
+            style="flex:1;background:var(--card3,var(--bg));border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:${val?'var(--text)':'var(--text3)'};font-family:'Crimson Pro',serif;font-size:14px;cursor:${canEdit?'pointer':'default'};min-height:34px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s"
+            ${canEdit?`onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"`:``}>
+            <span>${val || (canEdit ? 'Klikni pro výběr…' : '—')}</span>
+            ${val && canEdit ? `<span onclick="event.stopPropagation();saveMealPlanItem('${dayKey}','${mealKey}','')" style="color:var(--text3);font-size:12px;padding:2px 4px;border-radius:4px" title="Smazat">✕</span>` : (canEdit && !val ? '<span style="font-size:11px;color:var(--accent);opacity:.6">+</span>' : '')}
           </div>
         </div>`;
       }).join('')}
@@ -2811,6 +2811,7 @@ window.generateMealPlanAI = async () => {
     // Uložit
     if(familyId && familyData?.shareMeal && mealViewMode === 'shared') {
       await setDoc(doc(db,'families',familyId,'mealplan','week'), plan);
+      renderMealPlan();
     } else {
       prof.mealPlan = plan;
       await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
