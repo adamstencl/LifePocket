@@ -3256,7 +3256,7 @@ function rDash(){
   const tg=h<12?'Dobré ráno':h<18?'Ahoj':'Dobrý večer';
   const dg=document.getElementById('d-greet'); if(dg) dg.innerHTML=`${tg}, <span style="color:var(--accent)">${prof.prezdivka||prof.nickname}</span>!`;
   const ddl=document.getElementById('d-date-lbl'); if(ddl) ddl.textContent=new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const up=document.getElementById('upill'); if(up) up.innerHTML=`<img src="${CU.photoURL||''}" style="width:24px;height:24px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"><span style="font-size:13px;color:var(--text2)">${CU.displayName?.split(' ')[0]||''}</span>`;
+  const up=document.getElementById('upill');if(up){const uName=prof.prezdivka||prof.nickname||CU.displayName?.split(' ')[0]||CU.email?.split('@')[0]||'';const uPhoto=CU.photoURL;up.innerHTML=uPhoto?`<img src="${uPhoto}" style="width:24px;height:24px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=\\'width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--tc);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center\\'>${uName.charAt(0).toUpperCase()}</div>'">`:`<div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--tc);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">${uName.charAt(0).toUpperCase()||'👤'}</div>`;up.innerHTML+=`<span style="font-size:13px;color:var(--text2)">${uName}</span>`;}
   const dem=document.getElementById('d-avem'); if(dem) dem.textContent=av.emoji;
   const dnm=document.getElementById('d-avnm'); if(dnm) dnm.textContent=av.name;
   // Dynamická Rex zpráva podle skutečného stavu
