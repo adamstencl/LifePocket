@@ -1,10 +1,10 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
-gp.addScope('https://www.googleapis.com/auth/calendar.readonly');
+gp.addScope('https://www.googleapis.com/auth/calendar.events');
 
 
 const AVS=[
@@ -1299,13 +1299,53 @@ window.saveEvent=async()=>{
   if(!date){toast('⚠️ Vyber datum');return;}
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString()};
   if(time) ev.time=time;
-  await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  const ref=await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  // Push to Google Calendar if connected
+  if(window._gcalToken){
+    try{
+      const gcalBody={summary:name,start:{},end:{}};
+      if(time){
+        gcalBody.start.dateTime=date+'T'+time+':00';
+        gcalBody.end.dateTime=date+'T'+time+':00';
+        gcalBody.start.timeZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+        gcalBody.end.timeZone=gcalBody.start.timeZone;
+      } else {
+        gcalBody.start.date=date;
+        gcalBody.end.date=date;
+      }
+      const gres=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+window._gcalToken,'Content-Type':'application/json'},
+        body:JSON.stringify(gcalBody)
+      });
+      if(gres.ok){
+        const gdata=await gres.json();
+        await updateDoc(ref,{gcalId:gdata.id});
+        toast('✓ Přidáno + synchronizováno s Google Kalendářem');
+      } else {
+        toast('✓ Událost přidána (Google sync selhal)');
+      }
+    }catch(e){
+      toast('✓ Událost přidána (Google sync selhal)');
+    }
+  } else {
+    toast('✓ Událost přidána');
+  }
   cm('m-event');
-  toast('✓ Událost přidána');
 };
 
 window.delEvent=async(id)=>{
   if(!CU||!confirm('Smazat událost?'))return;
+  // Also delete from Google Calendar if event has gcalId
+  try{
+    const snap=await getDoc(doc(db,'users',CU.uid,'events',id));
+    if(snap.exists()&&snap.data().gcalId&&window._gcalToken){
+      await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+snap.data().gcalId,{
+        method:'DELETE',
+        headers:{'Authorization':'Bearer '+window._gcalToken}
+      });
+    }
+  }catch(e){/* ignore gcal delete errors */}
   await deleteDoc(doc(db,'users',CU.uid,'events',id));
   toast('Smazáno');
 };
@@ -1352,6 +1392,69 @@ function resetLoginBtn(){
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Přihlásit se přes Google';
 }
 window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await signOut(auth);};
+
+// ── EMAIL / HESLO PŘIHLÁŠENÍ ──────────────────────────
+window.doEmailLogin=async()=>{
+  const email=document.getElementById('email-inp').value.trim();
+  const pass=document.getElementById('pass-inp').value;
+  const e=document.getElementById('login-err');
+  const b=document.getElementById('email-login-btn');
+  e.classList.remove('show');
+  if(!email||!pass){e.textContent='Vyplň email a heslo';e.classList.add('show');return;}
+  b.disabled=true;b.textContent='Přihlašuji…';
+  try{
+    await signInWithEmailAndPassword(auth,email,pass);
+  }catch(ex){
+    b.disabled=false;b.textContent='Přihlásit se';
+    const msgs={'auth/invalid-credential':'Špatný email nebo heslo','auth/user-not-found':'Účet neexistuje','auth/wrong-password':'Špatné heslo','auth/invalid-email':'Neplatný email'};
+    e.textContent=msgs[ex.code]||'Chyba: '+ex.message;
+    e.classList.add('show');
+  }
+};
+
+window.doEmailRegister=async()=>{
+  const email=document.getElementById('email-inp').value.trim();
+  const pass=document.getElementById('pass-inp').value;
+  const e=document.getElementById('login-err');
+  const b=document.getElementById('email-login-btn');
+  e.classList.remove('show');
+  if(!email||!pass){e.textContent='Vyplň email a heslo';e.classList.add('show');return;}
+  if(pass.length<6){e.textContent='Heslo musí mít alespoň 6 znaků';e.classList.add('show');return;}
+  b.disabled=true;b.textContent='Registruji…';
+  try{
+    await createUserWithEmailAndPassword(auth,email,pass);
+  }catch(ex){
+    b.disabled=false;b.textContent='Registrovat';
+    const msgs={'auth/email-already-in-use':'Email je už registrovaný','auth/invalid-email':'Neplatný email','auth/weak-password':'Heslo je příliš slabé'};
+    e.textContent=msgs[ex.code]||'Chyba: '+ex.message;
+    e.classList.add('show');
+  }
+};
+
+window.doPasswordReset=async()=>{
+  const email=document.getElementById('email-inp').value.trim();
+  const e=document.getElementById('login-err');
+  if(!email){e.textContent='Zadej email pro reset hesla';e.classList.add('show');return;}
+  try{
+    await sendPasswordResetEmail(auth,email);
+    e.textContent='✅ Email pro reset hesla odeslán!';
+    e.style.color='var(--green)';
+    e.classList.add('show');
+    setTimeout(()=>{e.classList.remove('show');e.style.color='';},4000);
+  }catch(ex){
+    e.textContent='Chyba: '+ex.message;e.classList.add('show');
+  }
+};
+
+window.toggleLoginMode=(mode)=>{
+  const isReg=mode==='register';
+  document.getElementById('email-login-btn').textContent=isReg?'Registrovat':'Přihlásit se';
+  document.getElementById('email-login-btn').onclick=isReg?window.doEmailRegister:window.doEmailLogin;
+  document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
+  document.getElementById('login-toggle-login').style.display=isReg?'block':'none';
+  document.getElementById('login-forgot').style.display=isReg?'none':'block';
+  document.getElementById('login-err').classList.remove('show');
+};
 
 let selAddr='jmeno';
 window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m');document.getElementById('gf').classList.toggle('sel',g==='f');v1();};
