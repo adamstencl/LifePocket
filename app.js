@@ -33,7 +33,14 @@ let claudeKey = null; // načítá se z Firestore config/secrets
 
 // ── CLAUDE API HELPER ──────────────────────────────────
 async function callClaude(messages, maxTokens = 500) {
-  if (!claudeKey) return null;
+  if (!claudeKey) {
+    // Zkusit načíst klíč znovu (fallback pokud initApp fetch selhal)
+    try {
+      const ks = await getDoc(doc(db,'config','secrets'));
+      if (ks.exists() && ks.data().claudeKey) claudeKey = ks.data().claudeKey;
+    } catch(e) { console.warn('claudeKey fetch failed:', e); }
+    if (!claudeKey) return null;
+  }
   // Claude API vyžaduje system prompt odděleně od messages
   const systemMsg = messages.find(m => m.role === 'system');
   const userMsgs = messages.filter(m => m.role !== 'system');
@@ -3264,6 +3271,7 @@ async function initApp(){
       claudeKey = localStorage.getItem('lp_claude_key') || null;
     }
   } catch(e) {
+    console.error('initApp: claudeKey fetch error:', e);
     claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
   loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
