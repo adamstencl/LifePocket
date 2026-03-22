@@ -1302,15 +1302,22 @@ window.saveEvent=async()=>{
   // Push to Google Calendar if connected
   if(window._gcalToken){
     try{
+      const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
       const gcalBody={summary:name,start:{},end:{}};
+      if(repeat==='yes') gcalBody.recurrence=['RRULE:FREQ=YEARLY'];
       if(time){
-        gcalBody.start.dateTime=date+'T'+time+':00';
-        gcalBody.end.dateTime=date+'T'+time+':00';
-        gcalBody.start.timeZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
-        gcalBody.end.timeZone=gcalBody.start.timeZone;
+        gcalBody.start={dateTime:date+'T'+time+':00',timeZone:tz};
+        // end = start + 1 hour
+        const endDt=new Date(date+'T'+time+':00');
+        endDt.setHours(endDt.getHours()+1);
+        const endStr=endDt.toISOString().slice(0,16);
+        gcalBody.end={dateTime:endStr+':00',timeZone:tz};
       } else {
-        gcalBody.start.date=date;
-        gcalBody.end.date=date;
+        gcalBody.start={date};
+        // all-day: end must be next day
+        const nextDay=new Date(date+'T12:00:00');
+        nextDay.setDate(nextDay.getDate()+1);
+        gcalBody.end={date:nextDay.toISOString().slice(0,10)};
       }
       const gres=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{
         method:'POST',
@@ -1320,7 +1327,10 @@ window.saveEvent=async()=>{
       if(gres.ok){
         const gdata=await gres.json();
         await updateDoc(ref,{gcalId:gdata.id});
-        toast('✓ Přidáno + synchronizováno s Google Kalendářem');
+        toast('✓ Přidáno + synchronizováno s Google Kalendářem 📅');
+      } else if(gres.status===401){
+        window._gcalToken=null; localStorage.removeItem('gcal_token');
+        toast('✓ Událost přidána (Google: přihlas se znovu)');
       } else {
         toast('✓ Událost přidána (Google sync selhal)');
       }
@@ -1338,11 +1348,13 @@ window.delEvent=async(id)=>{
   // Also delete from Google Calendar if event has gcalId
   try{
     const snap=await getDoc(doc(db,'users',CU.uid,'events',id));
-    if(snap.exists()&&snap.data().gcalId&&window._gcalToken){
-      await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+snap.data().gcalId,{
+    const gcalId=snap.exists()&&snap.data().gcalId;
+    if(gcalId&&window._gcalToken){
+      const dres=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+gcalId,{
         method:'DELETE',
         headers:{'Authorization':'Bearer '+window._gcalToken}
       });
+      if(dres.status===401){window._gcalToken=null;localStorage.removeItem('gcal_token');}
     }
   }catch(e){/* ignore gcal delete errors */}
   await deleteDoc(doc(db,'users',CU.uid,'events',id));
