@@ -38,8 +38,10 @@ async function callClaude(messages, maxTokens = 500) {
     try {
       console.log('[LP] claudeKey null, fetching from Firestore...');
       const ks = await getDoc(doc(db,'config','secrets'));
-      console.log('[LP] exists:', ks.exists(), '| data:', JSON.stringify(ks.data()));
-      if (ks.exists() && ks.data().claudeKey) claudeKey = ks.data().claudeKey;
+      const d = ks.data();
+      const k = d ? d['claudeKey'] : null;
+      console.log('[LP] exists:', ks.exists(), '| k type:', typeof k, '| k truthy:', !!k, '| k start:', String(k).substring(0,15));
+      if (k) { claudeKey = k; console.log('[LP] claudeKey SET OK, starts:', claudeKey.substring(0,10)); }
     } catch(e) { console.warn('[LP] claudeKey fetch failed:', e); }
     if (!claudeKey) { console.log('[LP] claudeKey still null, giving up'); return null; }
   }
