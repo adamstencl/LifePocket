@@ -1,6 +1,11 @@
 // LifePocket Service Worker
 const CACHE = 'lifepocket-v2';
-const OFFLINE_URLS = ['/LifePocket/', '/LifePocket/index.html'];
+const OFFLINE_URLS = [
+  '/LifePocket/',
+  '/LifePocket/index.html',
+  '/LifePocket/app.js',
+  '/LifePocket/style.css'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS)));

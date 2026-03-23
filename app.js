@@ -29,6 +29,7 @@ const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
 let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
+let customReminders = [];
 let claudeKey = null; // načítá se z Firestore config/secrets
 
 // ── CLAUDE API HELPER ──────────────────────────────────
@@ -89,7 +90,8 @@ onAuthStateChanged(auth,async u=>{
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
-function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
+function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
 
 
 // ── JOURNAL ───────────────────────────────────────────
@@ -128,7 +130,7 @@ function renderEntryList(filter=''){
   list.innerHTML=filtered.map(e=>{
     const d=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short',year:'numeric'}):'?';
     const preview=(e.text||'').slice(0,50);
-    return `<div class="j-item ${e.id===curEntryId?'active':''}" onclick="openEntry('${e.id}')">
+    return `<div class="j-item ${e.id===curEntryId?'active':''}" onclick="openEntry('${esc(e.id)}')">
       <div class="j-item-date">${d}</div>
       <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}</div>
       ${preview?`<div class="j-item-preview">${preview}…</div>`:''}
@@ -439,7 +441,7 @@ function buildHabitCard(h){
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3);font-size:9px">${d.getDate()}.${d.getMonth()+1}</span></th>`;
-    tdHtml+=`<td><div class="${cls}" onclick="${h.type==='count'?`directInput('${h.id}','${ds}',${l?l.value:0},${goal})`:`toggleHabitDay('${h.id}','${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
+    tdHtml+=`<td><div class="${cls}" onclick="${h.type==='count'?`directInput('${esc(h.id)}','${ds}',${l?l.value:0},${goal})`:`toggleHabitDay('${esc(h.id)}','${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
   }
 
   let controlHtml='';
@@ -447,19 +449,19 @@ function buildHabitCard(h){
     const pct=Math.min(Math.round(val/goal*100),100);
     controlHtml=`
       <div class="habit-counter">
-        <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',-1,${goal})">−</button>
-        <div onclick="directInput('${h.id}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+        <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
+        <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
           <div class="cnt-val cnt-clickable">${val}</div>
           <div class="cnt-goal">/ ${goal} ✎</div>
         </div>
-        <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',1,${goal})">+</button>
+        <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
       </div>
       <div class="habit-progress" style="margin-top:8px">
         <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
         <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
       </div>`;
   } else {
-    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${h.id}','${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
+    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
   }
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
@@ -469,24 +471,24 @@ function buildHabitCard(h){
 
   return `<div class="habit-card${cardDone?' done':''}">
     <div class="habit-card-top">
-      <div class="habit-emoji" onclick="openHabitDetail('${h.id}')" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
-      <div class="habit-info" onclick="openHabitDetail('${h.id}')" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
+      <div class="habit-emoji" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
+      <div class="habit-info" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
         <div class="habit-name">${h.name}</div>
         <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${h.reminderTime}</span>` : ''}</div>
       </div>
       ${badgeHtml}
       ${h.type==='count'
         ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-            <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',-1,${goal})">−</button>
-            <div onclick="directInput('${h.id}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+            <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
+            <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
               <div class="cnt-val cnt-clickable">${val}</div>
               <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
             </div>
-            <button class="cnt-btn" onclick="adjustHabit('${h.id}','${habitDay}',1,${goal})">+</button>
+            <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
           </div>`
-        : `<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${h.id}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`
+        : `<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`
       }
-      <button class="habit-del" onclick="deleteHabit('${h.id}')">🗑️</button>
+      <button class="habit-del" onclick="deleteHabit('${esc(h.id)}')">🗑️</button>
     </div>
     <table class="habit-table" style="margin-top:10px"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>
   </div>`;
@@ -538,7 +540,7 @@ function renderHabits(){
     const isOpen=openGroups.has(g.id);
 
     html+=`<div class="habit-group" data-group="${g.id}">
-      <div class="habit-group-header" onclick="toggleHabitGroup('${g.id}')">
+      <div class="habit-group-header" onclick="toggleHabitGroup('${esc(g.id)}')">
         <div class="habit-group-left">
           <span class="habit-group-emoji">${g.emoji}</span>
           <span class="habit-group-title">${g.label}</span>
@@ -684,9 +686,9 @@ function renderHabitDetail(h) {
 
   const monthsHtml = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <button onclick="hdNavMonth('${h.id}',-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">‹</button>
+      <button onclick="hdNavMonth('${esc(h.id)}',-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">‹</button>
       <div style="font-family:'Playfair Display',serif;font-size:15px;color:var(--accent);font-weight:700">${mLabel}</div>
-      <button onclick="hdNavMonth('${h.id}',1)" ${isCurrentMonth?'disabled style="opacity:.3;cursor:default"':''} style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">›</button>
+      <button onclick="hdNavMonth('${esc(h.id)}',1)" ${isCurrentMonth?'disabled style="opacity:.3;cursor:default"':''} style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">›</button>
     </div>
     <div class="hd-month-grid">
       ${dayNamesRow}
@@ -735,15 +737,15 @@ function renderHabitDetail(h) {
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
-        ${h.reminderTime ? `<button class="btn-s" onclick="saveHabitReminder('${h.id}',null)">🔕 Vypnout</button>` : ''}
-        <button class="btn-p" onclick="saveHabitReminder('${h.id}',document.getElementById('hd-notif-time').value)">💾 Uložit</button>
+        ${h.reminderTime ? `<button class="btn-s" onclick="saveHabitReminder('${esc(h.id)}',null)">🔕 Vypnout</button>` : ''}
+        <button class="btn-p" onclick="saveHabitReminder('${esc(h.id)}',document.getElementById('hd-notif-time').value)">💾 Uložit</button>
       </div>
     </div>
 
     <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn-s" style="flex:1;min-width:120px" onclick="archiveHabit('${h.id}')">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
-      <button class="btn-s" style="flex:1;min-width:120px;color:var(--red);border-color:var(--red)" onclick="deleteHabit('${h.id}')">🗑️ Smazat návyk</button>
+      <button class="btn-s" style="flex:1;min-width:120px" onclick="archiveHabit('${esc(h.id)}')">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
+      <button class="btn-s" style="flex:1;min-width:120px;color:var(--red);border-color:var(--red)" onclick="deleteHabit('${esc(h.id)}')">🗑️ Smazat návyk</button>
     </div>
   `;
 }
@@ -1021,8 +1023,8 @@ function renderArchivedHabits() {
         <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${h.name}</div>
         <div style="font-size:12px;color:var(--text3)">${h.group||'den'} · ${h.freq||'každý den'}</div>
       </div>
-      <button onclick="archiveHabit('${h.id}')" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
-      <button onclick="deleteHabit('${h.id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
+      <button onclick="archiveHabit('${esc(h.id)}')" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
+      <button onclick="deleteHabit('${esc(h.id)}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
     </div>`).join('');
 }
 
@@ -1213,7 +1215,7 @@ function renderEvList(){
         <div class="ev-name">${esc(ev.name)}${ev.source==='google'?'<span class="gcal-badge">Google</span>':''}${ev.shared?'<span class="gcal-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
         <div class="ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
-      ${ev.source!=='google'&&!ev.shared?`<button class="ev-del" onclick="delEvent('${ev.id}')">🗑️</button>`:''}
+      ${ev.source!=='google'&&!ev.shared?`<button class="ev-del" onclick="delEvent('${esc(ev.id)}')">🗑️</button>`:''}
     </div>`).join('');
 }
 
@@ -1251,7 +1253,7 @@ function showDayEventsModal(ds, dayEvs) {
         <div style="font-weight:600;color:var(--text1)">${ev.name}</div>
         <div style="font-size:12px;color:var(--text3)">${EV_LABELS[ev.type]||'Událost'}${ev.time?' · ⏰ '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
-      <button onclick="delEvent('${ev.id}');document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>
+      <button onclick="delEvent('${esc(ev.id)}');document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>
     </div>`).join('');
   const modal = document.createElement('div');
   modal.className='moverlay open';
@@ -1500,7 +1502,7 @@ window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();const prez=selAddr==='prezdivka'?document.getElementById('u-prezdivka').value.trim():true;document.getElementById('btn-s1').disabled=!(nick&&selG&&prez);};
 window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;prof.addrMode=selAddr;prof.prezdivka=selAddr==='prezdivka'?document.getElementById('u-prezdivka').value.trim():prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
-function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" onclick="${isC?'sTmpAv':'selAv2'}('${a.id}')"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
+function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" onclick="${isC?'sTmpAv':'selAv2'}('${esc(a.id)}')"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{prof.avatarId=selAv;selMods=new Set(AVMODS[selAv]||[]);rMods();ss('s-step3');};
@@ -1510,7 +1512,7 @@ function rMods(){
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
 }
-function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${m.id}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
+function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
 window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
@@ -1545,7 +1547,7 @@ function rAvPage(){
   // av-msg already updated above
   if(el_cwem)el_cwem.textContent=av.emoji;
   if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
-  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${m.emoji}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
+  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${esc(m.emoji)}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
 }
 
 // ── ZDRAVÍ MODUL ──────────────────────────────────────
@@ -1951,7 +1953,7 @@ function scheduleAllNotifications() {
 function scheduleDaily(hour, minute, callback) {
   // Ulož plánované časy do localStorage — při probuzení appky zkontrolujeme
   const key = `lp_sched_${hour}_${minute}`;
-  const existing = JSON.parse(localStorage.getItem(key) || '{}');
+  const existing = lsGet(key, {});
   const today = new Date().toISOString().slice(0,10);
   existing.hour = hour; existing.minute = minute; existing.lastRun = existing.lastRun || '';
   localStorage.setItem(key, JSON.stringify(existing));
@@ -1963,7 +1965,7 @@ function scheduleDaily(hour, minute, callback) {
   const ms = target - now;
 
   const fire = () => {
-    const stored = JSON.parse(localStorage.getItem(key) || '{}');
+    const stored = lsGet(key, {});
     const todayStr = new Date().toISOString().slice(0,10);
     if (stored.lastRun === todayStr) return; // už dnes proběhl
     stored.lastRun = todayStr;
@@ -1971,7 +1973,7 @@ function scheduleDaily(hour, minute, callback) {
     callback();
     // Naplánuj na zítřek
     const daily = setInterval(() => {
-      const s2 = JSON.parse(localStorage.getItem(key) || '{}');
+      const s2 = lsGet(key, {});
       const t2 = new Date().toISOString().slice(0,10);
       if (s2.lastRun === t2) return;
       s2.lastRun = t2;
@@ -1995,7 +1997,7 @@ function checkMissedNotifications() {
   if (notifSettings.morningDigest) {
     const [mh, mm] = notifSettings.morning.split(':').map(Number);
     const key = `lp_sched_${mh}_${mm}`;
-    const stored = JSON.parse(localStorage.getItem(key) || '{}');
+    const stored = lsGet(key, {});
     const today = now.toISOString().slice(0,10);
     if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm))) {
       stored.lastRun = today;
@@ -2007,7 +2009,7 @@ function checkMissedNotifications() {
   if (notifSettings.eveningDigest) {
     const [eh, em] = notifSettings.evening.split(':').map(Number);
     const key = `lp_sched_${eh}_${em}`;
-    const stored = JSON.parse(localStorage.getItem(key) || '{}');
+    const stored = lsGet(key, {});
     const today = now.toISOString().slice(0,10);
     if (stored.lastRun !== today && (h > eh || (h === eh && m >= em))) {
       stored.lastRun = today;
@@ -2351,9 +2353,9 @@ function checkAutoWeeklyReport() {
   const now = new Date();
   if(now.getDay() !== 0) return; // jen v neděli
   if(now.getHours() < 18) return; // jen od 18:00
-  const stored = localStorage.getItem('lp_weekly_report');
+  const stored = lsGet('lp_weekly_report', null);
   if(stored) {
-    const {date} = JSON.parse(stored);
+    const {date} = stored;
     const reportDate = new Date(date).toISOString().slice(0,10);
     const todayStr = now.toISOString().slice(0,10);
     if(reportDate === todayStr) return; // už byl dnes
@@ -2891,7 +2893,7 @@ window.renderKcalToday = async () => {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
       ${l.name}
       <span style="font-size:11px;color:var(--accent);font-weight:600">${l.kcal} kcal</span>
-      <span onclick="deleteFoodLog('${l.id}')" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
+      <span onclick="deleteFoodLog('${esc(l.id)}')" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
     </div>`).join('');
 
   sec.innerHTML = `
@@ -3288,13 +3290,13 @@ function buildNav(){
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
   const all=[...fixed,...uMods,{id:'settings',emoji:'⚙️',label:'Nastavení'}];
-  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${p.id}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
+  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${p.id}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
-  const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${p.id}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${esc(p.id)}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
+  const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${esc(p.id)}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
 }
 
 window.togBnMore=()=>{
@@ -3672,7 +3674,7 @@ function rGoals(){
   const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
   c.innerHTML=goals.map(g=>{
     const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
-    return`<div class="gcard"><div class="ghdr" onclick="togSubs('${g.id}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${g.name}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${g.id}')">✏️</button><button class="btn-xs" onclick="delG('${g.id}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${g.id}','${s.id}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${s.name}</div><button class="btn-xs" onclick="delSub('${g.id}','${s.id}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${g.id}')"><button class="btn-ads" onclick="addSub('${g.id}')">+ Přidat</button></div></div></div>`;
+    return`<div class="gcard"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${g.name}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${s.name}</div><button class="btn-xs" onclick="delSub('${esc(g.id)}','${esc(s.id)}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${esc(g.id)}')"><button class="btn-ads" onclick="addSub('${esc(g.id)}')">+ Přidat</button></div></div></div>`;
   }).join('');
 }
 
@@ -4055,11 +4057,11 @@ function renderShop(){
       ${hintHtml}
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
-          <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${i.id}',${i.done})">${i.done?'✓':''}</div>
+          <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${esc(i.id)}',${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${i.name}</span>
           ${i.qty?`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},${JSON.stringify(i.qty||'')},this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},'',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
-          <button class="shop-item-del" onclick="delShopItem('${i.id}')">×</button>
+          <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
         </div>`).join('')}
     </div>`;
   }).join('');
@@ -4390,17 +4392,17 @@ function renderSavedRecipes(){
     return;
   }
   list.innerHTML=savedRecipes.map(r=>`
-    <div class="saved-recipe-card" onclick="openSavedRecipe('${r.id}')">
+    <div class="saved-recipe-card" onclick="openSavedRecipe('${esc(r.id)}')">
       <div class="saved-recipe-top">
         <div style="font-size:24px">🍽️</div>
         <div style="flex:1">
           <div class="saved-recipe-name">${r.name}</div>
           <div class="saved-recipe-meta">⏱ ${r.time||'?'} · 👨‍🍳 ${r.difficulty||'?'} · 🍽 ${r.portions||2} porcí · Uloženo ${new Date(r.savedAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
         </div>
-        <button onclick="deleteSavedRecipe('${r.id}',event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
+        <button onclick="deleteSavedRecipe('${esc(r.id)}',event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
       </div>
       <div class="saved-recipe-actions">
-        <button onclick="openSavedRecipe('${r.id}')" style="background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.25);border-radius:8px;padding:5px 12px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">📖 Otevřít recept</button>
+        <button onclick="openSavedRecipe('${esc(r.id)}')" style="background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.25);border-radius:8px;padding:5px 12px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">📖 Otevřít recept</button>
       </div>
     </div>`).join('');
 }
@@ -4568,7 +4570,7 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
         <div style="font-size:13px;color:var(--text);font-weight:600">Rex navrhuje: ${result.mood}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:1px">${result.reason}</div>
       </div>
-      <button onclick="acceptMood('${result.mood}')"
+      <button onclick="acceptMood('${esc(result.mood)}')"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
         ✓ Použít
       </button>

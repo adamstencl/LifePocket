@@ -1,0 +1,22 @@
+{
+  "name": "LifePocket",
+  "short_name": "LifePocket",
+  "description": "Osobní tracker pro celou rodinu",
+  "start_url": "/LifePocket/",
+  "scope": "/LifePocket/",
+  "display": "standalone",
+  "background_color": "#fdf8f0",
+  "theme_color": "#c8a96e",
+  "icons": [
+    {
+      "src": "/LifePocket/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/LifePocket/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
