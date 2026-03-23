@@ -439,23 +439,25 @@
 
       <!-- AI prompt -->
       <div class="cook-prompt-wrap">
-        <div class="cook-prompt-label">Co chceš vařit? Řekni mi jídlo nebo téma:</div>
-        <div class="cook-inp-row">
-          <input class="cook-inp" type="text" id="cook-inp" placeholder="Svíčková, rychlá večeře pro 2, zdravý oběd…" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
-          <button class="btn-p" style="width:auto;padding:10px 20px" onclick="askRecipe()">🍳 Navrhnout</button>
-        </div>
-        <div class="cook-options-row">
-          <span style="font-size:13px;color:var(--text3)">Počet porcí:</span>
-          <button class="cook-opt-btn" data-p="1" onclick="setPortions(1,this)">1</button>
-          <button class="cook-opt-btn active" data-p="2" onclick="setPortions(2,this)">2</button>
-          <button class="cook-opt-btn" data-p="3" onclick="setPortions(3,this)">3</button>
-          <button class="cook-opt-btn" data-p="4" onclick="setPortions(4,this)">4</button>
-          <button class="cook-opt-btn" data-p="6" onclick="setPortions(6,this)">6</button>
-          <span style="font-size:13px;color:var(--text3);margin-left:10px">Typ:</span>
-          <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>
-          <button class="cook-opt-btn" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)">⚡ Rychlé</button>
-          <button class="cook-opt-btn" data-t="healthy" onclick="setCookType(&#39;healthy&#39;,this)">🥗 Zdravé</button>
-          <button class="cook-opt-btn" data-t="cheap" onclick="setCookType(&#39;cheap&#39;,this)">💰 Levné</button>
+        <div class="cook-input-card">
+          <div class="cook-top-row">
+            <input class="cook-what-input" type="text" id="cook-inp" placeholder="Co chceš vařit? Řekni mi jídlo nebo téma:" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
+            <button class="btn-cook-gen" onclick="askRecipe()">🔮 Navrhnout</button>
+          </div>
+          <div class="cook-filters">
+            <span class="cook-filter-label">Porce:</span>
+            <button class="cook-opt-btn" data-p="1" onclick="setPortions(1,this)">1</button>
+            <button class="cook-opt-btn active" data-p="2" onclick="setPortions(2,this)">2</button>
+            <button class="cook-opt-btn" data-p="3" onclick="setPortions(3,this)">3</button>
+            <button class="cook-opt-btn" data-p="4" onclick="setPortions(4,this)">4</button>
+            <button class="cook-opt-btn" data-p="6" onclick="setPortions(6,this)">6</button>
+            <span class="cook-filter-sep"></span>
+            <span class="cook-filter-label">Typ:</span>
+            <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>
+            <button class="cook-opt-btn" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)">⚡ Rychlé</button>
+            <button class="cook-opt-btn" data-t="healthy" onclick="setCookType(&#39;healthy&#39;,this)">🥗 Zdravé</button>
+            <button class="cook-opt-btn" data-t="cheap" onclick="setCookType(&#39;cheap&#39;,this)">💰 Levné</button>
+          </div>
         </div>
       </div>
 
@@ -842,12 +844,22 @@
           </div>
         </div>
 
-                <div class="setsec-t" style="margin-top:20px">✉️ Kontakt &amp; zpětná vazba</div>
-        <div class="setsec-d">Narazil jsi na chybu nebo máš nápad na vylepšení? Napiš mi.</div>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-          <input id="contact-email" type="email" placeholder="Tvůj e-mail (volitelné)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;width:100%;box-sizing:border-box">
-          <textarea id="contact-msg" rows="3" placeholder="Tvoje zpráva…" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;resize:none;width:100%;box-sizing:border-box"></textarea>
-          <button class="btn-sv" onclick="sendContactMsg()" style="width:100%">📨 Odeslat zprávu</button>
+                <div class="setsec-t" style="margin-top:20px">📬 Napište nám</div>
+        <div class="setsec-d">Máte dotaz, nápad nebo narazili jste na chybu? Napište nám!</div>
+        <div style="margin-top:10px">
+          <form class="contact-form" action="https://formspree.io/f/xlgpyjaa" method="POST" onsubmit="handleContactSubmit(event)">
+            <input type="hidden" name="_replyto" value="">
+            <div class="cf-field">
+              <label class="cf-label">Váš e-mail</label>
+              <input type="email" name="email" class="cf-input" placeholder="vas@email.cz" required>
+            </div>
+            <div class="cf-field">
+              <label class="cf-label">Zpráva</label>
+              <textarea name="message" class="cf-textarea" placeholder="Váš dotaz nebo nápad..." rows="4" required></textarea>
+            </div>
+            <button type="submit" class="cf-submit">📤 Odeslat zprávu</button>
+          </form>
+          <div id="contact-success" class="cf-success" style="display:none">✅ Zpráva odeslána! Ozveme se brzy.</div>
         </div>
 
                 <div class="setsec-t" style="margin-top:20px">🗺️ Průvodce</div>

@@ -376,6 +376,15 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .btn-send{background:linear-gradient(135deg,var(--accent),#e8a830);color:#1a1a1a;border:none;border-radius:50%;width:40px;height:40px;font-size:16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 10px rgba(245,200,66,.35)}
 .btn-send:hover{transform:scale(1.08);box-shadow:0 4px 16px rgba(245,200,66,.5)}.btn-send:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
 
+/* CONTACT FORM */
+.contact-form{}
+.cf-field{margin-bottom:14px}
+.cf-label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:5px}
+.cf-input,.cf-textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--bg2);color:var(--text);resize:vertical;box-sizing:border-box;outline:none;transition:border-color .2s}
+.cf-input:focus,.cf-textarea:focus{border-color:var(--accent)}
+.cf-submit{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;width:100%}
+.cf-success{background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:14px;text-align:center;font-weight:600;margin-top:10px}
+
 /* SETTINGS */
 .setsec{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:14px}
 .setsec-t{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:4px}
@@ -481,6 +490,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .hd-notif-row{flex-direction:column!important;align-items:stretch!important}
   .hd-notif-btns{flex-direction:row;flex-wrap:wrap;gap:8px;margin-top:8px}
   .hd-notif-btns .btn-s,.hd-notif-btns .btn-p{flex:1;min-width:100px;text-align:center;justify-content:center}
+  .reminder-modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
   /* ── VAŘENÍ ── */
   .cook-inp-row{flex-direction:column;gap:8px}
@@ -750,6 +760,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .htd-val{font-size:11px;color:var(--text3);display:block;margin-top:1px}
 
 /* Habit detail page */
+.reminder-modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 .hd-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px}
 .hd-stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center}
 .hd-stat-num{font-family:'Playfair Display',serif;font-size:28px;color:var(--accent);line-height:1}
@@ -841,6 +852,14 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 /* COOKING */
 .cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
 .cook-prompt-label{font-size:14px;color:var(--text2);margin-bottom:10px;font-weight:600}
+.cook-input-card{}
+.cook-top-row{display:flex;gap:8px;margin-bottom:10px}
+.cook-what-input{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:15px;background:var(--bg2);color:var(--text);outline:none;transition:border-color .2s}
+.cook-what-input:focus{border-color:var(--accent)}
+.btn-cook-gen{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.cook-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cook-filter-label{font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.cook-filter-sep{width:1px;height:16px;background:var(--border);margin:0 2px}
 .cook-inp-row{display:flex;gap:8px;margin-bottom:12px}
 .cook-inp{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;transition:border-color .2s}
 .cook-inp:focus{border-color:var(--accent)}

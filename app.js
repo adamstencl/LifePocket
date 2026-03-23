@@ -4183,6 +4183,7 @@ window.askRecipe=async()=>{
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
   document.getElementById('cook-loading').style.display='block';
+  document.getElementById('cook-loading')?.scrollIntoView({behavior:'smooth', block:'center'});
 
   const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
     cookType==='healthy'?'Recept musí být zdravý a výživný.':
@@ -5074,6 +5075,34 @@ window.sendContactMsg = async () => {
     toast('❌ Chyba: ' + e.message);
   } finally {
     if(btn) { btn.disabled = false; btn.textContent = '📨 Odeslat zprávu'; }
+  }
+};
+
+window.handleContactSubmit = async function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn = form.querySelector('.cf-submit');
+  btn.disabled = true;
+  btn.textContent = '⏳ Odesílám...';
+  try {
+    const res = await fetch('https://formspree.io/f/xlgpyjaa', {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      form.style.display = 'none';
+      const successEl = document.getElementById('contact-success');
+      if (successEl) successEl.style.display = 'block';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '📤 Odeslat zprávu';
+      toast('❌ Chyba při odesílání. Zkus to znovu.');
+    }
+  } catch(err) {
+    btn.disabled = false;
+    btn.textContent = '📤 Odeslat zprávu';
+    toast('❌ Chyba při odesílání.');
   }
 };
 
