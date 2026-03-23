@@ -441,18 +441,10 @@
       <div class="cook-prompt-wrap">
         <div class="cook-input-card">
           <div class="cook-top-row">
-            <input class="cook-what-input" type="text" id="cook-inp" placeholder="Co chceš vařit? Řekni mi jídlo nebo téma:" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
+            <input class="cook-what-input" type="text" id="cook-inp" placeholder="Co chceš vařit?" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
             <button class="btn-cook-gen" onclick="askRecipe()">🔮 Navrhnout</button>
           </div>
-          <div class="cook-filters">
-            <span class="cook-filter-label">Porce:</span>
-            <button class="cook-opt-btn" data-p="1" onclick="setPortions(1,this)">1</button>
-            <button class="cook-opt-btn active" data-p="2" onclick="setPortions(2,this)">2</button>
-            <button class="cook-opt-btn" data-p="3" onclick="setPortions(3,this)">3</button>
-            <button class="cook-opt-btn" data-p="4" onclick="setPortions(4,this)">4</button>
-            <button class="cook-opt-btn" data-p="6" onclick="setPortions(6,this)">6</button>
-            <span class="cook-filter-sep"></span>
-            <span class="cook-filter-label">Typ:</span>
+          <div class="cook-type-grid">
             <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>
             <button class="cook-opt-btn" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)">⚡ Rychlé</button>
             <button class="cook-opt-btn" data-t="healthy" onclick="setCookType(&#39;healthy&#39;,this)">🥗 Zdravé</button>
@@ -496,18 +488,18 @@
         <div id="planned-meals-list"></div>
       </div>
 
+      <!-- Cook loading -->
+      <div id="cook-loading" style="display:none;text-align:center;padding:30px;color:var(--text2)">
+        <div style="font-size:32px;animation:pb 1s ease-in-out infinite">🍳</div>
+        <div style="margin-top:10px;font-style:italic">Rex vaří recept…</div>
+      </div>
+
       <!-- Saved recipes -->
       <div id="saved-recipes-section" style="margin-top:24px">
         <div class="gh" style="margin-bottom:10px">
           <div class="sec-lbl" style="margin:0">🔖 Uložené recepty</div>
         </div>
         <div id="saved-recipes-list"></div>
-      </div>
-
-      <!-- Cook loading -->
-      <div id="cook-loading" style="display:none;text-align:center;padding:30px;color:var(--text2)">
-        <div style="font-size:32px;animation:pb 1s ease-in-out infinite">🍳</div>
-        <div style="margin-top:10px;font-style:italic">Rex vaří recept…</div>
       </div>
     </div>
 
