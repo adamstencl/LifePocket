@@ -3408,7 +3408,7 @@ window.closeBnMore=()=>{
 };
 document.addEventListener('click',e=>{
   const panel=document.getElementById('bn-more-panel');
-  if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&e.target.id!=='bn-more')
+  if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&!e.target.closest('#bn-more'))
     panel.classList.remove('open');
 });
 
