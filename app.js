@@ -3427,6 +3427,7 @@ window.sp=id=>{
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
   if(id==='checklist')renderChecklist();
+  if(id==='cooking')initPantry();
 };
 
 function rDash(){
@@ -4318,6 +4319,7 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
+    if(pantryItems.length) offerPantryDeduct(recipe.ingredients.map(i=>i.name));
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
     toast('❌ Chyba: '+e.message);
@@ -4511,6 +4513,214 @@ function renderSavedRecipes(){
       </div>
     </div>`).join('');
 }
+
+// ===== ZÁSOBY (PANTRY) =====
+let pantryItems = []; // [{id, name, qty, unit, minQty, updatedAt}]
+let pantryUnsub = null;
+
+window.switchCookTab = function(tab) {
+  document.getElementById('cook-tab-recipes')?.classList.toggle('active', tab === 'recipes');
+  document.getElementById('cook-tab-pantry')?.classList.toggle('active', tab === 'pantry');
+  const rs = document.getElementById('cook-section-recipes');
+  const ps = document.getElementById('cook-section-pantry');
+  if (rs) rs.style.display = tab === 'recipes' ? '' : 'none';
+  if (ps) ps.style.display = tab === 'pantry' ? '' : 'none';
+  if (tab === 'pantry') renderPantry();
+};
+
+function initPantry() {
+  if (familyId) {
+    if (pantryUnsub) pantryUnsub();
+    import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(({collection: col, onSnapshot: ons}) => {
+      const pantryCol = col(db, 'families', familyId, 'pantry');
+      pantryUnsub = ons(pantryCol, snap => {
+        pantryItems = snap.docs.map(d => ({id: d.id, ...d.data()}));
+        renderPantry();
+      });
+    });
+  } else {
+    pantryItems = lsGet('lp_pantry', []);
+    renderPantry();
+  }
+}
+
+function renderPantry() {
+  const el = document.getElementById('pantry-content');
+  if (!el) return;
+
+  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+  const sorted = [...pantryItems].sort((a, b) => {
+    const aLow = a.minQty && a.qty <= a.minQty;
+    const bLow = b.minQty && b.qty <= b.minQty;
+    if (aLow && !bLow) return -1;
+    if (!aLow && bLow) return 1;
+    return a.name.localeCompare(b.name, 'cs');
+  });
+
+  el.innerHTML = `
+    ${low.length ? `<div class="pantry-alert">⚠️ ${low.length} ${low.length === 1 ? 'položka dochází' : low.length < 5 ? 'položky dochází' : 'položek dochází'}: ${low.map(i => i.name).join(', ')}</div>` : ''}
+    <div class="pantry-actions-top">
+      <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">+ Přidat zásobu</button>
+      ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">🛒 Navrhnout nákup</button>` : ''}
+    </div>
+    ${sorted.length === 0 ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>Zásoby jsou prázdné.</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">Přidej co máš doma.</div></div>` : ''}
+    <div class="pantry-list">
+      ${sorted.map(item => {
+        const isLow = item.minQty && item.qty <= item.minQty;
+        return `<div class="pantry-item ${isLow ? 'low' : ''}">
+          <div class="pantry-item-info">
+            <span class="pantry-item-name">${esc(item.name)}</span>
+            ${isLow ? '<span class="pantry-low-badge">dochází</span>' : ''}
+          </div>
+          <div class="pantry-item-qty">
+            <button class="pantry-qty-btn" onclick="changePantryQty('${esc(item.id)}', -1)">−</button>
+            <span class="pantry-qty-val">${item.qty} ${esc(item.unit || '')}</span>
+            <button class="pantry-qty-btn" onclick="changePantryQty('${esc(item.id)}', 1)">+</button>
+            <button class="pantry-item-del" onclick="deletePantryItem('${esc(item.id)}')">🗑</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+window.openPantryAdd = function(prefill = {}) {
+  document.getElementById('pantry-add-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'pantry-add-modal';
+  m.className = 'modal-overlay';
+  m.innerHTML = `<div class="modal-box" style="max-width:380px">
+    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🧊 ${prefill.id ? 'Upravit zásobu' : 'Přidat zásobu'}</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input id="pi-name" class="finp" placeholder="Název (např. Mléko)" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
+      <div style="display:flex;gap:8px">
+        <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="Množství" value="${prefill.qty || ''}" style="flex:1">
+        <input id="pi-unit" class="finp" placeholder="Jednotka (l, ks, g...)" value="${esc(prefill.unit || '')}" style="flex:1">
+      </div>
+      <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${prefill.minQty || ''}" style="width:100%;box-sizing:border-box">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-sv" style="flex:1" onclick="savePantryItem('${esc(prefill.id || '')}')">✓ Uložit</button>
+      <button class="btn-s" onclick="document.getElementById('pantry-add-modal').remove()">Zrušit</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  document.getElementById('pi-name').focus();
+};
+
+window.savePantryItem = async function(existingId) {
+  const name = document.getElementById('pi-name')?.value.trim();
+  const qty = parseFloat(document.getElementById('pi-qty')?.value) || 0;
+  const unit = document.getElementById('pi-unit')?.value.trim();
+  const minQty = parseFloat(document.getElementById('pi-min')?.value) || 0;
+
+  if (!name) { toast('⚠️ Zadej název'); return; }
+
+  document.getElementById('pantry-add-modal')?.remove();
+
+  const item = { name, qty, unit, minQty: minQty || null, updatedAt: Date.now() };
+
+  if (familyId) {
+    const { doc: d, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const id = existingId || Math.random().toString(36).substr(2, 9);
+    await setDoc(d(db, 'families', familyId, 'pantry', id), item);
+  } else {
+    const id = existingId || Math.random().toString(36).substr(2, 9);
+    if (existingId) {
+      const idx = pantryItems.findIndex(i => i.id === existingId);
+      if (idx >= 0) pantryItems[idx] = { id, ...item };
+      else pantryItems.push({ id, ...item });
+    } else {
+      pantryItems.push({ id, ...item });
+    }
+    lsSave('lp_pantry', pantryItems);
+    renderPantry();
+  }
+  toast('✓ Uloženo');
+};
+
+window.changePantryQty = async function(id, delta) {
+  const item = pantryItems.find(i => i.id === id);
+  if (!item) return;
+  item.qty = Math.max(0, (item.qty || 0) + delta);
+
+  if (familyId) {
+    const { doc: d, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await setDoc(d(db, 'families', familyId, 'pantry', id), item);
+  } else {
+    lsSave('lp_pantry', pantryItems);
+    renderPantry();
+  }
+};
+
+window.deletePantryItem = async function(id) {
+  if (!confirm('Smazat tuto zásobu?')) return;
+
+  if (familyId) {
+    const { doc: d, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await deleteDoc(d(db, 'families', familyId, 'pantry', id));
+  } else {
+    pantryItems = pantryItems.filter(i => i.id !== id);
+    lsSave('lp_pantry', pantryItems);
+    renderPantry();
+  }
+};
+
+window.pantryToShop = async function() {
+  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+  if (!low.length) { toast('Žádné docházející zásoby'); return; }
+
+  let added = 0;
+  for (const item of low) {
+    const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: 'Ostatní', done: false, createdAt: new Date().toISOString() };
+    if (isShopShared()) {
+      const { doc: d, addDoc, collection: col } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      await addDoc(col(db, 'families', familyId, 'shopItems'), shopItem);
+    } else {
+      await addDoc(collection(db, 'users', CU.uid, 'shopItems'), shopItem);
+    }
+    added++;
+  }
+  toast(`✓ ${added} položek přidáno do nákupního seznamu`);
+};
+
+function offerPantryDeduct(ingredients) {
+  if (!pantryItems.length || !ingredients?.length) return;
+
+  const m = document.createElement('div');
+  m.id = 'pantry-deduct-modal';
+  m.className = 'modal-overlay';
+  m.innerHTML = `<div class="modal-box" style="max-width:400px">
+    <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🧊 Odečíst ze zásob?</h3>
+    <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Chceš odečíst suroviny tohoto receptu ze svých zásob?</p>
+    <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
+      ${ingredients.slice(0, 10).map(ing => `<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(String(ing))}</div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sv" style="flex:1" onclick="deductPantryIngredients(${JSON.stringify(ingredients).replace(/"/g,'&quot;')});document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
+      <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">Přeskočit</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+
+window.deductPantryIngredients = async function(ingredients) {
+  let matched = 0;
+  for (const ing of ingredients) {
+    const ingStr = String(ing).toLowerCase();
+    const pantryItem = pantryItems.find(p => ingStr.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingStr.split(' ')[0]));
+    if (pantryItem && pantryItem.qty > 0) {
+      pantryItem.qty = Math.max(0, pantryItem.qty - 1);
+      if (familyId) {
+        const { doc: d, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await setDoc(d(db, 'families', familyId, 'pantry', pantryItem.id), pantryItem);
+      }
+      matched++;
+    }
+  }
+  if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
+  toast(matched > 0 ? `✓ ${matched} položek odečteno ze zásob` : 'Žádné suroviny nenalezeny v zásobách');
+};
 
 // ── COOKING MIC ───────────────────────────────────────
 

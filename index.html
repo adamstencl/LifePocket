@@ -430,6 +430,13 @@
         <div class="ptitle">🍽️ Vaření</div>
       </div>
 
+      <div class="cook-tabs">
+        <button class="cook-tab active" id="cook-tab-recipes" onclick="switchCookTab('recipes')">🍳 Recepty</button>
+        <button class="cook-tab" id="cook-tab-pantry" onclick="switchCookTab('pantry')">🧊 Zásoby</button>
+      </div>
+
+      <div id="cook-section-recipes">
+
       <!-- AI prompt -->
       <div class="cook-prompt-wrap">
         <div class="cook-input-card">
@@ -488,6 +495,12 @@
           <div class="sec-lbl" style="margin:0">🔖 Uložené recepty</div>
         </div>
         <div id="saved-recipes-list"></div>
+      </div>
+
+      </div><!-- /cook-section-recipes -->
+
+      <div id="cook-section-pantry" style="display:none">
+        <div id="pantry-content"></div>
       </div>
     </div>
 

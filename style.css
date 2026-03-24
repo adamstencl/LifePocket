@@ -931,6 +931,30 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .saved-recipe-meta{font-size:12px;color:var(--text3);margin-top:4px}
 .saved-recipe-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 
+/* COOKING TABS */
+.cook-tabs{display:flex;gap:0;margin-bottom:16px;background:var(--card2);border-radius:12px;padding:3px;border:1px solid var(--border)}
+.cook-tab{flex:1;background:none;border:none;border-radius:9px;padding:8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text3);font-family:'Crimson Pro',serif;transition:all .2s}
+.cook-tab.active{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+
+/* PANTRY */
+.pantry-alert{background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.35);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--text);margin-bottom:12px}
+.pantry-actions-top{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pantry-add-btn{flex:1}
+.btn-cook-suggest{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);font-family:'Crimson Pro',serif}
+.btn-cook-suggest:hover{border-color:var(--accent);color:var(--accent)}
+.pantry-empty{text-align:center;padding:40px 20px;color:var(--text3);font-style:italic}
+.pantry-list{display:flex;flex-direction:column;gap:6px}
+.pantry-item{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;gap:10px}
+.pantry-item.low{border-color:rgba(255,165,0,.5);background:rgba(255,165,0,.06)}
+.pantry-item-info{flex:1;min-width:0}
+.pantry-item-name{font-size:15px;font-family:'Crimson Pro',serif;color:var(--text);display:block}
+.pantry-low-badge{font-size:10px;background:rgba(255,165,0,.2);color:#e67e22;border-radius:4px;padding:1px 5px;font-weight:700}
+.pantry-item-qty{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.pantry-qty-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--card2);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:700}
+.pantry-qty-val{font-size:13px;font-weight:600;color:var(--text);min-width:50px;text-align:center}
+.pantry-item-del{background:none;border:none;cursor:pointer;font-size:15px;opacity:0.5;padding:2px}
+.pantry-item-del:hover{opacity:1}
+
 /* PLANNED MEALS */
 .planned-meal-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;transition:all .2s}
 .planned-meal-card:hover{border-color:var(--accent2)}
