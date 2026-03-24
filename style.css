@@ -1154,6 +1154,24 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 #gcal-sync-btn:hover{background:rgba(66,133,244,0.08)}
 #gcal-status{font-size:12px;display:none}
 
+/* ── QUICK START ────────────────────────────────────── */
+.qs-card{padding:16px;margin-bottom:12px;border-color:rgba(245,200,66,.25)}
+.qs-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.qs-title-row{display:flex;align-items:center;gap:10px}
+.qs-title{font-size:14px;font-weight:700;color:var(--text)}
+.qs-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.qs-dismiss{background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer;line-height:1;padding:0;flex-shrink:0}
+.qs-bar-wrap{height:5px;background:var(--border);border-radius:3px;margin-bottom:12px;overflow:hidden}
+.qs-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .4s}
+.qs-tasks{display:flex;flex-direction:column;gap:6px}
+.qs-task{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s}
+.qs-task:hover{border-color:var(--accent);background:rgba(245,200,66,.06)}
+.qs-task.done{opacity:.5;cursor:default}
+.qs-task.done:hover{border-color:var(--border);background:var(--card2)}
+.qs-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border);background:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0}
+.qs-task.done .qs-check{background:var(--accent);border-color:var(--accent);color:#1a1a1a}
+.qs-task-text{font-size:14px;font-family:'Crimson Pro',serif;color:var(--text)}
+
 /* ── WATER TRACKER ─────────────────────────────────── */
 .water-card{padding:16px;margin-bottom:12px}
 .water-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}

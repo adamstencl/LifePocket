@@ -2386,6 +2386,84 @@ function focusWidgetHTML() {
 }
 
 
+// ── QUICK START ───────────────────────────────────────
+function quickStartHTML() {
+  if (lsGet('lp_qs_dismissed')) return '';
+  // Zobrazit jen pro uživatele mladší 21 dní
+  if (prof.createdAt) {
+    const age = (Date.now() - new Date(prof.createdAt).getTime()) / 86400000;
+    if (age > 21) return '';
+  }
+  const mods = prof.modules || [];
+  const done = lsGet('lp_qs_done', []);
+
+  // Definice úkolů podle aktivních modulů
+  const allTasks = [
+    { id:'habit',    emoji:'🎯', text:'Přidej svůj první návyk',        page:'habits',   done: habits.length > 0 },
+    { id:'focus',    emoji:'🎯', text:'Nastav dnešní focus',             action:'openFocusModal()', done: !!dailyFocus },
+    { id:'water',    emoji:'💧', text:'Dej si první sklenici vody',       action:'addWater()',       done: waterToday > 0 },
+    { id:'recipe',   emoji:'🍳', text:'Vyzkoušej AI recept',             page:'cooking',  done: savedRecipes.length > 0 },
+    { id:'shop',     emoji:'🛒', text:'Přidej položku do nákupu',        page:'shopping', done: shopItems.length > 0 },
+    { id:'goal',     emoji:'🏆', text:'Vytvoř svůj první cíl',           page:'goals',    done: goals.length > 0 },
+    { id:'family',   emoji:'👨‍👩‍👧', text:'Připoj se k rodině nebo pozvi blízkého', page:'settings', done: !!familyId },
+    { id:'note',     emoji:'📝', text:'Napiš první poznámku',            page:'journal',  done: entries.length > 0 },
+  ];
+
+  // Filtruj podle aktivních modulů + základní (focus, water jsou vždy)
+  const relevant = allTasks.filter(t => {
+    if (['focus','water'].includes(t.id)) return true;
+    if (t.id === 'habit' && mods.includes('habits')) return true;
+    if (t.id === 'recipe' && mods.includes('cooking')) return true;
+    if (t.id === 'shop' && mods.includes('shopping')) return true;
+    if (t.id === 'goal' && mods.includes('goals')) return true;
+    if (t.id === 'family') return true;
+    if (t.id === 'note' && mods.includes('journal')) return true;
+    return false;
+  }).slice(0, 5);
+
+  // Aktualizuj done status
+  const completedIds = relevant.filter(t => t.done || done.includes(t.id)).map(t => t.id);
+  const allDone = relevant.every(t => t.done || done.includes(t.id));
+  if (allDone && relevant.length > 0) {
+    lsSave('lp_qs_dismissed', true);
+    return '';
+  }
+
+  const completedCount = completedIds.length;
+  const total = relevant.length;
+  const pct = Math.round(completedCount / total * 100);
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+
+  const taskHTML = relevant.map(t => {
+    const isDone = t.done || done.includes(t.id);
+    const onclick = t.action ? t.action : `sp('${t.page}')`;
+    return `<div class="qs-task ${isDone ? 'done' : ''}" onclick="${isDone ? '' : onclick}">
+      <div class="qs-check">${isDone ? '✓' : ''}</div>
+      <span class="qs-task-text">${t.emoji} ${t.text}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="card qs-card" id="qs-card">
+    <div class="qs-header">
+      <div class="qs-title-row">
+        <span style="font-size:20px">${av.emoji}</span>
+        <div>
+          <div class="qs-title">Začínáme! ${completedCount}/${total} hotovo</div>
+          <div class="qs-sub">Prvních pár kroků v LifePocket</div>
+        </div>
+      </div>
+      <button class="qs-dismiss" onclick="dismissQS()" title="Skrýt">×</button>
+    </div>
+    <div class="qs-bar-wrap"><div class="qs-bar" style="width:${pct}%"></div></div>
+    <div class="qs-tasks">${taskHTML}</div>
+  </div>`;
+}
+
+window.dismissQS = () => {
+  lsSave('lp_qs_dismissed', true);
+  document.getElementById('qs-card')?.remove();
+};
+
 // ── AVATAR REAKCE ─────────────────────────────────────
 let avReactionTimer = null;
 
@@ -3508,6 +3586,8 @@ function rDash(){
   const mods=prof.modules||[];
   // Focus widget always at top
   let html=focusWidgetHTML();
+  // Quick Start karta pro nové uživatele
+  html+=quickStartHTML();
 
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
