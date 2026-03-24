@@ -4,7 +4,6 @@ import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSn
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
-gp.addScope('https://www.googleapis.com/auth/calendar.events');
 
 
 const AVS=[
@@ -17,7 +16,7 @@ const AVS=[
 const MODS=[
   {id:'habits',emoji:'🎯',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
   {id:'journal',emoji:'📝',name:'Zápisník',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
-  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Události, narozeniny a Google Kalendář na jednom místě.'},
+  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
   {id:'goals',emoji:'🌟',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
   {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
   {id:'shopping',emoji:'🛒',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
@@ -1046,96 +1045,7 @@ function subEvents(){
 }
 
 
-// === GOOGLE CALENDAR SYNC ===
-let gcalEvents = []; // události z Google Kalendáře
-
-async function fetchGoogleCalendarEvents() {
-  const gcalBtn = document.getElementById('gcal-sync-btn');
-  
-  // Získej čerstvý token přes popup — vždy, aby měl calendar scope
-  let token = window._gcalToken;
-  if(!token) {
-    try {
-      if(gcalBtn){ gcalBtn.innerHTML = '<div class="spin" style="width:14px;height:14px;border-width:2px"></div> Ověřuji…'; gcalBtn.disabled = true; }
-      const result = await signInWithPopup(auth, gp);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      token = credential && credential.accessToken;
-      if(token){
-        window._gcalToken = token;
-        localStorage.setItem('gcal_token', token);
-      }
-    } catch(ex) {
-      if(gcalBtn){ gcalBtn.innerHTML = resetGcalBtnHtml(); gcalBtn.disabled = false; }
-      if(ex.code !== 'auth/popup-closed-by-user') showGcalStatus('❌ Přihlášení selhalo: ' + ex.message, 'err');
-      return;
-    }
-  }
-
-  if(!token){ showGcalStatus('⚠️ Nepodařilo se získat přístup ke kalendáři.', 'warn'); return; }
-  
-  if(gcalBtn){ gcalBtn.innerHTML = '<div class="spin" style="width:14px;height:14px;border-width:2px"></div> Načítám…'; gcalBtn.disabled = true; }
-  
-  try {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString();
-    const end = new Date(now.getFullYear(), now.getMonth()+3, 0).toISOString();
-    
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start}&timeMax=${end}&singleEvents=true&orderBy=startTime&maxResults=100`,
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    
-    if(res.status === 401){
-      // Token expiroval — vyčisti a zkus znovu příště
-      localStorage.removeItem('gcal_token');
-      window._gcalToken = null;
-      gcalEvents = [];
-      if(gcalBtn){ gcalBtn.innerHTML = resetGcalBtnHtml(); gcalBtn.disabled = false; }
-      showGcalStatus('⚠️ Přístup vypršel, klikni znovu pro obnovení.', 'warn');
-      return;
-    }
-    
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    
-    const data = await res.json();
-    gcalEvents = (data.items || []).map(ev => ({
-      id: 'gcal_' + ev.id,
-      name: ev.summary || '(bez názvu)',
-      date: (ev.start.date || ev.start.dateTime || '').slice(0,10),
-      time: ev.start.dateTime ? new Date(ev.start.dateTime).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}) : null,
-      type: 'gcal',
-      source: 'google'
-    }));
-    
-    renderCal();
-    if(gcalBtn){ gcalBtn.innerHTML = '✅ Synchronizováno (' + gcalEvents.length + ')'; gcalBtn.disabled = false; }
-    showGcalStatus('✅ Načteno ' + gcalEvents.length + ' událostí z Google Kalendáře', 'ok');
-    
-  } catch(err) {
-    console.error('GCal error:', err);
-    if(gcalBtn){ gcalBtn.innerHTML = resetGcalBtnHtml(); gcalBtn.disabled = false; }
-    showGcalStatus('❌ Chyba: ' + err.message, 'err');
-  }
-}
-
-function resetGcalBtnHtml(){
-  return '<svg width="14" height="14" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Synchronizovat Google Kalendář';
-}
-
-function showGcalStatus(msg, type){
-  const el = document.getElementById('gcal-status');
-  if(!el) return;
-  el.textContent = msg;
-  el.style.color = type==='ok' ? 'var(--green)' : type==='warn' ? '#f4a435' : '#e57373';
-  el.style.display = 'block';
-  setTimeout(()=>{ el.style.display='none'; }, 5000);
-}
-
-function getGcalEventsForDate(ds){
-  return gcalEvents.filter(ev => ev.date === ds);
-}
-window.syncGoogleCalendar = fetchGoogleCalendarEvents;
-// === END GOOGLE CALENDAR SYNC ===
+function getGcalEventsForDate(_ds){ return []; }
 
 function renderCal(){
   const lbl=document.getElementById('cal-month-lbl');
@@ -1154,13 +1064,10 @@ function renderCal(){
     const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const isToday=today.getFullYear()===calYear&&today.getMonth()===calMonth&&today.getDate()===day;
     const dayEvs=getEventsForDate(ds);
-    const dayGcal=getGcalEventsForDate(ds);
     const hasEv=dayEvs.length>0;
-    const hasGcal=dayGcal.length>0;
-    html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''} ${hasGcal?'has-gcal':''}" onclick="calDayClick('${ds}','${day}')">
+    html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
       ${day}
       ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?EV_ICONS[dayEvs[0].type]||'•':''}</span>`:''}
-      ${hasGcal&&!hasEv?`<span class="cal-cell-dot" style="background:var(--gcal-dot)">●</span>`:''}
     </div>`;
   }
   // Next month
@@ -1195,27 +1102,18 @@ function getUpcoming14(){
 
 
 function renderEvList(){
-  // Merge LifePocket + Google Calendar upcoming events
-  const upcoming=getUpcoming14();
-  const today=new Date(); today.setHours(0,0,0,0);
-  const future=new Date(today); future.setDate(future.getDate()+14);
-  const gcalUpcoming = gcalEvents.filter(ev=>{
-    const d = new Date(ev.date+'T12:00:00');
-    return d>=today && d<=future;
-  }).map(ev=>({...ev, _date: new Date(ev.date+'T12:00:00')}));
-  
-  const allEvents = [...upcoming, ...gcalUpcoming].sort((a,b)=>a._date-b._date);
+  const allEvents=getUpcoming14();
   const container=document.getElementById('cal-events-list');
   if(!container)return;
   if(!allEvents.length){container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">Žádné události v příštích 14 dnech</div>';return;}
   container.innerHTML=allEvents.map(ev=>`
     <div class="ev-card">
-      <div class="ev-icon">${ev.source==='google'?'📅':EV_ICONS[ev.type]||'📌'}</div>
+      <div class="ev-icon">${EV_ICONS[ev.type]||'📌'}</div>
       <div class="ev-info">
-        <div class="ev-name">${esc(ev.name)}${ev.source==='google'?'<span class="gcal-badge">Google</span>':''}${ev.shared?'<span class="gcal-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
+        <div class="ev-name">${esc(ev.name)}${ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
         <div class="ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
-      ${ev.source!=='google'&&!ev.shared?`<button class="ev-del" onclick="delEvent('${esc(ev.id)}')">🗑️</button>`:''}
+      ${!ev.shared?`<button class="ev-del" onclick="delEvent('${esc(ev.id)}')">🗑️</button>`:''}
     </div>`).join('');
 }
 
@@ -1310,65 +1208,13 @@ window.saveEvent=async()=>{
   if(!date){toast('⚠️ Vyber datum');return;}
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString()};
   if(time) ev.time=time;
-  const ref=await addDoc(collection(db,'users',CU.uid,'events'),ev);
-  // Push to Google Calendar if connected
-  if(window._gcalToken){
-    try{
-      const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const gcalBody={summary:name,start:{},end:{}};
-      if(repeat==='yes') gcalBody.recurrence=['RRULE:FREQ=YEARLY'];
-      if(time){
-        gcalBody.start={dateTime:date+'T'+time+':00',timeZone:tz};
-        // end = start + 1 hour
-        const endDt=new Date(date+'T'+time+':00');
-        endDt.setHours(endDt.getHours()+1);
-        const endStr=endDt.toISOString().slice(0,16);
-        gcalBody.end={dateTime:endStr+':00',timeZone:tz};
-      } else {
-        gcalBody.start={date};
-        // all-day: end must be next day
-        const nextDay=new Date(date+'T12:00:00');
-        nextDay.setDate(nextDay.getDate()+1);
-        gcalBody.end={date:nextDay.toISOString().slice(0,10)};
-      }
-      const gres=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+window._gcalToken,'Content-Type':'application/json'},
-        body:JSON.stringify(gcalBody)
-      });
-      if(gres.ok){
-        const gdata=await gres.json();
-        await updateDoc(ref,{gcalId:gdata.id});
-        toast('✓ Přidáno + synchronizováno s Google Kalendářem 📅');
-      } else if(gres.status===401){
-        window._gcalToken=null; localStorage.removeItem('gcal_token');
-        toast('✓ Událost přidána (Google: přihlas se znovu)');
-      } else {
-        toast('✓ Událost přidána (Google sync selhal)');
-      }
-    }catch(e){
-      toast('✓ Událost přidána (Google sync selhal)');
-    }
-  } else {
-    toast('✓ Událost přidána');
-  }
+  await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  toast('✓ Událost přidána');
   cm('m-event');
 };
 
 window.delEvent=async(id)=>{
   if(!CU||!confirm('Smazat událost?'))return;
-  // Also delete from Google Calendar if event has gcalId
-  try{
-    const snap=await getDoc(doc(db,'users',CU.uid,'events',id));
-    const gcalId=snap.exists()&&snap.data().gcalId;
-    if(gcalId&&window._gcalToken){
-      const dres=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+gcalId,{
-        method:'DELETE',
-        headers:{'Authorization':'Bearer '+window._gcalToken}
-      });
-      if(dres.status===401){window._gcalToken=null;localStorage.removeItem('gcal_token');}
-    }
-  }catch(e){/* ignore gcal delete errors */}
   await deleteDoc(doc(db,'users',CU.uid,'events',id));
   toast('Smazáno');
 };
@@ -1413,12 +1259,7 @@ window.doLogin=async()=>{
   const b=document.getElementById('login-btn'),e=document.getElementById('login-err');
   e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> Přihlašuji…';
   try{
-    const result = await signInWithPopup(auth,gp);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if(credential && credential.accessToken){
-      window._gcalToken = credential.accessToken;
-      localStorage.setItem('gcal_token', credential.accessToken);
-    }
+    await signInWithPopup(auth,gp);
   } catch(ex){
     b.disabled=false;
     resetLoginBtn();
@@ -3321,7 +3162,7 @@ window.sp=id=>{
   if(id==='avatar')rAvPage();
   if(id==='mealplan')renderMealPlan();
   if(id==='settings')renderFamilySettings();
-  if(id==='calendar'){renderCal();if(window._gcalToken||localStorage.getItem('gcal_token'))fetchGoogleCalendarEvents();}
+  if(id==='calendar'){renderCal();}
   if(id==='habits')renderHabits();
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
@@ -3343,7 +3184,7 @@ function rDash(){
   const h_r=new Date().getHours();
   const doneToday_r=habitLogs.filter(l=>l.date===today_r&&l.done).length;
   const totalHabits_r=habits.length;
-  const nextEv=[...events,...(typeof gcalEvents!=='undefined'?gcalEvents:[])].filter(e=>{
+  const nextEv=[...events].filter(e=>{
     const d=new Date(e.date+'T12:00:00'); const t=new Date(); t.setHours(0,0,0,0);
     return d>=t;
   }).sort((a,b)=>a.date.localeCompare(b.date))[0];
@@ -3838,17 +3679,15 @@ window.send=async()=>{
   const shopCtx = shopItems.filter(i=>!i.done).slice(0,10)
     .map(i=>`- ${i.name}${i.qty?' ('+i.qty+')':''}${i.fromRecipe?' ['+i.fromRecipe+']':''}`).join('\n');
 
-  // ── Kontext: Nadcházející události (LifePocket + Google Calendar) ──
+  // ── Kontext: Nadcházející události ──
   const today2=new Date(); today2.setHours(0,0,0,0);
   const future2=new Date(today2); future2.setDate(future2.getDate()+14);
-  const allEvCtx = [
-    ...events.map(e=>({name:e.name, date:e.date, source:'LifePocket'})),
-    ...(typeof gcalEvents!=='undefined' ? gcalEvents.map(e=>({name:e.name, date:e.date, time:e.time||null, source:'Google'})) : [])
-  ].filter(e=>{
+  const allEvCtx = events.map(e=>({name:e.name, date:e.date, source:'LifePocket'}))
+  .filter(e=>{
     const d=new Date(e.date+'T12:00:00');
     return d>=today2 && d<=future2;
   }).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,10);
-  const evCtx = allEvCtx.length ? allEvCtx.map(e=>`- ${e.date}${e.time?' '+e.time:''} ${e.name} [${e.source}]`).join('\n') : 'Žádné';
+  const evCtx = allEvCtx.length ? allEvCtx.map(e=>`- ${e.date} ${e.name}`).join('\n') : 'Žádné';
 
   // ── Kontext: Dnešní datum a den v týdnu ──
   const todayLabel = new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'});
