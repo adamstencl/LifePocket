@@ -15,7 +15,7 @@ const AVS=[
 ];
 const MODS=[
   {id:'habits',emoji:'🎯',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
-  {id:'journal',emoji:'📝',name:'Zápisník',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
+  {id:'journal',emoji:'📝',name:'Poznámky',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
   {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
   {id:'goals',emoji:'🌟',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
   {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
@@ -3553,7 +3553,7 @@ function rDash(){
     if(lastEntry){
       html+=`<div class="dw" onclick="sp('journal')">
         <div class="dw-head">
-          <div class="dw-title">📝 Zápisník</div>
+          <div class="dw-title">📝 Poznámky</div>
           <div class="dw-arrow">→</div>
         </div>
         <div class="dw-entry-title">${lastEntry.mood?`<span class="dw-entry-mood">${lastEntry.mood}</span>`:''}${lastEntry.title||'Bez názvu'}</div>
@@ -3566,7 +3566,7 @@ function rDash(){
       </div>`;
     } else {
       html+=`<div class="dw" onclick="sp('journal')">
-        <div class="dw-head"><div class="dw-title">📝 Zápisník</div><div class="dw-arrow">→</div></div>
+        <div class="dw-head"><div class="dw-title">📝 Poznámky</div><div class="dw-arrow">→</div></div>
         <div class="dw-empty">Zatím žádné zápisky. Napiš první!</div>
       </div>`;
     }
@@ -4730,7 +4730,7 @@ window.deductPantryIngredients = async function(ingredients) {
 let plannedMeals = []; // [{name, source, date}]
 
 window.detectFoodsInEntry = async (text) => {
-  const sys = `Jsi asistent pro detekci jídel. Analyzuj text zápisníku a najdi jídla která uživatel PLÁNUJE vařit nebo jíst v budoucnu.
+  const sys = `Jsi asistent pro detekci jídel. Analyzuj text poznámek a najdi jídla která uživatel PLÁNUJE vařit nebo jíst v budoucnu.
 Ignoruj jídla která již snědl (minulý čas). Hledej budoucí záměry: "chci vařit", "dám si", "plánuji", "tento týden", "zítra" apod.
 Odpovídej POUZE v JSON: {"foods": ["jídlo1", "jídlo2"]} nebo {"foods": []} pokud žádná nejsou.
 Maximálně 5 jídel.
@@ -4758,7 +4758,7 @@ function showFoodDetectBanner(foods) {
   banner.id = 'food-detect-banner';
   banner.className = 'food-detect-banner';
   banner.innerHTML = `
-    <div class="food-detect-title">🍽️ Rex našel plánovaná jídla v zápisníku</div>
+    <div class="food-detect-title">🍽️ Rex našel plánovaná jídla v poznámkách</div>
     <div class="food-detect-items">
       ${foods.map(f => `<span class="food-tag">🍳 ${f}</span>`).join('')}
     </div>
@@ -4782,7 +4782,7 @@ window.addPlannedMeals = (foods, bannerEl) => {
   let added = 0;
   foods.forEach(food => {
     if (!existing.has(food.toLowerCase())) {
-      plannedMeals.push({name: food, source: `Zápisník ${today}`, date: new Date().toISOString()});
+      plannedMeals.push({name: food, source: `Poznámky ${today}`, date: new Date().toISOString()});
       added++;
     }
   });
@@ -4920,7 +4920,7 @@ window.detectHabitsInEntry = async (text) => {
     ? habits.map(h => `- "${h.name}" (${h.type==='count'?'počet, cíl '+h.goal:'ano/ne'})`).join('\n')
     : 'žádné';
 
-  const sys = `Jsi asistent pro analýzu zápisníku. Analyzuj text a najdi:
+  const sys = `Jsi asistent pro analýzu poznámek. Analyzuj text a najdi:
 1. SPLNĚNÉ AKTIVITY — co uživatel již udělal (minulý čas): "udělal jsem", "šel jsem", "vypil jsem", "jsem splnil" apod.
 2. NOVÉ ZÁMĚRY — co chce začít pravidelně dělat: "chci začít", "budu každý den", "mám v plánu pravidelně" apod.
 
@@ -4968,7 +4968,7 @@ function showHabitDetectBanner(completed, newHabits) {
   banner.id = 'habit-detect-banner';
   banner.className = 'habit-detect-banner';
 
-  let html = '<div class="habit-detect-title">🎯 Rex našel aktivity v zápisníku</div>';
+  let html = '<div class="habit-detect-title">🎯 Rex našel aktivity v poznámkách</div>';
 
   // Splněné aktivity
   if (completed.length > 0) {
