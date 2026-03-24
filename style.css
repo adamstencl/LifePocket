@@ -850,13 +850,13 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 }
 
 /* COOKING */
-.cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+.cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:16px}
 .cook-prompt-label{font-size:14px;color:var(--text2);margin-bottom:10px;font-weight:600}
 .cook-input-card{}
 .cook-top-row{display:flex;gap:8px;margin-bottom:10px}
 .cook-what-input{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:15px;background:var(--bg2);color:var(--text);outline:none;transition:border-color .2s}
 .cook-what-input:focus{border-color:var(--accent)}
-.btn-cook-gen{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn-cook-gen{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
 .cook-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .cook-filter-label{font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .cook-filter-sep{width:1px;height:16px;background:var(--border);margin:0 2px}
