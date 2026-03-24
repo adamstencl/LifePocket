@@ -91,6 +91,8 @@ function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
+function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
+function genId(){return Math.random().toString(36).substr(2,9);}
 
 
 // ── JOURNAL ───────────────────────────────────────────
@@ -2189,17 +2191,17 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
   scrollChat();
 };
 
-// Automaticky generuj týdenní report v neděli večer (pokud ještě nebyl tento týden)
+// Automaticky generuj týdenní report v neděli (pokud ještě nebyl tento týden)
 function checkAutoWeeklyReport() {
   const now = new Date();
   if(now.getDay() !== 0) return; // jen v neděli
-  if(now.getHours() < 18) return; // jen od 18:00
+  // Zjisti ISO datum v lokálním čase (ne UTC) pro konzistentní porovnání
+  const localDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const stored = lsGet('lp_weekly_report', null);
   if(stored) {
-    const {date} = stored;
-    const reportDate = new Date(date).toISOString().slice(0,10);
-    const todayStr = now.toISOString().slice(0,10);
-    if(reportDate === todayStr) return; // už byl dnes
+    const reportDate = new Date(stored.date);
+    const reportLocalStr = `${reportDate.getFullYear()}-${String(reportDate.getMonth()+1).padStart(2,'0')}-${String(reportDate.getDate()).padStart(2,'0')}`;
+    if(reportLocalStr === localDateStr) return; // už byl dnes generován
   }
   // Vygeneruj tiše a ulož
   generateWeeklyReportSilent();
@@ -2233,6 +2235,155 @@ async function generateWeeklyReportSilent() {
   } catch(e) { /* tiše selhat */ }
 }
 
+
+// ════════════════════════════════════════════════════════════
+// 💧  WATER TRACKER
+// ════════════════════════════════════════════════════════════
+let waterGoal = 8;
+let waterToday = 0;
+
+function initWater() {
+  const today = new Date().toDateString();
+  const stored = lsGet('lp_water', {date: '', count: 0, goal: 8});
+  if (stored.date !== today) {
+    waterToday = 0;
+    lsSave('lp_water', {date: today, count: 0, goal: stored.goal || 8});
+  } else {
+    waterToday = stored.count || 0;
+    waterGoal = stored.goal || 8;
+  }
+}
+
+window.addWater = function(n = 1) {
+  waterToday = Math.min(waterToday + n, waterGoal * 2);
+  const stored = lsGet('lp_water', {date: new Date().toDateString(), count: 0, goal: waterGoal});
+  lsSave('lp_water', {...stored, count: waterToday});
+  renderWaterInDash();
+  if (waterToday >= waterGoal) {
+    toast('💧 Skvělé! Denní cíl vody splněn!');
+  }
+};
+
+window.removeWater = function() {
+  waterToday = Math.max(waterToday - 1, 0);
+  const stored = lsGet('lp_water', {date: new Date().toDateString(), count: 0, goal: waterGoal});
+  lsSave('lp_water', {...stored, count: waterToday});
+  renderWaterInDash();
+};
+
+function renderWaterInDash() {
+  const el = document.getElementById('water-widget');
+  if (!el) return;
+  const pct = Math.min(waterToday / waterGoal * 100, 100);
+  const glasses = [];
+  for (let i = 0; i < waterGoal; i++) {
+    glasses.push(`<span class="water-glass ${i < waterToday ? 'filled' : ''}" onclick="addWater()">💧</span>`);
+  }
+  el.innerHTML = `
+    <div class="water-header">
+      <span class="water-title">💧 Voda</span>
+      <span class="water-count">${waterToday}/${waterGoal} sklenic</span>
+    </div>
+    <div class="water-glasses">${glasses.join('')}</div>
+    <div class="water-bar-wrap"><div class="water-bar" style="width:${pct}%"></div></div>
+    <div class="water-actions">
+      <button class="water-btn-minus" onclick="removeWater()">−</button>
+      <button class="water-btn-plus" onclick="addWater()">+ Přidat sklenici</button>
+    </div>
+  `;
+}
+
+function waterWidgetHTML() {
+  const pct = Math.min(waterToday / waterGoal * 100, 100);
+  const glasses = [];
+  for (let i = 0; i < waterGoal; i++) {
+    glasses.push(`<span class="water-glass ${i < waterToday ? 'filled' : ''}" onclick="addWater()">💧</span>`);
+  }
+  return `<div id="water-widget" class="card water-card">
+    <div class="water-header">
+      <span class="water-title">💧 Voda</span>
+      <span class="water-count">${waterToday}/${waterGoal} sklenic</span>
+    </div>
+    <div class="water-glasses">${glasses.join('')}</div>
+    <div class="water-bar-wrap"><div class="water-bar" style="width:${pct}%"></div></div>
+    <div class="water-actions">
+      <button class="water-btn-minus" onclick="removeWater()">−</button>
+      <button class="water-btn-plus" onclick="addWater()">+ Přidat sklenici</button>
+    </div>
+  </div>`;
+}
+
+
+// ════════════════════════════════════════════════════════════
+// 🎯  DAILY FOCUS (MIT)
+// ════════════════════════════════════════════════════════════
+let dailyFocus = null;
+
+function initFocus() {
+  const today = new Date().toDateString();
+  const stored = lsGet('lp_focus', {date: '', text: ''});
+  if (stored.date === today) {
+    dailyFocus = stored.text || null;
+  } else {
+    dailyFocus = null;
+  }
+}
+
+window.saveFocus = function(text) {
+  const today = new Date().toDateString();
+  dailyFocus = text.trim();
+  lsSave('lp_focus', {date: today, text: dailyFocus});
+  renderFocusInDash();
+  document.getElementById('focus-modal')?.remove();
+};
+
+window.openFocusModal = function() {
+  const existing = dailyFocus || '';
+  const m = document.createElement('div');
+  m.id = 'focus-modal';
+  m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:420px">
+    <h3 style="margin:0 0 12px;font-family:'Playfair Display',serif">🎯 Co musíš dnes udělat?</h3>
+    <p style="font-size:13px;color:var(--text3);margin:0 0 14px">Jedna nejdůležitější věc na dnešek.</p>
+    <input id="focus-inp" type="text" class="finp" placeholder="Napiš svůj denní focus..." value="${esc(existing)}" style="margin-bottom:14px">
+    <div style="display:flex;gap:8px">
+      <button class="btn-sv" onclick="saveFocus(document.getElementById('focus-inp').value)" style="flex:1">✓ Uložit</button>
+      <button class="btn-s" onclick="document.getElementById('focus-modal').remove()">Zrušit</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  document.getElementById('focus-inp').focus();
+};
+
+function renderFocusInDash() {
+  const el = document.getElementById('focus-widget');
+  if (!el) return;
+  if (dailyFocus) {
+    el.innerHTML = `<div class="focus-content">
+      <span class="focus-label">🎯 Dnešní focus</span>
+      <div class="focus-text">${esc(dailyFocus)}</div>
+      <button class="focus-edit-btn" onclick="openFocusModal()">✏️ Změnit</button>
+    </div>`;
+  } else {
+    el.innerHTML = `<button class="focus-empty-btn" onclick="openFocusModal()">
+      🎯 <strong>Co musíš dnes udělat?</strong> <span style="color:var(--text3);font-weight:400">Nastav denní focus</span>
+    </button>`;
+  }
+}
+
+function focusWidgetHTML() {
+  if (dailyFocus) {
+    return `<div id="focus-widget" class="card focus-card"><div class="focus-content">
+      <span class="focus-label">🎯 Dnešní focus</span>
+      <div class="focus-text">${esc(dailyFocus)}</div>
+      <button class="focus-edit-btn" onclick="openFocusModal()">✏️ Změnit</button>
+    </div></div>`;
+  } else {
+    return `<div id="focus-widget" class="card focus-card"><button class="focus-empty-btn" onclick="openFocusModal()">
+      🎯 <strong>Co musíš dnes udělat?</strong> <span style="color:var(--text3);font-weight:400">Nastav denní focus</span>
+    </button></div>`;
+  }
+}
 
 
 // ── AVATAR REAKCE ─────────────────────────────────────
@@ -3104,6 +3255,115 @@ window.hdNavMonth = (hid, dir) => {
 };
 
 
+// ════════════════════════════════════════════════════════════
+// ✅  CHECKLIST / ÚKOLNÍČEK
+// ════════════════════════════════════════════════════════════
+let checklists = [];
+let activeChecklist = null;
+
+function initChecklist() {
+  checklists = lsGet('lp_checklists', []);
+  if (!checklists.length) {
+    checklists = [{id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()}];
+    lsSave('lp_checklists', checklists);
+  }
+  activeChecklist = checklists[0]?.id || null;
+  renderChecklist();
+}
+
+function renderChecklist() {
+  const el = document.getElementById('checklist-content');
+  if (!el) return;
+
+  const list = checklists.find(c => c.id === activeChecklist) || checklists[0];
+  if (!list) return;
+
+  const done = list.items.filter(i => i.done).length;
+  const total = list.items.length;
+
+  el.innerHTML = `
+    <div class="cl-tabs">
+      ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" onclick="switchChecklist('${esc(c.id)}')">${esc(c.name)}</button>`).join('')}
+      <button class="cl-tab cl-tab-add" onclick="addChecklist()">+</button>
+    </div>
+    <div class="cl-header">
+      <div class="cl-title-row">
+        <span class="cl-list-name">${esc(list.name)}</span>
+        ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
+      </div>
+      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneItems()">Smazat splněné</button>` : ''}
+    </div>
+    <div class="cl-items">
+      ${list.items.length ? list.items.map(item => `
+        <div class="cl-item ${item.done ? 'done' : ''}">
+          <button class="cl-check" onclick="toggleCheckItem('${esc(item.id)}')">
+            ${item.done ? '✓' : ''}
+          </button>
+          <span class="cl-item-text" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+          <button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>
+        </div>
+      `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
+    </div>
+    <div class="cl-add-row">
+      <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="Přidat úkol..." onkeydown="if(event.key==='Enter')addCheckItem()">
+      <button class="cl-add-btn" onclick="addCheckItem()">Přidat</button>
+    </div>
+  `;
+}
+
+window.switchChecklist = function(id) {
+  activeChecklist = id;
+  renderChecklist();
+};
+
+window.addCheckItem = function() {
+  const inp = document.getElementById('cl-new-inp');
+  if (!inp || !inp.value.trim()) return;
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  list.items.push({id: genId(), text: inp.value.trim(), done: false});
+  inp.value = '';
+  lsSave('lp_checklists', checklists);
+  renderChecklist();
+  document.getElementById('cl-new-inp')?.focus();
+};
+
+window.toggleCheckItem = function(itemId) {
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (item) { item.done = !item.done; }
+  lsSave('lp_checklists', checklists);
+  renderChecklist();
+};
+
+window.deleteCheckItem = function(itemId) {
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  list.items = list.items.filter(i => i.id !== itemId);
+  lsSave('lp_checklists', checklists);
+  renderChecklist();
+};
+
+window.clearDoneItems = function() {
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  list.items = list.items.filter(i => !i.done);
+  lsSave('lp_checklists', checklists);
+  renderChecklist();
+};
+
+window.addChecklist = function() {
+  const name = prompt('Název nového seznamu:');
+  if (!name?.trim()) return;
+  const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
+  checklists.push(newList);
+  activeChecklist = newList.id;
+  lsSave('lp_checklists', checklists);
+  renderChecklist();
+};
+
+
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
@@ -3119,7 +3379,7 @@ async function initApp(){
     console.error('initApp: claudeKey fetch error:', e);
     claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
-  loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
+  initWater();initFocus();initChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);setTimeout(checkAutoWeeklyReport,10000);
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
@@ -3134,7 +3394,7 @@ function buildNav(){
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
-  const more=all.slice(4);
+  const more=[...all.slice(4),{id:'checklist',emoji:'✅',label:'Checklist'}];
   const bni=document.getElementById('bottom-nav-inner');
   if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${esc(p.id)}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
   const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${esc(p.id)}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
@@ -3166,6 +3426,7 @@ window.sp=id=>{
   if(id==='habits')renderHabits();
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
+  if(id==='checklist')renderChecklist();
 };
 
 function rDash(){
@@ -3244,7 +3505,8 @@ function rDash(){
 
   const today=new Date().toISOString().slice(0,10);
   const mods=prof.modules||[];
-  let html='';
+  // Focus widget always at top
+  let html=focusWidgetHTML();
 
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
@@ -3468,13 +3730,16 @@ function rDash(){
     }
   }
 
-  // ── Pokud žádné widgety (žádné moduly) ──
-  if(!html){
-    html=`<div class="dw" style="text-align:center;cursor:default">
+  // ── Pokud žádné moduly (bez focus widgetu) — ukáž nápovědu ──
+  if(!mods.length){
+    html+=`<div class="dw" style="text-align:center;cursor:default">
       <div style="font-size:32px;margin-bottom:8px">📱</div>
       <div style="font-size:15px;color:var(--text2)">Zapni si moduly v <b style="color:var(--accent)">Nastavení</b></div>
     </div>`;
   }
+
+  // Water widget always at bottom
+  html += waterWidgetHTML();
 
   const dw=document.getElementById('d-widgets'); if(dw) dw.innerHTML=html;
 }
