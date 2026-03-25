@@ -152,6 +152,25 @@ Audit odhalil dva větší technické dluhy, které zatím nerušují funkčnost
 
 ---
 
+### 🌍 Anglická mutace aplikace
+Přeložit LifePocket do angličtiny — otevřít appku širšímu publiku.
+
+**Jak by to fungovalo:**
+- Přepínač jazyka v nastavení (🇨🇿 / 🇬🇧)
+- Všechny texty v UI přes lokalizační slovník (`i18n.cs.js` + `i18n.en.js`)
+- Rex mluví anglicky pokud je vybraná EN mutace
+- Firestore data zůstanou stejná (jazykově neutrální), jen UI se přeloží
+- GitHub Pages URL: `?lang=en` nebo subdoména
+
+**Technický přístup:**
+- Vytvořit objekt `T` s klíči pro všechny texty
+- `T.key` místo hardcoded stringů v JS/HTML
+- Postupně — začít navigací a dashboardem, pak zbytek
+
+**Priorita:** Na později (po stabilizaci funkčností)
+
+---
+
 ### ✅ Checklist / Úkolníček
 Jednoduchý seznam úkolů — náhrada za Google Keep / Samsung Notes.
 

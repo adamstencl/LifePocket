@@ -417,6 +417,11 @@
               <button class="vstop" onclick="stopJournalMic()">⏹ Hotovo</button>
             </div>
             <textarea class="j-textarea" id="j-text" placeholder="Piš co tě napadá… nebo klikni na 🎤 a mluv." oninput="markDirty()"></textarea>
+            <div id="j-photo-preview"></div>
+            <div class="j-photo-bar">
+              <button class="j-photo-btn" onclick="triggerEntryPhoto()" title="Přidat fotku">📷 Fotka</button>
+            </div>
+            <input type="file" id="j-photo-input" accept="image/*" style="display:none" onchange="handleEntryPhotoInput(this)">
           </div>
         </div>
 
@@ -583,6 +588,7 @@
               <div class="av-chat-name" id="av-nm">Společník</div>
               <div class="av-chat-status">● Online</div>
               <div class="av-chat-msg" id="av-msg">Vítej! Jsem tady pro tebe každý den.</div>
+              <div id="av-energy" style="padding:0 4px"></div>
             </div>
           </div>
           <div class="av-chat-moods" id="av-moods"></div>

@@ -142,7 +142,7 @@ function renderEntryList(filter=''){
     const preview=(e.text||'').slice(0,50);
     return `<div class="j-item ${e.id===curEntryId?'active':''}" onclick="openEntry('${esc(e.id)}')">
       <div class="j-item-date">${d}</div>
-      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}</div>
+      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}${e.photo?` <span style="font-size:11px">📷</span>`:''}</div>
       ${preview?`<div class="j-item-preview">${preview}…</div>`:''}
     </div>`;
   }).join('');
@@ -150,8 +150,55 @@ function renderEntryList(filter=''){
 
 window.filterEntries=()=>renderEntryList(document.getElementById('j-search').value);
 
+// ── Komprese obrázků ──────────────────────────────────────
+async function compressImage(file, maxPx=900, quality=0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+let curEntryPhoto = null;
+
+window.triggerEntryPhoto = () => document.getElementById('j-photo-input')?.click();
+window.removeEntryPhoto = () => {
+  curEntryPhoto = null;
+  const p = document.getElementById('j-photo-preview');
+  if (p) p.innerHTML = '';
+};
+window.handleEntryPhotoInput = async function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  toast('📷 Zpracovávám fotku…');
+  try {
+    curEntryPhoto = await compressImage(file);
+    const p = document.getElementById('j-photo-preview');
+    if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
+      <img src="${curEntryPhoto}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
+      <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
+    </div>`;
+    toast('📷 Fotka připravena');
+  } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+  input.value = '';
+};
+// ─────────────────────────────────────────────────────────
+
 window.newEntry=()=>{
   curEntryId=null; entryMood=''; entryDirty=false;
+  curEntryPhoto = null;
+  const p = document.getElementById('j-photo-preview');
+  if (p) p.innerHTML = '';
   document.getElementById('j-title')?.value != null && (document.getElementById('j-title').value='');
   document.getElementById('j-text')?.value != null && (document.getElementById('j-text').value='');
   const jdate = document.getElementById('j-date');
@@ -171,6 +218,15 @@ window.openEntry=(id)=>{
   const jx=document.getElementById('j-text'); if(jx) jx.value=e.text||'';
   const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Neznámé datum';
   document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.toggle('sel',b.dataset.m===entryMood));
+  // Load photo
+  curEntryPhoto = e.photo || null;
+  const p = document.getElementById('j-photo-preview');
+  if (p) p.innerHTML = curEntryPhoto
+    ? `<div style="position:relative;display:inline-block;margin-top:8px">
+        <img src="${curEntryPhoto}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
+        <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
+      </div>`
+    : '';
   document.getElementById('j-empty')?.style && (document.getElementById('j-empty').style.display='none');
   document.getElementById('j-edit-area')?.style && (document.getElementById('j-edit-area').style.display='flex');
   renderEntryList();
@@ -185,13 +241,14 @@ window.saveEntry=async()=>{
     if(curEntryId){
       const idx=entries.findIndex(e=>e.id===curEntryId);
       if(idx>=0){
-        entries[idx]={...entries[idx],title,text,mood:entryMood,updatedAt:now};
+        entries[idx]={...entries[idx],title,text,mood:entryMood,updatedAt:now,photo:curEntryPhoto||null};
         await setDoc(doc(db,'users',CU.uid,'entries',curEntryId),entries[idx]);
       }
     } else {
-      const e={title,text,mood:entryMood,createdAt:now,updatedAt:now};
+      const e={title,text,mood:entryMood,createdAt:now,updatedAt:now,photo:curEntryPhoto||null};
       const ref=await addDoc(collection(db,'users',CU.uid,'entries'),e);
       curEntryId=ref.id;
+      entries.unshift({...e,id:ref.id});
     }
     entryDirty=false;
     renderEntryList();
@@ -804,6 +861,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
     checkAvatarReactions(hid, date, true);
   }
   renderHabits();
+  rAvPage();
 };
 
 window.adjustHabit=async(hid,date,delta,goal)=>{
@@ -1379,6 +1437,24 @@ function rEmptyStates(){
   const he_t=document.getElementById('he-title'); if(he_t)he_t.textContent='Ještě žádné návyky';
 }
 
+function getRexEnergy() {
+  const today = new Date().toISOString().slice(0,10);
+  const active = habits.filter(h => !h.archived);
+  if (!active.length) return null;
+  const done = active.filter(h => habitLogs.some(l => l.id === h.id+'_'+today && l.done)).length;
+  return Math.round((done / active.length) * 100);
+}
+
+function getRexState(energy) {
+  if (energy === null) return {emoji:'💤', label:'Čeká na tebe', color:'#888', msg:'Přidej návyky a já ožiju!'};
+  if (energy === 0)    return {emoji:'😴', label:'Spí', color:'#888', msg:'Ještě žádný návyk dnes...'};
+  if (energy <= 25)   return {emoji:'😪', label:'Unavený', color:'#e8a87c', msg:'Pojď, trochu mě probudi!'};
+  if (energy <= 50)   return {emoji:'😕', label:'Trochu líný', color:'#f4c430', msg:'Jsi na půli cesty!'};
+  if (energy <= 75)   return {emoji:'😊', label:'Spokojený', color:'#4cd964', msg:'Skvělá práce, pokračuj!'};
+  if (energy <= 90)   return {emoji:'💪', label:'Nabitý', color:'#5ac8fa', msg:'Málem na vrcholu!'};
+  return {emoji:'🔥', label:'V zóně!', color:'#ff9500', msg:'Jsem na 100%! Jsi borec!'};
+}
+
 function rAvPage(){
   rEmptyStates();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
@@ -1397,6 +1473,26 @@ function rAvPage(){
   if(el_cwem)el_cwem.textContent=av.emoji;
   if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
   if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${esc(m.emoji)}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
+  // Rex Tamagotchi energy
+  const energy = getRexEnergy();
+  const rexState = getRexState(energy);
+  const elEnergy = document.getElementById('av-energy');
+  if (elEnergy) {
+    const pct = energy ?? 0;
+    elEnergy.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px">
+        <span style="font-size:22px">${rexState.emoji}</span>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Energie · <span style="color:${rexState.color};font-weight:700">${rexState.label}</span></div>
+          <div style="background:var(--border);border-radius:20px;height:8px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${rexState.color};border-radius:20px;transition:width .5s"></div>
+          </div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${rexState.color}">${energy !== null ? pct+'%' : ''}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text3);font-style:italic;text-align:center;margin-bottom:6px">"${rexState.msg}"</div>
+    `;
+  }
 }
 
 // ── ZDRAVÍ MODUL ──────────────────────────────────────
@@ -3380,7 +3476,11 @@ function renderChecklist() {
           <button class="cl-check" onclick="toggleCheckItem('${esc(item.id)}')">
             ${item.done ? '✓' : ''}
           </button>
-          <span class="cl-item-text" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+          <div class="cl-item-body">
+            <span class="cl-item-text" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+            ${item.photo ? `<div class="cl-item-photo-wrap"><img src="${item.photo}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}')"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}')">×</button></div>` : ''}
+          </div>
+          <button class="cl-item-photo-btn" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>
           <button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>
         </div>
       `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
@@ -3425,6 +3525,49 @@ window.deleteCheckItem = function(itemId) {
   lsSave('lp_checklists', checklists);
   renderChecklist();
 };
+
+// ── Checklist foto ────────────────────────────────────────
+window.triggerClItemPhoto = function(itemId) {
+  let inp = document.getElementById('cl-photo-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'cl-photo-input';
+    inp.style.display = 'none'; document.body.appendChild(inp);
+  }
+  inp.onchange = async function() {
+    const file = inp.files[0]; if (!file) return;
+    toast('📷 Zpracovávám…');
+    try {
+      const photo = await compressImage(file, 900, 0.75);
+      const list = checklists.find(c => c.id === activeChecklist);
+      if (!list) return;
+      const item = list.items.find(i => i.id === itemId);
+      if (item) { item.photo = photo; lsSave('lp_checklists', checklists); renderChecklist(); }
+    } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+    inp.value = '';
+  };
+  inp.click();
+};
+window.removeClItemPhoto = function(itemId) {
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (item) { delete item.photo; lsSave('lp_checklists', checklists); renderChecklist(); }
+};
+window.showClItemPhoto = function(itemId) {
+  const list = checklists.find(c => c.id === activeChecklist);
+  const item = list?.items.find(i => i.id === itemId);
+  if (!item?.photo) return;
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    `<div class="moverlay open" onclick="this.remove()" style="z-index:9999">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px">
+        <img src="${item.photo}" style="max-width:100%;max-height:70vh;border-radius:12px">
+        <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
+      </div>
+    </div>`
+  );
+};
+// ─────────────────────────────────────────────────────────
 
 window.clearDoneChecklistItems = function() {
   const list = checklists.find(c => c.id === activeChecklist);
@@ -3593,6 +3736,42 @@ function rDash(){
   let html=focusWidgetHTML();
   // Quick Start karta pro nové uživatele
   html+=quickStartHTML();
+
+  // Mini Rex energy widget
+  const rexEn = getRexEnergy();
+  const rexSt = getRexState(rexEn);
+  html += `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
+    <div class="dw-head">
+      <div class="dw-title">${av.emoji||'⭐'} ${av.name||'Rex'}</div>
+      <div class="dw-arrow">→</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:28px">${rexSt.emoji}</span>
+      <div style="flex:1">
+        <div style="font-size:13px;color:var(--text2);font-weight:600">${rexSt.label}${rexEn !== null ? ' · '+rexEn+'%' : ''}</div>
+        <div style="background:var(--border);border-radius:20px;height:6px;margin-top:4px;overflow:hidden">
+          <div style="width:${rexEn??0}%;height:100%;background:${rexSt.color};border-radius:20px;transition:width .5s"></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // ── WIDGET: NÁLADA ──
+  const dailyMoodData = lsGet('lp_daily_mood', null);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todayMood = dailyMoodData?.date === todayStr ? dailyMoodData.emoji : null;
+
+  html += `<div class="dw">
+    <div class="dw-head">
+      <div class="dw-title">💭 Jak se dnes cítíš?</div>
+      ${todayMood ? `<div style="font-size:18px">${todayMood}</div>` : ''}
+    </div>
+    <div style="display:flex;justify-content:space-around;padding:4px 0">
+      ${['😄','🙂','😐','😔','😤'].map(e =>
+        `<button onclick="setDailyMood('${e}')" style="background:${todayMood===e?'rgba(245,200,66,.2)':'none'};border:${todayMood===e?'2px solid var(--accent)':'2px solid transparent'};border-radius:10px;padding:6px 8px;font-size:24px;cursor:pointer;transition:all .15s">${e}</button>`
+      ).join('')}
+    </div>
+  </div>`;
 
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
@@ -3829,7 +4008,30 @@ function rDash(){
 
   const dw=document.getElementById('d-widgets'); if(dw) dw.innerHTML=html;
 }
-window.selMood=em=>{mood=em;rAvPage();toast(`Nálada ${em} zaznamenána`);};
+window.selMood=em=>{
+  mood=em;
+  const today = new Date().toISOString().slice(0,10);
+  lsSave('lp_daily_mood', {emoji:em, date:today});
+  rAvPage();
+  toast(`Nálada ${em} zaznamenána`);
+};
+
+window.setDailyMood = function(emoji) {
+  const today = new Date().toISOString().slice(0,10);
+  lsSave('lp_daily_mood', {emoji, date: today});
+  mood = emoji;
+  rAvPage();
+  rDash();
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const reactions = {
+    '😄': `Super den! ${av.name} se raduje s tebou! 🎉`,
+    '🙂': `Příjemný den! ${av.name} je tu pro tebe.`,
+    '😐': `Průměrný den? ${av.name} věří, že se to zlepší.`,
+    '😔': `${av.name} cítí, že to není lehký den. Drž se! 💙`,
+    '😤': `Frustrující den? ${av.name} ti fandí 💪`,
+  };
+  toast(reactions[emoji] || `Nálada ${emoji} zaznamenána`);
+};
 
 window.openVM=()=>{document.getElementById('vi-inp').value=prof.vision||'';om('m-vision');};
 window.saveV=async()=>{
