@@ -3461,7 +3461,9 @@ async function initApp(){
     claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
   initWater();initFocus();initChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
-  setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);setTimeout(checkAutoWeeklyReport,10000);
+  setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
+  setTimeout(checkAutoWeeklyReport,10000); // první kontrola po spuštění
+  setInterval(checkAutoWeeklyReport,3600000); // opakuj každou hodinu (v neděli spustí report)
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
 }
@@ -5315,7 +5317,7 @@ const TOUR_MODULES = {
     text: 'Sleduj své denní rutiny — cvičení, čtení, pití vody... Každý den je zaškrtni a buduj streak. Návyky jsou propojené s tvými cíli.'
   },
   journal: {
-    title: 'Zápisník 📝',
+    title: 'Poznámky 📝',
     text: 'Místo pro tvoje myšlenky, pocity a zážitky. Piš co chceš — krátce nebo dlouze. Můžeš přidat náladu nebo nahrát hlasový záznam.'
   },
   calendar: {
@@ -5361,7 +5363,7 @@ function startWelcomeTour() {
         Jsem <strong>${av.name}</strong>, tvůj osobní společník v LifePocket.
       </div>
       <div style="font-size:14px;color:var(--text3);line-height:1.6;margin-bottom:24px">
-        Jsem tady vždy když mě budeš potřebovat — pomůžu ti s cíli, recepty, návyky i zápisníkem. Chceš si se mnou projít co všechno LifePocket umí?
+        Jsem tady vždy když mě budeš potřebovat — pomůžu ti s cíli, recepty, návyky i poznámkami. Chceš si se mnou projít co všechno LifePocket umí?
       </div>
       <button onclick="startModuleTour()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer;margin-bottom:10px">
         🗺️ Ukáž mi co umíš!
