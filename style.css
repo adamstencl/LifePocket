@@ -688,7 +688,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .habit-card.done .habit-streak{color:rgba(61,214,140,0.7)}
 [data-theme="sunshine"] .habit-card.done .habit-streak,[data-theme="morning"] .habit-card.done .habit-streak{color:rgba(45,138,94,0.7)}
 .habit-streak-fire{color:#f4a435}
-.habit-done-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text3);transition:all 0.25s;white-space:nowrap;flex-shrink:0}
+.habit-done-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text3);transition:all 0.25s;white-space:nowrap;flex-shrink:0;min-width:80px;text-align:center}
 .habit-card.done .habit-done-badge{background:var(--green);color:#fff}
 .habit-group-body{display:none;background:var(--bg);padding:8px 10px 10px}
 .streak-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}

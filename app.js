@@ -489,7 +489,6 @@ function buildHabitCard(h){
           </div>`
         : `<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`
       }
-      <button class="habit-del" onclick="deleteHabit('${esc(h.id)}')">🗑️</button>
     </div>
     <table class="habit-table" style="margin-top:10px"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>
   </div>`;
@@ -3369,7 +3368,7 @@ function renderChecklist() {
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
       </div>
-      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneItems()">Smazat splněné</button>` : ''}
+      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
     <div class="cl-items">
       ${list.items.length ? list.items.map(item => `
@@ -3423,7 +3422,7 @@ window.deleteCheckItem = function(itemId) {
   renderChecklist();
 };
 
-window.clearDoneItems = function() {
+window.clearDoneChecklistItems = function() {
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   list.items = list.items.filter(i => !i.done);
@@ -4021,6 +4020,12 @@ window.send=async()=>{
     `[${e.createdAt?.slice(0,10)||'?'}] ${e.mood||''} "${e.title}": ${(e.text||'').substring(0,150)}`
   ).join('\n');
 
+  // ── Kontext: Checklist ──
+  const activeClList = checklists.find(c => c.id === activeChecklist) || checklists[0];
+  const clCtx = activeClList?.items?.length
+    ? activeClList.items.map(i => `- [${i.done?'✓':'○'}] ${i.text}`).join('\n')
+    : 'Prázdný';
+
   // ── Kontext: Nákupy ──
   const shopCtx = shopItems.filter(i=>!i.done).slice(0,10)
     .map(i=>`- ${i.name}${i.qty?' ('+i.qty+')':''}${i.fromRecipe?' ['+i.fromRecipe+']':''}`).join('\n');
@@ -4053,6 +4058,9 @@ ${habitCtxFull}
 
 POSLEDNÍCH 5 ZÁPISKŮ:
 ${recentEntries||'Žádné zápisky'}
+
+CHECKLIST (${activeClList?.name||'Úkoly'}):
+${clCtx}
 
 NÁKUPNÍ SEZNAM (nesplněné):
 ${shopCtx||'Prázdný'}
@@ -4333,6 +4341,66 @@ window.shareShoppingList=()=>{
   } else {
     navigator.clipboard.writeText(text).then(()=>toast('📋 Seznam zkopírován do schránky!')).catch(()=>toast('❌ Kopírování selhalo'));
   }
+};
+
+window.openRecipePickerForShop = function() {
+  document.getElementById('recipe-shop-picker')?.remove();
+  const m = document.createElement('div');
+  m.id = 'recipe-shop-picker';
+  m.className = 'moverlay open';
+  const recipes = savedRecipes || [];
+  m.innerHTML = `<div class="modal" style="max-width:400px">
+    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🍽️ Vybrat recept do nákupu</h3>
+    ${recipes.length ? `
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">Klikni na recept — ingredience se přidají do nákupního seznamu.</div>
+      <div style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+        ${recipes.map(r => `
+          <div onclick="addRecipeToShop('${esc(r.id)}',this)"
+            style="background:var(--card2);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .2s"
+            onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="font-size:22px">🍽️</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--text)">${esc(r.name)}</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px">⏱ ${r.time||'?'} · 🥘 ${r.ingredients?.length||0} surovin</div>
+            </div>
+          </div>`).join('')}
+      </div>` : `
+      <div style="text-align:center;padding:24px 0;color:var(--text3)">
+        <div style="font-size:36px;margin-bottom:10px">🔖</div>
+        <div style="font-size:14px">Zatím nemáš žádné uložené recepty.</div>
+        <div style="font-size:13px;margin-top:4px">Vygeneruj recept ve Vaření a ulož ho.</div>
+      </div>`}
+    <button class="btn-s" style="width:100%;margin-top:14px" onclick="document.getElementById('recipe-shop-picker').remove()">Zavřít</button>
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target === m) m.remove(); });
+};
+
+window.addRecipeToShop = async function(recipeId, el) {
+  const recipe = savedRecipes.find(r => r.id === recipeId);
+  if(!recipe) return;
+  if(!recipe.ingredients?.length) { toast('Recept nemá ingredience'); return; }
+  el.style.borderColor = 'var(--green)';
+  el.style.pointerEvents = 'none';
+  const isSharedShop = isShopShared();
+  const activeShopItems = isSharedShop ? familyShopItems : shopItems;
+  const ref = isSharedShop
+    ? collection(db,'families',familyId,'shopItems')
+    : collection(db,'users',CU.uid,'shopItems');
+  let added = 0;
+  for(const ing of recipe.ingredients) {
+    const key = ing.name.toLowerCase();
+    if(activeShopItems.some(i => i.name.toLowerCase() === key)) continue;
+    await addDoc(ref, {
+      name: ing.name, qty: ing.qty||'',
+      category: ing.category||'Ostatní',
+      done: false, fromRecipe: recipe.name,
+      createdAt: new Date().toISOString()
+    });
+    added++;
+  }
+  el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? `Přidáno ${added} ingrediencí` : 'Vše už máš v nákupu'}</div></div>`;
+  toast(added > 0 ? `✅ Přidáno ${added} ingrediencí z "${recipe.name}"` : '📌 Vše z tohoto receptu už máš v nákupu');
 };
 
 window.clearDoneItems=async()=>{
