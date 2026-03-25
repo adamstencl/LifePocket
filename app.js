@@ -40,7 +40,7 @@ async function callClaude(messages, maxTokens = 500) {
       const d = ks.data();
       const k = d ? (d['claudeKey'] || d['cladeKey'] || d['ClaudeKey'] || d['claude_key']) : null;
       if (k) claudeKey = k;
-    } catch(e) { /* tiché selhání */ }
+    } catch(e) { console.warn('[LP] callClaude: načtení klíče selhalo', e.message); }
     if (!claudeKey) return null;
   }
   // Claude API vyžaduje system prompt odděleně od messages
@@ -72,13 +72,27 @@ async function callClaude(messages, maxTokens = 500) {
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
 let entries=[], unsubEntries=null;
 
+// ── Firebase subscription helper ──────────────────────────
+// Eliminuje opakující se vzor: if(unsub) unsub(); unsub = onSnapshot(...)
+const _fireSubs = {};
+function createFireSub(key, ref, callback) {
+  if (!CU) return;
+  if (_fireSubs[key]) { _fireSubs[key](); delete _fireSubs[key]; }
+  _fireSubs[key] = onSnapshot(ref, callback);
+}
+function destroyAllFireSubs() {
+  Object.keys(_fireSubs).forEach(k => { if (_fireSubs[k]) _fireSubs[k](); delete _fireSubs[k]; });
+}
+// ──────────────────────────────────────────────────────────
+
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
   else{
     CU=null;
     // Unsubscribe všechny Firebase listenery
-    [unsub,unsubEntries,unsubHabits,unsubLogs,unsubEvents,unsubShop,unsubSavedRecipes,unsubHealthLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal].forEach(u=>{if(u)u();});
-    unsub=null; unsubEntries=null; unsubHabits=null; unsubLogs=null; unsubEvents=null; unsubShop=null; unsubSavedRecipes=null; unsubHealthLogs=null;
+    destroyAllFireSubs();
+    [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal].forEach(u=>{if(u)u();});
+    unsub=null; unsubHabits=null; unsubLogs=null;
     unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null;
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[];
@@ -100,14 +114,9 @@ let curEntryId=null, entryMood='', entryDirty=false;
 let jRec=null, jRecOn=false;
 
 function subEntries(){
-  if(!CU)return;
-  if(unsubEntries)unsubEntries();
-  unsubEntries=onSnapshot(
+  createFireSub('entries',
     query(collection(db,'users',CU.uid,'entries'),orderBy('createdAt','desc')),
-    snap=>{
-      entries=snap.docs.map(d=>({id:d.id,...d.data()}));
-      renderEntryList();
-    }
+    snap=>{ entries=snap.docs.map(d=>({id:d.id,...d.data()})); renderEntryList(); }
   );
 }
 
@@ -1037,12 +1046,10 @@ const EV_ICONS={birthday:'🎂',event:'📌'};
 const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
 
 function subEvents(){
-  if(!CU)return;
-  if(unsubEvents)unsubEvents();
-  unsubEvents=onSnapshot(collection(db,'users',CU.uid,'events'),snap=>{
-    events=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderCal();
-  });
+  createFireSub('events',
+    collection(db,'users',CU.uid,'events'),
+    snap=>{ events=snap.docs.map(d=>({id:d.id,...d.data()})); renderCal(); }
+  );
 }
 
 
@@ -1475,13 +1482,10 @@ window.saveHealthLog = async () => {
 // loadHealthLogs - data se načítají přes subHealthLogs() real-time listener
 
 function subHealthLogs() {
-  if (!CU) return;
-  if(unsubHealthLogs) unsubHealthLogs();
-  unsubHealthLogs = onSnapshot(collection(db,'users',CU.uid,'healthLogs'), snap => {
-    healthLogs = {};
-    snap.docs.forEach(d => { healthLogs[d.id] = d.data(); });
-    rDash(); // aktualizuj dashboard
-  });
+  createFireSub('healthLogs',
+    collection(db,'users',CU.uid,'healthLogs'),
+    snap=>{ healthLogs={}; snap.docs.forEach(d=>{ healthLogs[d.id]=d.data(); }); rDash(); }
+  );
 }
 
 function loadHealthDay() {
@@ -2098,7 +2102,7 @@ Buď konkrétní, ne obecný. Nezačínej s "Ahoj".`;
   try {
     const msg = await callClaude([{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}], 150);
     if (msg) showRexDashboardMessage(msg);
-  } catch(e) { /* tiše selhat */ }
+  } catch(e) { console.warn('[LP] rexProactiveGreeting selhalo:', e.message); }
 }
 
 function analyzeWeekPatterns() {
@@ -2231,7 +2235,7 @@ async function generateWeeklyReportSilent() {
     if(Notification.permission === 'granted') {
       sendNotif(`${av.emoji||'⭐'} Tvůj týdenní report je ready!`, `${av.name} připravil souhrn tohoto týdne — otevři LifePocket a podívej se.`, av.emoji||'⭐');
     }
-  } catch(e) { /* tiše selhat */ }
+  } catch(e) { console.warn('[LP] generateWeeklyReportSilent selhalo:', e.message); }
 }
 
 
@@ -4167,19 +4171,19 @@ let shopItems=[], unsubShop=null;
 let savedRecipes=[], unsubSavedRecipes=null;
 
 function subSavedRecipes(){
-  if(!CU||unsubSavedRecipes)return;
-  unsubSavedRecipes=onSnapshot(query(collection(db,'users',CU.uid,'savedRecipes'),orderBy('savedAt','desc')),snap=>{
-    savedRecipes=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderSavedRecipes();
-  });
+  if(_fireSubs['savedRecipes'])return; // už subscribed
+  createFireSub('savedRecipes',
+    query(collection(db,'users',CU.uid,'savedRecipes'),orderBy('savedAt','desc')),
+    snap=>{ savedRecipes=snap.docs.map(d=>({id:d.id,...d.data()})); renderSavedRecipes(); }
+  );
 }
 
 function subShop(){
-  if(!CU||unsubShop)return;
-  unsubShop=onSnapshot(collection(db,'users',CU.uid,'shopItems'),snap=>{
-    shopItems=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderShop();
-  });
+  if(_fireSubs['shop'])return; // už subscribed
+  createFireSub('shop',
+    collection(db,'users',CU.uid,'shopItems'),
+    snap=>{ shopItems=snap.docs.map(d=>({id:d.id,...d.data()})); renderShop(); }
+  );
 }
 
 // ── SHOPPING ──────────────────────────────────────────
