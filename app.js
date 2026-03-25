@@ -4668,8 +4668,8 @@ window.openPantryAdd = function(prefill = {}) {
   document.getElementById('pantry-add-modal')?.remove();
   const m = document.createElement('div');
   m.id = 'pantry-add-modal';
-  m.className = 'modal-overlay';
-  m.innerHTML = `<div class="modal-box" style="max-width:380px">
+  m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:380px">
     <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🧊 ${prefill.id ? 'Upravit zásobu' : 'Přidat zásobu'}</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
       <input id="pi-name" class="finp" placeholder="Název (např. Mléko)" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
@@ -4685,6 +4685,7 @@ window.openPantryAdd = function(prefill = {}) {
     </div>
   </div>`;
   document.body.appendChild(m);
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
   document.getElementById('pi-name').focus();
 };
 
@@ -4769,8 +4770,8 @@ function offerPantryDeduct(ingredients) {
 
   const m = document.createElement('div');
   m.id = 'pantry-deduct-modal';
-  m.className = 'modal-overlay';
-  m.innerHTML = `<div class="modal-box" style="max-width:400px">
+  m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:400px">
     <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🧊 Odečíst ze zásob?</h3>
     <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Chceš odečíst suroviny tohoto receptu ze svých zásob?</p>
     <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
