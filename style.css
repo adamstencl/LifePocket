@@ -917,6 +917,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 
 /* SHOPPING */
 .shop-add-row{display:flex;gap:8px;margin-bottom:16px}
+.shop-quick-btn{background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:6px 12px;font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s;font-family:'Crimson Pro',serif;white-space:nowrap}
+.shop-quick-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(224,149,74,.08)}
 .shop-category{margin-bottom:16px}
 .shop-cat-label{font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding:0 4px}
 .shop-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;transition:all .2s}

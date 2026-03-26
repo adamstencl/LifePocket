@@ -4476,7 +4476,8 @@ window.rexRecipe=async(food,btnEl)=>{
 Vrať JSON objekt:
 {"name":"Název jídla","time":"30 minut","difficulty":"Snadné","portions":4,"ingredients":[{"name":"Ingredience","qty":"200 g","category":"Maso & ryby"}],"steps":["Krok 1..."],"tip":"Tip..."}
 Kategorie: "Zelenina & ovoce","Maso & ryby","Mléčné výrobky","Pečivo","Trvanlivé","Ostatní"
-PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česky. ZAKÁZÁNO použít cyrilici, ruštinu, angličtinu ani jiné cizí jazyky.
+PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
   try{
     const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}],1500);
     if(!rawRecipe)throw new Error('AI není k dispozici');
@@ -4648,6 +4649,20 @@ window.addShopItem=async()=>{
     const item={name,done:false,category:cat,createdAt:new Date().toISOString()};
     await addDoc(collection(db,'users',CU.uid,'shopItems'),item);
     toast('✓ Přidáno');
+  }
+};
+
+window.quickAddShopItem=async(name,cat)=>{
+  const activeItems=isShopShared()?familyShopItems:shopItems;
+  if(activeItems.some(i=>i.name.toLowerCase()===name.toLowerCase()&&!i.done)){
+    toast(`${name} už je v seznamu`);return;
+  }
+  if(isShopShared()){
+    await addShopItemToFamily(name,cat);
+    toast(`✓ ${name} přidáno 👨‍👩‍👧`);
+  } else {
+    await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category:cat,createdAt:new Date().toISOString()});
+    toast(`✓ ${name} přidáno`);
   }
 };
 
@@ -4833,7 +4848,8 @@ Vrať JSON objekt s těmito poli:
 }
 Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
 ${typeHint}
-PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česky. ZAKÁZÁNO použít cyrilici, ruštinu, angličtinu ani jiné cizí jazyky.
+PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
 
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}],1500);

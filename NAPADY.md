@@ -6,6 +6,25 @@ Sem si piš nápady kdykoli — probereme a naplánujeme implementaci.
 
 ## 🚀 Nápady
 
+### 🌐 Vlastní doména — profesionální URL
+Aktuální URL `adamstencl.github.io/LifePocket` nevypadá profi.
+
+**Možnosti (od nejjednoduššího):**
+- **GitHub Pages + vlastní doména** — koupíš doménu (např. `lifepocket.app` nebo `lifepocket.cz`), nastavíš CNAME v DNS a v repo. Zdarma hosting, jen platíš doménu (~200–500 Kč/rok).
+- **`lifepocket.app`** — hezká, vystihuje PWA charakter. `.app` domény jsou HTTPS-only, což je výhoda.
+- **`lifepocket.cz`** — pokud cílíš jen na CZ/SK trh.
+- **Vercel / Netlify** — alternativa k GitHub Pages, dávají hezkou subdoménu zdarma (`lifepocket.vercel.app`) nebo napojení vlastní domény.
+
+**Co je potřeba udělat:**
+1. Koupit doménu (např. Wedos, Namecheap, Google Domains)
+2. V repo přidat soubor `CNAME` s obsahem `lifepocket.app`
+3. V DNS nastavit `CNAME → adamstencl.github.io`
+4. V GitHub repo Settings → Pages → Custom domain
+
+**Priorita:** Brzy — první dojem je důležitý
+
+---
+
 ### ✅ ~~Spíž / Lednice / Mrazák (Pantry tracker)~~
 **Stav: HOTOVO** — záložka Zásoby uvnitř modulu Vaření.
 

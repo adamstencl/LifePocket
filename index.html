@@ -551,6 +551,29 @@
         <button class="btn-p" style="width:auto;padding:10px 18px" onclick="addShopItem()">+ Přidat</button>
       </div>
 
+      <!-- Rychlé přidání oblíbených položek -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif;margin-bottom:8px;padding:0 2px">Rychlé přidání:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Rohlíky','Pečivo')">🥖 Rohlíky</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Chléb','Pečivo')">🍞 Chléb</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Mléko','Mléčné výrobky')">🥛 Mléko</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Máslo','Mléčné výrobky')">🧈 Máslo</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Vejce','Mléčné výrobky')">🥚 Vejce</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Jogurt','Mléčné výrobky')">🫙 Jogurt</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Sýr','Mléčné výrobky')">🧀 Sýr</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Cibule','Zelenina & ovoce')">🧅 Cibule</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Česnek','Zelenina & ovoce')">🧄 Česnek</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Brambory','Zelenina & ovoce')">🥔 Brambory</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Rajčata','Zelenina & ovoce')">🍅 Rajčata</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Banány','Zelenina & ovoce')">🍌 Banány</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Kuřecí prsa','Maso & ryby')">🍗 Kuřecí</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Těstoviny','Trvanlivé')">🍝 Těstoviny</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Rýže','Trvanlivé')">🍚 Rýže</button>
+          <button class="shop-quick-btn" onclick="quickAddShopItem('Mouka','Trvanlivé')">🌾 Mouka</button>
+        </div>
+      </div>
+
       <!-- Categories -->
       <div id="shop-list"></div>
 
