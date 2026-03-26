@@ -845,7 +845,15 @@ function renderHabitDetail(h) {
     <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn-s" style="flex:1;min-width:120px" onclick="archiveHabit('${esc(h.id)}')">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
-      <button class="btn-s" style="flex:1;min-width:120px;color:var(--red);border-color:var(--red)" onclick="deleteHabit('${esc(h.id)}')">🗑️ Smazat návyk</button>
+      <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" onclick="showDeleteHabitConfirm('${esc(h.id)}',this)">🗑️ Smazat</button>
+    </div>
+    <div id="hd-delete-confirm" style="display:none;margin-top:12px;background:rgba(255,59,48,.08);border:1px solid var(--red);border-radius:14px;padding:16px">
+      <div style="font-size:14px;color:var(--red);font-weight:600;margin-bottom:8px">⚠️ Opravdu smazat návyk?</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Smažou se i všechny záznamy a statistiky. Tuto akci nelze vrátit.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-s" style="flex:1" onclick="document.getElementById('hd-delete-confirm').style.display='none'">Zrušit</button>
+        <button class="btn-s" style="flex:1;color:var(--red);border-color:var(--red);font-weight:700" onclick="deleteHabit('${esc(h.id)}')">Ano, smazat</button>
+      </div>
     </div>
   `;
 }
@@ -1074,8 +1082,14 @@ window.directInput=async(hid,date,curVal,goal)=>{
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
+window.showDeleteHabitConfirm=(id,btn)=>{
+  const box=document.getElementById('hd-delete-confirm');
+  if(box) box.style.display='block';
+  if(btn) btn.style.display='none';
+};
+
 window.deleteHabit=async(id)=>{
-  if(!CU||!confirm('Smazat návyk a všechny záznamy? Tuto akci nelze vrátit.'))return;
+  if(!CU)return;
   await deleteDoc(doc(db,'users',CU.uid,'habits',id));
   habits=habits.filter(h=>h.id!==id);
   const logsToDelete=habitLogs.filter(l=>l.habitId===id);
