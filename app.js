@@ -6,6 +6,40 @@ const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocke
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
 
 
+const APP_VERSION = '1.2';
+const CHANGELOG = [
+  { v:'1.2', items:[
+    '📷 Foto v poznámkách — přidej snímek k záznamu v deníku',
+    '📷 Foto v checklistu — foť si úkoly přímo v seznamu',
+    '🦖 Rex Tamagotchi — Rex teď odráží tvůj výkon dne',
+    '😊 Nálada tracker — denní check-in přímo na dashboardu',
+    '🔔 Changelog — víš co je nového po každé aktualizaci',
+  ]},
+];
+
+function checkChangelog() {
+  const seen = lsGet('lp_seen_version', '');
+  if (seen === APP_VERSION) return;
+  const entry = CHANGELOG.find(c => c.v === APP_VERSION);
+  if (!entry) return;
+  document.getElementById('app').insertAdjacentHTML('beforeend', `
+    <div class="moverlay open" id="changelog-modal" onclick="if(event.target===this)closeChangelog()">
+      <div class="modal" style="max-width:380px;gap:0">
+        <div style="font-size:36px;text-align:center;margin-bottom:8px">🎉</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:4px">Co je nového</div>
+        <div style="font-size:13px;color:var(--text3);text-align:center;margin-bottom:18px">Verze ${entry.v}</div>
+        <ul style="list-style:none;padding:0;margin:0 0 20px;display:flex;flex-direction:column;gap:10px">
+          ${entry.items.map(i=>`<li style="font-size:14px;color:var(--text);background:var(--card2);border-radius:10px;padding:10px 14px">${i}</li>`).join('')}
+        </ul>
+        <button class="btn-p" onclick="closeChangelog()">Super, díky! 👍</button>
+      </div>
+    </div>`);
+}
+window.closeChangelog = function() {
+  lsSave('lp_seen_version', APP_VERSION);
+  document.getElementById('changelog-modal')?.remove();
+};
+
 const AVS=[
   {id:'rex',emoji:'⚔️',name:'Rex',vibe:'Tvrdý trénink,\njasné cíle.'},
   {id:'sage',emoji:'🌿',name:'Sage',vibe:'Ticho, moudrost,\nhloubka.'},
@@ -14,13 +48,13 @@ const AVS=[
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
 const MODS=[
-  {id:'habits',emoji:'🎯',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
-  {id:'journal',emoji:'📝',name:'Poznámky',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
-  {id:'calendar',emoji:'📅',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
-  {id:'goals',emoji:'🌟',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
-  {id:'cooking',emoji:'🍽️',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
-  {id:'shopping',emoji:'🛒',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
-  {id:'mealplan',emoji:'🍽️',name:'Jídelníček',desc:'Plánuj jídla na celý týden a sdílej jídelníček s rodinou.'},
+  {id:'habits',emoji:'🔥',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
+  {id:'journal',emoji:'📒',name:'Poznámky',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
+  {id:'calendar',emoji:'🗓️',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
+  {id:'goals',emoji:'🏆',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
+  {id:'cooking',emoji:'👨‍🍳',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
+  {id:'shopping',emoji:'🧺',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
+  {id:'mealplan',emoji:'🥗',name:'Jídelníček',desc:'Plánuj jídla na celý týden a sdílej jídelníček s rodinou.'},
 ];
 const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
 const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
@@ -1439,15 +1473,44 @@ function rEmptyStates(){
 
 function getRexEnergy() {
   const today = new Date().toISOString().slice(0,10);
+  let score = 0;
+  let hasAnyActivity = false;
+
+  // Návyky — 40 bodů max
   const active = habits.filter(h => !h.archived);
-  if (!active.length) return null;
-  const done = active.filter(h => habitLogs.some(l => l.id === h.id+'_'+today && l.done)).length;
-  return Math.round((done / active.length) * 100);
+  if (active.length) {
+    const done = active.filter(h => habitLogs.some(l => l.id === h.id+'_'+today && l.done)).length;
+    score += Math.round((done / active.length) * 40);
+    if (done > 0) hasAnyActivity = true;
+  }
+
+  // Zápisník — 20 bodů (má dnes záznam?)
+  const hasJournal = entries.some(e => e.createdAt?.startsWith(today));
+  if (hasJournal) { score += 20; hasAnyActivity = true; }
+
+  // Checklist — 20 bodů (splnil dnes aspoň 1 položku?)
+  const allItems = checklists.flatMap(c => c.items || []);
+  const hasDoneItem = allItems.some(i => i.done);
+  if (hasDoneItem) { score += 20; hasAnyActivity = true; }
+
+  // Nálada — 10 bodů (pozitivní = 10, neutrální = 5, negativní = 0)
+  const moodData = lsGet('lp_daily_mood', null);
+  if (moodData?.date === today) {
+    hasAnyActivity = true;
+    if (['😄','🙂'].includes(moodData.emoji)) score += 10;
+    else if (moodData.emoji === '😐') score += 5;
+  }
+
+  // Základní aktivita — 10 bodů (jen za to že appku otevřel)
+  score += 10; hasAnyActivity = true;
+
+  if (!hasAnyActivity && !active.length) return null;
+  return Math.min(100, score);
 }
 
 function getRexState(energy) {
-  if (energy === null) return {emoji:'💤', label:'Čeká na tebe', color:'#888', msg:'Přidej návyky a já ožiju!'};
-  if (energy === 0)    return {emoji:'😴', label:'Spí', color:'#888', msg:'Ještě žádný návyk dnes...'};
+  if (energy === null) return {emoji:'💤', label:'Čeká na tebe', color:'#888', msg:'Začni svůj den — já ožiju s tebou!'};
+  if (energy === 0)    return {emoji:'😴', label:'Spí', color:'#888', msg:'Ještě žádná aktivita dnes...'};
   if (energy <= 25)   return {emoji:'😪', label:'Unavený', color:'#e8a87c', msg:'Pojď, trochu mě probudi!'};
   if (energy <= 50)   return {emoji:'😕', label:'Trochu líný', color:'#f4c430', msg:'Jsi na půli cesty!'};
   if (energy <= 75)   return {emoji:'😊', label:'Spokojený', color:'#4cd964', msg:'Skvělá práce, pokračuj!'};
@@ -1639,10 +1702,8 @@ function renderHealthWeek() {
 let isDark = false;
 
 const THEMES = {
-  'dark-gold':  { emoji:'🌑', label:'Dark Gold',    bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
-  'warm-night': { emoji:'🌙', label:'Warm Night',   bg:'#1a1510', accent:'#f5a623', tc:'#1a1510' },
-  'sunshine':   { emoji:'☀️', label:'Sunshine',     bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
-  'morning':    { emoji:'🌤️', label:'Morning',      bg:'#f0f4f8', accent:'#2e86ab', tc:'#f0f4f8' },
+  'dark-gold':  { emoji:'🌑', label:'Tmavé',   bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
+  'sunshine':   { emoji:'☀️', label:'Světlé',  bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
 };
 
 window.setTheme = (id) => {
@@ -1663,7 +1724,7 @@ window.setTheme = (id) => {
 
 window.toggleTheme = () => {
   const cur = localStorage.getItem('lp_theme') || 'dark-gold';
-  const order = ['dark-gold','warm-night','sunshine','morning'];
+  const order = ['dark-gold','sunshine'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
 };
@@ -2815,9 +2876,10 @@ window.saveFamilyPrefs = async () => {
   const shareShop = document.getElementById('fshare-shop')?.checked ?? true;
   const shareCal = document.getElementById('fshare-cal')?.checked ?? true;
   const shareMeal = document.getElementById('fshare-meal')?.checked ?? true;
-  await setDoc(doc(db,'families',familyId), {shareShop,shareCal,shareMeal}, {merge:true});
-  // Aktualizuj sdílený seznam/kalendář
+  const shareChecklist = document.getElementById('fshare-checklist')?.checked ?? false;
+  await setDoc(doc(db,'families',familyId), {shareShop,shareCal,shareMeal,shareChecklist}, {merge:true});
   if(shareShop) syncShopToFamily();
+  if(shareChecklist) syncChecklistToFamily();
 };
 
 function subscribeFamily() {
@@ -2832,6 +2894,7 @@ function subscribeFamily() {
     if(familyData.shareShop) subscribeSharedShop();
     if(familyData.shareCal) subscribeSharedCal();
     if(familyData.shareMeal) subscribeSharedMeal();
+    if(familyData.shareChecklist) subscribeSharedChecklist();
   });
 }
 
@@ -2866,6 +2929,49 @@ async function syncShopToFamily() {
   // Nákupní seznam se nyní píše přímo do families/{id}/shopItems
 }
 
+// ── SDÍLENÝ CHECKLIST ──────────────────────────────────────
+let familyChecklists = [];
+let unsubFamilyChecklist = null;
+
+function subscribeSharedChecklist() {
+  if(unsubFamilyChecklist) return;
+  unsubFamilyChecklist = onSnapshot(
+    collection(db,'families',familyId,'checklists'),
+    snap => {
+      familyChecklists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true}));
+      renderChecklist();
+    }
+  );
+}
+
+async function syncChecklistToFamily() {
+  if(!familyId || !familyData?.shareChecklist) return;
+  // Sync označených listů (shared: true) do Firestore
+  const toShare = checklists.filter(c => c.shared);
+  for (const list of toShare) {
+    await setDoc(doc(db,'families',familyId,'checklists',list.id), {
+      name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
+    });
+  }
+}
+
+window.toggleChecklistShare = async function(listId) {
+  const list = checklists.find(c => c.id === listId);
+  if(!list || !familyId) return;
+  list.shared = !list.shared;
+  lsSave('lp_checklists', checklists);
+  if(list.shared) {
+    await setDoc(doc(db,'families',familyId,'checklists',list.id), {
+      name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
+    });
+    toast(`✅ "${list.name}" sdíleno s rodinou`);
+  } else {
+    await deleteDoc(doc(db,'families',familyId,'checklists',list.id));
+    toast(`"${list.name}" odebráno ze sdílení`);
+  }
+  renderChecklist();
+};
+
 function renderFamilySettings() {
   const noGroup = document.getElementById('family-no-group');
   const groupView = document.getElementById('family-group-view');
@@ -2899,6 +3005,7 @@ function renderFamilySettings() {
   const si = document.getElementById('fshare-shop'); if(si) si.checked = familyData.shareShop!==false;
   const ci = document.getElementById('fshare-cal'); if(ci) ci.checked = familyData.shareCal!==false;
   const mi = document.getElementById('fshare-meal'); if(mi) mi.checked = familyData.shareMeal!==false;
+  const chki = document.getElementById('fshare-checklist'); if(chki) chki.checked = familyData.shareChecklist===true;
 }
 
 // ── SDÍLENÝ NÁKUPNÍ SEZNAM ────────────────────────────
@@ -3354,6 +3461,7 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
 window.pickMeal = async (dayKey, mealKey, name, el) => {
   await saveMealPlanItem(dayKey, mealKey, name);
   document.getElementById('meal-picker-modal')?.remove();
+  renderMealPlan();
   toast(`✅ Přidáno: ${name}`);
 };
 
@@ -3408,6 +3516,7 @@ window.confirmAddToMealplan = async () => {
   if(!lastRecipe) return;
   await saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name);
   document.getElementById('add-to-mealplan-modal')?.remove();
+  renderMealPlan();
   toast(`✅ Přidáno do jídelníčku — ${DAYS_CS[_mealplanSelDay]}, ${MEALS_CS[_mealplanSelMeal]}`);
 };
 
@@ -3467,6 +3576,7 @@ function renderChecklist() {
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
+        ${familyId && familyData?.shareChecklist ? `<button onclick="toggleChecklistShare('${esc(list.id)}')" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
@@ -3604,6 +3714,7 @@ async function initApp(){
     claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
   initWater();initFocus();initChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
+  setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
   setTimeout(checkAutoWeeklyReport,10000); // první kontrola po spuštění
   setInterval(checkAutoWeeklyReport,3600000); // opakuj každou hodinu (v neděli spustí report)
@@ -3655,6 +3766,46 @@ window.sp=id=>{
   if(id==='checklist')renderChecklist();
   if(id==='cooking')initPantry();
 };
+
+// ── Denní motivační citát ────────────────────────────────
+const FALLBACK_QUOTES = [
+  'Každý velký výsledek začíná rozhodnutím zkusit to znovu.',
+  'Konzistence poráží motivaci — každý den, i malý krok.',
+  'Nejsilnější verze tebe čeká na druhé straně pohodlí.',
+  'Disciplína je most mezi cílem a výsledkem.',
+  'Nezáleží na tom jak pomalu jdeš, dokud se nezastavíš.',
+  'Úspěch není konečný, neúspěch není osudný — odvaha pokračovat rozhoduje.',
+  'Co děláš každý den je důležitější než to, co děláš občas.',
+  'Tvoje budoucí já ti poděkuje za dnešní rozhodnutí.',
+  'Malé kroky každý den vedou k velkým změnám.',
+  'Buď na sebe pyšný za každý den, kdy jsi to nevzdal.',
+];
+
+async function loadDailyQuote() {
+  const today = new Date().toISOString().slice(0,10);
+  const cached = lsGet('lp_daily_quote', null);
+  if (cached?.date === today) return cached.text;
+
+  // Pokus o AI citát
+  if (claudeKey) {
+    try {
+      const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+      const text = await callClaude([
+        {role:'system', content:`Jsi ${av.name}. Napiš JEDEN krátký motivační citát (max 15 slov) v češtině. Pouze citát, žádné uvozovky, žádné doplnění.`},
+        {role:'user', content:'Dej mi dnešní motivační citát.'}
+      ], 60);
+      if (text) {
+        lsSave('lp_daily_quote', {date: today, text});
+        return text;
+      }
+    } catch(e) { /* fallback */ }
+  }
+
+  // Fallback — lokální pool
+  const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
+  lsSave('lp_daily_quote', {date: today, text: fallback});
+  return fallback;
+}
 
 function rDash(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
@@ -3756,22 +3907,38 @@ function rDash(){
     </div>
   </div>`;
 
-  // ── WIDGET: NÁLADA ──
+  // ── WIDGET: DENNÍ CITÁT ──
+  const quoteToday = lsGet('lp_daily_quote', null);
+  const quoteTodayStr = new Date().toISOString().slice(0,10);
+  const quoteText = quoteToday?.date === quoteTodayStr ? quoteToday.text : null;
+  html += `<div class="dw" id="dash-quote-widget">
+    <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${av.name} říká</div>
+    <div id="dash-quote-text" style="font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;color:var(--text);line-height:1.5">${quoteText || '...'}</div>
+  </div>`;
+  if (!quoteText) {
+    loadDailyQuote().then(t => {
+      const el = document.getElementById('dash-quote-text');
+      if (el) el.textContent = t;
+    });
+  }
+
+  // ── WIDGET: NÁLADA (zobrazí se jen pokud ještě nebyla vybrána dnes) ──
   const dailyMoodData = lsGet('lp_daily_mood', null);
   const todayStr = new Date().toISOString().slice(0,10);
   const todayMood = dailyMoodData?.date === todayStr ? dailyMoodData.emoji : null;
 
-  html += `<div class="dw">
-    <div class="dw-head">
-      <div class="dw-title">💭 Jak se dnes cítíš?</div>
-      ${todayMood ? `<div style="font-size:18px">${todayMood}</div>` : ''}
-    </div>
-    <div style="display:flex;justify-content:space-around;padding:4px 0">
-      ${['😄','🙂','😐','😔','😤'].map(e =>
-        `<button onclick="setDailyMood('${e}')" style="background:${todayMood===e?'rgba(245,200,66,.2)':'none'};border:${todayMood===e?'2px solid var(--accent)':'2px solid transparent'};border-radius:10px;padding:6px 8px;font-size:24px;cursor:pointer;transition:all .15s">${e}</button>`
-      ).join('')}
-    </div>
-  </div>`;
+  if (!todayMood) {
+    html += `<div class="dw">
+      <div class="dw-head">
+        <div class="dw-title">💭 Jak se dnes cítíš?</div>
+      </div>
+      <div style="display:flex;justify-content:space-around;padding:4px 0">
+        ${['😄','🙂','😐','😔','😤'].map(e =>
+          `<button onclick="setDailyMood('${e}')" style="background:none;border:2px solid transparent;border-radius:10px;padding:6px 8px;font-size:24px;cursor:pointer;transition:all .15s">${e}</button>`
+        ).join('')}
+      </div>
+    </div>`;
+  }
 
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
@@ -4276,7 +4443,7 @@ ${shopCtx||'Prázdný'}
 NADCHÁZEJÍCÍ UDÁLOSTI:
 ${evCtx||'Žádné'}
 
-PRAVIDLO RECEPT: Tag [FOOD:název jídla] přidej NA KONEC odpovědi POUZE pokud uživatel EXPLICITNĚ žádá o recept, ptá se co vařit, nebo přímo zmiňuje konkrétní jídlo které chce uvařit. NIKDY nepřidávej [FOOD:...] pokud mluví o cvičení, návycích, náladě, dni, práci nebo čemkoliv jiném než o vaření. Pokud si nejsi jistý, tag NEPŘIDÁVEJ.
+PRAVIDLO JÍDLO: Nikdy sám od sebe nezmiňuj jídlo, recepty ani vaření — ani v textu, ani jako návrh. Jídlo řeš VÝHRADNĚ když tě uživatel přímo a explicitně požádá ("co mám uvařit?", "navrhni recept", "co k večeři?"). Tag [FOOD:název] přidej NA KONEC odpovědi POUZE v těchto případech. Ve všech ostatních situacích (motivace, návyky, nálada, den, práce, cíle, povídání) jídlo VŮBEC nezmiňuj.
 Pokud uživatel potřebuje motivaci nebo se ptá jak se daří, komentuj konkrétně jeho návyky a streak.
 
 PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;

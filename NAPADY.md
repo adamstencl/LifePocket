@@ -6,8 +6,10 @@ Sem si piš nápady kdykoli — probereme a naplánujeme implementaci.
 
 ## 🚀 Nápady
 
-### 🧊 Spíž / Lednice / Mrazák (Pantry tracker)
-Modul pro sledování zásob doma.
+### ✅ ~~Spíž / Lednice / Mrazák (Pantry tracker)~~
+**Stav: HOTOVO** — záložka Zásoby uvnitř modulu Vaření.
+
+~~Modul pro sledování zásob doma.~~
 
 **Jak by to fungovalo:**
 - Na začátku zapíšeš co máš doma (lednice, mrazák, spíž) — název + množství + jednotka
@@ -29,37 +31,20 @@ Modul pro sledování zásob doma.
 
 ---
 
-### 💧 Voda tracker
-Denní sledování příjmu vody — náhrada za samostatnou appku.
+### ✅ ~~Voda tracker~~
+**Stav: HOTOVO** — widget na dashboardu, denní reset, Rex pochválí.
 
-**Jak by to fungovalo:**
-- Denní cíl sklenic (výchozí 8, upravitelné)
-- Jedno klepnutí = +1 sklenice
-- Progress bar na dashboardu
-- Rex pochválí když splníš cíl
-- Reset každý den o půlnoci
-
-**Priorita:** Implementovat brzy
+**Zbývá:** Přesunout do opt-in (ne vždy viditelný) — viz sekce "Water tracker opt-in" níže.
 
 ---
 
-### 🎯 Denní focus (MIT — Most Important Task)
-Každé ráno jedna nejdůležitější věc na den.
-
-**Jak by to fungovalo:**
-- Widget na dashboardu: "Co musíš dnes udělat?"
-- Jedna věta, výrazně zobrazená nahoře celý den
-- Večer Rex se zeptá jestli jsi to splnil
-- Historie focusů
-
-**Priorita:** Implementovat brzy
+### ✅ ~~Denní focus (MIT — Most Important Task)~~
+**Stav: HOTOVO** — widget nahoře na dashboardu, denní reset, localStorage.
 
 ---
 
-### 📊 Týdenní review (Rex)
-Automatické shrnutí týdne každou neděli.
-
-**Stav:** ⚠️ Funkce existuje v kódu ale nefunguje — opravit!
+### ✅ ~~Týdenní review (Rex)~~
+**Stav: HOTOVO** — spouští se každou hodinu, v neděli vygeneruje AI shrnutí a uloží do zápisníku.
 
 **Jak by to mělo fungovat:**
 - Každou neděli notifikace nebo automatické otevření
@@ -70,34 +55,19 @@ Automatické shrnutí týdne každou neděli.
 
 ---
 
-### 📸 Foto v zápisníku
-Přidat fotku k záznamu v zápisníku.
-
-**Jak by to fungovalo:**
-- Tlačítko 📷 při vytváření/editaci záznamu
-- Fotka z galerie nebo kamery
-- Zobrazuje se v náhledu záznamu
-
-**Priorita:** Na později
+### ✅ ~~Foto v zápisníku~~
+**Stav: HOTOVO** — tlačítko 📷 v editoru, komprese, uložení do Firestore, thumbnail v seznamu.
 
 ---
 
-### 😊 Nálada tracker
-Rychlý ranní check-in — jak se dnes cítíš?
+### ✅ ~~Nálada tracker~~
+**Stav: HOTOVO** — widget na dashboardu, 5 emoji, Rex reaguje.
 
-**Jak by to fungovalo:**
-- 5 emoji: 😞 😕 😐 🙂 😄 — jedno klepnutí, žádný text
-- Zobrazuje se na dashboardu jako malý widget
-- Rex reaguje na náladu
-- Týdenní přehled nálad (barevné tečky v kalendáři)
-
-**Důraz na jednoduchost:** Max 2 vteřiny na vyplnění
-
-**Priorita:** Na později
+**Zbývá:** Widget zmizí po kliknutí (jednou denně) — viz sekce "Jak se dnes cítím" níže.
 
 ---
 
-### ⚔️ Gamifikace — Rex jako Tamagotchi
+### ⚔️ Gamifikace — Rex jako Tamagotchi *(Fáze 1 HOTOVO)*
 Rex se stane živou postavou jejíž stav odráží jak plníš návyky a cíle.
 
 **Fáze 1 — Nálada Rexe (jednoduchý start):**
@@ -168,6 +138,166 @@ Přeložit LifePocket do angličtiny — otevřít appku širšímu publiku.
 - Postupně — začít navigací a dashboardem, pak zbytek
 
 **Priorita:** Na později (po stabilizaci funkčností)
+
+---
+
+### ✅ ~~What's New — changelog při startu aplikace~~
+**Stav: HOTOVO** — `APP_VERSION`, `CHANGELOG` array, modal při prvním spuštění nové verze.
+
+---
+
+### ✅ ~~Jídelníček — přidat jídlo z receptu~~
+**Stav: OPRAVENO** — chyběl `renderMealPlan()` po uložení, UI se neaktualizovalo.
+
+---
+
+### 📊 Dashboard — personalizace a logika řazení
+Dashboard je "myšmaš" — widgety jsou pro každého jinak důležité.
+
+**Návrh řešení:**
+- Každý uživatel si může widgety přeřadit (drag & drop nebo pořadí v nastavení)
+- Nebo: inteligentní výchozí logika — zobrazit jen widgety relevantní pro daný den/čas
+  - Ráno: nálada + focus + voda
+  - Odpoledne: jídelníček + návyky
+  - Večer: Rex shrnutí + zápisník
+- Skrýt widgety modulů které uživatel nevyužívá
+
+**Priorita:** Na později
+
+---
+
+### 💧 Water tracker — samostatný modul, ne nativně na dashboardu
+Ne každý chce sledovat vodu — widget by neměl být vždy vidět.
+
+**Návrh:**
+- Přesunout do samostatného modulu (nebo záložky ve zdraví)
+- Na dashboardu se zobrazí jen pokud si ho uživatel zapne v nastavení
+- Opt-in widget
+
+**Priorita:** Přepracovat (původní plán byl nativně na dasboardu — změna záměru)
+
+---
+
+### ✅ ~~Rex — bez receptů v konverzaci~~
+**Stav: OPRAVENO** — systémový prompt přepsán, Rex nezmiňuje jídlo pokud se uživatel sám nezeptá.
+
+---
+
+### 💬 Rex — motivační citát na dashboardu
+Rex každý den zobrazí krátký motivační/chytrý citát nahoře na dashboardu.
+
+**Jak by to fungovalo:**
+- Generovat přes Claude API (nebo lokální pool citátů jako fallback)
+- Jednou denně nový citát, cachovat do localStorage
+- Krátký, pozitivní, relevantní pro den (může zohledňovat náladu nebo splněné návyky)
+- Výrazně zobrazený nahoře — ne jako chat bublina, spíš "denní slovo"
+
+**Poznámka:** Dobrý nápad — citáty dávají rexovi osobnost a každodenní přítomnost bez rušení.
+
+**Priorita:** Implementovat brzy
+
+---
+
+### 🎨 Témata — zjednodušit na světlé/tmavé
+Momentálně 4 témata — zbytečně moc.
+
+**Návrh:**
+- Jen světlé + tmavé téma
+- Barvy akcent lze řešit jinak (profilová barva, ne celé téma)
+
+**Priorita:** Na později
+
+---
+
+### 🎨 Ikony modulů — nahradit černe ikony za hezké
+Aktuální ikony jsou celé černé — nevýrazné, bez charakteru.
+
+**Návrh:**
+- Barevné nebo dvoubarevné ikony pro každý modul
+- Každý modul má svou barvu (návyky = zelená, jídelníček = oranžová, zápisník = modrá...)
+- Nebo emoji jako ikony — jednoduché a cross-platform
+
+**Priorita:** Na později (UX polish)
+
+---
+
+### 🦖 Rex nálada — z celého používání, ne jen návyků
+Momentálně Rex energie = % splněných návyků.
+
+**Problém:** Uživatel bez návyků bude mít Rexe vždy smutného.
+
+**Návrh:**
+- Celkové skóre aktivity: záznamy v zápisníku + splněné checklist položky + nálada + jídlo + návyky
+- Každá aktivita přispívá trochu — Rex reaguje na to jestli uživatel vůbec appku používá
+- Váhy: návyky 40%, checklist 20%, zápisník 20%, nálada 10%, jídlo 10%
+
+**Priorita:** Opravit (před další gamifikací)
+
+---
+
+### ✅ ~~Obnova hesla~~
+**Stav: HOTOVO** — link "Zapomenuté heslo?" v login formuláři, `sendPasswordResetEmail` přes Firebase.
+
+---
+
+### 🔔 Push notifikace — Service Worker upgrade
+Bez push notifikací nelze uživatele upozornit v přesný čas (ranní check-in, večerní review, připomínka vody...).
+
+**Co to odemkne:**
+- Přesné ranní/večerní připomínky (Jak se cítíš? / Rex večerní shrnutí)
+- Připomínka návyků pokud do X hodin nesplněno
+- Weekly review notifikace v neděli večer
+- Water tracker připomínka každé 2 hodiny
+
+**Technicky:**
+- PWA Service Worker + Web Push API (Firebase Cloud Messaging = FCM, zdarma)
+- Uživatel musí jednou povolit notifikace v prohlížeči
+- FCM token se uloží do Firestore profilu
+- Notifikace se odesílají přes Firebase Functions (nebo jednoduché trigger pravidlo)
+- Na Androidu funguje skvěle i když je appka zavřená
+
+**Prerekvizita pro:**
+- Přesný čas "Jak se dnes cítím" widgetu
+- Večerní Rex shrnutí
+- Habit reminder
+
+**Složitost:** Střední — Service Worker + FCM setup + Firebase Functions
+**Priorita:** Důležité — odemkne spoustu dalších funkcí
+
+---
+
+### 😊 Jak se dnes cítím — jednou denně, pak zmizí
+Widget nálady na dashboardu by se měl zobrazit jen jednou denně a po kliknutí zmizet.
+
+**Jak by to fungovalo:**
+- Každý den v určitou dobu se widget zobrazí (nastavitelné: ráno / večer)
+- Po kliknutí na emoji widget zmizí na zbytek dne
+- Příští den se zobrazí znovu
+- Uživatel si v nastavení vybere čas: "Ranní check-in (8:00)" nebo "Večerní check-in (21:00)"
+
+**Jak zjistit čas:** Appka je PWA bez push notifikací (zatím) — widget se zobrazí při prvním otevření appky po nastaveném čase, ne přesně v tu chvíli. Push notifikace by to vyřešily perfektně ale jsou komplexnější.
+
+**Priorita:** Implementovat brzy
+
+---
+
+### ✅ ~~Zůstat přihlášený — auto-login~~
+**Stav: OPRAVENO** — splash loading screen, login se zobrazí až po Firebase auth check.
+
+---
+
+### 👥 Počet uživatelů — analytika
+Jak zjistit kolik appku používá uživatelů?
+
+**Možnosti:**
+- Firebase Console → Authentication → Users (rychlé, zadarmo)
+- Firestore kolekce `users/{uid}/meta` s `lastSeen` timestampem — zjistíš aktivní uživatele
+- Google Analytics for Firebase (zdarma, detailnější)
+- Jednoduchý vlastní counter: při každém loginu inkrementovat counter v Firestore
+
+**Doporučení:** Nejjednodušší start = Firebase Console → Authentication. Pokud chceš víc, přidat `lastSeen` do Firestore profilu.
+
+**Priorita:** Na později
 
 ---
 
