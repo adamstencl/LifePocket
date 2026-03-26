@@ -456,6 +456,7 @@
           <div class="cook-top-row">
             <input class="cook-what-input" type="text" id="cook-inp" placeholder="Co chceš vařit?" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
             <button class="btn-cook-gen" onclick="askRecipe()">🔮 Navrhnout</button>
+            <button class="btn-cook-gen" onclick="openManualRecipe()" style="background:var(--card2);border:1px solid var(--border);color:var(--text2)">✏️ Vlastní</button>
           </div>
           <div class="cook-type-grid">
             <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>

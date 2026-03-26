@@ -2337,7 +2337,7 @@ window.getRexWeeklyReport = async () => {
   const sys = `Jsi ${av.name}, AI společník v LifePocket. Mluv česky, přátelsky.
 Udělej týdenní report uživatele ${prof?.nickname || ''}. Buď konkrétní, použij emoji, max 8 vět.
 Data posledních 7 dní:\n${weekStr}\nVzory v návycích: ${patterns || 'zatím málo dat'}
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
 
   try {
     const rep = await callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní report'}], 500);
@@ -4446,7 +4446,7 @@ ${evCtx||'Žádné'}
 PRAVIDLO JÍDLO: Nikdy sám od sebe nezmiňuj jídlo, recepty ani vaření — ani v textu, ani jako návrh. Jídlo řeš VÝHRADNĚ když tě uživatel přímo a explicitně požádá ("co mám uvařit?", "navrhni recept", "co k večeři?"). Tag [FOOD:název] přidej NA KONEC odpovědi POUZE v těchto případech. Ve všech ostatních situacích (motivace, návyky, nálada, den, práce, cíle, povídání) jídlo VŮBEC nezmiňuj.
 Pokud uživatel potřebuje motivaci nebo se ptá jak se daří, komentuj konkrétně jeho návyky a streak.
 
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
   try{
     let rep=await callClaude([{role:'system',content:sys},...chatH.slice(-10)],600);
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
@@ -4476,7 +4476,7 @@ window.rexRecipe=async(food,btnEl)=>{
 Vrať JSON objekt:
 {"name":"Název jídla","time":"30 minut","difficulty":"Snadné","portions":4,"ingredients":[{"name":"Ingredience","qty":"200 g","category":"Maso & ryby"}],"steps":["Krok 1..."],"tip":"Tip..."}
 Kategorie: "Zelenina & ovoce","Maso & ryby","Mléčné výrobky","Pečivo","Trvanlivé","Ostatní"
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
   try{
     const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}],1500);
     if(!rawRecipe)throw new Error('AI není k dispozici');
@@ -4833,7 +4833,7 @@ Vrať JSON objekt s těmito poli:
 }
 Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
 ${typeHint}
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
 
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}],1500);
@@ -4847,6 +4847,81 @@ PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí 
     document.getElementById('cook-loading').style.display='none';
     toast('❌ Chyba: '+e.message);
   }
+};
+
+// ── Manuální recept ───────────────────────────────────────
+window.openManualRecipe = function() {
+  document.getElementById('manual-recipe-modal')?.remove();
+  document.getElementById('app').insertAdjacentHTML('beforeend', `
+    <div class="moverlay open" id="manual-recipe-modal" onclick="if(event.target===this)this.remove()">
+      <div class="modal" style="max-width:480px;max-height:88vh;overflow-y:auto;gap:14px">
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700">✏️ Vlastní recept</div>
+
+        <input id="mr-name" class="finp" placeholder="Název receptu *">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <input id="mr-time" class="finp" placeholder="Čas (30 min)">
+          <select id="mr-diff" class="finp">
+            <option>Snadné</option><option>Střední</option><option>Náročné</option>
+          </select>
+          <input id="mr-portions" class="finp" type="number" placeholder="Porce" value="4" min="1" max="20">
+        </div>
+
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Suroviny (každá na nový řádek, např. "Mouka 200 g")</div>
+          <textarea id="mr-ingredients" class="finp" rows="5" placeholder="Kuřecí prsa 400 g&#10;Cibule 1 ks&#10;Česnek 2 stroužky" style="resize:vertical;font-size:14px"></textarea>
+        </div>
+
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Postup (každý krok na nový řádek)</div>
+          <textarea id="mr-steps" class="finp" rows="6" placeholder="Maso nakrájejte na kousky&#10;Na oleji osmažte cibuli&#10;Přidejte maso a opečte" style="resize:vertical;font-size:14px"></textarea>
+        </div>
+
+        <input id="mr-tip" class="finp" placeholder="Tip kuchaře (volitelné)">
+
+        <div style="display:flex;gap:8px">
+          <button class="btn-s" style="flex:1" onclick="document.getElementById('manual-recipe-modal').remove()">Zrušit</button>
+          <button class="btn-p" style="flex:2" onclick="saveManualRecipe()">💾 Uložit recept</button>
+        </div>
+      </div>
+    </div>`);
+  setTimeout(() => document.getElementById('mr-name')?.focus(), 100);
+};
+
+window.saveManualRecipe = async function() {
+  const name = document.getElementById('mr-name')?.value.trim();
+  if (!name) { toast('⚠️ Zadej název receptu'); return; }
+
+  const rawIngr = document.getElementById('mr-ingredients')?.value.trim() || '';
+  const rawSteps = document.getElementById('mr-steps')?.value.trim() || '';
+
+  const ingredients = rawIngr.split('\n').filter(l => l.trim()).map(l => {
+    const parts = l.trim().match(/^(.+?)\s+([\d\/,.]+\s*\S+)\s*$/);
+    if (parts) return { name: parts[1].trim(), qty: parts[2].trim(), category: 'Ostatní' };
+    return { name: l.trim(), qty: '', category: 'Ostatní' };
+  });
+
+  const steps = rawSteps.split('\n').filter(l => l.trim()).map(l => l.trim());
+
+  const recipe = {
+    name,
+    time: document.getElementById('mr-time')?.value.trim() || '?',
+    difficulty: document.getElementById('mr-diff')?.value || 'Snadné',
+    portions: parseInt(document.getElementById('mr-portions')?.value) || 4,
+    ingredients,
+    steps,
+    tip: document.getElementById('mr-tip')?.value.trim() || '',
+  };
+
+  // Ulož do Firestore
+  const data = { ...recipe, savedAt: Date.now(), manual: true };
+  await addDoc(collection(db, 'users', CU.uid, 'savedRecipes'), data);
+  document.getElementById('manual-recipe-modal')?.remove();
+
+  // Zobraz recept
+  lastRecipe = recipe;
+  document.getElementById('cook-welcome').style.display = 'none';
+  renderRecipe(recipe);
+  toast('✅ Recept uložen!');
 };
 
 function renderRecipe(r, scaledPortions){
@@ -5258,7 +5333,7 @@ window.detectFoodsInEntry = async (text) => {
 Ignoruj jídla která již snědl (minulý čas). Hledej budoucí záměry: "chci vařit", "dám si", "plánuji", "tento týden", "zítra" apod.
 Odpovídej POUZE v JSON: {"foods": ["jídlo1", "jídlo2"]} nebo {"foods": []} pokud žádná nejsou.
 Maximálně 5 jídel.
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
 
   try {
     const rawF = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 200);
@@ -5392,7 +5467,7 @@ Odpovídej POUZE v JSON (bez markdown):
 {"mood": "😄", "reason": "Krátké vysvětlení proč (max 8 slov)"}
 Možné hodnoty mood: "😄" (skvělá), "🙂" (dobrá), "😐" (neutrální), "😔" (smutná), "😤" (frustrovaná), "😴" (unavená)
 Vyber JEDNU náladu která nejlépe odpovídá celkovému vyznění textu.
-PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
 
   try {
     const rawM = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 100);
@@ -5468,7 +5543,7 @@ Odpovídej POUZE v JSON (bez markdown):
 - "emoji": vhodné emoji
 - Vrať prázdné pole pokud nic nenajdeš
 - MAX 3 položky v každém poli
-- PRAVIDLO: Piš VÝHRADNĚ česky. Žádná anglická, japonská ani jiná cizí slova nebo znaky.`;
+- PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
 
   try {
     const rawH = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 400);
