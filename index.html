@@ -87,9 +87,13 @@
       <div style="flex:1;height:1px;background:var(--border)"></div>
     </div>
     <!-- Email / heslo -->
+    <div id="auth-mode-lbl" style="text-align:center;font-size:16px;font-weight:700;color:var(--text);margin:4px 0 10px;letter-spacing:-.01em">🔑 Přihlásit se</div>
     <div id="email-login-form" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
       <input id="email-inp" type="email" placeholder="Email" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;outline:none" />
-      <input id="pass-inp" type="password" placeholder="Heslo" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;outline:none" />
+      <div style="position:relative;display:flex;align-items:center">
+        <input id="pass-inp" type="password" placeholder="Heslo" style="padding:10px 44px 10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;outline:none;width:100%;box-sizing:border-box" />
+        <button type="button" id="pass-eye-btn" onclick="window.togglePassVis()" style="position:absolute;right:12px;background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);padding:0;line-height:1" title="Zobrazit/skrýt heslo">👁️</button>
+      </div>
       <button class="btn-p" id="email-login-btn" onclick="window.doEmailLogin()" style="padding:11px;font-size:15px">Přihlásit se</button>
       <div id="email-register-fields" style="display:none;flex-direction:column;gap:10px">
         <button class="btn-p" onclick="window.doEmailRegister()" style="padding:11px;font-size:15px;background:var(--green)">Registrovat se</button>
@@ -112,18 +116,12 @@
     <div class="stitle">Jak ti máme říkat?</div>
     <div class="ssub">Tvůj společník tě bude zdravit jménem.</div>
     <input class="name-inp" type="text" id="u-nick" placeholder="Tvoje jméno…" maxlength="30" oninput="v1()">
+    <div class="ssub" style="margin-top:14px;margin-bottom:8px;">Tvoje pohlaví:</div>
     <div class="gender-row">
       <button class="gender-btn" id="gm" onclick="sg(&#39;m&#39;)"><span class="ge">👨</span><span>Muž</span></button>
       <button class="gender-btn" id="gf" onclick="sg(&#39;f&#39;)"><span class="ge">👩</span><span>Žena</span></button>
     </div>
-    <div class="ssub" style="margin-top:18px;margin-bottom:8px;">Jak tě má avatar oslovovat?</div>
-    <div class="gender-row" id="addr-row">
-      <button class="gender-btn" id="addr-jmeno" onclick="sa(&#39;jmeno&#39;)"><span class="ge">😊</span><span>Jménem</span></button>
-      <button class="gender-btn" id="addr-prezdivka" onclick="sa(&#39;prezdivka&#39;)"><span class="ge">⭐</span><span>Přezdívkou</span></button>
-    </div>
-    <div id="prezdivka-wrap" style="display:none;margin-top:10px;">
-      <input class="name-inp" type="text" id="u-prezdivka" placeholder="Tvoje přezdívka…" maxlength="30" oninput="v1()">
-    </div>
+    <button class="btn-s" onclick="ss(&#39;s-login&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px">← Zpět</button>
     <button class="btn-p" id="btn-s1" onclick="gS2()" disabled="">Pokračovat →</button>
   </div>
 </div>
@@ -135,6 +133,7 @@
     <div class="stitle">Vyber si svého společníka</div>
     <div class="ssub">Kdo tě bude provázet životem?</div>
     <div class="av-grid" id="av-grid"></div>
+    <button class="btn-s" onclick="ss(&#39;s-step1&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px">← Zpět</button>
     <button class="btn-p" id="btn-s2" onclick="gS3()" disabled="">Pokračovat →</button>
   </div>
 </div>
@@ -152,7 +151,8 @@
       <div class="slabel" style="margin-top:14px">➕ Další moduly</div>
       <div class="mod-grid" id="mods-extra"></div>
     </div>
-    <button class="btn-p" style="margin-top:18px" onclick="finishOnboard()">🚀 Jdeme na to!</button>
+    <button class="btn-s" onclick="ss(&#39;s-step2&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px">← Zpět</button>
+    <button class="btn-p" style="margin-top:6px" onclick="finishOnboard()">🚀 Jdeme na to!</button>
   </div>
 </div>
 

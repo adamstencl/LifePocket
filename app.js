@@ -1442,21 +1442,31 @@ window.doPasswordReset=async()=>{
   }
 };
 
+window.togglePassVis=()=>{
+  const inp=document.getElementById('pass-inp');
+  const btn=document.getElementById('pass-eye-btn');
+  if(!inp)return;
+  inp.type=inp.type==='password'?'text':'password';
+  if(btn)btn.textContent=inp.type==='password'?'👁️':'🙈';
+};
+
 window.toggleLoginMode=(mode)=>{
   const isReg=mode==='register';
-  document.getElementById('email-login-btn').textContent=isReg?'Registrovat':'Přihlásit se';
+  document.getElementById('email-login-btn').textContent=isReg?'Vytvořit účet':'Přihlásit se';
   document.getElementById('email-login-btn').onclick=isReg?window.doEmailRegister:window.doEmailLogin;
   document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
   document.getElementById('login-toggle-login').style.display=isReg?'block':'none';
   document.getElementById('login-forgot').style.display=isReg?'none':'block';
+  const lbl=document.getElementById('auth-mode-lbl');
+  if(lbl)lbl.textContent=isReg?'✨ Nový účet':'🔑 Přihlásit se';
   document.getElementById('login-err').classList.remove('show');
 };
 
 let selAddr='jmeno';
 window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m');document.getElementById('gf').classList.toggle('sel',g==='f');v1();};
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
-window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();const prez=selAddr==='prezdivka'?document.getElementById('u-prezdivka').value.trim():true;document.getElementById('btn-s1').disabled=!(nick&&selG&&prez);};
-window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;prof.addrMode=selAddr;prof.prezdivka=selAddr==='prezdivka'?document.getElementById('u-prezdivka').value.trim():prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
+window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!(nick&&selG);};
+window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
 function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" onclick="${isC?'sTmpAv':'selAv2'}('${esc(a.id)}')"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
