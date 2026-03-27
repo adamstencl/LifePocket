@@ -3741,11 +3741,11 @@ function buildNav(){
   const fixed=[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}];
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
-  const all=[...fixed,...uMods,{id:'settings',emoji:'⚙️',label:'Nastavení'}];
+  const all=[...fixed,...uMods,{id:'checklist',emoji:'✅',label:'Checklist'},{id:'settings',emoji:'⚙️',label:'Nastavení'}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
-  const more=[...all.slice(4),{id:'checklist',emoji:'✅',label:'Checklist'}];
+  const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
   if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${esc(p.id)}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
   const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${esc(p.id)}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
