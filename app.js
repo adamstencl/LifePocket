@@ -3625,6 +3625,14 @@ function renderChecklist() {
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
+    <div class="cl-add-row">
+      <div class="cl-inp-wrap">
+        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="Přidat úkol..." onkeydown="if(event.key==='Enter')addCheckItem()">
+        <label class="cl-inp-photo-label" title="Přidat fotku">📷<input type="file" accept="image/*" style="display:none" onchange="handleClNewPhotoInput(this)"></label>
+      </div>
+      <button class="cl-add-btn" onclick="addCheckItem()">Přidat</button>
+    </div>
+    <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative"></div>
     <div class="cl-items">
       ${sortedItems.length ? sortedItems.map(item => `
         <div class="cl-item ${item.done ? 'done' : ''}">
@@ -3641,14 +3649,6 @@ function renderChecklist() {
         </div>
       `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
     </div>
-    <div class="cl-add-row">
-      <div class="cl-inp-wrap">
-        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="Přidat úkol..." onkeydown="if(event.key==='Enter')addCheckItem()">
-        <label class="cl-inp-photo-label" title="Přidat fotku">📷<input type="file" accept="image/*" style="display:none" onchange="handleClNewPhotoInput(this)"></label>
-      </div>
-      <button class="cl-add-btn" onclick="addCheckItem()">Přidat</button>
-    </div>
-    <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative"></div>
   `;
 }
 
@@ -3680,7 +3680,7 @@ window.addCheckItem = function() {
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
   if (clNewPhoto) { item.photo = clNewPhoto; clNewPhoto = null; }
-  list.items.push(item);
+  list.items.unshift(item);
   inp.value = '';
   saveChecklistDoc(list);
   renderChecklist();
