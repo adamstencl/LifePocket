@@ -3632,9 +3632,11 @@ function renderChecklist() {
       `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
     </div>
     <div class="cl-add-row">
+      <button class="cl-item-photo-btn cl-always-show" onclick="triggerClNewPhoto()" title="Přidat fotku" style="font-size:18px;opacity:.6">📷</button>
       <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="Přidat úkol..." onkeydown="if(event.key==='Enter')addCheckItem()">
       <button class="cl-add-btn" onclick="addCheckItem()">Přidat</button>
     </div>
+    <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative;display:inline-block"></div>
   `;
 }
 
@@ -3643,12 +3645,39 @@ window.switchChecklist = function(id) {
   renderChecklist();
 };
 
+let clNewPhoto = null;
+
+window.triggerClNewPhoto = function() {
+  let inp = document.getElementById('cl-new-photo-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'cl-new-photo-input';
+    inp.style.display = 'none'; document.body.appendChild(inp);
+  }
+  inp.onchange = async function() {
+    const file = inp.files[0]; if (!file) return;
+    toast('📷 Zpracovávám…');
+    try {
+      clNewPhoto = await compressImage(file, 900, 0.75);
+      const preview = document.getElementById('cl-new-photo-preview');
+      if (preview) {
+        preview.style.display = 'inline-block';
+        preview.innerHTML = `<img src="${clNewPhoto}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+      }
+    } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+    inp.value = '';
+  };
+  inp.click();
+};
+
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
   if (!inp || !inp.value.trim()) return;
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
-  list.items.push({id: genId(), text: inp.value.trim(), done: false});
+  const item = {id: genId(), text: inp.value.trim(), done: false};
+  if (clNewPhoto) { item.photo = clNewPhoto; clNewPhoto = null; }
+  list.items.push(item);
   inp.value = '';
   saveChecklistDoc(list);
   renderChecklist();
