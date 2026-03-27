@@ -6,8 +6,15 @@ const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocke
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
 
 
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const CHANGELOG = [
+  { v:'1.3', items:[
+    '✅ Checklist — vstupní řádek nahoře, nové položky přidány navrch',
+    '👁️ Přihlášení — očičko pro zobrazení/skrytí hesla',
+    '✨ Registrace — přehlednější průvodce s tlačítkem Zpět',
+    '🛒 Nákupy — rychlé přidání oblíbených položek jedním klikem',
+    '📷 Foto přímo při zadávání nové položky v checklistu',
+  ]},
   { v:'1.2', items:[
     '📷 Foto v poznámkách — přidej snímek k záznamu v deníku',
     '📷 Foto v checklistu — foť si úkoly přímo v seznamu',
