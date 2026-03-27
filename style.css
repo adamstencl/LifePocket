@@ -1233,7 +1233,10 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cl-item:hover .cl-item-del{opacity:1}
 @media(hover:none){.cl-item-edit,.cl-item-del,.cl-item-photo-btn{opacity:.5}}
 .cl-empty{text-align:center;padding:24px;color:var(--text3);font-style:italic;font-size:14px}
-.cl-add-row{display:flex;gap:8px}
-.cl-new-inp{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none}
+.cl-add-row{display:flex;gap:8px;align-items:center}
+.cl-inp-wrap{position:relative;flex:1;display:flex}
+.cl-new-inp{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 42px 11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;box-sizing:border-box;width:100%}
 .cl-new-inp:focus{border-color:var(--accent)}
+.cl-inp-photo-label{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:18px;cursor:pointer;opacity:.5;line-height:1;user-select:none}
+.cl-inp-photo-label:hover{opacity:.85}
 .cl-add-btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:14px;white-space:nowrap}
