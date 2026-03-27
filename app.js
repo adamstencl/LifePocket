@@ -1721,7 +1721,7 @@ const THEMES = {
 };
 
 window.setTheme = (id) => {
-  if (!THEMES[id]) id = 'dark-gold';
+  if (!THEMES[id]) id = 'sunshine';
   localStorage.setItem('lp_theme', id);
   document.documentElement.setAttribute('data-theme', id);
   const tc = document.querySelector('meta[name="theme-color"]');
@@ -1737,14 +1737,14 @@ window.setTheme = (id) => {
 };
 
 window.toggleTheme = () => {
-  const cur = localStorage.getItem('lp_theme') || 'dark-gold';
-  const order = ['dark-gold','sunshine'];
+  const cur = localStorage.getItem('lp_theme') || 'sunshine';
+  const order = ['sunshine','dark-gold'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
 };
 
 function loadTheme() {
-  const saved = localStorage.getItem('lp_theme') || 'dark-gold';
+  const saved = localStorage.getItem('lp_theme') || 'sunshine';
   window.setTheme(saved);
 }
 
