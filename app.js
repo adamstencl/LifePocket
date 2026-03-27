@@ -2973,7 +2973,7 @@ window.toggleChecklistShare = async function(listId) {
   const list = checklists.find(c => c.id === listId);
   if(!list || !familyId) return;
   list.shared = !list.shared;
-  lsSave('lp_checklists', checklists);
+  saveChecklistDoc(list);
   if(list.shared) {
     await setDoc(doc(db,'families',familyId,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
@@ -3561,15 +3561,34 @@ window.hdNavMonth = (hid, dir) => {
 let checklists = [];
 let activeChecklist = null;
 
-function initChecklist() {
-  checklists = lsGet('lp_checklists', []);
-  if (!checklists.length) {
-    checklists = [{id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()}];
-    lsSave('lp_checklists', checklists);
+function subChecklist() {
+  if (!CU) return;
+  // Migrate localStorage data to Firestore if exists
+  const localData = lsGet('lp_checklists', []);
+  if (localData.length) {
+    localData.forEach(list => setDoc(doc(db,'users',CU.uid,'checklists',list.id), list));
+    localStorage.removeItem('lp_checklists');
   }
-  activeChecklist = checklists[0]?.id || null;
-  renderChecklist();
+  createFireSub('checklist',
+    query(collection(db,'users',CU.uid,'checklists'), orderBy('createdAt','asc')),
+    snap => {
+      checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
+      if (!checklists.length) {
+        const def = {id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()};
+        setDoc(doc(db,'users',CU.uid,'checklists',def.id), def);
+        return;
+      }
+      if (!activeChecklist || !checklists.find(c => c.id === activeChecklist)) activeChecklist = checklists[0].id;
+      renderChecklist();
+    }
+  );
 }
+
+async function saveChecklistDoc(list) {
+  if (!CU || !list) return;
+  await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
+}
+
 
 function renderChecklist() {
   const el = document.getElementById('checklist-content');
@@ -3628,7 +3647,7 @@ window.addCheckItem = function() {
   if (!list) return;
   list.items.push({id: genId(), text: inp.value.trim(), done: false});
   inp.value = '';
-  lsSave('lp_checklists', checklists);
+  saveChecklistDoc(list);
   renderChecklist();
   document.getElementById('cl-new-inp')?.focus();
 };
@@ -3638,7 +3657,7 @@ window.toggleCheckItem = function(itemId) {
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
-  lsSave('lp_checklists', checklists);
+  saveChecklistDoc(list);
   renderChecklist();
 };
 
@@ -3646,7 +3665,7 @@ window.deleteCheckItem = function(itemId) {
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   list.items = list.items.filter(i => i.id !== itemId);
-  lsSave('lp_checklists', checklists);
+  saveChecklistDoc(list);
   renderChecklist();
 };
 
@@ -3666,7 +3685,7 @@ window.triggerClItemPhoto = function(itemId) {
       const list = checklists.find(c => c.id === activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
-      if (item) { item.photo = photo; lsSave('lp_checklists', checklists); renderChecklist(); }
+      if (item) { item.photo = photo; saveChecklistDoc(list); renderChecklist(); }
     } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
     inp.value = '';
   };
@@ -3676,7 +3695,7 @@ window.removeClItemPhoto = function(itemId) {
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
-  if (item) { delete item.photo; lsSave('lp_checklists', checklists); renderChecklist(); }
+  if (item) { delete item.photo; saveChecklistDoc(list); renderChecklist(); }
 };
 window.showClItemPhoto = function(itemId) {
   const list = checklists.find(c => c.id === activeChecklist);
@@ -3697,7 +3716,7 @@ window.clearDoneChecklistItems = function() {
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   list.items = list.items.filter(i => !i.done);
-  lsSave('lp_checklists', checklists);
+  saveChecklistDoc(list);
   renderChecklist();
 };
 
@@ -3705,10 +3724,8 @@ window.addChecklist = function() {
   const name = prompt('Název nového seznamu:');
   if (!name?.trim()) return;
   const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
-  checklists.push(newList);
   activeChecklist = newList.id;
-  lsSave('lp_checklists', checklists);
-  renderChecklist();
+  saveChecklistDoc(newList);
 };
 
 
@@ -3727,7 +3744,7 @@ async function initApp(){
     console.error('initApp: claudeKey fetch error:', e);
     claudeKey = localStorage.getItem('lp_claude_key') || null;
   }
-  initWater();initFocus();initChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
+  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
   setTimeout(checkAutoWeeklyReport,10000); // první kontrola po spuštění
