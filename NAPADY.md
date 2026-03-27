@@ -6,6 +6,51 @@ Sem si piš nápady kdykoli — probereme a naplánujeme implementaci.
 
 ## 🚀 Nápady
 
+### 🎯 Průvodce cíli + Periodické review
+Ne každý ví jak správně nastavit cíl — výsledkem jsou vágní cíle jako "chci být fit" které nikam nevedou.
+
+**Problém:**
+- Uživatel otevře Cíle, neví co napsat, napíše cokoliv → cíl neplní → Rex smutný → uživatel přestane appku používat
+- Chybí struktura: Vize → Roční cíle → Kvartální milníky → Měsíční kontroly
+
+**Co udělat:**
+
+#### 1. Průvodce při prvním cíli (onboarding)
+- Při přidání prvního cíle zobrazit mini průvodce (lze přeskočit)
+- Krok 1: "Co chceš dosáhnout?" (vize — volný text, inspirační)
+- Krok 2: "Jak poznáš že jsi uspěl?" (měřitelnost — číselná hodnota nebo datum)
+- Krok 3: "Do kdy?" (deadline)
+- Tip od Rexe: "Nejlepší cíle jsou SMART — konkrétní, měřitelné, dosažitelné, relevantní, časově ohraničené"
+- Rex navrhne jak cíl přepsat aby byl měřitelnější (AI)
+
+#### 2. Vize — nová sekce v Cílech
+- Záložka "Vize" vedle "Aktivní cíle"
+- Volný text + otázky k zamyšlení: "Kde chceš být za 5 let? Pracovně? Osobně? Zdraví?"
+- Uloženo do Firestore, Rex si ji pamatuje a odkazuje na ni v konverzaci
+
+#### 3. Periodické review — měsíční, kvartální, roční
+- **Měsíční:** Každý 1. v měsíci Rex připomene review (až budou push notifikace)
+  - Otázky: Splnil jsi co jsi chtěl? Co tě zdrželo? Co příští měsíc?
+  - Výsledek se uloží jako zápisník záznam
+- **Kvartální:** Každé 3 měsíce — hlubší review, aktualizace cílů
+  - Rex porovná co bylo naplánováno vs. co bylo splněno
+  - Možnost cíle upravit, archivovat nebo přidat nové
+- **Roční:** Koncem roku — velké shrnutí, nastavení nové vize
+  - AI generuje "Rok v review" — statistiky, splněné cíle, návyky, nálada
+
+**Technicky:**
+- Průvodce = modal s kroky (podobný onboardingu)
+- Vize = nové pole v Firestore `users/{uid}/vision`
+- Periodické review = trigger při otevření appky + kontrola data posledního review
+- AI pomoc = volání Claude API pro návrh měřitelnějšího cíle
+
+**Proč je to důležité:**
+Cíle jsou "killer feature" LifePocketu — ale jen pokud je uživatel umí správně nastavit. Bez průvodce jsou Cíle jen prázdný seznam.
+
+**Priorita:** Vysoká — zvýší retention a hodnotu appky
+
+---
+
 ### 🌐 Vlastní doména — profesionální URL
 Aktuální URL `adamstencl.github.io/LifePocket` nevypadá profi.
 
@@ -339,3 +384,75 @@ Jednoduchý seznam úkolů — náhrada za Google Keep / Samsung Notes.
 - Checklist = akční seznam s odškrtáváním
 
 **Priorita:** Implementovat brzy
+
+---
+
+### 📱 PWA ikona na ploše
+Aplikace se stáhne na plochu ale ikona nevypadá jako appka (jen "LP").
+- Vyřešit aby ikona na ploše vypadala jako normální appka
+
+---
+
+### 🛒 Nákupy — "Často nakupované" okno
+Časté nákupy (rohlíky, máslo, mléko...) přidat zvlášť do okna pro rychlé přidání jedním kliknutím.
+
+---
+
+### 🛒 Nákupy — množství u položky
+Když přidám "rohlíky" nejde napsat kolik rohlíků. Ostatní položky to samé.
+- Přidat pole pro množství/jednotku u každé položky v nákupním seznamu
+
+---
+
+### ✅ Checklist — splněné položky dolů
+Splněné úkoly by se měly automaticky přesunout na konec seznamu.
+
+---
+
+### ✅ Checklist — přidat fotku (mobil)
+Tlačítko 📷 se zobrazí jen při hoveru — na mobilu/dotykových zařízeních není vidět.
+- Vyřešit viditelnost tlačítka pro fotku na mobilních zařízeních
+
+---
+
+### ✅ Checklist — upravovat položku
+Po přidání položky jde jen smazat nebo odškrtnout, nelze ji upravit.
+- Přidat možnost inline editace textu položky
+
+---
+
+### 🏠 Dashboard — redesign
+Do modulů se musí prokliknout přes dashboard, každý modul nemusí být vidět hned.
+- Zvážit jiné rozložení — méně widgetů, rychlejší přístup
+- Možnost skrýt/zobrazit widgety dle preferencí
+
+---
+
+### 🥗 Jídelníček — denní kcal přesunout
+Denní kalorický příjem by měl být vidět přímo u jídelníčku, ne v nastavení.
+
+---
+
+### ✅ Checklist — přidat do defaultních modulů
+Checklist je nastaven jako "extra" modul, měl by být dostupný dříve/defaultně.
+
+---
+
+### 👥 Rodina a sdílení — granulární per-modul
+S někým sdílím jídelníček, s někým návyky — sdílení by mělo být nastavitelné per-modul.
+- Možnost přidat více členů (víc kódů rodiny)
+
+---
+
+### ⚙️ Nastavení — černá ikona
+Ikona nastavení (⚙️) má černou barvu stejně jako moduly — opravit.
+
+---
+
+### 🎨 Vizuální pojetí — realističtější styl
+Zvážit realističtější vizuální styl místo hodně kresleného.
+
+---
+
+### 🎯 Cíl dne — plánovat dopředu
+Cíl dne (MIT) by se měl dát nastavit dopředu na celý týden — co mám udělat každý den.
