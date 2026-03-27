@@ -3796,7 +3796,7 @@ function buildNav(){
   const fixed=[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}];
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
-  const all=[...fixed,...uMods,{id:'checklist',emoji:'✅',label:'Checklist'},{id:'settings',emoji:'⚙️',label:'Nastavení'}];
+  const all=[...fixed,...uMods,{id:'checklist',emoji:'✅',label:'Checklist'},{id:'settings',emoji:'🔧',label:'Nastavení'}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);

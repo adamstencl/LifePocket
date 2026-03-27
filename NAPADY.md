@@ -444,8 +444,8 @@ S někým sdílím jídelníček, s někým návyky — sdílení by mělo být 
 
 ---
 
-### ⚙️ Nastavení — černá ikona
-Ikona nastavení (⚙️) má černou barvu stejně jako moduly — opravit.
+### ✅ Nastavení — černá ikona
+**Stav: HOTOVO** — ⚙️ nahrazeno za 🔧 (wrench renderuje vždy barevně, ⚙️ se na Windows vykresluje jako černý textový symbol).
 
 ---
 
