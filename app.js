@@ -3599,6 +3599,8 @@ function renderChecklist() {
 
   const done = list.items.filter(i => i.done).length;
   const total = list.items.length;
+  // Splněné položky vždy na konec
+  const sortedItems = [...list.items.filter(i => !i.done), ...list.items.filter(i => i.done)];
 
   el.innerHTML = `
     <div class="cl-tabs">
@@ -3614,16 +3616,17 @@ function renderChecklist() {
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
     <div class="cl-items">
-      ${list.items.length ? list.items.map(item => `
+      ${sortedItems.length ? sortedItems.map(item => `
         <div class="cl-item ${item.done ? 'done' : ''}">
           <button class="cl-check" onclick="toggleCheckItem('${esc(item.id)}')">
             ${item.done ? '✓' : ''}
           </button>
           <div class="cl-item-body">
-            <span class="cl-item-text" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+            <span class="cl-item-text" ondblclick="editCheckItem('${esc(item.id)}')" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
             ${item.photo ? `<div class="cl-item-photo-wrap"><img src="${item.photo}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}')"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}')">×</button></div>` : ''}
           </div>
-          <button class="cl-item-photo-btn" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>
+          <button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>
+          <button class="cl-item-edit" onclick="editCheckItem('${esc(item.id)}')">✏️</button>
           <button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>
         </div>
       `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
@@ -3657,6 +3660,19 @@ window.toggleCheckItem = function(itemId) {
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
+  saveChecklistDoc(list);
+  renderChecklist();
+};
+
+window.editCheckItem = function(itemId) {
+  const list = checklists.find(c => c.id === activeChecklist);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  const newText = prompt('Upravit položku:', item.text);
+  if (newText === null) return;
+  if (!newText.trim()) return;
+  item.text = newText.trim();
   saveChecklistDoc(list);
   renderChecklist();
 };
