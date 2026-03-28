@@ -3723,7 +3723,7 @@ window.handleClNewPhotoInput = async function(input) {
 
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
-  if (!inp || !inp.value.trim()) return;
+  if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
