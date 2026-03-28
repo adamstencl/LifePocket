@@ -1,9 +1,12 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getMessaging,getToken}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
+let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
+const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
 const APP_VERSION = '1.3';
@@ -1780,11 +1783,32 @@ let notifSettings = {
 };
 let notifTimers = [];
 
+// ── FCM token — získej a ulož do Firestore ──
+async function registerFcmToken() {
+  if (!messaging || !CU) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: await navigator.serviceWorker.ready
+    });
+    if (token && prof) {
+      prof.fcmToken = token;
+      prof.notifSettings = notifSettings;
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+      console.log('[LP] FCM token uložen do Firestore');
+    }
+  } catch(e) {
+    console.warn('[LP] FCM token se nepodařilo získat:', e.message);
+  }
+}
+
 // ── Inicializace ──
 async function initNotifications() {
   loadNotifSettings();
   await checkNotifStatus();
   scheduleAllNotifications();
+  await registerFcmToken();
   // Při návratu do appky zkontroluj promeškané notifikace
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -1822,6 +1846,11 @@ window.saveNotifSettings = () => {
 
   localStorage.setItem('lp_notif', JSON.stringify(notifSettings));
   scheduleAllNotifications();
+  // Ulož nastavení i do Firestore pro Cloud Functions
+  if (CU && prof) {
+    prof.notifSettings = notifSettings;
+    setDoc(doc(db,'users',CU.uid,'profile','main'), prof).catch(()=>{});
+  }
   toast('✅ Nastavení notifikací uloženo');
 };
 

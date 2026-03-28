@@ -1,4 +1,29 @@
 // LifePocket Service Worker
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",
+  authDomain:"lifepocket-d8f0e.firebaseapp.com",
+  projectId:"lifepocket-d8f0e",
+  storageBucket:"lifepocket-d8f0e.firebasestorage.app",
+  messagingSenderId:"763710336120",
+  appId:"1:763710336120:web:84085b690117f605f8918d"
+});
+
+const fmsg = firebase.messaging();
+
+// Zpracování push notifikací na pozadí (appka zavřená)
+fmsg.onBackgroundMessage(payload => {
+  const n = payload.notification || {};
+  self.registration.showNotification(n.title || 'LifePocket', {
+    body: n.body || '',
+    icon: n.icon || '/LifePocket/icon-192.png',
+    badge: '/LifePocket/icon-192.png',
+    tag: payload.data?.tag || 'lifepocket',
+  });
+});
+
 const CACHE = 'lifepocket-v2';
 const OFFLINE_URLS = [
   '/LifePocket/',
