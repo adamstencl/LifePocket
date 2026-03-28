@@ -3909,8 +3909,8 @@ async function loadDailyQuote() {
     try {
       const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
       const text = await callClaude([
-        {role:'system', content:`Jsi ${av.name}. Napiš JEDEN krátký motivační citát (max 15 slov) v češtině. Pouze citát, žádné uvozovky, žádné doplnění.`},
-        {role:'user', content:'Dej mi dnešní motivační citát.'}
+        {role:'system', content:`Jsi ${av.name}. Napiš JEDEN krátký motivační citát (max 15 slov). PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá, čínská ani jiná cizí slova. Pouze citát, žádné uvozovky, žádné doplnění.`},
+        {role:'user', content:'Dej mi dnešní motivační citát v češtině.'}
       ], 60);
       if (text) {
         lsSave('lp_daily_quote', {date: today, text});
