@@ -2280,13 +2280,15 @@ async function rexProactiveGreeting() {
   // Vzory v návycích — posledních 7 dní
   const weekPatterns = analyzeWeekPatterns();
 
-  const sys = `Jsi ${prof?.avatarName || 'Rex'}, AI společník v LifePocket. Mluv česky, přátelsky, max 3 věty.
-Ráno pozdravi uživatele ${prof?.nickname || ''} a zmíň 1-2 relevantní věci ze seznamu:
+  const sys = `Jsi ${prof?.avatarName || 'Rex'}, AI společník v LifePocket. Max 3 věty, přátelsky.
+Ráno pozdravi uživatele a zmíň 1-2 relevantní věci ze seznamu:
 - Dnes splněno návyků: ${doneToday}/${totalH}
 - Narozeniny DNES: ${bdayToday.join(', ') || 'žádné'}
 - Narozeniny ZÍTRA: ${bdayTmrw.join(', ') || 'žádné'}
 - Vzory: ${weekPatterns || 'zatím málo dat'}
-Buď konkrétní, ne obecný. Nezačínej s "Ahoj".`;
+Buď konkrétní, ne obecný. Nezačínej s "Ahoj".
+PRAVIDLO JMÉNO: Oslovuj uživatele PŘESNĚ jako "${prof?.nickname || ''}" — neupravuj, nezdrobňuj, nepřekládej.
+PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá ani jiná cizí slova.`;
 
   try {
     const msg = await callClaude([{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}], 150);
