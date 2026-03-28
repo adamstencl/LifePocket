@@ -2132,15 +2132,16 @@ function sendEveningNotif() {
   const today = new Date().toISOString().slice(0,10);
   const done = habits.filter(h => habitLogs.some(l => l.id === `${h.id}_${today}` && l.done)).length;
   const total = habits.length;
+  const a = prof?.gender === 'f' ? 'a' : '';
   let body = '';
   if (total === 0) {
     body = 'Přidej si první návyk a začni budovat lepší rutinu!';
   } else if (done === total) {
-    body = `🏆 Perfektní den! Splnil jsi všechnych ${total} návyků!`;
+    body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
   } else if (done === 0) {
-    body = `Dnes jsi nesplnil žádný návyk. Zítra to vyjde! 💪`;
+    body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
   } else {
-    body = `Splnil jsi ${done} z ${total} návyků. ${total - done} zbývají — ještě je čas!`;
+    body = `Splnil${a} jsi ${done} z ${total} návyků. ${total - done} zbývají — ještě je čas!`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
   sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙');
@@ -3935,7 +3936,7 @@ function rDash(){
     if(doneToday_r===totalHabits_r && totalHabits_r>0){
       dynamicMsg = rnd([
         'Výborný den, ' + nm + '! Všechny návyky splněny ✅ — zasloužený odpočinek. 🌙',
-        doneToday_r + '/' + totalHabits_r + ' — perfektní! Dneska sis to ' + nm + ' opravdu zasloužil. 🌙',
+        doneToday_r + '/' + totalHabits_r + ' — perfektní! Dneska sis to ' + nm + ' opravdu zasloužil' + (g==='f'?'a':'') + '. 🌙',
         'Den uzavřen na jedničku! ' + nm + ', jsi na správné cestě. 🌙',
       ]);
     } else {
@@ -3960,7 +3961,7 @@ function rDash(){
   } else if(doneToday_r===totalHabits_r && totalHabits_r>0){
     dynamicMsg = rnd([
       'Dnešek patří tobě, ' + nm + '! Všechny návyky splněny ✅' + evStr + ' Perfektní den! 🎉',
-      '100 %! ' + nm + ', dneska jsi to zvládl na jedničku. 🎉',
+      '100 %! ' + nm + ', dneska jsi to zvládl' + (g==='f'?'a':'') + ' na jedničku. 🎉',
       'Všechno hotovo, ' + nm + '! Takhle se to dělá. 🏆' + evStr,
     ]);
   }
