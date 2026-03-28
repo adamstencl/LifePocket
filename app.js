@@ -9,8 +9,15 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const CHANGELOG = [
+  { v:'1.4', items:[
+    '🔔 Push notifikace — fungují i když je appka zavřená!',
+    '🌅 Ranní & večerní shrnutí přesně v čas',
+    '💪 Připomínky návyků v nastavenou hodinu',
+    '🎂 Narozeniny — upozornění den předem',
+    '🌍 Rex mluví vždy česky (oprava cizích jazyků)',
+  ]},
   { v:'1.3', items:[
     '✅ Checklist — vstupní řádek nahoře, nové položky přidány navrch',
     '👁️ Přihlášení — očičko pro zobrazení/skrytí hesla',
@@ -30,6 +37,8 @@ const CHANGELOG = [
 function checkChangelog() {
   const seen = lsGet('lp_seen_version', '');
   if (seen === APP_VERSION) return;
+  // Při update vymaž cached citát aby se vygeneroval nový
+  localStorage.removeItem('lp_daily_quote');
   const entry = CHANGELOG.find(c => c.v === APP_VERSION);
   if (!entry) return;
   document.getElementById('app').insertAdjacentHTML('beforeend', `
