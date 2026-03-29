@@ -440,7 +440,17 @@ let habitDay=new Date().toISOString().slice(0,10);
 let selHabitType='yesno', selHabitEmoji='🏃';
 let selFreqType='daily', selFreqTimes=3, selFreqDays=new Set();
 let selHabitGroup='morning'; // default group
-let openGroups=new Set(['morning','day','evening']); // all open by default
+function loadOpenGroups(){
+  try {
+    const saved = localStorage.getItem('lp_open_groups');
+    if (saved) {
+      const {date, groups} = JSON.parse(saved);
+      if (date === new Date().toISOString().slice(0,10)) return new Set(groups);
+    }
+  } catch(e){}
+  return new Set(['morning','day','evening']);
+}
+let openGroups=loadOpenGroups();
 
 function toDS(d){return d.toISOString().slice(0,10);}
 
@@ -968,6 +978,10 @@ window.setHabitGroup=(group,btn)=>{
 window.toggleHabitGroup=(groupId)=>{
   if(openGroups.has(groupId)) openGroups.delete(groupId);
   else openGroups.add(groupId);
+  localStorage.setItem('lp_open_groups', JSON.stringify({
+    date: new Date().toISOString().slice(0,10),
+    groups: [...openGroups]
+  }));
   renderHabits();
 };
 
