@@ -9,8 +9,15 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const CHANGELOG = [
+  { v:'1.8', items:[
+    '🧊 Zásoby v Nákupech — stejný modul, záložka přímo v nákupní sekci',
+    '⚠️ Badge na záložce Zásoby — vidíš kolik položek dochází',
+    '💡 Hint při psaní — zobrazí aktuální stav zásoby dané položky',
+    '🧊 Propis do zásob — po zaškrtnutí nákupu nabídne přidat do zásob',
+    '🤖 AI návrh nákupu — doporučí co koupit na základě tvých receptů',
+  ]},
   { v:'1.7', items:[
     '🛒 Nákupy — sdílení přes WhatsApp teď zahrnuje správný seznam (osobní nebo rodinný)',
     '👨‍👩‍👧 Nákupy — tlačítko pro přesun osobního seznamu do rodinného sdílení',
@@ -4848,10 +4855,17 @@ window.editShopCat=(id, currentCat)=>{
 
 window.onShopInpKey=()=>{
   const name=document.getElementById('shop-inp')?.value||'';
-  if(name.length<2)return;
+  if(name.length<2){ document.getElementById('shop-pantry-hint').style.display='none'; return; }
   const cat=guessShopCategory(name);
   const sel=document.getElementById('shop-cat-sel');
   if(sel&&cat!=='Ostatní') sel.value=cat;
+  // Pantry hint
+  const hint=document.getElementById('shop-pantry-hint');
+  if(hint&&pantryItems.length){
+    const match=pantryItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
+    if(match){ hint.textContent=`🧊 V zásobách: ${match.qty} ${match.unit||'ks'}`; hint.style.display=''; }
+    else hint.style.display='none';
+  }
 };
 
 window.moveShopToFamily=async()=>{
@@ -4909,12 +4923,35 @@ window.quickAddShopItem=async(name,cat)=>{
 
 window.toggleShopItem=async(id,wasDone)=>{
   if(isShopShared()) {
-    await toggleFamilyShopItem(id,wasDone); return;
+    await toggleFamilyShopItem(id,wasDone);
+    if(!wasDone) offerPantryUpdate(id, isShopShared());
+    return;
   }
   const item=shopItems.find(i=>i.id===id);
   if(!item)return;
   await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
+  if(!wasDone) offerPantryUpdate(id, false);
 };
+
+function offerPantryUpdate(shopId, isShared) {
+  const items = isShared ? familyShopItems : shopItems;
+  const item = items.find(i=>i.id===shopId);
+  if(!item||item.done) return; // done is old state, we just set to done
+  const name = item.name;
+  const match = pantryItems.find(p=>p.name.toLowerCase()===name.toLowerCase()||name.toLowerCase().includes(p.name.toLowerCase()));
+  if(match){
+    // Auto-update: +1
+    changePantryQty(match.id, 1);
+    toast(`🧊 ${match.name} v zásobách: ${(match.qty||0)+1} ${match.unit||'ks'}`);
+  } else if(pantryItems.length>0){
+    // Nabídni přidání do zásob
+    const t = document.createElement('div');
+    t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    t.innerHTML=`<span style="flex:1;font-size:13px;color:var(--text2)">Přidat <b>${esc(name)}</b> do zásob?</span><button onclick="openPantryAdd({name:'${esc(name)}',qty:1});this.closest('div').remove()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">+ Zásoby</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 6000);
+  }
+}
 
 window.editShopQty = (id, currentQty, el) => {
   const inp = document.createElement('input');
@@ -5397,6 +5434,16 @@ window.switchCookTab = function(tab) {
   if (tab === 'pantry') renderPantry();
 };
 
+window.switchShopTab = function(tab) {
+  document.getElementById('shop-tab-list')?.classList.toggle('active', tab === 'list');
+  document.getElementById('shop-tab-pantry')?.classList.toggle('active', tab === 'pantry');
+  const sl = document.getElementById('shop-section-list');
+  const sp = document.getElementById('shop-section-pantry');
+  if (sl) sl.style.display = tab === 'list' ? '' : 'none';
+  if (sp) sp.style.display = tab === 'pantry' ? '' : 'none';
+  if (tab === 'pantry') renderShopPantry();
+};
+
 function initPantry() {
   if (familyId) {
     if (pantryUnsub) pantryUnsub();
@@ -5413,20 +5460,8 @@ function initPantry() {
   }
 }
 
-function renderPantry() {
-  const el = document.getElementById('pantry-content');
-  if (!el) return;
-
-  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
-  const sorted = [...pantryItems].sort((a, b) => {
-    const aLow = a.minQty && a.qty <= a.minQty;
-    const bLow = b.minQty && b.qty <= b.minQty;
-    if (aLow && !bLow) return -1;
-    if (!aLow && bLow) return 1;
-    return a.name.localeCompare(b.name, 'cs');
-  });
-
-  el.innerHTML = `
+function buildPantryHtml(low, sorted) {
+  return `
     ${low.length ? `<div class="pantry-alert">⚠️ ${low.length} ${low.length === 1 ? 'položka dochází' : low.length < 5 ? 'položky dochází' : 'položek dochází'}: ${low.map(i => i.name).join(', ')}</div>` : ''}
     <div class="pantry-actions-top">
       <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">+ Přidat zásobu</button>
@@ -5451,6 +5486,44 @@ function renderPantry() {
       }).join('')}
     </div>
   `;
+}
+
+function getPantrySorted() {
+  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+  const sorted = [...pantryItems].sort((a, b) => {
+    const aLow = a.minQty && a.qty <= a.minQty;
+    const bLow = b.minQty && b.qty <= b.minQty;
+    if (aLow && !bLow) return -1;
+    if (!aLow && bLow) return 1;
+    return a.name.localeCompare(b.name, 'cs');
+  });
+  return { low, sorted };
+}
+
+function updatePantryBadge() {
+  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+  const badge = document.getElementById('shop-pantry-badge');
+  if (badge) {
+    if (low.length) { badge.textContent = '⚠️ ' + low.length; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+}
+
+function renderShopPantry() {
+  const el = document.getElementById('shop-pantry-content');
+  if (!el) return;
+  const { low, sorted } = getPantrySorted();
+  el.innerHTML = buildPantryHtml(low, sorted);
+  updatePantryBadge();
+}
+
+function renderPantry() {
+  const el = document.getElementById('pantry-content');
+  if (!el) return;
+  const { low, sorted } = getPantrySorted();
+  el.innerHTML = buildPantryHtml(low, sorted);
+  updatePantryBadge();
+  renderShopPantry();
 }
 
 window.openPantryAdd = function(prefill = {}) {
@@ -5552,6 +5625,61 @@ window.pantryToShop = async function() {
     added++;
   }
   toast(`✓ ${added} položek přidáno do nákupního seznamu`);
+};
+
+window.aiShopSuggest = async function() {
+  if(!savedRecipes.length){ toast('Nejdřív si ulož nějaké recepty ve Vaření'); return; }
+  const btn = document.querySelector('[onclick="aiShopSuggest()"]');
+  if(btn){ btn.textContent = '🤖 Analyzuji receptury…'; btn.disabled = true; }
+  const recipeNames = savedRecipes.slice(0, 15).map(r => r.name).join(', ');
+  const pantryList = pantryItems.map(p => `${p.name} (${p.qty} ${p.unit||'ks'})`).join(', ') || 'prázdné';
+  const sys = `Jsi nákupní asistent. Uživatel má uložené recepty a zásoby. Na základě toho doporuč co nakoupit.
+Odpovídej POUZE v JSON formátu: {"items":[{"name":"Název","qty":"množství","category":"kategorie"},...]}
+Kategorie: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
+Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množství. PRAVIDLO JAZYK: Piš VÝHRADNĚ česky.`;
+  try {
+    const raw = await callClaude([
+      {role:'system',content:sys},
+      {role:'user',content:`Moje recepty: ${recipeNames}\nMoje zásoby: ${pantryList}\nCo mám nakoupit?`}
+    ], 600);
+    const data = JSON.parse(raw.trim().replace(/```json/g,'').replace(/```/g,'').trim());
+    if(!data.items?.length){ toast('AI nic nedoporučuje — zásoby jsou v pořádku'); return; }
+    const m = document.createElement('div');
+    m.className = 'moverlay open';
+    m.innerHTML = `<div class="modal" style="max-width:400px">
+      <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🤖 AI návrh nákupu</h3>
+      <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Na základě tvých receptů a zásob doporučuji:</p>
+      <div style="max-height:280px;overflow-y:auto;margin-bottom:14px">
+        ${data.items.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:14px;color:var(--text2)">${esc(i.name)}</span>
+          <span style="font-size:13px;color:var(--text3)">${esc(i.qty||'')}</span>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-sv" style="flex:1" onclick="aiShopAddAll(${JSON.stringify(data.items).replace(/"/g,'&quot;')});this.closest('.moverlay').remove()">✓ Přidat vše do nákupů</button>
+        <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+  } catch(e) {
+    toast('❌ AI není k dispozici');
+  } finally {
+    if(btn){ btn.textContent = '🤖 AI návrh nákupu z receptů'; btn.disabled = false; }
+  }
+};
+
+window.aiShopAddAll = async function(items) {
+  for(const i of items){
+    const cat = guessShopCategory(i.name);
+    if(isShopShared()){
+      await addDoc(collection(db,'families',familyId,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,addedBy:CU.uid,createdAt:new Date().toISOString()});
+    } else {
+      await addDoc(collection(db,'users',CU.uid,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,createdAt:new Date().toISOString()});
+    }
+  }
+  switchShopTab('list');
+  toast(`✓ ${items.length} položek přidáno do nákupního seznamu`);
 };
 
 function offerPantryDeduct(ingredients) {
