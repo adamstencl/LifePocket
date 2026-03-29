@@ -4855,7 +4855,7 @@ window.editShopCat=(id, currentCat)=>{
 
 window.onShopInpKey=()=>{
   const name=document.getElementById('shop-inp')?.value||'';
-  if(name.length<2){ document.getElementById('shop-pantry-hint').style.display='none'; return; }
+  if(name.length<2){ const h=document.getElementById('shop-pantry-hint'); if(h)h.style.display='none'; return; }
   const cat=guessShopCategory(name);
   const sel=document.getElementById('shop-cat-sel');
   if(sel&&cat!=='Ostatní') sel.value=cat;
@@ -5656,12 +5656,13 @@ Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množstv�
         </div>`).join('')}
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn-sv" style="flex:1" onclick="aiShopAddAll(${JSON.stringify(data.items).replace(/"/g,'&quot;')});this.closest('.moverlay').remove()">✓ Přidat vše do nákupů</button>
+        <button class="btn-sv" style="flex:1" id="ai-shop-add-btn">✓ Přidat vše do nákupů</button>
         <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
       </div>
     </div>`;
     document.body.appendChild(m);
     m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+    document.getElementById('ai-shop-add-btn')?.addEventListener('click', () => { aiShopAddAll(data.items); m.remove(); });
   } catch(e) {
     toast('❌ AI není k dispozici');
   } finally {
