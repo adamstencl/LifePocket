@@ -4769,7 +4769,7 @@ function renderShop(){
         <div class="shop-item ${i.done?'done':''}">
           <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${esc(i.id)}',${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${i.name}</span>
-          ${i.qty?`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},${JSON.stringify(i.qty||'')},this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty(${JSON.stringify(i.id)},'',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
+          ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','${esc(i.qty||'')}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
           <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
         </div>`).join('')}
