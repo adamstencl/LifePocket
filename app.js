@@ -9,8 +9,11 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const CHANGELOG = [
+  { v:'1.9', items:[
+    '🤖 AI asistent — lze vypnout v Nastavení → Moduly (výchozí: zapnuto)',
+  ]},
   { v:'1.8', items:[
     '🧊 Zásoby v Nákupech — stejný modul, záložka přímo v nákupní sekci',
     '⚠️ Badge na záložce Zásoby — vidíš kolik položek dochází',
@@ -89,6 +92,7 @@ const AVS=[
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
 const MODS=[
+  {id:'rex',emoji:'🤖',name:'AI asistent',desc:'Chat s tvým osobním AI průvodcem — rady, motivace, odpovědi na cokoliv.'},
   {id:'habits',emoji:'🔥',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
   {id:'journal',emoji:'📒',name:'Poznámky',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
   {id:'calendar',emoji:'🗓️',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
@@ -161,7 +165,10 @@ function destroyAllFireSubs() {
 // ──────────────────────────────────────────────────────────
 
 onAuthStateChanged(auth,async u=>{
-  if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
+  if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
+    // Stávající uživatelé: přidat rex default pokud ještě není v modules
+    if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];await setDoc(doc(db,'users',u.uid,'profile','main'),prof);}
+    selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
   else{
     CU=null;
     // Unsubscribe všechny Firebase listenery
@@ -1535,7 +1542,7 @@ function rMods(){
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
 
 
 function rEmptyStates(){
@@ -3896,7 +3903,10 @@ async function initApp(){
 
 function buildNav(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-  const fixed=[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}];
+  const showRex=(prof.modules||[]).includes('rex');
+  const fixed=showRex
+    ?[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}]
+    :[{id:'dashboard',emoji:'🏠',label:'Domů'}];
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
   const all=[...fixed,...uMods,{id:'checklist',emoji:'✅',label:'Checklist'},{id:'settings',emoji:'🔧',label:'Nastavení'}];
