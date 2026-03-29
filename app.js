@@ -4827,13 +4827,19 @@ window.addShopItem=async()=>{
   const name=inp.value.trim();
   if(!name)return;
   const cat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
+  const qtyInp=document.getElementById('shop-qty-inp');
+  const qty=(qtyInp?.value||'').trim();
   inp.value='';
+  if(qtyInp)qtyInp.value='';
   if(isShopShared()) {
-    await addShopItemToFamily(name, cat);
+    await addDoc(collection(db,'families',familyId,'shopItems'),{
+      name, category:cat, done:false, qty,
+      addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
+      createdAt:new Date().toISOString()
+    });
     toast('✓ Přidáno do sdíleného seznamu 👨‍👩‍👧');
   } else {
-    const item={name,done:false,category:cat,createdAt:new Date().toISOString()};
-    await addDoc(collection(db,'users',CU.uid,'shopItems'),item);
+    await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category:cat,qty,createdAt:new Date().toISOString()});
     toast('✓ Přidáno');
   }
 };
