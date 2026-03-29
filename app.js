@@ -5074,8 +5074,12 @@ window.askRecipe=async()=>{
 
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
-  document.getElementById('cook-loading').style.display='block';
-  document.getElementById('cook-loading')?.scrollIntoView({behavior:'smooth', block:'center'});
+  const cookLoadingEl=document.getElementById('cook-loading');
+  cookLoadingEl.style.display='block';
+  const avatarName=(AVS.find(a=>a.id===prof?.avatarId)||AVS[0]).name;
+  const loadingText=cookLoadingEl.querySelector('div:last-child');
+  if(loadingText)loadingText.textContent=`${avatarName} vymýšlí recept…`;
+  cookLoadingEl?.scrollIntoView({behavior:'smooth', block:'center'});
 
   const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
     cookType==='healthy'?'Recept musí být zdravý a výživný.':
