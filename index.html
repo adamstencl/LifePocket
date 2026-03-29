@@ -458,19 +458,24 @@
             <button class="btn-cook-gen" onclick="askRecipe()">🔮 Navrhnout</button>
             <button class="btn-cook-gen" onclick="openManualRecipe()" style="background:var(--card2);border:1px solid var(--border);color:var(--text2)">✏️ Vlastní</button>
           </div>
-          <div class="cook-type-grid">
-            <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>
-            <button class="cook-opt-btn" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)">⚡ Rychlé</button>
-            <button class="cook-opt-btn" data-t="healthy" onclick="setCookType(&#39;healthy&#39;,this)">🥗 Zdravé</button>
-            <button class="cook-opt-btn" data-t="cheap" onclick="setCookType(&#39;cheap&#39;,this)">💰 Levné</button>
-          </div>
-          <div class="cook-type-grid" style="margin-top:6px">
-            <button class="cook-opt-btn active" data-m="any" onclick="setCookMealType(&#39;any&#39;,this)">Vše</button>
-            <button class="cook-opt-btn" data-m="Snídaně" onclick="setCookMealType(&#39;Snídaně&#39;,this)">🌅 Snídaně</button>
-            <button class="cook-opt-btn" data-m="Svačina" onclick="setCookMealType(&#39;Svačina&#39;,this)">🍎 Svačina</button>
-            <button class="cook-opt-btn" data-m="Oběd" onclick="setCookMealType(&#39;Oběd&#39;,this)">☀️ Oběd</button>
-            <button class="cook-opt-btn" data-m="Večeře" onclick="setCookMealType(&#39;Večeře&#39;,this)">🌙 Večeře</button>
-            <button class="cook-opt-btn" data-m="Dezert" onclick="setCookMealType(&#39;Dezert&#39;,this)">🍰 Dezert</button>
+          <div class="cook-filter-box">
+            <div class="cook-filter-row">
+              <span class="cook-filter-label">Recept</span>
+              <button class="cook-opt-btn active" data-t="any" onclick="setCookType(&#39;any&#39;,this)">Vše</button>
+              <button class="cook-opt-btn" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)">⚡ Rychlé</button>
+              <button class="cook-opt-btn" data-t="healthy" onclick="setCookType(&#39;healthy&#39;,this)">🥗 Zdravé</button>
+              <button class="cook-opt-btn" data-t="cheap" onclick="setCookType(&#39;cheap&#39;,this)">💰 Levné</button>
+            </div>
+            <div class="cook-filter-sep-h"></div>
+            <div class="cook-filter-row cook-meal-scroll">
+              <span class="cook-filter-label">Jídlo</span>
+              <button class="cook-opt-btn active" data-m="any" onclick="setCookMealType(&#39;any&#39;,this)">Vše</button>
+              <button class="cook-opt-btn" data-m="Snídaně" onclick="setCookMealType(&#39;Snídaně&#39;,this)">🌅 Snídaně</button>
+              <button class="cook-opt-btn" data-m="Svačina" onclick="setCookMealType(&#39;Svačina&#39;,this)">🍎 Svačina</button>
+              <button class="cook-opt-btn" data-m="Oběd" onclick="setCookMealType(&#39;Oběd&#39;,this)">☀️ Oběd</button>
+              <button class="cook-opt-btn" data-m="Večeře" onclick="setCookMealType(&#39;Večeře&#39;,this)">🌙 Večeře</button>
+              <button class="cook-opt-btn" data-m="Dezert" onclick="setCookMealType(&#39;Dezert&#39;,this)">🍰 Dezert</button>
+            </div>
           </div>
         </div>
       </div>
