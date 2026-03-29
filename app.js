@@ -5453,7 +5453,7 @@ function initPantry() {
         pantryItems = snap.docs.map(d => ({id: d.id, ...d.data()}));
         renderPantry();
       });
-    });
+    }).catch(e => console.warn('Pantry load failed:', e));
   } else {
     pantryItems = lsGet('lp_pantry', []);
     renderPantry();
@@ -5612,19 +5612,20 @@ window.deletePantryItem = async function(id) {
 window.pantryToShop = async function() {
   const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
   if (!low.length) { toast('Žádné docházející zásoby'); return; }
-
-  let added = 0;
-  for (const item of low) {
-    const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: 'Ostatní', done: false, createdAt: new Date().toISOString() };
-    if (isShopShared()) {
-      const { doc: d, addDoc, collection: col } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-      await addDoc(col(db, 'families', familyId, 'shopItems'), shopItem);
-    } else {
-      await addDoc(collection(db, 'users', CU.uid, 'shopItems'), shopItem);
+  try {
+    let added = 0;
+    for (const item of low) {
+      const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: guessShopCategory(item.name), done: false, createdAt: new Date().toISOString() };
+      if (isShopShared()) {
+        const { addDoc, collection: col } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        await addDoc(col(db, 'families', familyId, 'shopItems'), shopItem);
+      } else {
+        await addDoc(collection(db, 'users', CU.uid, 'shopItems'), shopItem);
+      }
+      added++;
     }
-    added++;
-  }
-  toast(`✓ ${added} položek přidáno do nákupního seznamu`);
+    toast(`✓ ${added} položek přidáno do nákupního seznamu`);
+  } catch(e) { toast('❌ Chyba při přidávání do nákupů'); }
 };
 
 window.aiShopSuggest = async function() {
