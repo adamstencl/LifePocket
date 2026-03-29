@@ -9,8 +9,12 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.7';
 const CHANGELOG = [
+  { v:'1.7', items:[
+    '🛒 Nákupy — sdílení přes WhatsApp teď zahrnuje správný seznam (osobní nebo rodinný)',
+    '👨‍👩‍👧 Nákupy — tlačítko pro přesun osobního seznamu do rodinného sdílení',
+  ]},
   { v:'1.6', items:[
     '🍽️ Vaření — filtrování receptů podle typu (Snídaně/Svačina/Oběd/Večeře)',
     '🤖 AI recept — typ jídla ovlivní co AI vygeneruje',
@@ -4745,6 +4749,11 @@ function renderShop(){
   }
   const isShared = isShopShared();
   const activeItems = isShared ? familyShopItems : shopItems;
+
+  // Tlačítko "Přesunout do rodiny" — jen v osobním módu s aktivní rodinnou skupinou
+  const moveBtn = document.getElementById('shop-move-to-family');
+  if(moveBtn) moveBtn.style.display = (!isShared && familyId && familyData?.shareShop && shopItems.length) ? 'block' : 'none';
+
   if(!activeItems.length){
     list.innerHTML='';empty.style.display='flex';
     document.getElementById('shop-progress-wrap').style.display='none';
@@ -4796,6 +4805,22 @@ function renderShop(){
     </div>`;
   }).join('');
 }
+
+window.moveShopToFamily=async()=>{
+  if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
+  if(!shopItems.length){toast('Osobní seznam je prázdný');return;}
+  const count=shopItems.length;
+  for(const i of shopItems){
+    await addDoc(collection(db,'families',familyId,'shopItems'),{
+      name:i.name, category:i.category||'Ostatní', done:false, qty:i.qty||'',
+      addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
+      createdAt:new Date().toISOString()
+    });
+    await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  }
+  shopViewMode='shared';
+  toast(`✓ ${count} položek přesunuto do rodinného seznamu 👨‍👩‍👧`);
+};
 
 window.addShopItem=async()=>{
   const inp=document.getElementById('shop-inp');
@@ -4867,8 +4892,9 @@ window.delShopItem=async(id)=>{
 };
 
 window.shareShoppingList=()=>{
-  if(!shopItems.length){toast('Seznam je prázdný');return;}
-  const remaining=shopItems.filter(i=>!i.done);
+  const activeItems=isShopShared()?familyShopItems:shopItems;
+  if(!activeItems.length){toast('Seznam je prázdný');return;}
+  const remaining=activeItems.filter(i=>!i.done);
   if(!remaining.length){toast('Vše už nakoupeno! 🎉');return;}
   // Sestav text podle kategorií
   const cats={};
