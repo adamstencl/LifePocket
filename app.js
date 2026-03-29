@@ -9,8 +9,15 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const CHANGELOG = [
+  { v:'1.5', items:[
+    '🍽️ Jídelníček — oprava výběru receptu, typ jídla místo náročnosti',
+    '🗑️ Checklist — možnost smazat celý seznam',
+    '🌅 Návyky — sekce Ráno/Den/Večer si pamatují stav skrytí',
+    '🛒 Nákupy — oprava úpravy množství',
+    '👫 Pohlaví — správné skloňování v notifikacích',
+  ]},
   { v:'1.4', items:[
     '🔔 Push notifikace — fungují i když je appka zavřená!',
     '🌅 Ranní & večerní shrnutí přesně v čas',
