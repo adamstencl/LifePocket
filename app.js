@@ -9,8 +9,13 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 const CHANGELOG = [
+  { v:'2.0', items:[
+    '🧠 Paměť AI asistenta — konverzace se ukládají, asistent si pamatuje co sis psali',
+    '📝 AI summary — každých 20 zpráv vytvoří souhrn klíčových věcí o tobě',
+    '🔄 Kontinuita — navážeš přesně tam kde jste skončili, i po měsíci',
+  ]},
   { v:'1.9', items:[
     '🤖 AI asistent — lze vypnout v Nastavení → Moduly (výchozí: zapnuto)',
   ]},
@@ -107,6 +112,7 @@ const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
 let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
+let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 let claudeKey = null; // načítá se z Firestore config/secrets
 
@@ -1604,6 +1610,74 @@ function getRexState(energy) {
   return {emoji:'🔥', label:'V zóně!', color:'#ff9500', msg:'Jsem na 100%! Jsi borec!'};
 }
 
+// ── CHAT MEMORY (Firestore persistence + AI summary) ──────────────────────
+async function loadChatHistory() {
+  if(!CU) return;
+  try {
+    const snap = await getDoc(doc(db,'users',CU.uid,'chatMemory','main'));
+    if(snap.exists()){
+      const data = snap.data();
+      chatMemorySummary = data.summary || '';
+      chatH = data.recentMessages || [];
+      // Renderuj historii do chatu
+      const c = document.getElementById('chatmsgs');
+      if(c && chatH.length > 0){
+        document.getElementById('cwelcome')?.remove();
+        chatH.forEach(m => {
+          if(m.role==='user') appendMsg('user', m.content);
+          else if(m.role==='assistant'){
+            const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+            appendMsg('bot', m.content, av.name, av.emoji);
+          }
+        });
+        scrollChat();
+      }
+    }
+  } catch(e){ console.warn('loadChatHistory:', e); }
+}
+
+async function saveChatMessage(role, content) {
+  if(!CU) return;
+  // Přidej zprávu do history
+  const msg = {role, content, ts: Date.now()};
+  chatH.push({role, content});
+
+  // Každých 20 zpráv vygeneruj nový summary
+  if(chatH.length > 0 && chatH.length % 20 === 0){
+    generateChatSummary();
+  }
+
+  // Ulož do Firestore: summary + posledních 30 zpráv
+  try {
+    await setDoc(doc(db,'users',CU.uid,'chatMemory','main'), {
+      summary: chatMemorySummary,
+      recentMessages: chatH.slice(-30),
+      updatedAt: Date.now()
+    });
+  } catch(e){ console.warn('saveChatMessage:', e); }
+}
+
+async function generateChatSummary() {
+  if(!claudeKey || chatH.length < 10) return;
+  try {
+    const toSummarize = chatH.slice(0, -10); // vše kromě posledních 10
+    const prev = chatMemorySummary ? `Předchozí souhrn: ${chatMemorySummary}\n\n` : '';
+    const conversation = toSummarize.map(m=>`${m.role==='user'?'Uživatel':'Asistent'}: ${m.content}`).join('\n');
+    const summary = await callClaude([
+      {role:'system', content:'Jsi archivář konverzací. Vytvoř stručný souhrn (max 300 slov) klíčových informací o uživateli z této konverzace — jeho zájmy, cíle, problémy, důležité události, preference. Piš česky, ve třetí osobě ("Uživatel pracuje jako...", "Uživatel chce..."). Zahrň i předchozí souhrn pokud existuje.'},
+      {role:'user', content:`${prev}Konverzace:\n${conversation}`}
+    ], 400);
+    if(summary){
+      chatMemorySummary = summary;
+      await setDoc(doc(db,'users',CU.uid,'chatMemory','main'), {
+        summary: chatMemorySummary,
+        recentMessages: chatH.slice(-30),
+        updatedAt: Date.now()
+      });
+    }
+  } catch(e){ console.warn('generateChatSummary:', e); }
+}
+
 function rAvPage(){
   rEmptyStates();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
@@ -2427,7 +2501,7 @@ function showRexDashboardMessage(msg) {
 window.getRexWeeklyReport = async () => {
 
   appendMsg('user', 'Dej mi týdenní report', '', '');
-  chatH.push({role:'user', content:'Dej mi týdenní report'});
+  saveChatMessage('user','Dej mi týdenní report');
   document.getElementById('typing')?.classList.add('active');
   scrollChat();
 
@@ -2457,7 +2531,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
   try {
     const rep = await callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní report'}], 500);
     if (!rep) throw new Error('AI není k dispozici — klíč bude nastaven brzy');
-    chatH.push({role:'assistant',content:rep});
+    saveChatMessage('assistant',rep);
     appendMsg('bot', rep, av.name, av.emoji || '⭐');
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString()}));
     rDash();
@@ -3938,7 +4012,7 @@ window.sp=id=>{
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
   document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
   if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();}
-  if(id==='avatar')rAvPage();
+  if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();}
   if(id==='mealplan')renderMealPlan();
   if(id==='settings')renderFamilySettings();
   if(id==='calendar'){renderCal();}
@@ -4506,7 +4580,7 @@ async function finishDS(text){
   stopDS();
   document.getElementById('cwelcome')?.remove();
   appendMsg('user','🎙️ '+text);
-  chatH.push({role:'user',content:text});
+  saveChatMessage('user',text);
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   document.getElementById('typing').classList.add('active');scrollChat();
   const today=new Date().toISOString().slice(0,10);
@@ -4530,7 +4604,7 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
   try{
     const rep=await callClaude([{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}],500);
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
-    chatH.push({role:'assistant',content:rep});
+    saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
     appendMsg('sys','📝 Aktivita zaznamenaná. Chceš ji přidat do cílů?');
   }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
@@ -4545,7 +4619,7 @@ window.send=async()=>{
   const inp=document.getElementById('c-inp'),t=inp.value.trim();if(!t)return;
   document.getElementById('cwelcome')?.remove();
   inp.value='';inp.style.height='auto';
-  appendMsg('user',t);chatH.push({role:'user',content:t});
+  appendMsg('user',t);saveChatMessage('user',t);
   document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const today=new Date().toISOString().slice(0,10);
@@ -4600,9 +4674,11 @@ window.send=async()=>{
   // ── Kontext: Dnešní datum a den v týdnu ──
   const todayLabel = new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'});
 
+  const memorySec = chatMemorySummary ? `\nPAMĚŤ (souhrn předchozích konverzací):\n${chatMemorySummary}\n` : '';
   const sys=`Jsi ${av.name}, osobní AI společník uživatele ${prof.prezdivka||prof.nickname} v aplikaci LifePocket.
 Mluvíš česky, přátelsky a stručně (max 4-5 vět). Znáš uživatelův celý kontext — jeho cíle, návyky, zápisky i plány.
 Odpovídej jako skutečný osobní asistent který zná člověka dobře.
+${memorySec}
 
 Dnes: ${todayLabel}
 Vize uživatele: "${prof.vision||'zatím nezadána'}"
@@ -4634,7 +4710,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
     rep=rep.replace(/\[FOOD:[^\]]+\]/g,'').trim();
-    chatH.push({role:'assistant',content:rep});
+    saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
     if(foodMatch){
       const food=foodMatch[1].trim();
