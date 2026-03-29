@@ -9,8 +9,12 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const CHANGELOG = [
+  { v:'1.6', items:[
+    '🍽️ Vaření — filtrování receptů podle typu (Snídaně/Svačina/Oběd/Večeře)',
+    '🤖 AI recept — typ jídla ovlivní co AI vygeneruje',
+  ]},
   { v:'1.5', items:[
     '🍽️ Jídelníček — oprava výběru receptu, typ jídla místo náročnosti',
     '🗑️ Checklist — možnost smazat celý seznam',
@@ -4693,7 +4697,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
 
 
 // ── COOKING & SHOPPING ────────────────────────────────
-let cookPortions=2, cookType='any';
+let cookPortions=2, cookType='any', cookMealType='any';
 let lastRecipe=null; // posledni vygenerovany recept
 
 let shopItems=[], unsubShop=null;
@@ -4975,6 +4979,13 @@ window.setCookType=(t,btn)=>{
   btn.classList.add('active');
 };
 
+window.setCookMealType=(t,btn)=>{
+  cookMealType=t;
+  document.querySelectorAll('[data-m]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSavedRecipes();
+};
+
 window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
   const query=inp.value.trim();
@@ -4988,6 +4999,7 @@ window.askRecipe=async()=>{
   const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
     cookType==='healthy'?'Recept musí být zdravý a výživný.':
     cookType==='cheap'?'Recept musí být levný z dostupných surovin.':'';
+  const mealTypeHint=cookMealType!=='any'?`Recept musí být vhodný jako: ${cookMealType}.`:'';
 
   const sys=`Jsi kuchařský asistent. Odpovídej POUZE v JSON formátu, bez markdown, bez backticks.
 Vrať JSON objekt s těmito poli:
@@ -5004,7 +5016,7 @@ Vrať JSON objekt s těmito poli:
   "tip": "Tip kuchaře..."
 }
 Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
-${typeHint}
+${typeHint}${mealTypeHint}
 PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česky. ZAKÁZÁNO použít cyrilici, ruštinu, angličtinu ani jiné cizí jazyky.
 PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
 
@@ -5265,11 +5277,12 @@ function renderSavedRecipes(){
   const section=document.getElementById('saved-recipes-section');
   const list=document.getElementById('saved-recipes-list');
   if(!section||!list)return;
-  if(!savedRecipes.length){
-    list.innerHTML=`<div style="font-size:14px;color:var(--text3);font-style:italic;padding:8px 0">Zatím žádné uložené recepty. Vygeneruj recept a klikni 🔖 Uložit.</div>`;
+  const filtered=cookMealType==='any'?savedRecipes:savedRecipes.filter(r=>(r.mealType||r.difficulty||'')=== cookMealType);
+  if(!filtered.length){
+    list.innerHTML=`<div style="font-size:14px;color:var(--text3);font-style:italic;padding:8px 0">${savedRecipes.length?'Žádné recepty pro tento typ jídla.':'Zatím žádné uložené recepty. Vygeneruj recept a klikni 🔖 Uložit.'}</div>`;
     return;
   }
-  list.innerHTML=savedRecipes.map(r=>`
+  list.innerHTML=filtered.map(r=>`
     <div class="saved-recipe-card" onclick="openSavedRecipe('${esc(r.id)}')">
       <div class="saved-recipe-top">
         <div style="font-size:24px">🍽️</div>
