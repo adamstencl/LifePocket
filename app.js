@@ -4735,12 +4735,10 @@ function renderShop(){
     if(badge) badge.style.display = 'none';
     if(shopToggle) {
       shopToggle.style.display = 'flex';
-      const selStyle = 'background:var(--accent);color:var(--tc);font-weight:600';
-      const defStyle = 'background:transparent;color:var(--text2)';
       const btnS = document.getElementById('shop-toggle-shared');
       const btnP = document.getElementById('shop-toggle-personal');
-      if(btnS) btnS.style.cssText = shopViewMode==='shared' ? selStyle : defStyle;
-      if(btnP) btnP.style.cssText = shopViewMode==='personal' ? selStyle : defStyle;
+      if(btnS) btnS.classList.toggle('active', shopViewMode==='shared');
+      if(btnP) btnP.classList.toggle('active', shopViewMode==='personal');
     }
   } else {
     if(badge) badge.style.display = 'none';
