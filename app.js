@@ -4799,12 +4799,62 @@ function renderShop(){
           <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${esc(i.id)}',${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${i.name}</span>
           ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','${esc(i.qty||'')}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
+          <span class="shop-item-cat" data-id="${esc(i.id)}" onclick="editShopCat('${esc(i.id)}','${esc(i.category||'Ostatní')}')" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
           <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
         </div>`).join('')}
     </div>`;
   }).join('');
 }
+
+function guessShopCategory(name){
+  const n=name.toLowerCase();
+  const rules=[
+    ['Zelenina & ovoce', ['zelenina','ovoce','salát','špenát','kapusta','brokolice','brokoli','karfiol','květák','cuketa','paprika','rajče','okurka','mrkev','cibule','česnek','petržel','pórek','ředkvička','kedlubna','hrášek','fazole','kukuřice','lilek','batát','dýně','zelí','řepa','chřest','šalvěj','bazalka','kopr','mango','banán','jablko','hruška','pomeranč','citron','grep','kiwi','jahoda','borůvka','malina','třešeň','višeň','meruňka','broskev','švestka','hrozno','ananas','kokos','meloun','avokádo','fík','datle','lesní plody','ovoce','zeleniny']],
+    ['Maso & ryby', ['maso','kuře','kuřecí','vepřové','hovězí','jehněčí','krůtí','kachna','slanina','šunka','salám','párky','klobása','játra','ryba','losos','treska','tuňák','sardinky','krevety','kalamáry','mušle','uzené','mleté','kotleta','řízek','steak','roštěná','svíčková']],
+    ['Mléčné výrobky', ['mléko','máslo','smetana','jogurt','tvaroh','sýr','niva','eidam','gouda','hermelín','brie','cottage','ricotta','mozzarella','parmazán','kefír','podmáslí','šlehačka','crème','quark','bryndza']],
+    ['Pečivo', ['chleba','chléb','rohlík','houska','bageta','tortilla','pita','croissant','koláč','buchta','závin','muffin','toastový','baguette','chlebíček','knäckebrot','pumpernikl']],
+    ['Trvanlivé', ['mouka','cukr','sůl','olej','ocet','rýže','těstoviny','pasta','nudle','špagety','kuskus','bulgur','kroupy','čočka','hrách','cizrna','konzerva','kompot','džem','med','sirup','koření','paprika mletá','kmín','skořice','vanilka','prášek do pečiva','soda','škrob','droždí','kakao','čokoláda','káva','čaj','ovesné vločky','müsli','corn flakes','cereálie','kečup','hořčice','majonéza','tatarka','sojová','worchester','tabasco','balzamiko','suš','trvanlivé']],
+  ];
+  for(const [cat,kw] of rules){
+    if(kw.some(k=>n.includes(k))) return cat;
+  }
+  return 'Ostatní';
+}
+
+const SHOP_CATS=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
+
+window.editShopCat=(id, currentCat)=>{
+  const sel=document.createElement('select');
+  sel.style.cssText='background:var(--card2);border:1px solid var(--accent);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--text);font-family:"Crimson Pro",serif;outline:none;max-width:140px';
+  SHOP_CATS.forEach(c=>{
+    const o=document.createElement('option');
+    o.value=c; o.textContent=c;
+    if(c===currentCat)o.selected=true;
+    sel.appendChild(o);
+  });
+  // najdi span kategorie v položce a nahraď ho
+  const allCatSpans=document.querySelectorAll('.shop-item-cat');
+  allCatSpans.forEach(sp=>{if(sp.dataset.id===id){sp.replaceWith(sel);}});
+  sel.focus();
+  const save=async()=>{
+    const newCat=sel.value;
+    try{
+      if(isShopShared()) await updateDoc(doc(db,'families',familyId,'shopItems',id),{category:newCat});
+      else await updateDoc(doc(db,'users',CU.uid,'shopItems',id),{category:newCat});
+    }catch(e){console.warn(e);}
+  };
+  sel.addEventListener('change',save);
+  sel.addEventListener('blur',()=>{ save(); renderShop(); });
+};
+
+window.onShopInpKey=()=>{
+  const name=document.getElementById('shop-inp')?.value||'';
+  if(name.length<2)return;
+  const cat=guessShopCategory(name);
+  const sel=document.getElementById('shop-cat-sel');
+  if(sel&&cat!=='Ostatní') sel.value=cat;
+};
 
 window.moveShopToFamily=async()=>{
   if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
@@ -4826,7 +4876,8 @@ window.addShopItem=async()=>{
   const inp=document.getElementById('shop-inp');
   const name=inp.value.trim();
   if(!name)return;
-  const cat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
+  const selCat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
+  const cat=selCat==='Ostatní'?guessShopCategory(name):selCat;
   const qtyInp=document.getElementById('shop-qty-inp');
   const qty=(qtyInp?.value||'').trim();
   inp.value='';
