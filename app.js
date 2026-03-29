@@ -3684,6 +3684,7 @@ function renderChecklist() {
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
         ${familyId && familyData?.shareChecklist ? `<button onclick="toggleChecklistShare('${esc(list.id)}')" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
+        ${checklists.length > 1 ? `<button onclick="deleteChecklist('${esc(list.id)}')" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="Smazat tento seznam">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
@@ -3836,6 +3837,14 @@ window.addChecklist = function() {
   const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
   activeChecklist = newList.id;
   saveChecklistDoc(newList);
+};
+
+window.deleteChecklist = async function(id) {
+  if (checklists.length <= 1) return;
+  const list = checklists.find(c => c.id === id);
+  if (!confirm(`Smazat seznam "${list?.name}"? Tato akce je nevratná.`)) return;
+  await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
+  activeChecklist = checklists.find(c => c.id !== id)?.id || null;
 };
 
 
