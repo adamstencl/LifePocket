@@ -111,6 +111,8 @@ window.addEventListener('appinstalled', () => {
 function showInstallBanner() {
   // Nezobrazuj pokud je již nainstalováno
   if (window.matchMedia('(display-mode: standalone)').matches) return;
+  // Nezobrazuj na desktopu — banner je určen jen pro mobil
+  if (!navigator.maxTouchPoints && window.innerWidth > 768) return;
   const banner = document.getElementById('pwa-banner');
   if (banner) banner.style.display = 'flex';
 }
