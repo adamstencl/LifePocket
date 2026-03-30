@@ -13,8 +13,13 @@ const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 const CHANGELOG = [
+  { v:'2.2', items:[
+    '🏷️ Název skupiny — pojmenuj skupinu jak chceš (Rodina, Spolubydlící…)',
+    '📅 Vícedenní události — v kalendáři zadej rozsah datumů (např. 10–11. dubna)',
+    '✅ Checklist jako modul — lze zapnout/vypnout v Nastavení → Moduly',
+  ]},
   { v:'2.1', items:[
     '📣 Informovat skupinu — tlačítko v nákupech, odešle push notifikaci ostatním členům skupiny',
   ]},
@@ -112,6 +117,7 @@ const MODS=[
   {id:'cooking',emoji:'👨‍🍳',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
   {id:'shopping',emoji:'🧺',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
   {id:'mealplan',emoji:'🥗',name:'Jídelníček',desc:'Plánuj jídla na celý týden a sdílej jídelníček s rodinou.'},
+  {id:'checklist',emoji:'✅',name:'Checklist',desc:'Sdílené seznamy úkolů pro celou skupinu — cestování, přípravy, projekty.'},
 ];
 const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
 const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
@@ -154,8 +160,11 @@ function destroyAllFireSubs() {
 
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
-    // Stávající uživatelé: přidat rex default pokud ještě není v modules
-    if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];await setDoc(doc(db,'users',u.uid,'profile','main'),prof);}
+    // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
+    let migrated=false;
+    if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
+    if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
+    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),prof);
     selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
   else{
     CU=null;
@@ -1242,7 +1251,11 @@ function renderCal(){
 }
 
 function getEventsForDate(ds){
-  const match = ev => ev.repeat==='yes' ? ev.date.slice(5)===ds.slice(5) : ev.date===ds;
+  const match = ev => {
+    if(ev.repeat==='yes') return ev.date.slice(5)===ds.slice(5);
+    if(ev.dateEnd) return ds>=ev.date && ds<=ev.dateEnd;
+    return ev.date===ds;
+  };
   return [...events.filter(match), ...familyEvents.filter(match)];
 }
 
@@ -1275,7 +1288,9 @@ function renderEvList(){
       <div class="ev-icon">${EV_ICONS[ev.type]||'📌'}</div>
       <div class="ev-info">
         <div class="ev-name">${esc(ev.name)}${ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
-        <div class="ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
+        <div class="ev-date">${ev.dateEnd
+          ? ev._date.toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})+' – '+new Date(ev.dateEnd+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})
+          : ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
       ${!ev.shared?`<button class="ev-del" onclick="delEvent('${esc(ev.id)}')">🗑️</button>`:''}
     </div>`).join('');
@@ -1350,6 +1365,8 @@ window.openEvModal=()=>{
   const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=new Date().toISOString().slice(0,10);
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
   const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='none';
+  const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value='';
+  const eer=document.getElementById('ev-end-date-row'); if(eer) eer.style.display='none';
   selEvType_val='birthday';
   document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='birthday'));
   om('m-event');
@@ -1361,6 +1378,8 @@ window.selEvType=(t,btn)=>{
   btn.classList.add('sel');
   const tr=document.getElementById('ev-time-row');
   if(tr) tr.style.display=t==='event'?'block':'none';
+  const er=document.getElementById('ev-end-date-row');
+  if(er) er.style.display=t==='event'?'block':'none';
 };
 
 window.saveEvent=async()=>{
@@ -1368,10 +1387,13 @@ window.saveEvent=async()=>{
   const date=document.getElementById('ev-date-inp').value;
   const repeat=document.getElementById('ev-repeat-inp').value;
   const time=selEvType_val==='event'?(document.getElementById('ev-time-inp')?.value||null):null;
+  const dateEnd=selEvType_val==='event'?(document.getElementById('ev-end-date-inp')?.value||null):null;
   if(!name){toast('⚠️ Zadej název');return;}
   if(!date){toast('⚠️ Vyber datum');return;}
+  if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString()};
   if(time) ev.time=time;
+  if(dateEnd) ev.dateEnd=dateEnd;
   await addDoc(collection(db,'users',CU.uid,'events'),ev);
   toast('✓ Událost přidána');
   cm('m-event');
@@ -1530,7 +1552,7 @@ function rMods(){
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
 
 
 function rEmptyStates(){
@@ -2960,10 +2982,12 @@ function genFamilyCode() {
 window.createFamily = async () => {
   if(!CU) return;
   if(familyId) { toast('Už jsi ve skupině'); return; }
+  const nameInp = document.getElementById('family-name-inp');
+  const groupName = (nameInp?.value||'').trim() || 'Moje skupina';
   const code = genFamilyCode();
   const fid = code; // kód = ID
   const data = {
-    code, createdBy: CU.uid, createdAt: new Date().toISOString(),
+    code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName, avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: true, shareCal: true, shareMeal: true
   };
@@ -3156,6 +3180,12 @@ function renderFamilySettings() {
   noGroup.style.display = 'none';
   groupView.style.display = 'block';
 
+  const fgn = document.getElementById('family-group-name-display');
+  if(fgn) {
+    const gn = familyData.groupName || 'Moje skupina';
+    fgn.innerHTML = `${gn} <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px" title="Přejmenovat">✏️</button>`;
+  }
+
   const fcd = document.getElementById('family-code-display');
   if(fcd) fcd.textContent = familyId;
 
@@ -3178,6 +3208,15 @@ function renderFamilySettings() {
   const mi = document.getElementById('fshare-meal'); if(mi) mi.checked = familyData.shareMeal!==false;
   const chki = document.getElementById('fshare-checklist'); if(chki) chki.checked = familyData.shareChecklist===true;
 }
+
+window.renameFamilyGroup = async () => {
+  if(!familyId) return;
+  const cur = familyData?.groupName || 'Moje skupina';
+  const name = prompt('Nový název skupiny:', cur);
+  if(!name || name.trim() === cur) return;
+  await setDoc(doc(db,'families',familyId), {groupName: name.trim()}, {merge:true});
+  toast('✓ Název skupiny změněn');
+};
 
 // ── SDÍLENÝ NÁKUPNÍ SEZNAM ────────────────────────────
 // Override addShopItem aby zapisoval do rodinného prostoru pokud je aktivní sdílení
@@ -3951,9 +3990,9 @@ function buildNav(){
   const fixed=showRex
     ?[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}]
     :[{id:'dashboard',emoji:'🏠',label:'Domů'}];
-  const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan'];
+  const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
-  const all=[...fixed,...uMods,{id:'checklist',emoji:'✅',label:'Checklist'},{id:'settings',emoji:'🔧',label:'Nastavení'}];
+  const all=[...fixed,...uMods,{id:'settings',emoji:'🔧',label:'Nastavení'}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);

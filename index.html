@@ -843,6 +843,9 @@
         <div class="setsec-d">Sdílej nákupní seznam, jídelníček a kalendář s partnerem nebo rodinou.</div>
         <div id="family-section">
           <div id="family-no-group">
+            <div style="margin-bottom:10px">
+              <input class="finp" id="family-name-inp" placeholder="Název skupiny (např. Rodina, Spolubydlící…)" style="width:100%;box-sizing:border-box">
+            </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
               <button class="btn-sv" onclick="createFamily()" style="flex:1">➕ Vytvořit skupinu</button>
               <button class="btn-sv" onclick="showJoinFamily()" style="flex:1">🔗 Připojit se kódem</button>
@@ -857,6 +860,7 @@
           </div>
           <div id="family-group-view" style="display:none">
             <div class="family-code-box">
+              <div id="family-group-name-display" style="font-family:'Playfair Display',serif;font-size:18px;color:var(--accent);font-weight:700;margin-bottom:6px"></div>
               <div class="family-code" id="family-code-display">—</div>
               <div class="family-code-lbl">Pošli tento kód partnerovi/partnerce</div>
               <div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">
@@ -1012,8 +1016,12 @@
     </div>
     <div class="frow">
       <div class="fg">
-        <label class="flbl">Datum</label>
+        <label class="flbl">Datum začátku</label>
         <input class="finp" type="date" id="ev-date-inp">
+      </div>
+      <div class="fg" id="ev-end-date-row" style="display:none">
+        <label class="flbl">Datum konce <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
+        <input class="finp" type="date" id="ev-end-date-inp">
       </div>
       <div class="fg" id="ev-time-row" style="display:none">
         <label class="flbl">⏰ Čas <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
