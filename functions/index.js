@@ -1,10 +1,90 @@
 const {onSchedule} = require('firebase-functions/v2/scheduler');
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
-const {getFirestore} = require('firebase-admin/firestore');
+const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
 
 initializeApp();
 const db = getFirestore();
+
+// ── Claude Proxy ──────────────────────────────────────────────────────────────
+// Volání Claude API ze serveru — klíč nikdy neopustí backend
+exports.claudeProxy = onCall({cors: true}, async (request) => {
+  // 1. Auth check
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+
+  // 2. Rate limiting — max 50 AI volání za den
+  const today = new Date().toISOString().slice(0, 10);
+  const rateRef = db.doc(`users/${uid}/rateLimits/aiCalls`);
+  const rateSnap = await rateRef.get();
+  const rateData = rateSnap.exists ? rateSnap.data() : {};
+  const todayCount = rateData.date === today ? (rateData.count || 0) : 0;
+  const DAILY_LIMIT = 50;
+  if (todayCount >= DAILY_LIMIT) {
+    throw new HttpsError('resource-exhausted', `Denní limit ${DAILY_LIMIT} AI dotazů byl dosažen. Limit se obnoví zítra.`);
+  }
+  // Inkrementuj počítadlo
+  await rateRef.set({date: today, count: todayCount + 1});
+
+  // 3. Načti Claude API klíč z Firestore (admin přístup, klient to nemůže číst)
+  const secretsSnap = await db.doc('config/secrets').get();
+  if (!secretsSnap.exists) throw new HttpsError('not-found', 'Konfigurace AI není dostupná.');
+  const secrets = secretsSnap.data();
+  const claudeKey = secrets.claudeKey || secrets.cladeKey || secrets.ClaudeKey || secrets.claude_key;
+  if (!claudeKey) throw new HttpsError('not-found', 'Claude API klíč není nastaven.');
+
+  // 4. Validace vstupu
+  const {messages, maxTokens = 500} = request.data;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new HttpsError('invalid-argument', 'Chybí messages.');
+  }
+  if (maxTokens > 2000) throw new HttpsError('invalid-argument', 'maxTokens příliš vysoké.');
+
+  // 5. Zavolej Claude API
+  const systemMsg = messages.find(m => m.role === 'system');
+  const userMsgs = messages.filter(m => m.role !== 'system');
+  const https = require('https');
+  const body = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: maxTokens,
+    system: systemMsg?.content || '',
+    messages: userMsgs
+  });
+
+  const result = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve({status: res.statusCode, body: JSON.parse(data)}); }
+        catch(e) { reject(new Error('Nelze parsovat odpověď Claude API')); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+
+  if (result.status !== 200) {
+    const msg = result.body?.error?.message || `Claude API chyba: ${result.status}`;
+    throw new HttpsError('internal', msg);
+  }
+  const content = result.body.content?.[0]?.text;
+  if (!content) throw new HttpsError('internal', 'Claude API: prázdná odpověď');
+
+  return {text: content, remaining: DAILY_LIMIT - todayCount - 1};
+});
 
 // ── Helpers ──────────────────────────────────────────────
 function isTimeMatch(h, m, timeStr) {
@@ -34,6 +114,44 @@ async function sendPush(token, title, body, tag = 'lifepocket') {
     console.error(`[LP] sendPush chyba (${title}):`, e.message);
   }
 }
+
+// ── Notify Family ─────────────────────────────────────────────────────────────
+// Pošle push notifikaci všem členům rodinné skupiny (kromě odesílatele)
+exports.notifyFamily = onCall({cors: true}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+
+  const {message, type} = request.data || {};
+  if (!message) throw new HttpsError('invalid-argument', 'Chybí zpráva.');
+
+  // Načti profil odesílatele — potřebujeme familyId a jméno
+  const senderSnap = await db.doc(`users/${uid}/profile/main`).get();
+  if (!senderSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
+  const senderProf = senderSnap.data();
+  const familyId = senderProf.familyId;
+  if (!familyId) throw new HttpsError('failed-precondition', 'Nejsi v rodinné skupině.');
+
+  const senderName = senderProf.prezdivka || senderProf.nickname || 'Člen rodiny';
+
+  // Načti členy skupiny
+  const familySnap = await db.doc(`families/${familyId}`).get();
+  if (!familySnap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
+  const members = familySnap.data().members || {};
+
+  // Pošli notifikaci všem členům kromě odesílatele
+  const promises = [];
+  for (const memberUid of Object.keys(members)) {
+    if (memberUid === uid) continue;
+    const memberSnap = await db.doc(`users/${memberUid}/profile/main`).get();
+    if (!memberSnap.exists) continue;
+    const fcmToken = memberSnap.data().fcmToken;
+    if (!fcmToken) continue;
+    promises.push(sendPush(fcmToken, `📣 ${senderName}`, message, type || 'family-notify'));
+  }
+
+  await Promise.allSettled(promises);
+  return {sent: promises.length};
+});
 
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(

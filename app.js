@@ -2,15 +2,22 @@ import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-ap
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
 let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
+const functions=getFunctions(fb,'europe-west1');
+const claudeProxyFn=httpsCallable(functions,'claudeProxy');
+const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1';
 const CHANGELOG = [
+  { v:'2.1', items:[
+    '📣 Informovat skupinu — tlačítko v nákupech, odešle push notifikaci ostatním členům skupiny',
+  ]},
   { v:'2.0', items:[
     '🧠 Paměť AI asistenta — konverzace se ukládají, asistent si pamatuje co sis psali',
     '📝 AI summary — každých 20 zpráv vytvoří souhrn klíčových věcí o tobě',
@@ -114,45 +121,20 @@ const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoj
 let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
 let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
-let claudeKey = null; // načítá se z Firestore config/secrets
+const claudeKey = true; // klíč je na serveru (Firebase Function), klient ho nepotřebuje
 
-// ── CLAUDE API HELPER ──────────────────────────────────
+// ── CLAUDE API HELPER — volá Firebase Function (klíč nikdy v klientu) ──────
 async function callClaude(messages, maxTokens = 500) {
-  if (!claudeKey) {
-    // Zkusit načíst klíč znovu (fallback pokud initApp fetch selhal)
-    try {
-      const ks = await getDoc(doc(db,'config','secrets'));
-      const d = ks.data();
-      const k = d ? (d['claudeKey'] || d['cladeKey'] || d['ClaudeKey'] || d['claude_key']) : null;
-      if (k) claudeKey = k;
-    } catch(e) { console.warn('[LP] callClaude: načtení klíče selhalo', e.message); }
-    if (!claudeKey) return null;
+  try {
+    const result = await claudeProxyFn({messages, maxTokens});
+    return result.data.text;
+  } catch(e) {
+    const msg = e?.message || 'AI není k dispozici';
+    if (msg.includes('resource-exhausted') || msg.includes('limit')) {
+      toast('⚠️ Denní limit AI dotazů byl dosažen. Obnoví se zítra.');
+    }
+    throw new Error(msg);
   }
-  // Claude API vyžaduje system prompt odděleně od messages
-  const systemMsg = messages.find(m => m.role === 'system');
-  const userMsgs = messages.filter(m => m.role !== 'system');
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': claudeKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      system: systemMsg?.content || '',
-      messages: userMsgs
-    })
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Claude API chyba: ${response.status}`);
-  }
-  const data = await response.json();
-  if (!data.content?.length) throw new Error('Claude API: prázdná odpověď');
-  return data.content[0].text;
 }
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
 let entries=[], unsubEntries=null;
@@ -1658,7 +1640,7 @@ async function saveChatMessage(role, content) {
 }
 
 async function generateChatSummary() {
-  if(!claudeKey || chatH.length < 10) return;
+  if(chatH.length < 10) return;
   try {
     const toSummarize = chatH.slice(0, -10); // vše kromě posledních 10
     const prev = chatMemorySummary ? `Předchozí souhrn: ${chatMemorySummary}\n\n` : '';
@@ -3954,18 +3936,6 @@ window.deleteChecklist = async function(id) {
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
-  // Načti Claude API klíč z Firestore (config/secrets)
-  try {
-    const ks = await getDoc(doc(db,'config','secrets'));
-    if(ks.exists() && ks.data().claudeKey) {
-      claudeKey = ks.data().claudeKey;
-    } else {
-      claudeKey = localStorage.getItem('lp_claude_key') || null;
-    }
-  } catch(e) {
-    console.error('initApp: claudeKey fetch error:', e);
-    claudeKey = localStorage.getItem('lp_claude_key') || null;
-  }
   initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
@@ -4845,6 +4815,10 @@ function renderShop(){
   const moveBtn = document.getElementById('shop-move-to-family');
   if(moveBtn) moveBtn.style.display = (!isShared && familyId && familyData?.shareShop && shopItems.length) ? 'block' : 'none';
 
+  // Tlačítko "Informovat skupinu" — jen ve sdíleném módu s aktivní rodinnou skupinou
+  const notifyBtn = document.getElementById('shop-notify-family');
+  if(notifyBtn) notifyBtn.style.display = (isShared && familyId && familyData?.shareShop) ? 'block' : 'none';
+
   if(!activeItems.length){
     list.innerHTML='';empty.style.display='flex';
     document.getElementById('shop-progress-wrap').style.display='none';
@@ -4951,6 +4925,23 @@ window.onShopInpKey=()=>{
     const match=pantryItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
     if(match){ hint.textContent=`🧊 V zásobách: ${match.qty} ${match.unit||'ks'}`; hint.style.display=''; }
     else hint.style.display='none';
+  }
+};
+
+window.notifyShopFamily=async()=>{
+  if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
+  const senderName=prof?.prezdivka||prof?.nickname||'Člen rodiny';
+  const groupName=familyData?.groupName||'rodiny';
+  const count=familyShopItems.filter(i=>!i.done).length;
+  const msg=count>0
+    ?`${senderName} aktualizoval${prof?.gender==='f'?'a':''} nákupní seznam — ${count} položek čeká na nákup`
+    :`${senderName} aktualizoval${prof?.gender==='f'?'a':''} nákupní seznam`;
+  try {
+    const res=await notifyFamilyFn({message:msg,type:'shop-update'});
+    toast(res.data.sent>0?`📣 Upozornění odesláno (${res.data.sent} členů)`:'📣 Nikdo jiný nemá zapnuté notifikace');
+  } catch(e) {
+    toast('❌ Nepodařilo se odeslat upozornění');
+    console.warn('notifyShopFamily error:',e);
   }
 };
 
