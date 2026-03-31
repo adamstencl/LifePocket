@@ -4518,7 +4518,7 @@ function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${m.name}</div><div class="togds">${m.desc}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
 }
 window.togModSet=async(id,on)=>{const ms=new Set(prof.modules||[]);on?ms.add(id):ms.delete(id);prof.modules=[...ms];await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();toast(on?`✓ ${id} zapnut`:`${id} vypnut`);};
-window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej přezdívku');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);rDash();initSet();toast('✓ Přezdívka uložena');};
+window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);rDash();initSet();toast('✓ Jméno uloženo');};
 window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);toast('✓ Kalorický cíl uložen');renderMealPlan();};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
 window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
