@@ -3756,6 +3756,7 @@ window.hdNavMonth = (hid, dir) => {
 // ════════════════════════════════════════════════════════════
 let checklists = [];
 let activeChecklist = null;
+let expandedCheckItemId = null;
 
 function subChecklist() {
   if (!CU) return;
@@ -3821,20 +3822,30 @@ function renderChecklist() {
     </div>
     <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative"></div>
     <div class="cl-items">
-      ${sortedItems.length ? sortedItems.map(item => `
-        <div class="cl-item ${item.done ? 'done' : ''}">
+      ${sortedItems.length ? sortedItems.map(item => {
+        const isExpanded = expandedCheckItemId === item.id;
+        return `
+        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}">
           <button class="cl-check" onclick="toggleCheckItem('${esc(item.id)}')">
             ${item.done ? '✓' : ''}
           </button>
-          <div class="cl-item-body">
-            <span class="cl-item-text" ondblclick="editCheckItem('${esc(item.id)}')" onclick="toggleCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+          <div class="cl-item-body" style="flex:1;min-width:0">
+            ${isExpanded ? `
+              <textarea id="cl-edit-${esc(item.id)}" class="cl-item-edit-inp" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveExpandedCheckItem('${esc(item.id)}')}">${esc(item.text)}</textarea>
+              <div class="cl-item-edit-actions">
+                <button class="cl-edit-save" onclick="saveExpandedCheckItem('${esc(item.id)}')">✓ Uložit</button>
+                <button class="cl-edit-cancel" onclick="expandedCheckItemId=null;renderChecklist()">Zrušit</button>
+                <button class="cl-edit-del" onclick="deleteCheckItem('${esc(item.id)}')">🗑 Smazat</button>
+              </div>
+            ` : `
+              <span class="cl-item-text" onclick="expandCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+            `}
             ${item.photo ? `<div class="cl-item-photo-wrap"><img src="${item.photo}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}')"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}')">×</button></div>` : ''}
           </div>
-          <button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>
-          <button class="cl-item-edit" onclick="editCheckItem('${esc(item.id)}')">✏️</button>
-          <button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>
-        </div>
-      `).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
+          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>` : ''}
+          ${!isExpanded ? `<button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>` : ''}
+        </div>`;
+      }).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
     </div>
   `;
 }
@@ -3883,15 +3894,25 @@ window.toggleCheckItem = function(itemId) {
   renderChecklist();
 };
 
-window.editCheckItem = function(itemId) {
+window.expandCheckItem = function(itemId) {
+  expandedCheckItemId = expandedCheckItemId === itemId ? null : itemId;
+  renderChecklist();
+  if (expandedCheckItemId) {
+    const ta = document.getElementById(`cl-edit-${itemId}`);
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
+};
+
+window.saveExpandedCheckItem = function(itemId) {
+  const ta = document.getElementById(`cl-edit-${itemId}`);
+  if (!ta) return;
+  const newText = ta.value.trim();
+  if (!newText) return;
   const list = checklists.find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
-  if (!item) return;
-  const newText = prompt('Upravit položku:', item.text);
-  if (newText === null) return;
-  if (!newText.trim()) return;
-  item.text = newText.trim();
+  if (item) item.text = newText;
+  expandedCheckItemId = null;
   saveChecklistDoc(list);
   renderChecklist();
 };
