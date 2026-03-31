@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ochrana osobních údajů — LifePocket</title>
+  <style>
+    :root { --bg: #0f0f1a; --card: #1a1a2e; --accent: #f5c842; --text: #e8e8f0; --text2: #b0b0c8; --text3: #6a6a88; --border: #2a2a3e; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; line-height: 1.7; padding: 24px 16px 60px; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; text-decoration: none; }
+    .logo-text { font-size: 22px; color: var(--accent); font-style: italic; font-weight: 700; }
+    h1 { font-size: 26px; color: var(--accent); margin-bottom: 6px; }
+    .date { font-size: 13px; color: var(--text3); margin-bottom: 32px; }
+    h2 { font-size: 18px; color: var(--text); margin: 32px 0 10px; border-left: 3px solid var(--accent); padding-left: 12px; }
+    p { color: var(--text2); margin-bottom: 12px; font-size: 15px; }
+    ul { color: var(--text2); margin: 8px 0 12px 20px; font-size: 15px; }
+    ul li { margin-bottom: 6px; }
+    a { color: var(--accent); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 16px 0; }
+    .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text3); text-decoration: none; font-size: 14px; margin-bottom: 24px; }
+    .back:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">← Zpět do LifePocket</a>
+    <div class="logo">
+      <span class="logo-text">✨ LifePocket</span>
+    </div>
+
+    <h1>Ochrana osobních údajů</h1>
+    <p class="date">Platnost od: 1. dubna 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
+
+    <p>Tato stránka vysvětluje, jaké osobní údaje LifePocket zpracovává, proč a jak dlouho. Aplikace je zdarma, bez reklam a tvá data nejsou nikdy prodávána třetím stranám.</p>
+
+    <h2>1. Správce údajů</h2>
+    <div class="card">
+      <p><strong>Adam Štencl</strong><br>
+      E-mail: <a href="mailto:stencl.adam@gmail.com">stencl.adam@gmail.com</a><br>
+      Web: <a href="https://lifepocket.app">lifepocket.app</a></p>
+    </div>
+
+    <h2>2. Jaké údaje sbíráme</h2>
+    <p><strong>Při registraci a přihlášení:</strong></p>
+    <ul>
+      <li>E-mailová adresa</li>
+      <li>Jméno a profilová fotka (při přihlášení přes Google)</li>
+    </ul>
+    <p><strong>Data která sám zadáváš:</strong></p>
+    <ul>
+      <li>Jméno / přezdívka, pohlaví, vybraný avatar</li>
+      <li>Návyky a záznamy o jejich plnění</li>
+      <li>Zápisky a deníkové záznamy (včetně fotografií)</li>
+      <li>Nákupní seznam (osobní i sdílený)</li>
+      <li>Recepty, jídelníček, zásoby</li>
+      <li>Checklist položky</li>
+      <li>Kalendářní události a narozeniny</li>
+      <li>Záznamy o jídle a zdraví (kalorický příjem, voda, nálada)</li>
+      <li>Cíle a vize</li>
+      <li>Konverzace s AI asistentem</li>
+    </ul>
+    <p><strong>Technické údaje:</strong></p>
+    <ul>
+      <li>FCM token pro doručení push notifikací</li>
+      <li>Nastavení notifikací</li>
+      <li>Počet AI dotazů (pro rate limiting — ochrana před zneužitím)</li>
+    </ul>
+
+    <h2>3. Proč data zpracováváme</h2>
+    <ul>
+      <li><strong>Poskytnutí služby</strong> — zobrazení tvých dat v aplikaci, synchronizace mezi zařízeními</li>
+      <li><strong>Push notifikace</strong> — ranní/večerní připomínky, upozornění na narozeniny</li>
+      <li><strong>AI asistent</strong> — kontext konverzace se odesílá ke zpracování Anthropic API (viz níže)</li>
+      <li><strong>Sdílení v rodině</strong> — data sdílená se skupinou jsou uložena ve společném Firestore dokumentu přístupném členům skupiny</li>
+    </ul>
+
+    <h2>4. Kde jsou data uložena</h2>
+    <p>Data jsou uložena ve službě <strong>Firebase Firestore</strong> (Google LLC, servery v EU — region europe-west). Přihlášení zajišťuje <strong>Firebase Authentication</strong>.</p>
+    <p>Konverzace s AI asistentem jsou zpracovávány přes <strong>Anthropic API</strong> (Anthropic PBC, USA). Data se odesílají pouze pro zpracování odpovědi a Anthropic je neukládá déle než 30 dní dle jejich zásad.</p>
+
+    <h2>5. Jak dlouho data uchováváme</h2>
+    <ul>
+      <li>Data jsou uložena po dobu trvání tvého účtu</li>
+      <li>Po smazání účtu jsou všechna data trvale odstraněna do 30 dní</li>
+      <li>Záznamy o rate limiting se vymažou automaticky po uplynutí dne</li>
+    </ul>
+
+    <h2>6. Tvá práva (GDPR)</h2>
+    <ul>
+      <li><strong>Přístup</strong> — kdykoli si můžeš stáhnout svá data (Firebase Console nebo na vyžádání)</li>
+      <li><strong>Oprava</strong> — údaje lze upravit přímo v nastavení aplikace</li>
+      <li><strong>Výmaz</strong> — smazání účtu v nastavení → všechna data budou odstraněna</li>
+      <li><strong>Přenositelnost</strong> — na vyžádání zašleme export dat ve strojově čitelném formátu</li>
+      <li><strong>Námitka</strong> — máš právo vznést námitku proti zpracování — kontaktuj nás e-mailem</li>
+    </ul>
+    <p>Pro uplatnění práv nebo dotazy piš na <a href="mailto:stencl.adam@gmail.com">stencl.adam@gmail.com</a>. Odpovíme do 30 dní.</p>
+
+    <h2>7. Soubory cookie</h2>
+    <p>LifePocket nepoužívá sledovací cookies. Využívá výhradně <strong>localStorage</strong> v prohlížeči pro uložení lokálních nastavení (téma, nastavení notifikací) a Firebase Auth session cookie nezbytnou pro přihlášení.</p>
+
+    <h2>8. Bezpečnost</h2>
+    <p>Přístup k datům je chráněn Firebase Authentication. Každý uživatel vidí pouze svá vlastní data — sdílená data jsou přístupná jen členům dané skupiny. API klíče jsou uloženy na serveru a nikdy nejsou odesílány do prohlížeče.</p>
+
+    <h2>9. Změny těchto zásad</h2>
+    <p>O podstatných změnách budeme informovat prostřednictvím aplikace (sekce Co je nového). Datum poslední aktualizace je uvedeno v záhlaví tohoto dokumentu.</p>
+
+    <h2>10. Kontakt</h2>
+    <p>Máš otázku ohledně zpracování tvých dat? Napiš nám: <a href="mailto:stencl.adam@gmail.com">stencl.adam@gmail.com</a></p>
+  </div>
+</body>
+</html>
