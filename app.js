@@ -1105,39 +1105,44 @@ window.directInput=async(hid,date,curVal,goal)=>{
       <div style="font-size:14px;color:#a0a0b0;margin-bottom:16px">Cíl: ${goal}</div>
       <input id="di-inp" type="number" min="0" max="9999" value="${curVal||0}"
         style="width:100%;background:#222228;border:2px solid #f5c842;border-radius:10px;padding:12px;color:#fff;font-family:'Playfair Display',serif;font-size:28px;text-align:center;outline:none;margin-bottom:16px">
-      <div style="display:flex;gap:10px">
+      <div style="display:flex;gap:10px;margin-bottom:8px">
         <button onclick="document.getElementById('direct-input-modal').remove()"
           style="flex:1;background:none;border:1px solid #2a2a35;border-radius:10px;padding:11px;color:#a0a0b0;font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer">Zrušit</button>
         <button id="di-ok"
           style="flex:1;background:#f5c842;border:none;border-radius:10px;padding:11px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:16px;font-weight:700;cursor:pointer">Uložit</button>
       </div>
+      ${curVal!==null&&curVal!==undefined?`<button id="di-clear" style="width:100%;background:none;border:none;color:#6a6a88;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px">✕ Vymazat záznam</button>`:''}
     </div>`;
   document.body.appendChild(modal);
 
   const inp = document.getElementById('di-inp');
   inp.focus(); inp.select();
 
+  const logId = hid+'_'+date;
+
   const save = async () => {
     const newVal = parseInt(inp.value);
     modal.remove();
     if(isNaN(newVal)||newVal<0){toast('⚠️ Zadej platné číslo');return;}
-    const logId=hid+'_'+date;
-    if(newVal===0){
-      await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-      habitLogs=habitLogs.filter(l=>l.id!==logId);
-    } else {
-      const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
-      await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-      const ex=habitLogs.find(l=>l.id===logId);
-      if(ex)Object.assign(ex,log); else habitLogs.push(log);
-    }
+    const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
+    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
+    const ex=habitLogs.find(l=>l.id===logId);
+    if(ex)Object.assign(ex,log); else habitLogs.push(log);
     renderHabits();
-    toast(`✓ Zaznamenáno: ${newVal}`);
+    toast(newVal===0?'✓ Zaznamenáno: 0':`✓ Zaznamenáno: ${newVal}`);
+  };
+
+  const clear = async () => {
+    modal.remove();
+    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    renderHabits();
+    toast('✕ Záznam smazán');
   };
 
   document.getElementById('di-ok').onclick = save;
+  document.getElementById('di-clear')?.addEventListener('click', clear);
   inp.addEventListener('keydown', e => { if(e.key==='Enter') save(); if(e.key==='Escape') modal.remove(); });
-  // Zavři klikem na pozadí
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
