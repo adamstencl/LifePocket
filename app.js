@@ -3472,7 +3472,6 @@ window.openAddFoodLog = () => {
 window.aiEstimateFoodLog = async () => {
   const name = document.getElementById('fl-name').value.trim();
   if(!name) { toast('⚠️ Nejprve zadej název jídla'); return; }
-  if(!claudeKey) { toast('⚠️ Chybí API klíč — bude nastaven brzy'); return; }
   toast('✨ AI odhaduje kalorie…');
   try {
     const raw = await callClaude([
@@ -3491,7 +3490,6 @@ window.aiEstimateFoodLog = async () => {
 };
 
 window.addFoodFromPlan = async (name, mealKey) => {
-  if(!claudeKey) { toast('⚠️ Chybí API klíč — bude nastaven brzy'); return; }
   toast('✨ AI odhaduje kalorie pro "'+name+'"…');
   try {
     const raw = await callClaude([
@@ -4073,8 +4071,7 @@ async function loadDailyQuote() {
   if (cached?.date === today) return cached.text;
 
   // Pokus o AI citát
-  if (claudeKey) {
-    try {
+  try {
       const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
       const text = await callClaude([
         {role:'system', content:`Jsi ${av.name}. Napiš JEDEN krátký motivační citát (max 15 slov). PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá, čínská ani jiná cizí slova. Pouze citát, žádné uvozovky, žádné doplnění.`},
@@ -4085,7 +4082,6 @@ async function loadDailyQuote() {
         return text;
       }
     } catch(e) { /* fallback */ }
-  }
 
   // Fallback — lokální pool
   const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
