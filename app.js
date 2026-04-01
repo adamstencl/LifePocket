@@ -3076,14 +3076,32 @@ window.shareFamilyCode = async () => {
 };
 
 window.saveFamilyPrefs = async () => {
-  if(!familyId) return;
-  const shareShop = document.getElementById('fshare-shop')?.checked ?? true;
-  const shareCal = document.getElementById('fshare-cal')?.checked ?? true;
-  const shareMeal = document.getElementById('fshare-meal')?.checked ?? true;
-  const shareChecklist = document.getElementById('fshare-checklist')?.checked ?? false;
+  if(!familyId || !familyData) return;
+  const {shareShop,shareCal,shareMeal,shareChecklist} = familyData;
   await setDoc(doc(db,'families',familyId), {shareShop,shareCal,shareMeal,shareChecklist}, {merge:true});
   if(shareShop) syncShopToFamily();
   if(shareChecklist) syncChecklistToFamily();
+};
+
+window.toggleFamilyModule = async (key) => {
+  if(!familyId || !familyData) return;
+  const newVal = !familyData[key];
+  familyData[key] = newVal;
+  await setDoc(doc(db,'families',familyId), {[key]: newVal}, {merge:true});
+  if(key==='shareShop' && newVal) syncShopToFamily();
+  if(key==='shareChecklist' && newVal) syncChecklistToFamily();
+  renderFamilySettings();
+};
+
+window.removeFamilyMember = async (uid) => {
+  if(!familyId || !familyData) return;
+  if(!confirm('Odebrat tohoto člena ze skupiny?')) return;
+  const members = {...(familyData.members||{})};
+  delete members[uid];
+  await setDoc(doc(db,'families',familyId), {members}, {merge:true});
+  // Smaž familyId z profilu člena
+  try { await setDoc(doc(db,'users',uid,'profile','main'), {familyId: null}, {merge:true}); } catch(e){}
+  toast('✓ Člen odebrán');
 };
 
 function subscribeFamily() {
@@ -3201,21 +3219,36 @@ function renderFamilySettings() {
   // Členové
   const members = familyData.members || {};
   const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+  const isAdmin = members[CU?.uid]?.role === 'admin';
   const fml = document.getElementById('family-members-list');
-  if(fml) fml.innerHTML = Object.entries(members).map(([uid,m])=>`
+  if(fml) fml.innerHTML = `
+    <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Členové (${Object.keys(members).length})</div>
+    ${Object.entries(members).map(([uid,m])=>`
     <div class="family-member">
       <div class="family-member-av">${avs[m.avatar]||'👤'}</div>
       <div class="family-member-info">
-        <div class="family-member-name">${m.name||'Člen'}${uid===CU?.uid?' (ty)':''}</div>
+        <div class="family-member-name">${m.name||'Člen'}${uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':''}</div>
         <div class="family-member-role">${m.role==='admin'?'Správce':'Člen'} · připojen ${new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
       </div>
-    </div>`).join('');
+      ${isAdmin && uid !== CU?.uid ? `<button onclick="removeFamilyMember('${uid}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7" title="Odebrat člena">✕</button>` : ''}
+    </div>`).join('')}`;
 
-  // Nastavení sdílení
-  const si = document.getElementById('fshare-shop'); if(si) si.checked = familyData.shareShop!==false;
-  const ci = document.getElementById('fshare-cal'); if(ci) ci.checked = familyData.shareCal!==false;
-  const mi = document.getElementById('fshare-meal'); if(mi) mi.checked = familyData.shareMeal!==false;
-  const chki = document.getElementById('fshare-checklist'); if(chki) chki.checked = familyData.shareChecklist===true;
+  // Moduly — kartičky s toggle
+  const shareModules = [
+    {key:'shareShop', emoji:'🛒', label:'Nákupní seznam', val: familyData.shareShop!==false},
+    {key:'shareCal',  emoji:'📅', label:'Kalendář',       val: familyData.shareCal!==false},
+    {key:'shareMeal', emoji:'🥗', label:'Jídelníček',     val: familyData.shareMeal!==false},
+    {key:'shareChecklist', emoji:'📋', label:'Checklist', val: familyData.shareChecklist===true},
+  ];
+  const fsm = document.getElementById('family-share-modules');
+  if(fsm) fsm.innerHTML = shareModules.map(m=>`
+    <div class="fshare-mod-row" onclick="toggleFamilyModule('${m.key}')" style="cursor:pointer">
+      <span style="font-size:20px">${m.emoji}</span>
+      <span style="flex:1;font-size:14px;color:var(--text1)">${m.label}</span>
+      <div class="fshare-toggle ${m.val?'on':''}">
+        <div class="fshare-thumb"></div>
+      </div>
+    </div>`).join('');
 }
 
 window.renameFamilyGroup = async () => {
