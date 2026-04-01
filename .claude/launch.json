@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lifepocket",
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": ["-e", "const http=require('http'),fs=require('fs'),path=require('path');const port=process.env.PORT||3002;const s=http.createServer((req,res)=>{let f=path.join('C:/Users/Adam/Desktop/LifePocket',req.url==='/'?'index.html':req.url.split('?')[0]);try{const d=fs.readFileSync(f);const ext=path.extname(f);const ct={'html':'text/html','js':'application/javascript','css':'text/css','json':'application/json'}[ext.slice(1)]||'text/plain';res.writeHead(200,{'Content-Type':ct});res.end(d);}catch(e){res.writeHead(404);res.end('Not found');}});s.listen(port,()=>console.log('ready on '+port));"],
+      "port": 3002,
+      "autoPort": true
+    }
+  ]
+}

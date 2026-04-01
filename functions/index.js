@@ -9,7 +9,7 @@ const db = getFirestore();
 
 // ── Claude Proxy ──────────────────────────────────────────────────────────────
 // Volání Claude API ze serveru — klíč nikdy neopustí backend
-exports.claudeProxy = onCall({cors: true}, async (request) => {
+exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (request) => {
   // 1. Auth check
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
@@ -117,7 +117,7 @@ async function sendPush(token, title, body, tag = 'lifepocket') {
 
 // ── Notify Family ─────────────────────────────────────────────────────────────
 // Pošle push notifikaci všem členům rodinné skupiny (kromě odesílatele)
-exports.notifyFamily = onCall({cors: true}, async (request) => {
+exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
 

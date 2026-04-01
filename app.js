@@ -578,6 +578,7 @@ function buildHabitCard(h){
     if(freq.type==='days') active=(freq.days||[]).includes(dow);
     const isDone=l&&l.done;
     const isFailed=l&&l.failed;
+    const isZero=l&&!l.done&&!l.failed&&l.value===0;
     const isPartial=l&&l.value>0&&!l.done&&!l.failed;
     const isToday=ds===todayDS;
     const isHabitDay=ds===habitDay;
@@ -585,6 +586,7 @@ function buildHabitCard(h){
     if(!active) cls+=' inactive';
     else if(isDone) cls+=' done';
     else if(isFailed) cls+=' failed';
+    else if(isZero) cls+=' failed';
     else if(isPartial) cls+=' partial';
     else cls+=' miss';
     if(isHabitDay) cls+=' today';
@@ -593,6 +595,7 @@ function buildHabitCard(h){
     if(!active) inner='—';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${l.value}</span>`:'✓';
     else if(isFailed) inner='✕';
+    else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
     else if(isPartial) inner=`<span style="font-size:10px">${l.value}</span>`;
     else inner='×';
 
@@ -621,8 +624,9 @@ function buildHabitCard(h){
   }
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
+  const hasZeroLog = log && !log.done && !log.failed && log.value===0;
   const badgeHtml = h.type==='count'
-    ? `<span class="habit-done-badge">${val} / ${goal}${cardDone?' ✓':''}</span>`
+    ? `<span class="habit-done-badge" style="${hasZeroLog?'color:var(--red)':''}">${val} / ${goal}${cardDone?' ✓':hasZeroLog?' ✕':''}</span>`
     : `<span class="habit-done-badge" style="${failed?'color:var(--red)':''}">${ done?'✓ Splněno':failed?'✕ Nesplněno':'Nesplněno'}</span>`;
 
   return `<div class="habit-card${cardDone?' done':''}">

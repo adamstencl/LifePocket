@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390px, initial-scale=1">
+<title>Vaření – návrh</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; background: #fdf8f0; color: #2d2a26; max-width: 390px; margin: 0 auto; padding: 16px; }
+  h2 { font-size: 20px; margin-bottom: 16px; }
+
+  /* INPUT CARD */
+  .card { background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 16px; }
+
+  .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .input-row input { flex: 1; border: 1px solid #e0d8cc; border-radius: 10px; padding: 10px 12px; font-size: 15px; background: #faf7f2; }
+  .btn-gen { background: #c8a96e; color: #fff; border: none; border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+
+  /* KOMPAKTNÍ FILTRY - NOVÉ */
+  .filters-compact { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .filter-label { font-size: 11px; color: #888; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; margin-right: 2px; }
+  .chip { border: 1.5px solid #e0d8cc; background: #faf7f2; border-radius: 20px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: all .15s; }
+  .chip.active { border-color: #c8a96e; background: #c8a96e; color: #fff; font-weight: 600; }
+  .divider { width: 1px; height: 18px; background: #e0d8cc; margin: 0 2px; }
+
+  /* LOADING - viditelný */
+  .loading-visible { text-align: center; padding: 32px 16px; background: #fff; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .loading-visible .icon { font-size: 36px; margin-bottom: 8px; animation: spin 2s linear infinite; display: inline-block; }
+  @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+  .loading-visible p { font-style: italic; color: #888; font-size: 15px; }
+
+  /* STARY LAYOUT */
+  .old-card { background: #fff; border-radius: 16px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 16px; }
+  .old-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .old-chip { border: 1.5px solid #e0d8cc; background: #faf7f2; border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .old-chip.active { border-color: #c8a96e; background: #c8a96e; color: #fff; }
+  .old-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+
+  .section-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #b0a090; text-transform: uppercase; margin-bottom: 10px; }
+  .tag { display: inline-block; background: #f5ede0; color: #c8a96e; border-radius: 6px; padding: 2px 7px; font-size: 10px; font-weight: 700; margin-bottom: 12px; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .compare > div > .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #999; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<h2>🍳 Vaření</h2>
+
+<div class="compare">
+  <div>
+    <div class="label">❌ Teď</div>
+    <div class="old-card">
+      <input style="width:100%;border:1px solid #e0d8cc;border-radius:10px;padding:10px;font-size:14px;background:#faf7f2;margin-bottom:10px" placeholder="Co chceš vařit?">
+      <div class="old-label">Počet porcí:</div>
+      <div class="old-row">
+        <span class="old-chip">1</span><span class="old-chip active">2</span><span class="old-chip">3</span><span class="old-chip">4</span><span class="old-chip">6</span>
+      </div>
+      <div class="old-label">Typ:</div>
+      <div class="old-row">
+        <span class="old-chip active">Vše</span><span class="old-chip">⚡ Rychlé</span><span class="old-chip">🥗 Zdravě</span><span class="old-chip">🔥 Levné</span>
+      </div>
+      <button style="width:100%;background:#c8a96e;color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:bold;margin-top:8px">🔮 Navrhnout</button>
+    </div>
+    <div style="text-align:center;color:#aaa;font-size:12px;margin-top:4px">↓ loading je tady dole mimo obrazovku</div>
+  </div>
+
+  <div>
+    <div class="label">✅ Nové</div>
+    <div class="card">
+      <div class="input-row">
+        <input placeholder="Co chceš vařit?">
+        <button class="btn-gen">🔮 Navrhnout</button>
+      </div>
+      <div class="filters-compact">
+        <span class="filter-label">Porce:</span>
+        <span class="chip">1</span><span class="chip active">2</span><span class="chip">3</span><span class="chip">4</span><span class="chip">6</span>
+        <div class="divider"></div>
+        <span class="chip active">Vše</span><span class="chip">⚡</span><span class="chip">🥗</span><span class="chip">🔥</span>
+      </div>
+    </div>
+
+    <div class="loading-visible">
+      <div class="icon">🍳</div>
+      <p>Rex vaří recept...</p>
+    </div>
+
+    <div style="text-align:center;color:#4caf50;font-size:12px;margin-top:4px">↑ loading je hned vidět</div>
+  </div>
+</div>
+
+<div style="background:#fff3cd;border-radius:12px;padding:12px;font-size:13px;color:#7a5c00;margin-bottom:16px">
+  💡 <strong>Tip pro typ filtru:</strong> Místo plného textu "Rychlé" jen emoji ⚡🥗🔥 — ušetří místo a je intuitivní.
+  Po kliknutí Navrhnout se karta s filtry <strong>schová</strong> a loading se ukáže místo ní.
+</div>
+
+</body>
+</html>

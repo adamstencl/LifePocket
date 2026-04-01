@@ -6,6 +6,28 @@ Sem si piš nápady kdykoli — probereme a naplánujeme implementaci.
 
 ## 🚀 Nápady
 
+### 🎬 Video návod — jak appka funguje
+Krátké video (2-3 min) kde Adam ukáže reálné používání LifePocketu.
+
+**Proč to dává smysl:**
+- Video je 10× přesvědčivější než screenshot nebo text
+- Nový uživatel okamžitě pochopí hodnotu appky
+- Lze sdílet na sociálních sítích, vložit do BMC stránky, dát na landing page
+
+**Obsah videa:**
+- Úvod: "Ahoj, jsem Adam a tohle je LifePocket..."
+- Ukázka dashboardu → návyky → nákupy se sdílením → AI asistent
+- Outro: odkaz na lifepocket.app
+
+**Kde ho použít:**
+- BMC stránka (sekce "Updates" nebo přímo jako video embed)
+- Sdílet v česky mluvících skupinách (Facebook, Discord)
+- QR kód na videu → lifepocket.app
+
+**Priorita:** Brzy — skvělý marketing tool
+
+---
+
 ### 🎯 Průvodce cíli + Periodické review
 Ne každý ví jak správně nastavit cíl — výsledkem jsou vágní cíle jako "chci být fit" které nikam nevedou.
 
@@ -438,9 +460,15 @@ Checklist je nastaven jako "extra" modul, měl by být dostupný dříve/default
 
 ---
 
-### 👥 Rodina a sdílení — granulární per-modul
-S někým sdílím jídelníček, s někým návyky — sdílení by mělo být nastavitelné per-modul.
-- Možnost přidat více členů (víc kódů rodiny)
+### 👥 Rodina a sdílení — více skupin s různým sdílením
+S někým sdílím jídelníček, s někým návyky — každá skupina má vlastní kód a vlastní nastavení sdílení.
+
+**Návrh:**
+- Více skupin najednou (Skupina 1: kód ABC → jídelníček, Skupina 2: kód XYZ → nákupy)
+- Přidat návyky do sdílení (aktuálně vůbec nejdou sdílet)
+- Refaktoring: `familyId` z jednoho stringu na pole skupin
+
+**Priorita:** Na později (střední refaktoring)
 
 ---
 

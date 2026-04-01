@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "Bash(cp index.html index_BACKUP.html)",
+      "Bash(mv index_new.html index.html)",
+      "Bash(ls -lh *.html *.css *.js)",
+      "Bash(npm --version)",
+      "Bash(cmd /c \"node -v\")",
+      "Bash(cmd /c \"npm -v\")",
+      "Bash(cmd /c \"firebase --version\")",
+      "Bash(powershell -Command \"node -v; npm -v; firebase --version\" 2>&1)",
+      "Bash(git stash:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(\"C:\\\\Users\\\\Adam\\\\Desktop\\\\LifePocket\\\\NAPADY.md\":*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(cut -d'\\(' -f1)",
+      "Bash(firebase deploy:*)",
+      "Bash(for func:*)",
+      "Bash(do echo:*)",
+      "Bash(done)"
+    ]
+  }
+}
