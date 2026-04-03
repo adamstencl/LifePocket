@@ -1977,8 +1977,8 @@ function loadNotifSettings() {
 window.saveNotifSettings = () => {
   const m = document.getElementById('notif-morning');
   const ev = document.getElementById('notif-evening');
-  if (m) notifSettings.morning = m.value;
-  if (ev) notifSettings.evening = ev.value;
+  if (m) notifSettings.morning = m.value || '08:00';
+  if (ev) notifSettings.evening = ev.value || '21:00';
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
   notifSettings.morningDigest = document.getElementById('nt-morning')?.checked ?? true;
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
@@ -2077,6 +2077,9 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
     if (actions.length > 0 && 'serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(reg => {
         reg.showNotification(title, {...opts, actions, requireInteraction: true});
+      }).catch(() => {
+        // fallback bez tlačítek
+        new Notification(title, opts);
       });
     } else {
       new Notification(title, opts);
@@ -2126,14 +2129,16 @@ function scheduleAllNotifications() {
 
   // Ranní notifikace
   if (notifSettings.morningDigest) {
-    const [mh, mm] = notifSettings.morning.split(':').map(Number);
-    scheduleDaily(mh, mm, sendMorningNotif);
+    const morning = notifSettings.morning || '08:00';
+    const [mh, mm] = morning.split(':').map(Number);
+    if (!isNaN(mh) && !isNaN(mm)) scheduleDaily(mh, mm, sendMorningNotif);
   }
 
   // Večerní notifikace
   if (notifSettings.eveningDigest) {
-    const [eh, em] = notifSettings.evening.split(':').map(Number);
-    scheduleDaily(eh, em, sendEveningNotif);
+    const evening = notifSettings.evening || '21:00';
+    const [eh, em] = evening.split(':').map(Number);
+    if (!isNaN(eh) && !isNaN(em)) scheduleDaily(eh, em, sendEveningNotif);
   }
 
   // Návykové připomínky — každou hodinu kontroluj
@@ -2197,26 +2202,30 @@ function checkMissedNotifications() {
 
   // Ranní
   if (notifSettings.morningDigest) {
-    const [mh, mm] = notifSettings.morning.split(':').map(Number);
-    const key = `lp_sched_${mh}_${mm}`;
-    const stored = lsGet(key, {});
-    const today = now.toISOString().slice(0,10);
-    if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm))) {
-      stored.lastRun = today;
-      localStorage.setItem(key, JSON.stringify(stored));
-      sendMorningNotif();
+    const [mh, mm] = (notifSettings.morning || '08:00').split(':').map(Number);
+    if (!isNaN(mh) && !isNaN(mm)) {
+      const key = `lp_sched_${mh}_${mm}`;
+      const stored = lsGet(key, {});
+      const today = now.toISOString().slice(0,10);
+      if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm))) {
+        stored.lastRun = today;
+        localStorage.setItem(key, JSON.stringify(stored));
+        sendMorningNotif();
+      }
     }
   }
   // Večerní
   if (notifSettings.eveningDigest) {
-    const [eh, em] = notifSettings.evening.split(':').map(Number);
-    const key = `lp_sched_${eh}_${em}`;
-    const stored = lsGet(key, {});
-    const today = now.toISOString().slice(0,10);
-    if (stored.lastRun !== today && (h > eh || (h === eh && m >= em))) {
-      stored.lastRun = today;
-      localStorage.setItem(key, JSON.stringify(stored));
-      sendEveningNotif();
+    const [eh, em] = (notifSettings.evening || '21:00').split(':').map(Number);
+    if (!isNaN(eh) && !isNaN(em)) {
+      const key = `lp_sched_${eh}_${em}`;
+      const stored = lsGet(key, {});
+      const today = now.toISOString().slice(0,10);
+      if (stored.lastRun !== today && (h > eh || (h === eh && m >= em))) {
+        stored.lastRun = today;
+        localStorage.setItem(key, JSON.stringify(stored));
+        sendEveningNotif();
+      }
     }
   }
   // Návyky — zkontroluj pokud je 10+ hodin a nebyla dnešní připomínka
@@ -2248,13 +2257,17 @@ function scheduleHabitReminders() {
 function checkPerHabitReminders() {
   if (Notification.permission !== 'granted') return;
   const now = new Date();
-  const timeStr = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
   const today = now.toISOString().slice(0,10);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   const av = AVS.find(a => a.id === prof?.avatarId);
 
   habits.forEach(h => {
-    if (!h.reminderTime) return; // bez nastaveného času přeskočit
-    if (h.reminderTime !== timeStr) return; // ještě není čas
+    if (!h.reminderTime) return;
+    const [rh, rm] = h.reminderTime.split(':').map(Number);
+    if (isNaN(rh) || isNaN(rm)) return;
+    const targetMin = rh * 60 + rm;
+    // Okno ±2 minuty — nemineme při pomalém intervalovém timeru
+    if (Math.abs(nowMin - targetMin) > 2) return;
 
     // Zkontroluj jestli jsme dnes tuto notifikaci už poslali
     const sentKey = `lp_hrnotif_${h.id}_${today}`;
@@ -2361,6 +2374,7 @@ function checkAndRemindHabits() {
 
 function checkBirthdayNotifs() {
   if (Notification.permission !== 'granted') return;
+  if (!Array.isArray(events) || events.length === 0) return;
   const now = new Date();
   const todayMMDD = `${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const in7 = new Date(now); in7.setDate(now.getDate()+7);
@@ -2369,6 +2383,7 @@ function checkBirthdayNotifs() {
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
 
   events.forEach(ev => {
+    if (!ev.date) return;
     const mmdd = ev.date.slice(5); // MM-DD
 
     if (ev.type === 'birthday') {
@@ -2380,7 +2395,7 @@ function checkBirthdayNotifs() {
           sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂');
         }
       }
-      // 7 dní předem
+      // 7 dní předem — porovnání MM-DD funguje i přes roční hranici
       if (mmdd === in7MMDD) {
         const key = `lp_notif_bday_7d_${ev.id}_${today}`;
         if (!localStorage.getItem(key)) {
@@ -4041,6 +4056,18 @@ async function initApp(){
   initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
+  // Zpracuj "Splněno" akce uložené SW když byla appka zavřená
+  if ('serviceWorker' in navigator && 'caches' in window) {
+    caches.open('lp-pending').then(c => c.match('pending-action')).then(r => {
+      if (!r) return;
+      r.json().then(msg => {
+        if (msg?.type === 'HABIT_DONE_FROM_NOTIF' && typeof handleNotifHabitDone === 'function') {
+          handleNotifHabitDone(msg);
+        }
+        caches.open('lp-pending').then(c => c.delete('pending-action'));
+      }).catch(() => {});
+    }).catch(() => {});
+  }
   setTimeout(checkAutoWeeklyReport,10000); // první kontrola po spuštění
   setInterval(checkAutoWeeklyReport,3600000); // opakuj každou hodinu (v neděli spustí report)
   // Rodinná skupina
