@@ -2073,12 +2073,14 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
       silent: false,
       data
     };
-    // Tlacitka v notifikaci (funguje pres SW)
-    if (actions.length > 0 && 'serviceWorker' in navigator) {
+    // Vždy použij SW (povinné na Android/PWA), fallback na new Notification() na desktopu
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(reg => {
-        reg.showNotification(title, {...opts, actions, requireInteraction: true});
+        const swOpts = actions.length > 0
+          ? {...opts, actions, requireInteraction: true}
+          : opts;
+        return reg.showNotification(title, swOpts);
       }).catch(() => {
-        // fallback bez tlačítek
         new Notification(title, opts);
       });
     } else {
