@@ -81,7 +81,7 @@ self.addEventListener('notificationclick', e => {
 `;
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/LifePocket/sw.js', {scope: '/LifePocket/'})
+  navigator.serviceWorker.register('/sw.js', {scope: '/'})
     .then(() => {})
     .catch(() => {});
 

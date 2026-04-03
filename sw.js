@@ -18,18 +18,18 @@ fmsg.onBackgroundMessage(payload => {
   const n = payload.notification || {};
   self.registration.showNotification(n.title || 'LifePocket', {
     body: n.body || '',
-    icon: n.icon || '/LifePocket/icon-192.png',
-    badge: '/LifePocket/icon-192.png',
+    icon: n.icon || '/icon-192.png',
+    badge: '/icon-192.png',
     tag: payload.data?.tag || 'lifepocket',
   });
 });
 
 const CACHE = 'lifepocket-v2';
 const OFFLINE_URLS = [
-  '/LifePocket/',
-  '/LifePocket/index.html',
-  '/LifePocket/app.js',
-  '/LifePocket/style.css'
+  '/',
+  '/index.html',
+  '/app.js',
+  '/style.css'
 ];
 
 self.addEventListener('install', e => {
@@ -76,7 +76,7 @@ self.addEventListener('notificationclick', e => {
     e.waitUntil(
       self.clients.matchAll({type: 'window'}).then(clients => {
         if (clients.length > 0) { clients[0].focus(); return; }
-        return self.clients.openWindow('/LifePocket/');
+        return self.clients.openWindow('/');
       })
     );
   }
@@ -90,8 +90,8 @@ self.addEventListener('push', e => {
     e.waitUntil(
       self.registration.showNotification(data.title || 'LifePocket', {
         body: data.body || '',
-        icon: data.icon || '/LifePocket/icon-192.png',
-        badge: '/LifePocket/icon-192.png',
+        icon: data.icon || '/icon-192.png',
+        badge: '/icon-192.png',
         tag: data.tag || 'lifepocket',
         data: data.data || {},
         actions: data.actions || []
