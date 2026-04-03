@@ -3288,6 +3288,8 @@ const MEALS_CS = ['Snídaně','Oběd','Večeře'];
 
 function renderMealPlan() {
   renderKcalToday();
+  const kg = document.getElementById('set-kcalgoal');
+  if(kg) kg.value = prof.kcalGoal || 2000;
   const el = document.getElementById('mealplan-content');
   if(!el) return;
 
@@ -4570,8 +4572,6 @@ function initSet(){
   document.getElementById('set-avem').textContent=av.emoji;
   document.getElementById('set-avnm').textContent=av.name;
   document.getElementById('set-avsub').textContent=prof.nickname||'';
-  const kg=document.getElementById('set-kcalgoal');
-  if(kg) kg.value=prof.kcalGoal||2000;
 }
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${m.name}</div><div class="togds">${m.desc}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');

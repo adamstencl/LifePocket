@@ -726,6 +726,13 @@
         </div>
         <button class="btn-p" style="width:auto;padding:8px 16px;font-size:14px;white-space:nowrap" onclick="mealplanToShopping()">🛒 Přidat do nákupu</button>
       </div>
+      <!-- KALORICKÝ CÍL -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-size:13px;color:var(--text3)">🔥 Denní kcal cíl:</span>
+        <input type="number" id="set-kcalgoal" min="500" max="9999" placeholder="2000"
+          style="width:70px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;text-align:center;outline:none">
+        <button onclick="saveKcalGoal()" style="background:var(--accent);border:none;border-radius:8px;padding:4px 12px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">Uložit</button>
+      </div>
       <!-- KALORICKÝ PŘEHLED DNES -->
       <div id="kcal-today-section" style="margin-bottom:14px"></div>
       <div id="mealplan-content"></div>
@@ -755,11 +762,6 @@
           <span class="setlbl">Jméno</span>
           <input class="setinp" type="text" id="set-nick" placeholder="Tvoje jméno…">
           <button class="btn-sv" onclick="saveNick()">Uložit</button>
-        </div>
-        <div class="setrow" style="margin-top:10px">
-          <span class="setlbl">🔥 Denní kcal cíl</span>
-          <input class="setinp" type="number" id="set-kcalgoal" placeholder="např. 2000" min="500" max="9999" style="width:100px">
-          <button class="btn-sv" onclick="saveKcalGoal()">Uložit</button>
         </div>
       </div>
 
