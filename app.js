@@ -1561,7 +1561,7 @@ function rMods(){
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();setTimeout(()=>startModuleTour(),1500);};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();};
 
 
 function rEmptyStates(){
@@ -6517,17 +6517,19 @@ function showModuleHint(moduleId) {
 // Spustit tour po dokončení onboardingu nebo při initApp pro nové uživatele
 const _origFinishOnboard = window.finishOnboard;
 window.finishOnboard = async () => {
+  localStorage.setItem('lp_tour_pending', '1');
   await _origFinishOnboard();
   setTimeout(startWelcomeTour, 1000);
 };
 
-// Pro existující uživatele kteří tour ještě neviděli
+// Pro existující uživatele kteří tour ještě neviděli (ne nové registrace)
 const _origInitApp = initApp;
 window.initApp = function(){
   _origInitApp();
-  if(!localStorage.getItem('lp_tour_done') && prof?.createdAt) {
+  if(!localStorage.getItem('lp_tour_done') && !localStorage.getItem('lp_tour_pending') && prof?.createdAt) {
     setTimeout(startWelcomeTour, 2000);
   }
+  localStorage.removeItem('lp_tour_pending');
 }
 
 // Přidat hint do sp() pro první návštěvy
