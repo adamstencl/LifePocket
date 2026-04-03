@@ -13,8 +13,14 @@ const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 const CHANGELOG = [
+  { v:'2.3', items:[
+    '🔔 Notifikace — opraveny na Androidu a PWA, nyní fungují spolehlivě',
+    '🔴 Návyky — nula je zobrazena červeně (odlišné od nezaznamenáno)',
+    '👨‍👩‍👧 Rodina — přehledné přepínače modulů + správce může odebrat člena',
+    '🥗 Jídelníček — denní kalorický cíl přesunut z nastavení přímo do jídelníčku',
+  ]},
   { v:'2.2', items:[
     '🏷️ Název skupiny — pojmenuj skupinu jak chceš (Rodina, Spolubydlící…)',
     '📅 Vícedenní události — v kalendáři zadej rozsah datumů (např. 10–11. dubna)',
