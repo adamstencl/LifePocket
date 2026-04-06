@@ -2088,17 +2088,52 @@ window.sendTestServerPush = async () => {
 };
 
 window.refreshFcmToken = async () => {
-  toast('🔄 Registruji FCM token...');
+  const log = (msg) => {
+    const box = document.getElementById('fcm-debug-box');
+    if (box) box.innerHTML += `<div>${msg}</div>`;
+    console.log('[FCM]', msg);
+  };
+
+  // Zobraz debug box
+  let box = document.getElementById('fcm-debug-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'fcm-debug-box';
+    box.style.cssText = 'background:#111;border:1px solid #f5c842;border-radius:10px;padding:12px;margin-top:12px;font-size:12px;color:#ccc;font-family:monospace;line-height:1.8';
+    document.getElementById('notif-refresh-token-btn')?.insertAdjacentElement('afterend', box);
+  }
+  box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 FCM Debug:</div>';
+
+  log('1. messaging: ' + (messaging ? '✅' : '❌ NULL'));
+  log('2. CU (přihlášen): ' + (CU ? '✅ ' + CU.uid.slice(0,8) : '❌ NULL'));
+  log('3. Notif permission: ' + Notification.permission);
+  log('4. SW support: ' + ('serviceWorker' in navigator ? '✅' : '❌'));
+
   try {
-    await registerFcmToken();
-    const stored = prof?.fcmToken;
-    if (stored) {
-      toast('✅ FCM token uložen! Teď zkus Test server push.');
+    const regs = await navigator.serviceWorker.getRegistrations();
+    log('5. SW registrace: ' + regs.length);
+    regs.forEach((r, i) => log(`   SW[${i}]: ${r.active?.scriptURL || r.installing?.scriptURL || 'pending'}`));
+
+    const swReg = await navigator.serviceWorker.ready;
+    log('6. SW ready: ✅ ' + swReg.active?.scriptURL);
+
+    log('7. Získávám FCM token...');
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: swReg
+    });
+
+    if (token) {
+      log('8. Token: ✅ ' + token.slice(0, 30) + '...');
+      prof.fcmToken = token;
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+      log('9. Uloženo do Firestore: ✅');
+      toast('✅ FCM token uložen!');
     } else {
-      toast('❌ Token se nepodařilo získat. Zkus Chrome na Androidu.');
+      log('8. Token: ❌ prázdný');
     }
   } catch(e) {
-    toast('❌ Chyba: ' + e.message);
+    log('❌ CHYBA: ' + e.message);
   }
 };
 
