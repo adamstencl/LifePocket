@@ -2103,8 +2103,9 @@ window.refreshFcmToken = async () => {
     document.getElementById('notif-refresh-token-btn')?.insertAdjacentElement('afterend', box);
   }
   box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 FCM Debug:</div>';
+  box.scrollIntoView({behavior:'smooth', block:'center'});
 
-  log('1. messaging: ' + (messaging ? '✅' : '❌ NULL'));
+  log('1. messaging: ' + (messaging ? '✅' : '❌ NULL - Firebase messaging se neinicializoval'));
   log('2. CU (přihlášen): ' + (CU ? '✅ ' + CU.uid.slice(0,8) : '❌ NULL'));
   log('3. Notif permission: ' + Notification.permission);
   log('4. SW support: ' + ('serviceWorker' in navigator ? '✅' : '❌'));
