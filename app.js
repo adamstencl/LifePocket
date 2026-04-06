@@ -1938,18 +1938,32 @@ async function registerFcmToken() {
   if (!messaging || !CU) return;
   if (Notification.permission !== 'granted') return;
   try {
+    // Odstraň staré SW registrace (např. /LifePocket/sw.js) které by blokovaly nový token
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        if (reg.active?.scriptURL && !reg.active.scriptURL.endsWith('/sw.js')) {
+          await reg.unregister();
+          console.log('[LP] Odregistrován starý SW:', reg.active.scriptURL);
+        }
+      }
+    }
+
+    const swReg = await navigator.serviceWorker.ready;
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: await navigator.serviceWorker.ready
+      serviceWorkerRegistration: swReg
     });
     if (token && prof) {
       prof.fcmToken = token;
       prof.notifSettings = notifSettings;
       await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
-      console.log('[LP] FCM token uložen do Firestore');
+      console.log('[LP] FCM token uložen:', token.slice(0,20) + '...');
+    } else {
+      console.warn('[LP] FCM getToken vrátil prázdný token');
     }
   } catch(e) {
-    console.warn('[LP] FCM token se nepodařilo získat:', e.message);
+    console.warn('[LP] FCM token chyba:', e.message);
   }
 }
 
@@ -2010,6 +2024,7 @@ async function checkNotifStatus() {
   const enableBtn = document.getElementById('notif-enable-btn');
   const testBtn = document.getElementById('notif-test-btn');
   const testServerBtn = document.getElementById('notif-test-server-btn');
+  const refreshTokenBtn = document.getElementById('notif-refresh-token-btn');
   if (!box) return;
 
   if (!('Notification' in window)) {
@@ -2026,6 +2041,7 @@ async function checkNotifStatus() {
     if (enableBtn) enableBtn.style.display = 'none';
     if (testBtn) testBtn.style.display = 'block';
     if (testServerBtn) testServerBtn.style.display = 'block';
+    if (refreshTokenBtn) refreshTokenBtn.style.display = 'block';
     // Vždy obnov FCM token při otevření nastavení
     registerFcmToken();
   } else if (perm === 'denied') {
@@ -2062,7 +2078,27 @@ window.sendTestServerPush = async () => {
     await testPushFn();
     toast('✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
   } catch(e) {
-    toast('❌ ' + (e.message || 'Chyba server push'));
+    const msg = e.message || '';
+    if (msg.includes('FCM token')) {
+      toast('⚠️ FCM token chybí — klikni "Obnovit token"');
+    } else {
+      toast('❌ ' + msg);
+    }
+  }
+};
+
+window.refreshFcmToken = async () => {
+  toast('🔄 Registruji FCM token...');
+  try {
+    await registerFcmToken();
+    const stored = prof?.fcmToken;
+    if (stored) {
+      toast('✅ FCM token uložen! Teď zkus Test server push.');
+    } else {
+      toast('❌ Token se nepodařilo získat. Zkus Chrome na Androidu.');
+    }
+  } catch(e) {
+    toast('❌ Chyba: ' + e.message);
   }
 };
 
