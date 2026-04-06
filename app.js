@@ -10,11 +10,16 @@ let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
 const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
 const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
+const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.3';
+const APP_VERSION = '2.4';
 const CHANGELOG = [
+  { v:'2.4', items:[
+    '📅 Notifikace kalendáře — připomínky událostí hodinu předem fungují i při zavřené appce',
+    '📡 Test server push — v Nastavení → Notifikace ověříš že server push funguje',
+  ]},
   { v:'2.3', items:[
     '🔔 Notifikace — opraveny na Androidu a PWA, nyní fungují spolehlivě',
     '🔴 Návyky — nula je zobrazena červeně (odlišné od nezaznamenáno)',
@@ -2004,6 +2009,7 @@ async function checkNotifStatus() {
   const box = document.getElementById('notif-status-box');
   const enableBtn = document.getElementById('notif-enable-btn');
   const testBtn = document.getElementById('notif-test-btn');
+  const testServerBtn = document.getElementById('notif-test-server-btn');
   if (!box) return;
 
   if (!('Notification' in window)) {
@@ -2019,6 +2025,7 @@ async function checkNotifStatus() {
     box.style.color = 'var(--green)';
     if (enableBtn) enableBtn.style.display = 'none';
     if (testBtn) testBtn.style.display = 'block';
+    if (testServerBtn) testServerBtn.style.display = 'block';
   } else if (perm === 'denied') {
     box.innerHTML = '🚫 Notifikace jsou <b>zakázány</b> v nastavení prohlížeče. Klikni na 🔒 v adresním řádku a povol notifikace.';
     box.style.borderColor = 'rgba(255,107,107,0.3)';
@@ -2047,6 +2054,16 @@ window.enableNotifications = async () => {
 };
 
 // ── Testovací notifikace ──
+window.sendTestServerPush = async () => {
+  try {
+    toast('📡 Odesílám test přes server...');
+    await testPushFn();
+    toast('✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
+  } catch(e) {
+    toast('❌ ' + (e.message || 'Chyba server push'));
+  }
+};
+
 window.sendTestNotif = () => {
   const doneToday = habits.filter(h => {
     const logId = `${h.id}_${new Date().toISOString().slice(0,10)}`;

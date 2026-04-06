@@ -115,6 +115,18 @@ async function sendPush(token, title, body, tag = 'lifepocket') {
   }
 }
 
+// ── Test Push — ověření že FCM funguje ───────────────────────────────────────
+exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+  const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
+  if (!profileSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
+  const fcmToken = profileSnap.data().fcmToken;
+  if (!fcmToken) throw new HttpsError('failed-precondition', 'FCM token není uložen. Znovu povol notifikace v nastavení.');
+  await sendPush(fcmToken, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
+  return {ok: true};
+});
+
 // ── Notify Family ─────────────────────────────────────────────────────────────
 // Pošle push notifikaci všem členům rodinné skupiny (kromě odesílatele)
 exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (request) => {
@@ -240,23 +252,36 @@ exports.sendScheduledNotifications = onSchedule(
         }
       }
 
-      // ── Narozeniny ──
+      // ── Narozeniny + Události z kalendáře ──
+      const eventsSnap = await db.collection(`users/${uid}/events`).get();
       const morningTime = ns.morning || '08:00';
-      if (isTimeMatch(h, m, morningTime)) {
-        const eventsSnap = await db.collection(`users/${uid}/events`).get();
-        const todayMD = today.slice(5);
-        const tmrwDate = new Date(prague);
-        tmrwDate.setDate(tmrwDate.getDate() + 1);
-        const tmrwMD = `${String(tmrwDate.getMonth()+1).padStart(2,'0')}-${String(tmrwDate.getDate()).padStart(2,'0')}`;
+      const todayMD = today.slice(5);
+      const tmrwDate = new Date(prague);
+      tmrwDate.setDate(tmrwDate.getDate() + 1);
+      const tmrwMD = `${String(tmrwDate.getMonth()+1).padStart(2,'0')}-${String(tmrwDate.getDate()).padStart(2,'0')}`;
 
-        for (const evDoc of eventsSnap.docs) {
-          const ev = evDoc.data();
-          if (ev.type !== 'birthday' || !ev.date) continue;
+      for (const evDoc of eventsSnap.docs) {
+        const ev = evDoc.data();
+        if (!ev.date) continue;
+
+        // Narozeniny — ráno
+        if (ev.type === 'birthday' && isTimeMatch(h, m, morningTime)) {
           const bday = ev.date.slice(5);
           if (bday === todayMD) {
             promises.push(sendPush(fcmToken, '🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`));
           } else if (bday === tmrwMD) {
             promises.push(sendPush(fcmToken, '🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`));
+          }
+        }
+
+        // Události s časem — hodinu předem
+        if (ev.type === 'event' && ev.time) {
+          const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
+          if (evDate !== today) continue;
+          const evTime = new Date(`${today}T${ev.time}:00`);
+          const diffMin = Math.round((evTime - prague) / 60000);
+          if (diffMin >= 55 && diffMin <= 65) {
+            promises.push(sendPush(fcmToken, `📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`));
           }
         }
       }
