@@ -2026,6 +2026,8 @@ async function checkNotifStatus() {
     if (enableBtn) enableBtn.style.display = 'none';
     if (testBtn) testBtn.style.display = 'block';
     if (testServerBtn) testServerBtn.style.display = 'block';
+    // Vždy obnov FCM token při otevření nastavení
+    registerFcmToken();
   } else if (perm === 'denied') {
     box.innerHTML = '🚫 Notifikace jsou <b>zakázány</b> v nastavení prohlížeče. Klikni na 🔒 v adresním řádku a povol notifikace.';
     box.style.borderColor = 'rgba(255,107,107,0.3)';
