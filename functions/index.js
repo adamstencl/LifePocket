@@ -101,12 +101,12 @@ async function sendPush(token, title, body, tag = 'lifepocket') {
         notification: {
           title,
           body,
-          icon: 'https://adamstencl.github.io/LifePocket/icon-192.png',
-          badge: 'https://adamstencl.github.io/LifePocket/icon-192.png',
+          icon: 'https://lifepocket.app/icon-192.png',
+          badge: 'https://lifepocket.app/icon-192.png',
           tag,
           renotify: true,
         },
-        fcmOptions: {link: 'https://adamstencl.github.io/LifePocket/'}
+        fcmOptions: {link: 'https://lifepocket.app/'}
       }
     });
     console.log(`[LP] Push odeslan: ${title}`);
@@ -155,7 +155,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
 
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
-  {schedule: 'every 5 minutes', timeZone: 'Europe/Prague'},
+  {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1'},
   async () => {
     const now = new Date();
     const pragueStr = now.toLocaleString('en-US', {timeZone: 'Europe/Prague'});
@@ -224,8 +224,8 @@ exports.sendScheduledNotifications = onSchedule(
         const habitsSnap = await db.collection(`users/${uid}/habits`).get();
         for (const habitDoc of habitsSnap.docs) {
           const habit = habitDoc.data();
-          if (!habit.notifTime) continue;
-          if (!isTimeMatch(h, m, habit.notifTime)) continue;
+          if (!habit.reminderTime) continue;
+          if (!isTimeMatch(h, m, habit.reminderTime)) continue;
 
           const logId = `${habit.id}_${today}`;
           const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
