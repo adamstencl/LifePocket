@@ -11,11 +11,14 @@ const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
 const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const testPushFn=httpsCallable(functions,'testPush');
-const VAPID_KEY='BCSH4S7n__eSj1QKSo22IC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
+const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.4';
+const APP_VERSION = '2.5';
 const CHANGELOG = [
+  { v:'2.5', items:[
+    '🔑 Oprava VAPID klíče — notifikace při zavřené appce nyní fungují správně',
+  ]},
   { v:'2.4', items:[
     '📅 Notifikace kalendáře — připomínky událostí hodinu předem fungují i při zavřené appce',
     '📡 Test server push — v Nastavení → Notifikace ověříš že server push funguje',
