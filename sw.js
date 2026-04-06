@@ -24,7 +24,7 @@ fmsg.onBackgroundMessage(payload => {
   });
 });
 
-const CACHE = 'lifepocket-v2';
+const CACHE = 'lifepocket-v3';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
