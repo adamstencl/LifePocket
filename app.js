@@ -14,8 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 const CHANGELOG = [
+  { v:'2.7', items:[
+    '✕ Nesplněný návyk na dashboardu — červené ✕ místo prázdného kroužku',
+    '🧊 Zásoby — nabídka přidat do zásoby funguje i když jsou zásoby prázdné',
+  ]},
   { v:'2.6', items:[
     '📧 Ověření emailu — po registraci přijde potvrzovací email',
     '⌨️ Klávesnice na mobilu — tlačítka v dialozích již nejsou skryta pod klávesnicí',
@@ -4414,12 +4418,13 @@ function rDash(){
     const habRows=habits.slice(0,4).map(hb=>{
       const log=habitLogs.find(l=>l.habitId===hb.id&&l.date===today);
       const done=log?.done||false;
+      const failed=log?.failed||false;
       const isCount=hb.type==='count';
       const val=isCount?(log?.value||0)+'/'+hb.goal:'';
       let streak=0;const sd=new Date(today+'T12:00:00');
       for(let i=0;i<30;i++){const ds=sd.toISOString().slice(0,10);if(habitLogs.some(l=>l.habitId===hb.id&&l.date===ds&&l.done))streak++;else break;sd.setDate(sd.getDate()-1);}
       return `<div class="dw-habit-row">
-        <div class="dw-hcheck ${done?'done':''}">${done?'✓':''}</div>
+        <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
         <div class="dw-hname">${hb.emoji} ${hb.name}</div>
         ${val?`<div class="dw-hval">${val}</div>`:''}
         ${streak>=30?`<div class="dw-hfire" style="color:var(--accent);font-weight:700">👑${streak}</div>`
@@ -5257,7 +5262,7 @@ function offerPantryUpdate(shopId, isShared) {
     // Auto-update: +1
     changePantryQty(match.id, 1);
     toast(`🧊 ${match.name} v zásobách: ${(match.qty||0)+1} ${match.unit||'ks'}`);
-  } else if(pantryItems.length>0){
+  } else {
     // Nabídni přidání do zásob
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
