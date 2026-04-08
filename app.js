@@ -1,5 +1,5 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 const CHANGELOG = [
+  { v:'2.6', items:[
+    '📧 Ověření emailu — po registraci přijde potvrzovací email',
+    '⌨️ Klávesnice na mobilu — tlačítka v dialozích již nejsou skryta pod klávesnicí',
+    '🔒 Popis soukromí — upřesněno kde jsou data uložena',
+  ]},
   { v:'2.5', items:[
     '🔑 Oprava VAPID klíče — notifikace při zavřené appce nyní fungují správně',
   ]},
@@ -179,7 +184,11 @@ onAuthStateChanged(auth,async u=>{
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
     if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
     if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),prof);
-    selMods=new Set(prof.modules||[]);initApp();}else ss('s-step1');}
+    selMods=new Set(prof.modules||[]);initApp();
+    if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
+      setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
+    }
+  }else ss('s-step1');}
   else{
     CU=null;
     // Unsubscribe všechny Firebase listenery
@@ -1116,7 +1125,7 @@ window.directInput=async(hid,date,curVal,goal)=>{
 
   const modal = document.createElement('div');
   modal.id = 'direct-input-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   modal.innerHTML = `
     <div style="background:#1a1a20;border:1px solid #f5c842;border-radius:16px;padding:24px;width:100%;max-width:320px;text-align:center">
       <div style="font-family:'Playfair Display',serif;font-size:18px;color:#f5c842;margin-bottom:6px">Zadat počet</div>
@@ -1514,6 +1523,7 @@ window.doEmailRegister=async()=>{
   b.disabled=true;b.textContent='Registruji…';
   try{
     await createUserWithEmailAndPassword(auth,email,pass);
+    await sendEmailVerification(auth.currentUser);
   }catch(ex){
     b.disabled=false;b.textContent='Registrovat';
     const msgs={'auth/email-already-in-use':'Email je už registrovaný','auth/invalid-email':'Neplatný email','auth/weak-password':'Heslo je příliš slabé'};
@@ -3764,7 +3774,7 @@ window.mealplanToShopping = async () => {
     sp('shopping');
   } else if(withoutRecipe.length) {
     const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
     modal.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px">
         <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--accent);margin-bottom:10px;font-weight:700">🍳 Chybí uložené recepty</div>
@@ -3848,7 +3858,7 @@ window.openAddToMealplan = () => {
   if(existing) existing.remove();
   const modal = document.createElement('div');
   modal.id = 'add-to-mealplan-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto">
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--accent);margin-bottom:4px;font-weight:700">📅 Přidat do jídelníčku</div>
@@ -6503,7 +6513,7 @@ function startWelcomeTour() {
 
   const modal = document.createElement('div');
   modal.id = 'tour-welcome';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:360px;text-align:center">
       <div style="font-size:52px;margin-bottom:12px">${av.emoji}</div>
@@ -6595,7 +6605,7 @@ function finishTour() {
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
   setTimeout(() => {
     const done = document.createElement('div');
-    done.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    done.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
     done.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:340px;text-align:center">
         <div style="font-size:48px;margin-bottom:12px">🎉</div>
