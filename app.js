@@ -5509,7 +5509,10 @@ window.openManualRecipe = function() {
         </div>
 
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Postup (každý krok na nový řádek)</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:13px;font-weight:600;color:var(--text2)">Postup (každý krok na nový řádek)</div>
+            <button onclick="aiSuggestSteps()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif">✨ Navrhnout AI</button>
+          </div>
           <textarea id="mr-steps" class="finp" rows="6" placeholder="Maso nakrájejte na kousky&#10;Na oleji osmažte cibuli&#10;Přidejte maso a opečte" style="resize:vertical;font-size:14px"></textarea>
         </div>
 
@@ -5522,6 +5525,29 @@ window.openManualRecipe = function() {
       </div>
     </div>`);
   setTimeout(() => document.getElementById('mr-name')?.focus(), 100);
+};
+
+window.aiSuggestSteps = async function() {
+  const name = document.getElementById('mr-name')?.value.trim();
+  const ingr = document.getElementById('mr-ingredients')?.value.trim();
+  const stepsEl = document.getElementById('mr-steps');
+  if (!name) { toast('⚠️ Nejdřív zadej název receptu'); return; }
+  const btn = document.querySelector('[onclick="aiSuggestSteps()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generuji…'; }
+  try {
+    const portions = document.getElementById('mr-portions')?.value || '4';
+    const sys = `Jsi kuchařský asistent. Na základě názvu jídla a surovin napiš stručný postup vaření — 4 až 8 kroků. Každý krok na jeden řádek, bez číslování. Piš VÝHRADNĚ česky, jasně a srozumitelně jako recept z kuchařské knihy.`;
+    const user = `Recept: ${name} pro ${portions} osoby\nSuroviny:\n${ingr||'(neuvedeny)'}`;
+    const result = await callClaude([{role:'system',content:sys},{role:'user',content:user}], 600);
+    if (result && stepsEl) {
+      stepsEl.value = result.trim();
+      toast('✨ Postup vygenerován');
+    }
+  } catch(e) {
+    toast('⚠️ AI není dostupná');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Navrhnout AI'; }
+  }
 };
 
 function normalizeIngQty(amount, unit) {
