@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.8';
+const APP_VERSION = '2.9';
 const CHANGELOG = [
+  { v:'2.9', items:[
+    '🔢 Zásoby — přepočet jednotek při vaření (200 ml z 1 l = zbyde 0.8 l)',
+  ]},
   { v:'2.8', items:[
     '🧊 Zásoby — standardizované jednotky (ks, g, kg, ml, l)',
   ]},
@@ -5471,7 +5474,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
-    if(pantryItems.length) offerPantryDeduct(recipe.ingredients.map(i=>i.name));
+    if(pantryItems.length) offerPantryDeduct(recipe.ingredients);
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
     toast('❌ Chyba: '+e.message);
@@ -6008,8 +6011,35 @@ window.aiShopAddAll = async function(items) {
   toast(`✓ ${items.length} položek přidáno do nákupního seznamu`);
 };
 
+function parseIngQty(qtyStr) {
+  if (!qtyStr) return {amount:1, unit:'ks'};
+  const m = String(qtyStr).match(/(\d+(?:[.,]\d+)?)\s*(ks|kg|ml|g\b|l\b|kus|kusy)?/i);
+  if (!m) return {amount:1, unit:'ks'};
+  const amount = parseFloat(m[1].replace(',','.'));
+  let unit = (m[2]||'ks').toLowerCase();
+  if(unit==='kus'||unit==='kusy') unit='ks';
+  return {amount, unit};
+}
+
+function convertUnits(amount, from, to) {
+  const f=from?.toLowerCase(), t=to?.toLowerCase();
+  if(f===t) return amount;
+  if(f==='ml'&&t==='l') return amount/1000;
+  if(f==='l'&&t==='ml') return amount*1000;
+  if(f==='g'&&t==='kg') return amount/1000;
+  if(f==='kg'&&t==='g') return amount*1000;
+  return null; // nekompatibilní jednotky
+}
+
 function offerPantryDeduct(ingredients) {
   if (!pantryItems.length || !ingredients?.length) return;
+  // ingredients může být pole objektů {name,qty} nebo pole stringů
+  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i);
+  const matches = normalized.filter(ing => {
+    const n = ing.name.toLowerCase();
+    return pantryItems.some(p => n.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(n.split(' ')[0]));
+  });
+  if (!matches.length) return;
 
   const m = document.createElement('div');
   m.id = 'pantry-deduct-modal';
@@ -6018,10 +6048,10 @@ function offerPantryDeduct(ingredients) {
     <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🧊 Odečíst ze zásob?</h3>
     <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Chceš odečíst suroviny tohoto receptu ze svých zásob?</p>
     <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
-      ${ingredients.slice(0, 10).map(ing => `<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(String(ing))}</div>`).join('')}
+      ${matches.slice(0,10).map(ing=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</div>`).join('')}
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-sv" style="flex:1" onclick="deductPantryIngredients(${JSON.stringify(ingredients).replace(/"/g,'&quot;')});document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
+      <button class="btn-sv" style="flex:1" onclick="deductPantryIngredients(${JSON.stringify(normalized).replace(/"/g,'&quot;')});document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
       <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">Přeskočit</button>
     </div>
   </div>`;
@@ -6029,18 +6059,26 @@ function offerPantryDeduct(ingredients) {
 }
 
 window.deductPantryIngredients = async function(ingredients) {
+  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i);
   let matched = 0;
-  for (const ing of ingredients) {
-    const ingStr = String(ing).toLowerCase();
-    const pantryItem = pantryItems.find(p => ingStr.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingStr.split(' ')[0]));
-    if (pantryItem && pantryItem.qty > 0) {
-      pantryItem.qty = Math.max(0, pantryItem.qty - 1);
-      if (familyId) {
-        const { doc: d, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-        await setDoc(d(db, 'families', familyId, 'pantry', pantryItem.id), pantryItem);
-      }
-      matched++;
+  for (const ing of normalized) {
+    const ingName = ing.name.toLowerCase();
+    const pantryItem = pantryItems.find(p => ingName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingName.split(' ')[0]));
+    if (!pantryItem || pantryItem.qty <= 0) continue;
+    const {amount: ingAmt, unit: ingUnit} = parseIngQty(ing.qty);
+    const pantryUnit = (pantryItem.unit||'ks').toLowerCase();
+    let deduct = ingAmt;
+    if (ingUnit !== pantryUnit) {
+      const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
+      if (converted === null) { deduct = 1; } // nekompatibilní — odečti 1
+      else { deduct = converted; }
     }
+    pantryItem.qty = Math.max(0, Math.round((pantryItem.qty - deduct) * 1000) / 1000);
+    if (familyId) {
+      const { doc: d, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      await setDoc(d(db, 'families', familyId, 'pantry', pantryItem.id), pantryItem);
+    }
+    matched++;
   }
   if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
   toast(matched > 0 ? `✓ ${matched} položek odečteno ze zásob` : 'Žádné suroviny nenalezeny v zásobách');
