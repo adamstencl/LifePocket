@@ -4955,7 +4955,7 @@ window.rexRecipe=async(food,btnEl)=>{
 Vrať JSON objekt:
 {"name":"Název jídla","time":"30 minut","mealType":"Oběd","portions":4,"ingredients":[{"name":"Ingredience","qty":"200 g","category":"Maso & ryby"}],"steps":["Krok 1..."],"tip":"Tip..."}
 Kategorie: "Zelenina & ovoce","Maso & ryby","Mléčné výrobky","Pečivo","Trvanlivé","Ostatní"
-PRAVIDLO JEDNOTKY: V poli "qty" používej VÝHRADNĚ tyto jednotky: ks, g, kg, ml, l. Příklady: "200 g", "1 ks", "0.5 l", "150 ml", "0.25 kg". NIKDY nepoužívej: lžíce, hrnek, dcl, stroužky, špetka, svazek ani jiné nestandardní jednotky — převeď je na standardní (1 lžíce = 15 ml, 1 hrnek = 250 ml, 1 stroužek česneku = 5 g, 1 špetka = 2 g).
+PRAVIDLO JEDNOTKY: V poli "qty" používej VÝHRADNĚ tyto jednotky: ks, g, kg, ml, l. Příklady: "200 g", "1 ks", "0.5 l", "150 ml", "0.25 kg". NIKDY nepoužívej: lžíce, hrnek, dcl, stroužky, špetka, svazek ani jiné nestandardní jednotky — převeď je na standardní (1 lžíce = 15 ml, 1 hrnek = 250 ml, 1 stroužek česneku = 1 ks, 1 špetka = 2 g).
 PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česky. ZAKÁZÁNO použít cyrilici, ruštinu, angličtinu ani jiné cizí jazyky.
 PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
   try{
@@ -5468,7 +5468,7 @@ Vrať JSON objekt s těmito poli:
 }
 Kategorie surovin: "Zelenina & ovoce", "Maso & ryby", "Mléčné výrobky", "Pečivo", "Trvanlivé", "Ostatní"
 ${typeHint}${mealTypeHint}
-PRAVIDLO JEDNOTKY: V poli "qty" používej VÝHRADNĚ tyto jednotky: ks, g, kg, ml, l. Příklady: "200 g", "1 ks", "0.5 l", "150 ml", "0.25 kg". NIKDY nepoužívej: lžíce, hrnek, dcl, stroužky, špetka, svazek ani jiné nestandardní jednotky — převeď je na standardní (1 lžíce = 15 ml, 1 hrnek = 250 ml, 1 stroužek česneku = 5 g, 1 špetka = 2 g).
+PRAVIDLO JEDNOTKY: V poli "qty" používej VÝHRADNĚ tyto jednotky: ks, g, kg, ml, l. Příklady: "200 g", "1 ks", "0.5 l", "150 ml", "0.25 kg". NIKDY nepoužívej: lžíce, hrnek, dcl, stroužky, špetka, svazek ani jiné nestandardní jednotky — převeď je na standardní (1 lžíce = 15 ml, 1 hrnek = 250 ml, 1 stroužek česneku = 1 ks, 1 špetka = 2 g).
 PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česky. ZAKÁZÁNO použít cyrilici, ruštinu, angličtinu ani jiné cizí jazyky.
 PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
 
@@ -5533,7 +5533,7 @@ function normalizeIngQty(amount, unit) {
   if(u==='hrnek'||u==='hrnky'||u==='hrnků') return `${Math.round(a*250)} ml`;
   if(u==='dcl'||u==='dl') return `${Math.round(a*100)} ml`;
   if(u==='špetka'||u==='špetky') return `${Math.round(a*2)} g`;
-  if(u==='stroužek'||u==='stroužky'||u==='stroužků') return `${Math.round(a*5)} g`;
+  if(u==='stroužek'||u==='stroužky'||u==='stroužků') return `${a} ks`;
   if(u==='svazek'||u==='svazky'||u==='svazků') return `${Math.round(a*50)} g`;
   if(u==='plátek'||u==='plátky'||u==='plátků') return `${a} ks`;
   // Už standardní
