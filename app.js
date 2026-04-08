@@ -5505,7 +5505,7 @@ window.openManualRecipe = function() {
 
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Suroviny (každá na nový řádek, např. "Mouka 200 g")</div>
-          <textarea id="mr-ingredients" class="finp" rows="5" placeholder="Kuřecí prsa 400 g&#10;Cibule 1 ks&#10;Česnek 2 stroužky" style="resize:vertical;font-size:14px"></textarea>
+          <textarea id="mr-ingredients" class="finp" rows="5" placeholder="Kuřecí prsa 400 g&#10;Cibule 1 ks&#10;Česnek 10 g&#10;Mléko 250 ml" style="resize:vertical;font-size:14px"></textarea>
         </div>
 
         <div>
@@ -5524,6 +5524,24 @@ window.openManualRecipe = function() {
   setTimeout(() => document.getElementById('mr-name')?.focus(), 100);
 };
 
+function normalizeIngQty(amount, unit) {
+  const a = parseFloat(String(amount).replace(',','.')) || 1;
+  const u = unit.toLowerCase();
+  // Převod na standardní jednotky
+  if(u==='lžíce'||u==='lžic'||u==='lžíci') return `${Math.round(a*15)} ml`;
+  if(u==='lžička'||u==='lžičky'||u==='lžičce') return `${Math.round(a*5)} ml`;
+  if(u==='hrnek'||u==='hrnky'||u==='hrnků') return `${Math.round(a*250)} ml`;
+  if(u==='dcl'||u==='dl') return `${Math.round(a*100)} ml`;
+  if(u==='špetka'||u==='špetky') return `${Math.round(a*2)} g`;
+  if(u==='stroužek'||u==='stroužky'||u==='stroužků') return `${Math.round(a*5)} g`;
+  if(u==='svazek'||u==='svazky'||u==='svazků') return `${Math.round(a*50)} g`;
+  if(u==='plátek'||u==='plátky'||u==='plátků') return `${a} ks`;
+  // Už standardní
+  if(['ks','g','kg','ml','l'].includes(u)) return `${a} ${u}`;
+  // Neznámá — nech jak je
+  return `${a} ${unit}`;
+}
+
 window.saveManualRecipe = async function() {
   const name = document.getElementById('mr-name')?.value.trim();
   if (!name) { toast('⚠️ Zadej název receptu'); return; }
@@ -5532,8 +5550,11 @@ window.saveManualRecipe = async function() {
   const rawSteps = document.getElementById('mr-steps')?.value.trim() || '';
 
   const ingredients = rawIngr.split('\n').filter(l => l.trim()).map(l => {
-    const parts = l.trim().match(/^(.+?)\s+([\d\/,.]+\s*\S+)\s*$/);
-    if (parts) return { name: parts[1].trim(), qty: parts[2].trim(), category: 'Ostatní' };
+    const parts = l.trim().match(/^(.+?)\s+([\d\/,.]+)\s*(\S+)\s*$/);
+    if (parts) {
+      const qty = normalizeIngQty(parts[2].trim(), parts[3].trim());
+      return { name: parts[1].trim(), qty, category: 'Ostatní' };
+    }
     return { name: l.trim(), qty: '', category: 'Ostatní' };
   });
 
