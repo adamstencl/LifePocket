@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '2.7';
+const APP_VERSION = '2.8';
 const CHANGELOG = [
+  { v:'2.8', items:[
+    '🧊 Zásoby — standardizované jednotky (ks, g, kg, ml, l)',
+  ]},
   { v:'2.7', items:[
     '✕ Nesplněný návyk na dashboardu — červené ✕ místo prázdného kroužku',
     '🧊 Zásoby — nabídka přidat do zásoby funguje i když jsou zásoby prázdné',
@@ -5856,7 +5859,9 @@ window.openPantryAdd = function(prefill = {}) {
       <input id="pi-name" class="finp" placeholder="Název (např. Mléko)" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
       <div style="display:flex;gap:8px">
         <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="Množství" value="${prefill.qty || ''}" style="flex:1">
-        <input id="pi-unit" class="finp" placeholder="Jednotka (l, ks, g...)" value="${esc(prefill.unit || '')}" style="flex:1">
+        <select id="pi-unit" class="finp" style="flex:1">
+          ${['ks','g','kg','ml','l'].map(u=>`<option value="${u}" ${(prefill.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
+        </select>
       </div>
       <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${prefill.minQty || ''}" style="width:100%;box-sizing:border-box">
     </div>
