@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 const CHANGELOG = [
+  { v:'3.2', items:[
+    '📤 Migrace kalendáře — tlačítko pro přesun starých událostí do sdíleného kalendáře',
+  ]},
   { v:'3.1', items:[
     '📅 Sdílený kalendář — události se ukládají do rodinného kalendáře a vidí je všichni členové',
   ]},
@@ -1295,6 +1298,10 @@ function renderCal(){
   const total=start+dim; const remaining=(7-total%7)%7;
   for(let i=1;i<=remaining;i++) html+=`<div class="cal-cell other-month">${i}</div>`;
   const cg=document.getElementById('cal-grid'); if(cg) cg.innerHTML=html;
+  // Tlačítko migrace osobních událostí do sdíleného kalendáře
+  const migrBtn=document.getElementById('cal-migrate-btn');
+  if(migrBtn) migrBtn.style.display=(isCalShared()&&events.length>0)?'':'none';
+  if(migrBtn) migrBtn.textContent=`📤 Přesunout do sdíleného (${events.length})`;
   renderEvList();
 }
 
@@ -1346,6 +1353,22 @@ function renderEvList(){
 
 window.calPrev=()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();};
 window.calNext=()=>{calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCal();};
+
+window.migrateCalEvents = async function() {
+  if(!isCalShared()||!events.length) return;
+  if(!confirm(`Přesunout ${events.length} osobních událostí do sdíleného kalendáře?`)) return;
+  let ok=0;
+  for(const ev of events) {
+    try {
+      const {id, ...data} = ev;
+      data.addedBy = CU.uid;
+      await addDoc(collection(db,'families',familyId,'events'), data);
+      await deleteDoc(doc(db,'users',CU.uid,'events',id));
+      ok++;
+    } catch(e) { console.warn('migrate err', e); }
+  }
+  toast(`✓ ${ok} událostí přesunuto do sdíleného kalendáře`);
+};
 window.calDayClick=(ds)=>{
   // Najdi události pro tento den
   const dayEvs = getEventsForDate(ds);
