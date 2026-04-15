@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 const CHANGELOG = [
+  { v:'3.1', items:[
+    '📅 Sdílený kalendář — události se ukládají do rodinného kalendáře a vidí je všichni členové',
+  ]},
   { v:'3.0', items:[
     '📐 Recepty — AI používá vždy jen ks/g/kg/ml/l (lžíce, hrnek, stroužky automaticky převede)',
   ]},
@@ -1436,17 +1439,25 @@ window.saveEvent=async()=>{
   if(!name){toast('⚠️ Zadej název');return;}
   if(!date){toast('⚠️ Vyber datum');return;}
   if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
-  const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString()};
+  const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
-  await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  if(isCalShared()) {
+    await addDoc(collection(db,'families',familyId,'events'),ev);
+  } else {
+    await addDoc(collection(db,'users',CU.uid,'events'),ev);
+  }
   toast('✓ Událost přidána');
   cm('m-event');
 };
 
 window.delEvent=async(id)=>{
   if(!CU||!confirm('Smazat událost?'))return;
-  await deleteDoc(doc(db,'users',CU.uid,'events',id));
+  // Zkus smazat z rodiny i z osobního — v jednom existuje
+  const delPromises = [];
+  if(isCalShared()) delPromises.push(deleteDoc(doc(db,'families',familyId,'events',id)).catch(()=>{}));
+  delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
+  await Promise.all(delPromises);
   toast('Smazáno');
 };
 
@@ -3119,6 +3130,7 @@ window.setMealView = (mode) => { mealViewMode = mode; renderMealPlan(); };
 let shopViewMode = 'shared'; // 'shared' | 'personal'
 window.setShopView = (mode) => { shopViewMode = mode; renderShop(); };
 function isShopShared() { return !!(familyId && familyData?.shareShop && shopViewMode === 'shared'); }
+function isCalShared() { return !!(familyId && familyData?.shareCal); }
 let familyEvents = [];
 
 function genFamilyCode() {
