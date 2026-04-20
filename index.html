@@ -206,10 +206,13 @@
       <div class="gh">
         <div style="display:flex;align-items:center;gap:10px"><span style="font-size:26px">🔥</span><div class="ptitle">Návyky</div></div>
         <!-- Day navigation -->
-        <div class="habit-day-nav">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="habit-day-nav">
           <button class="cal-nav-btn" onclick="habitPrevDay()">‹</button>
           <div class="habit-day-lbl" id="habit-day-lbl">Dnes</div>
           <button class="cal-nav-btn" onclick="habitNextDay()">›</button>
+          </div>
+          <button id="habit-month-btn" onclick="toggleHabitMonth()" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:13px;color:var(--text2);cursor:pointer;font-family:'Crimson Pro',serif">📊 Měsíc</button>
         </div>
       </div>
 
@@ -583,7 +586,7 @@
           </div>
           <input class="finp" type="text" id="shop-qty-inp" placeholder="Qty" onkeydown="if(event.key===&#39;Enter&#39;)addShopItem()" style="width:60px;min-width:0;flex-shrink:0">
           <select id="shop-cat-sel" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 8px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:14px;outline:none;min-width:0;max-width:130px">
-            <option value="Zelenina &amp; ovoce">🥦 Zelenina</option>
+            <option value="Zelenina &amp; ovoce">🥦 Zelenina & ovoce</option>
             <option value="Maso &amp; ryby">🥩 Maso</option>
             <option value="Mléčné výrobky">🧀 Mléčné</option>
             <option value="Pečivo">🍞 Pečivo</option>

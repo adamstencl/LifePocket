@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const CHANGELOG = [
+  { v:'3.4', items:[
+    '📊 Měsíční přehled návyků — tlačítko Měsíc zobrazí % plnění za 30 dní',
+    '🔃 Řazení návyků — šipky ▲▼ pro změnu pořadí v rámci skupiny',
+    '🛒 Kategorie — opraveno "Zelenina" na "Zelenina & ovoce"',
+  ]},
   { v:'3.3', items:[
     '🧊 Zásoby — opravena nabídka přidat do zásoby při sdíleném nákupním seznamu',
   ]},
@@ -674,8 +679,16 @@ function buildHabitCard(h){
     ? `<span class="habit-done-badge" style="${hasZeroLog?'color:var(--red)':''}">${val} / ${goal}${cardDone?' ✓':hasZeroLog?' ✕':''}</span>`
     : `<span class="habit-done-badge" style="${failed?'color:var(--red)':''}">${ done?'✓ Splněno':failed?'✕ Nesplněno':'Nesplněno'}</span>`;
 
+  const groupHabits=habits.filter(x=>( x.group||'day')===(h.group||'day')&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
+  const hIdx=groupHabits.findIndex(x=>x.id===h.id);
+  const canUp=hIdx>0, canDown=hIdx<groupHabits.length-1;
+
   return `<div class="habit-card${cardDone?' done':''}">
     <div class="habit-card-top">
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
+        <button onclick="moveHabit('${esc(h.id)}',-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
+        <button onclick="moveHabit('${esc(h.id)}',1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
+      </div>
       <div class="habit-emoji" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
       <div class="habit-info" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
         <div class="habit-name">${h.name}</div>
@@ -729,7 +742,7 @@ function renderHabits(){
 
   let html='';
   GROUPS.forEach(g=>{
-    const groupHabits=habits.filter(h=>getGroup(h)===g.id && !h.archived);
+    const groupHabits=habits.filter(h=>getGroup(h)===g.id && !h.archived).sort((a,b)=>(a.order||0)-(b.order||0));
     if(!groupHabits.length) return;
 
     // Calculate done count for today
@@ -1121,7 +1134,8 @@ window.saveHabit=async()=>{
   if(selFreqType==='weekly')freq.times=selFreqTimes;
   if(selFreqType==='days')freq.days=[...selFreqDays];
   const reminderTime = document.getElementById('habit-notif-time').value || null;
-  const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,createdAt:new Date().toISOString()};
+  const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
+  const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,order:maxOrder+1,createdAt:new Date().toISOString()};
   await addDoc(collection(db,'users',CU.uid,'habits'),h);
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
@@ -1356,6 +1370,89 @@ function renderEvList(){
 
 window.calPrev=()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();};
 window.calNext=()=>{calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCal();};
+
+let habitViewMonth = false;
+window.toggleHabitMonth = function() {
+  habitViewMonth = !habitViewMonth;
+  const btn = document.getElementById('habit-month-btn');
+  if(btn) btn.style.background = habitViewMonth ? 'var(--accent)' : 'var(--card2)';
+  if(btn) btn.style.color = habitViewMonth ? '#1a1a1a' : 'var(--text2)';
+  const dayNav = document.querySelector('.habit-day-nav');
+  if(dayNav) dayNav.style.opacity = habitViewMonth ? '0.3' : '1';
+  if(habitViewMonth) renderHabitMonth(); else renderHabits();
+};
+
+function renderHabitMonth() {
+  const list = document.getElementById('habits-list');
+  const empty = document.getElementById('habits-empty');
+  if(!list) return;
+  const activeHabits = habits.filter(h=>!h.archived);
+  if(!activeHabits.length){ list.innerHTML=''; empty.style.display='flex'; return; }
+  empty.style.display='none';
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const days = 30;
+  // Spočítej % plnění za posledních 30 dní pro každý návyk
+  const stats = activeHabits.map(h => {
+    let total=0, done=0;
+    for(let i=0; i<days; i++){
+      const d = new Date(today); d.setDate(d.getDate()-i);
+      const ds = toDS(d);
+      const dow = d.getDay();
+      const freq = h.freq||{type:'daily'};
+      let active = true;
+      if(freq.type==='days') active=(freq.days||[]).includes(dow);
+      if(!active) continue;
+      total++;
+      const log = habitLogs.find(l=>l.id===h.id+'_'+ds);
+      if(log?.done) done++;
+    }
+    const pct = total>0 ? Math.round(done/total*100) : 0;
+    return {h, done, total, pct};
+  }).sort((a,b)=>b.pct-a.pct);
+
+  const overallDone = stats.reduce((s,x)=>s+x.done,0);
+  const overallTotal = stats.reduce((s,x)=>s+x.total,0);
+  const overallPct = overallTotal>0 ? Math.round(overallDone/overallTotal*100) : 0;
+  const overallColor = overallPct>=80?'var(--green)':overallPct>=50?'var(--accent)':'var(--red)';
+
+  list.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;text-align:center">
+      <div style="font-size:13px;color:var(--text3);margin-bottom:4px">Celkové plnění (30 dní)</div>
+      <div style="font-size:42px;font-weight:700;color:${overallColor};font-family:'Playfair Display',serif">${overallPct}%</div>
+      <div style="font-size:13px;color:var(--text3)">${overallDone} z ${overallTotal} splněno</div>
+    </div>
+    ${stats.map(({h,done,total,pct})=>{
+      const color = pct>=80?'var(--green)':pct>=50?'var(--accent)':'var(--red)';
+      return `<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:22px">${h.emoji||'🎯'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(h.name)}</div>
+          <div style="background:var(--card2);border-radius:6px;height:6px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${color};border-radius:6px;transition:width .4s"></div>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">${done} z ${total} dní</div>
+        </div>
+        <div style="font-size:18px;font-weight:700;color:${color};min-width:40px;text-align:right">${pct}%</div>
+      </div>`;
+    }).join('')}`;
+}
+
+window.moveHabit = async function(id, dir) {
+  const h = habits.find(x=>x.id===id);
+  if(!h) return;
+  const group = h.group||'day';
+  const groupHabits = habits.filter(x=>(x.group||'day')===group&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
+  const idx = groupHabits.findIndex(x=>x.id===id);
+  const swapIdx = idx+dir;
+  if(swapIdx<0||swapIdx>=groupHabits.length) return;
+  const other = groupHabits[swapIdx];
+  const orderA = h.order??idx, orderB = other.order??swapIdx;
+  await Promise.all([
+    updateDoc(doc(db,'users',CU.uid,'habits',id),{order:orderB}),
+    updateDoc(doc(db,'users',CU.uid,'habits',other.id),{order:orderA}),
+  ]);
+};
 
 window.migrateCalEvents = async function() {
   if(!isCalShared()||!events.length) return;
