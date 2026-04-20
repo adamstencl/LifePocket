@@ -4669,9 +4669,6 @@ function rDash(){
     </div>`;
   }
 
-  // Water widget always at bottom
-  html += waterWidgetHTML();
-
   const dw=document.getElementById('d-widgets'); if(dw) dw.innerHTML=html;
 }
 window.selMood=em=>{
