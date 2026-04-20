@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const CHANGELOG = [
+  { v:'3.5', items:[
+    '🧊 Zásoby — odkliknutí nákupu přidá položku okamžitě, toast s tlačítkem Upravit',
+  ]},
   { v:'3.4', items:[
     '📊 Měsíční přehled návyků — tlačítko Měsíc zobrazí % plnění za 30 dní',
     '🔃 Řazení návyků — šipky ▲▼ pro změnu pořadí v rámci skupiny',
@@ -5367,30 +5370,49 @@ window.quickAddShopItem=async(name,cat)=>{
 window.toggleShopItem=async(id,wasDone)=>{
   if(isShopShared()) {
     const item = familyShopItems.find(i=>i.id===id);
-    const name = item?.name;
+    const name = item?.name; const shopQty = item?.qty||'';
     await toggleFamilyShopItem(id,wasDone);
-    if(!wasDone && name) offerPantryUpdate(name);
+    if(!wasDone && name) offerPantryUpdate(name, shopQty);
     return;
   }
   const item=shopItems.find(i=>i.id===id);
   if(!item)return;
-  const name = item.name;
+  const name = item.name; const shopQty = item.qty||'';
   await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
-  if(!wasDone) offerPantryUpdate(name);
+  if(!wasDone) offerPantryUpdate(name, shopQty);
 };
 
-function offerPantryUpdate(name) {
+async function offerPantryUpdate(name, shopQty) {
   if(!name) return;
   const match = pantryItems.find(p=>p.name.toLowerCase()===name.toLowerCase()||name.toLowerCase().includes(p.name.toLowerCase()));
   if(match){
-    // Auto-update: +1
-    changePantryQty(match.id, 1);
-    toast(`🧊 ${match.name} v zásobách: ${(match.qty||0)+1} ${match.unit||'ks'}`);
+    // Položka už v zásobách — přičti správné množství
+    const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
+    const pantryUnit = (match.unit||'ks').toLowerCase();
+    let delta = ingAmt;
+    if(ingUnit !== pantryUnit){
+      const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
+      delta = converted !== null ? converted : 1;
+    }
+    const newQty = Math.round(((match.qty||0) + delta) * 1000) / 1000;
+    changePantryQty(match.id, delta);
+    toast(`🧊 ${match.name}: ${newQty} ${match.unit||'ks'}`);
   } else {
-    // Nabídni přidání do zásob
+    // Nová položka — auto-přidej bez modálu
+    const {amount, unit} = parseIngQty(shopQty||'1 ks');
+    const newItem = { name, qty: amount, unit, minQty: null, updatedAt: Date.now() };
+    const newId = Math.random().toString(36).substr(2,9);
+    if(familyId){
+      await setDoc(doc(db,'families',familyId,'pantry',newId), newItem);
+    } else {
+      pantryItems.push({id:newId,...newItem});
+      lsSave('lp_pantry', pantryItems);
+      renderPantry();
+    }
+    // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="flex:1;font-size:13px;color:var(--text2)">Přidat <b>${esc(name)}</b> do zásob?</span><button onclick="openPantryAdd({name:'${esc(name)}',qty:1});this.closest('div').remove()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">+ Zásoby</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${amount} ${unit})</span><button onclick="openPantryAdd({id:'${newId}',name:'${esc(name)}',qty:${amount},unit:'${unit}'});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 6000);
   }
