@@ -3176,7 +3176,7 @@ window.createFamily = async () => {
   const data = {
     code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName, avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
-    shareShop: true, shareCal: true, shareMeal: true
+    shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
   await setDoc(doc(db,'families',fid), data);
   await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid});
@@ -3294,7 +3294,7 @@ function subscribeFamily() {
     if(familyData.shareShop) subscribeSharedShop();
     if(familyData.shareCal) subscribeSharedCal();
     if(familyData.shareMeal) subscribeSharedMeal();
-    if(familyData.shareChecklist) subscribeSharedChecklist();
+    if(familyData.shareChecklist!==false) subscribeSharedChecklist();
   });
 }
 
@@ -3345,7 +3345,7 @@ function subscribeSharedChecklist() {
 }
 
 async function syncChecklistToFamily() {
-  if(!familyId || !familyData?.shareChecklist) return;
+  if(!familyId || familyData?.shareChecklist===false) return;
   // Sync označených listů (shared: true) do Firestore
   const toShare = checklists.filter(c => c.shared);
   for (const list of toShare) {
@@ -3416,7 +3416,7 @@ function renderFamilySettings() {
     {key:'shareShop', emoji:'🛒', label:'Nákupní seznam', val: familyData.shareShop!==false},
     {key:'shareCal',  emoji:'📅', label:'Kalendář',       val: familyData.shareCal!==false},
     {key:'shareMeal', emoji:'🥗', label:'Jídelníček',     val: familyData.shareMeal!==false},
-    {key:'shareChecklist', emoji:'📋', label:'Checklist', val: familyData.shareChecklist===true},
+    {key:'shareChecklist', emoji:'📋', label:'Checklist', val: familyData.shareChecklist!==false},
   ];
   const fsm = document.getElementById('family-share-modules');
   if(fsm) fsm.innerHTML = shareModules.map(m=>`
@@ -4028,7 +4028,7 @@ function renderChecklist() {
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
-        ${familyId && familyData?.shareChecklist ? `<button onclick="toggleChecklistShare('${esc(list.id)}')" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
+        ${familyId && familyData?.shareChecklist!==false ? `<button onclick="toggleChecklistShare('${esc(list.id)}')" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
         ${checklists.length > 1 ? `<button onclick="deleteChecklist('${esc(list.id)}')" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="Smazat tento seznam">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
