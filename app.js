@@ -4438,24 +4438,6 @@ function rDash(){
     });
   }
 
-  // ── WIDGET: NÁLADA (zobrazí se jen pokud ještě nebyla vybrána dnes) ──
-  const dailyMoodData = lsGet('lp_daily_mood', null);
-  const todayStr = new Date().toISOString().slice(0,10);
-  const todayMood = dailyMoodData?.date === todayStr ? dailyMoodData.emoji : null;
-
-  if (!todayMood) {
-    html += `<div class="dw">
-      <div class="dw-head">
-        <div class="dw-title">💭 Jak se dnes cítíš?</div>
-      </div>
-      <div style="display:flex;justify-content:space-around;padding:4px 0">
-        ${['😄','🙂','😐','😔','😤'].map(e =>
-          `<button onclick="setDailyMood('${e}')" style="background:none;border:2px solid transparent;border-radius:10px;padding:6px 8px;font-size:24px;cursor:pointer;transition:all .15s">${e}</button>`
-        ).join('')}
-      </div>
-    </div>`;
-  }
-
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
     const doneTodayH=habitLogs.filter(l=>l.date===today&&l.done).length;
