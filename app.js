@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const CHANGELOG = [
+  { v:'3.3', items:[
+    '🧊 Zásoby — opravena nabídka přidat do zásoby při sdíleném nákupním seznamu',
+  ]},
   { v:'3.2', items:[
     '📤 Migrace kalendáře — tlačítko pro přesun starých událostí do sdíleného kalendáře',
   ]},
@@ -5287,21 +5290,21 @@ window.quickAddShopItem=async(name,cat)=>{
 
 window.toggleShopItem=async(id,wasDone)=>{
   if(isShopShared()) {
+    const item = familyShopItems.find(i=>i.id===id);
+    const name = item?.name;
     await toggleFamilyShopItem(id,wasDone);
-    if(!wasDone) offerPantryUpdate(id, isShopShared());
+    if(!wasDone && name) offerPantryUpdate(name);
     return;
   }
   const item=shopItems.find(i=>i.id===id);
   if(!item)return;
+  const name = item.name;
   await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
-  if(!wasDone) offerPantryUpdate(id, false);
+  if(!wasDone) offerPantryUpdate(name);
 };
 
-function offerPantryUpdate(shopId, isShared) {
-  const items = isShared ? familyShopItems : shopItems;
-  const item = items.find(i=>i.id===shopId);
-  if(!item||item.done) return; // done is old state, we just set to done
-  const name = item.name;
+function offerPantryUpdate(name) {
+  if(!name) return;
   const match = pantryItems.find(p=>p.name.toLowerCase()===name.toLowerCase()||name.toLowerCase().includes(p.name.toLowerCase()));
   if(match){
     // Auto-update: +1
