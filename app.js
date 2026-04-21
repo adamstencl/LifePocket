@@ -14,8 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.6';
 const CHANGELOG = [
+  { v:'3.6', items:[
+    '🧊 Zásoby — opraveno: položky z nákupu se přidávají správně (pantry se inicializuje při startu)',
+    '📋 Checklist — sdílené listy od partnera/rodiny jsou nyní viditelné jako zelené záložky',
+  ]},
   { v:'3.5', items:[
     '🧊 Zásoby — odkliknutí nákupu přidá položku okamžitě, toast s tlačítkem Upravit',
   ]},
@@ -4095,7 +4099,8 @@ function subChecklist() {
         setDoc(doc(db,'users',CU.uid,'checklists',def.id), def);
         return;
       }
-      if (!activeChecklist || !checklists.find(c => c.id === activeChecklist)) activeChecklist = checklists[0].id;
+      const allCl = [...checklists, ...familyChecklists];
+      if (!activeChecklist || !allCl.find(c => c.id === activeChecklist)) activeChecklist = checklists[0]?.id || familyChecklists[0]?.id;
       renderChecklist();
     }
   );
@@ -4103,7 +4108,12 @@ function subChecklist() {
 
 async function saveChecklistDoc(list) {
   if (!CU || !list) return;
-  await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
+  if (list._family && familyId) {
+    const {_family, ...data} = list;
+    await setDoc(doc(db,'families',familyId,'checklists',list.id), data);
+  } else {
+    await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
+  }
 }
 
 
@@ -4111,8 +4121,10 @@ function renderChecklist() {
   const el = document.getElementById('checklist-content');
   if (!el) return;
 
-  const list = checklists.find(c => c.id === activeChecklist) || checklists[0];
+  const allCl = [...checklists, ...familyChecklists];
+  const list = allCl.find(c => c.id === activeChecklist) || allCl[0];
   if (!list) return;
+  const isFamilyList = list._family === true;
 
   const done = list.items.filter(i => i.done).length;
   const total = list.items.length;
@@ -4122,6 +4134,7 @@ function renderChecklist() {
   el.innerHTML = `
     <div class="cl-tabs">
       ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" onclick="switchChecklist('${esc(c.id)}')">${esc(c.name)}</button>`).join('')}
+      ${familyChecklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" onclick="switchChecklist('${esc(c.id)}')" style="border-color:var(--green);color:${c.id===activeChecklist?'#1a1a1a':'var(--green)'}">👨‍👩‍👧 ${esc(c.name)}</button>`).join('')}
       <button class="cl-tab cl-tab-add" onclick="addChecklist()">+</button>
     </div>
     <div class="cl-header">
@@ -4194,7 +4207,7 @@ window.handleClNewPhotoInput = async function(input) {
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
   if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
   if (clNewPhoto) { item.photo = clNewPhoto; clNewPhoto = null; }
@@ -4206,7 +4219,7 @@ window.addCheckItem = function() {
 };
 
 window.toggleCheckItem = function(itemId) {
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
@@ -4228,7 +4241,7 @@ window.saveExpandedCheckItem = function(itemId) {
   if (!ta) return;
   const newText = ta.value.trim();
   if (!newText) return;
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) item.text = newText;
@@ -4238,7 +4251,7 @@ window.saveExpandedCheckItem = function(itemId) {
 };
 
 window.deleteCheckItem = function(itemId) {
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   list.items = list.items.filter(i => i.id !== itemId);
   saveChecklistDoc(list);
@@ -4258,7 +4271,7 @@ window.triggerClItemPhoto = function(itemId) {
     toast('📷 Zpracovávám…');
     try {
       const photo = await compressImage(file, 900, 0.75);
-      const list = checklists.find(c => c.id === activeChecklist);
+      const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
       if (item) { item.photo = photo; saveChecklistDoc(list); renderChecklist(); }
@@ -4268,13 +4281,13 @@ window.triggerClItemPhoto = function(itemId) {
   inp.click();
 };
 window.removeClItemPhoto = function(itemId) {
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { delete item.photo; saveChecklistDoc(list); renderChecklist(); }
 };
 window.showClItemPhoto = function(itemId) {
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   const item = list?.items.find(i => i.id === itemId);
   if (!item?.photo) return;
   document.getElementById('app').insertAdjacentHTML('beforeend',
@@ -4289,7 +4302,7 @@ window.showClItemPhoto = function(itemId) {
 // ─────────────────────────────────────────────────────────
 
 window.clearDoneChecklistItems = function() {
-  const list = checklists.find(c => c.id === activeChecklist);
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   list.items = list.items.filter(i => !i.done);
   saveChecklistDoc(list);
@@ -4316,7 +4329,7 @@ window.deleteChecklist = async function(id) {
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
-  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();ss('app');sp('dashboard');
+  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
   // Zpracuj "Splněno" akce uložené SW když byla appka zavřená
@@ -4990,7 +5003,7 @@ window.send=async()=>{
   ).join('\n');
 
   // ── Kontext: Checklist ──
-  const activeClList = checklists.find(c => c.id === activeChecklist) || checklists[0];
+  const activeClList = [...checklists,...familyChecklists].find(c => c.id === activeChecklist) || checklists[0];
   const clCtx = activeClList?.items?.length
     ? activeClList.items.map(i => `- [${i.done?'✓':'○'}] ${i.text}`).join('\n')
     : 'Prázdný';
