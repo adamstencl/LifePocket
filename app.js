@@ -14,8 +14,15 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const CHANGELOG = [
+  { v:'3.7', items:[
+    '📋 Checklist — CTRL+V obrázek přímo do checklistu',
+    '↕️ Checklist — řazení položek šipkami ↑↓',
+    '✏️ Kalendář — úprava existujících událostí',
+    '🛒 Nákupy — oblíbené položky jedním klikem (⭐)',
+    '⌨️ Klávesnice na mobilu — modály se posunou nahoru automaticky',
+  ]},
   { v:'3.6', items:[
     '🧊 Zásoby — opraveno: položky z nákupu se přidávají správně (pantry se inicializuje při startu)',
     '📋 Checklist — sdílené listy od partnera/rodiny jsou nyní viditelné jako zelené záložky',
@@ -1281,6 +1288,7 @@ function renderArchivedHabits() {
 // ── CALENDAR ─────────────────────────────────────────
 let events=[], unsubEvents=null, calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
 let selEvType_val='birthday';
+let editingEventId = null;
 
 const EV_ICONS={birthday:'🎂',event:'📌'};
 const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
@@ -1508,6 +1516,7 @@ function showDayEventsModal(ds, dayEvs) {
         <div style="font-weight:600;color:var(--text1)">${ev.name}</div>
         <div style="font-size:12px;color:var(--text3)">${EV_LABELS[ev.type]||'Událost'}${ev.time?' · ⏰ '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
       </div>
+      <button onclick="openEditEvent(${JSON.stringify(ev).replace(/"/g,'&quot;')});document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>
       <button onclick="delEvent('${esc(ev.id)}');document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>
     </div>`).join('');
   const modal = document.createElement('div');
@@ -1527,6 +1536,7 @@ function showDayEventsModal(ds, dayEvs) {
 
 window.addEventForDay = (ds) => {
   document.getElementById('m-day-events')?.remove();
+  editingEventId = null;
   const edi = document.getElementById('ev-date-inp'); if(edi) edi.value = ds;
   const eni = document.getElementById('ev-name-inp'); if(eni) eni.value = '';
   const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = '';
@@ -1538,7 +1548,31 @@ window.addEventForDay = (ds) => {
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
 
+window.openEditEvent = function(ev) {
+  editingEventId = ev.id;
+  document.getElementById('ev-name-inp').value = ev.name || '';
+  document.getElementById('ev-date-inp').value = ev.date || '';
+  document.getElementById('ev-repeat-inp').value = ev.repeat || 'no';
+  selEvType_val = ev.type || 'birthday';
+  document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === selEvType_val));
+  const tr = document.getElementById('ev-time-row');
+  const er = document.getElementById('ev-end-date-row');
+  if(selEvType_val === 'event') {
+    if(tr) tr.style.display = '';
+    if(er) er.style.display = '';
+    const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = ev.time || '';
+    const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = ev.dateEnd || '';
+  } else {
+    if(tr) tr.style.display = 'none';
+    if(er) er.style.display = 'none';
+  }
+  document.getElementById('m-event').querySelector('.mtitle').textContent = '✏️ Upravit událost';
+  om('m-event');
+  setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
+};
+
 window.openEvModal=()=>{
+  editingEventId = null;
   const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
   const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=new Date().toISOString().slice(0,10);
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
@@ -1572,12 +1606,23 @@ window.saveEvent=async()=>{
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
-  if(isCalShared()) {
-    await addDoc(collection(db,'families',familyId,'events'),ev);
+  if(editingEventId) {
+    const inFamily = familyEvents.some(e => e.id === editingEventId);
+    if(inFamily && familyId) {
+      await setDoc(doc(db,'families',familyId,'events',editingEventId), {...ev, createdAt: undefined});
+    } else {
+      await setDoc(doc(db,'users',CU.uid,'events',editingEventId), {...ev, createdAt: undefined});
+    }
+    editingEventId = null;
+    toast('✓ Událost upravena');
   } else {
-    await addDoc(collection(db,'users',CU.uid,'events'),ev);
+    if(isCalShared()) {
+      await addDoc(collection(db,'families',familyId,'events'),ev);
+    } else {
+      await addDoc(collection(db,'users',CU.uid,'events'),ev);
+    }
+    toast('✓ Událost přidána');
   }
-  toast('✓ Událost přidána');
   cm('m-event');
 };
 
@@ -4106,6 +4151,31 @@ function subChecklist() {
   );
 }
 
+// Paste image into checklist from clipboard (CTRL+V)
+document.addEventListener('paste', async function(e) {
+  const page = document.querySelector('.page.active');
+  if (!page || page.id !== 'p-checklist') return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (!file) continue;
+      toast('📷 Zpracovávám…');
+      try {
+        clNewPhoto = await compressImage(file, 900, 0.75);
+        const preview = document.getElementById('cl-new-photo-preview');
+        if (preview) {
+          preview.style.display = 'block';
+          preview.innerHTML = `<img src="${clNewPhoto}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+        }
+        document.getElementById('cl-new-inp')?.focus();
+      } catch(err) { toast('❌ Nepodařilo se načíst obrázek'); }
+      break;
+    }
+  }
+});
+
 async function saveChecklistDoc(list) {
   if (!CU || !list) return;
   if (list._family && familyId) {
@@ -4176,6 +4246,8 @@ function renderChecklist() {
             ${item.photo ? `<div class="cl-item-photo-wrap"><img src="${item.photo}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}')"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}')">×</button></div>` : ''}
           </div>
           ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" onclick="moveCheckItem('${esc(item.id)}',-1)" title="Nahoru">↑</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" onclick="moveCheckItem('${esc(item.id)}',1)" title="Dolů">↓</button>` : ''}
           ${!isExpanded ? `<button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>` : ''}
         </div>`;
       }).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
@@ -4216,6 +4288,21 @@ window.addCheckItem = function() {
   saveChecklistDoc(list);
   renderChecklist();
   document.getElementById('cl-new-inp')?.focus();
+};
+
+window.moveCheckItem = function(itemId, dir) {
+  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  if (!list) return;
+  const undone = list.items.filter(i => !i.done);
+  const idx = undone.findIndex(i => i.id === itemId);
+  const swapIdx = idx + dir;
+  if (idx < 0 || swapIdx < 0 || swapIdx >= undone.length) return;
+  // Swap in original list
+  const idxA = list.items.indexOf(undone[idx]);
+  const idxB = list.items.indexOf(undone[swapIdx]);
+  [list.items[idxA], list.items[idxB]] = [list.items[idxB], list.items[idxA]];
+  saveChecklistDoc(list);
+  renderChecklist();
 };
 
 window.toggleCheckItem = function(itemId) {
@@ -5248,10 +5335,12 @@ function renderShop(){
           ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','${esc(i.qty||'')}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
           <span class="shop-item-cat" data-id="${esc(i.id)}" onclick="editShopCat('${esc(i.id)}','${esc(i.category||'Ostatní')}')" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
+          <button class="shop-item-fav" onclick="toggleFavShopItem('${esc(i.name)}','${esc(i.category||'Ostatní')}')" title="Přidat k oblíbeným">${isFavShopItem(i.name)?'⭐':'☆'}</button>
           <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
         </div>`).join('')}
     </div>`;
   }).join('');
+  renderFavShop();
 }
 
 function guessShopCategory(name){
@@ -5365,6 +5454,45 @@ window.addShopItem=async()=>{
     toast('✓ Přidáno');
   }
 };
+
+// ── OBLÍBENÉ POLOŽKY NÁKUPU ──────────────────────────
+function getFavShopItems() { return JSON.parse(localStorage.getItem('lp_fav_shop')||'[]'); }
+function saveFavShopItems(favs) { localStorage.setItem('lp_fav_shop', JSON.stringify(favs)); }
+function isFavShopItem(name) { return getFavShopItems().some(f=>f.name.toLowerCase()===name.toLowerCase()); }
+
+window.toggleFavShopItem = function(name, category) {
+  let favs = getFavShopItems();
+  const idx = favs.findIndex(f=>f.name.toLowerCase()===name.toLowerCase());
+  if(idx>=0) { favs.splice(idx,1); toast('Odebráno z oblíbených'); }
+  else { favs.push({name,category}); toast('⭐ Přidáno k oblíbeným'); }
+  saveFavShopItems(favs);
+  renderFavShop();
+  renderShop();
+};
+
+window.addFavToShop = async function(name, category) {
+  const activeItems = isShopShared()?familyShopItems:shopItems;
+  if(activeItems.some(i=>i.name.toLowerCase()===name.toLowerCase()&&!i.done)){
+    toast(`${name} už je v seznamu`); return;
+  }
+  if(isShopShared()) {
+    await addShopItemToFamily(name, category);
+    toast(`✓ ${name} přidáno 👨‍👩‍👧`);
+  } else {
+    await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category,createdAt:new Date().toISOString()});
+    toast(`✓ ${name} přidáno`);
+  }
+};
+
+function renderFavShop() {
+  const favs = getFavShopItems();
+  const wrap = document.getElementById('fav-shop-wrap');
+  const chips = document.getElementById('fav-shop-chips');
+  if(!wrap||!chips) return;
+  if(!favs.length) { wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  chips.innerHTML = favs.map(f=>`<button onclick="addFavToShop('${esc(f.name)}','${esc(f.category||'Ostatní')}')" class="fav-shop-chip">${esc(f.name)}</button>`).join('');
+}
 
 window.quickAddShopItem=async(name,cat)=>{
   const activeItems=isShopShared()?familyShopItems:shopItems;
@@ -7001,4 +7129,12 @@ window.restartTour = () => {
   if (isIOS && !isStandalone && !iosDismissed) {
     setTimeout(() => { document.getElementById('ios-banner').style.display = 'block'; }, 3000);
   }
+}
+
+// Keyboard offset — posun modálů nahoru při otevření klávesnice na mobilu
+if(window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const offset = window.innerHeight - window.visualViewport.height;
+    document.documentElement.style.setProperty('--keyboard-offset', offset + 'px');
+  });
 }
