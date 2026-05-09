@@ -94,25 +94,21 @@ function isTimeMatch(h, m, timeStr) {
 }
 
 async function sendPush(token, title, body, tag = 'lifepocket') {
-  try {
-    await getMessaging().send({
-      token,
-      webpush: {
-        notification: {
-          title,
-          body,
-          icon: 'https://lifepocket.app/icon-192.png',
-          badge: 'https://lifepocket.app/icon-192.png',
-          tag,
-          renotify: true,
-        },
-        fcmOptions: {link: 'https://lifepocket.app/'}
-      }
-    });
-    console.log(`[LP] Push odeslan: ${title}`);
-  } catch (e) {
-    console.error(`[LP] sendPush chyba (${title}):`, e.message);
-  }
+  await getMessaging().send({
+    token,
+    webpush: {
+      notification: {
+        title,
+        body,
+        icon: 'https://lifepocket.app/icon-192.png',
+        badge: 'https://lifepocket.app/icon-192.png',
+        tag,
+        renotify: true,
+      },
+      fcmOptions: {link: 'https://lifepocket.app/'}
+    }
+  });
+  console.log(`[LP] Push odeslan: ${title}`);
 }
 
 // ── Test Push — ověření že FCM funguje ───────────────────────────────────────
@@ -123,7 +119,12 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
   if (!profileSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
   const fcmToken = profileSnap.data().fcmToken;
   if (!fcmToken) throw new HttpsError('failed-precondition', 'FCM token není uložen. Znovu povol notifikace v nastavení.');
-  await sendPush(fcmToken, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
+  try {
+    await sendPush(fcmToken, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
+  } catch(e) {
+    console.error('[LP] testPush FCM chyba:', e.message, '| token:', fcmToken.slice(0,20));
+    throw new HttpsError('internal', 'FCM chyba: ' + e.message + ' — zkus kliknout "Obnovit token" a test opakovat.');
+  }
   return {ok: true};
 });
 
@@ -183,107 +184,111 @@ exports.sendScheduledNotifications = onSchedule(
 
     for (const userDoc of usersSnap.docs) {
       const uid = userDoc.id;
-      const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
-      if (!profileSnap.exists) continue;
+      try {
+        const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
+        if (!profileSnap.exists) continue;
 
-      const prof = profileSnap.data();
-      const fcmToken = prof.fcmToken;
-      if (!fcmToken) continue;
+        const prof = profileSnap.data();
+        const fcmToken = prof.fcmToken;
+        if (!fcmToken) continue;
 
-      const ns = prof.notifSettings || {};
-      const nickname = prof.prezdivka || prof.nickname || 'příteli';
-      const a = prof.gender === 'f' ? 'a' : '';
-
-      // ── Ranní notifikace ──
-      if (ns.morningDigest !== false) {
+        const ns = prof.notifSettings || {};
+        const nickname = prof.prezdivka || prof.nickname || 'příteli';
+        const a = prof.gender === 'f' ? 'a' : '';
         const morningTime = ns.morning || '08:00';
-        if (isTimeMatch(h, m, morningTime)) {
+
+        // ── Ranní notifikace ──
+        if (ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
           const habitsSnap = await db.collection(`users/${uid}/habits`).get();
           const total = habitsSnap.size;
           const body = total > 0
             ? `Čeká tě ${total} návyk${total === 1 ? '' : total < 5 ? 'y' : 'ů'} na dnes. Pojď na to! ☀️`
             : 'Nový den, nová šance. Otevři LifePocket a nastav si cíle! ☀️';
-          promises.push(sendPush(fcmToken, `☀️ Dobré ráno, ${nickname}!`, body, 'morning'));
+          try { await sendPush(fcmToken, `☀️ Dobré ráno, ${nickname}!`, body, 'morning'); }
+          catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
         }
-      }
 
-      // ── Večerní shrnutí ──
-      if (ns.eveningDigest !== false) {
-        const eveningTime = ns.evening || '21:00';
-        if (isTimeMatch(h, m, eveningTime)) {
+        // ── Večerní shrnutí ──
+        if (ns.eveningDigest !== false) {
+          const eveningTime = ns.evening || '21:00';
+          if (isTimeMatch(h, m, eveningTime)) {
+            const habitsSnap = await db.collection(`users/${uid}/habits`).get();
+            const total = habitsSnap.size;
+            const logsSnap = await db.collection(`users/${uid}/habitLogs`)
+              .where('date', '==', today).where('done', '==', true).get();
+            const done = logsSnap.size;
+            let body;
+            if (total === 0) body = 'Přidej si první návyk a začni budovat lepší rutinu!';
+            else if (done === total) body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
+            else if (done === 0) body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
+            else body = `Splnil${a} jsi ${done} z ${total} návyků. Ještě ${total - done} zbývají!`;
+            try { await sendPush(fcmToken, '🌙 Večerní shrnutí', body, 'evening'); }
+            catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
+          }
+        }
+
+        // ── Připomínky návyků ──
+        if (ns.habits !== false) {
           const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-          const total = habitsSnap.size;
-          const logsSnap = await db.collection(`users/${uid}/habitLogs`)
-            .where('date', '==', today).where('done', '==', true).get();
-          const done = logsSnap.size;
-
-          let body;
-          if (total === 0) {
-            body = 'Přidej si první návyk a začni budovat lepší rutinu!';
-          } else if (done === total) {
-            body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
-          } else if (done === 0) {
-            body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
-          } else {
-            body = `Splnil${a} jsi ${done} z ${total} návyků. Ještě ${total - done} zbývají!`;
-          }
-          promises.push(sendPush(fcmToken, '🌙 Večerní shrnutí', body, 'evening'));
-        }
-      }
-
-      // ── Připomínky návyků ──
-      if (ns.habits !== false) {
-        const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-        for (const habitDoc of habitsSnap.docs) {
-          const habit = habitDoc.data();
-          if (!habit.reminderTime) continue;
-          if (!isTimeMatch(h, m, habit.reminderTime)) continue;
-
-          const logId = `${habit.id}_${today}`;
-          const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
-          if (logSnap.exists && logSnap.data().done) continue;
-
-          promises.push(sendPush(
-            fcmToken,
-            `${habit.emoji || '🔔'} ${habit.name}`,
-            `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
-            `habit-${habit.id}`
-          ));
-        }
-      }
-
-      // ── Narozeniny + Události z kalendáře ──
-      const eventsSnap = await db.collection(`users/${uid}/events`).get();
-      const morningTime = ns.morning || '08:00';
-      const todayMD = today.slice(5);
-      const tmrwDate = new Date(prague);
-      tmrwDate.setDate(tmrwDate.getDate() + 1);
-      const tmrwMD = `${String(tmrwDate.getMonth()+1).padStart(2,'0')}-${String(tmrwDate.getDate()).padStart(2,'0')}`;
-
-      for (const evDoc of eventsSnap.docs) {
-        const ev = evDoc.data();
-        if (!ev.date) continue;
-
-        // Narozeniny — ráno
-        if (ev.type === 'birthday' && isTimeMatch(h, m, morningTime)) {
-          const bday = ev.date.slice(5);
-          if (bday === todayMD) {
-            promises.push(sendPush(fcmToken, '🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`));
-          } else if (bday === tmrwMD) {
-            promises.push(sendPush(fcmToken, '🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`));
+          for (const habitDoc of habitsSnap.docs) {
+            const habit = habitDoc.data();
+            if (!habit.reminderTime) continue;
+            if (!isTimeMatch(h, m, habit.reminderTime)) continue;
+            const logId = `${habit.id}_${today}`;
+            const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
+            if (logSnap.exists && logSnap.data().done) continue;
+            try {
+              await sendPush(fcmToken, `${habit.emoji || '🔔'} ${habit.name}`,
+                `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
+                `habit-${habit.id}`);
+            } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
         }
 
-        // Události s časem — hodinu předem
-        if (ev.type === 'event' && ev.time) {
-          const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
-          if (evDate !== today) continue;
-          const evTime = new Date(`${today}T${ev.time}:00`);
-          const diffMin = Math.round((evTime - prague) / 60000);
-          if (diffMin >= 55 && diffMin <= 65) {
-            promises.push(sendPush(fcmToken, `📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`));
+        // ── Narozeniny + Události — osobní i rodinné ──
+        const todayMD = today.slice(5);
+        const tmrwDate = new Date(prague);
+        tmrwDate.setDate(tmrwDate.getDate() + 1);
+        const tmrwMD = `${String(tmrwDate.getMonth()+1).padStart(2,'0')}-${String(tmrwDate.getDate()).padStart(2,'0')}`;
+
+        // Sbírej události z osobního i rodinného kalendáře
+        const evSnaps = [await db.collection(`users/${uid}/events`).get()];
+        if (prof.familyId) {
+          try { evSnaps.push(await db.collection(`families/${prof.familyId}/events`).get()); }
+          catch(e) { /* rodina nemusí existovat */ }
+        }
+        const allEvDocs = evSnaps.flatMap(s => s.docs);
+
+        for (const evDoc of allEvDocs) {
+          const ev = evDoc.data();
+          if (!ev.date) continue;
+
+          // Narozeniny — ráno
+          if (ev.type === 'birthday' && isTimeMatch(h, m, morningTime)) {
+            const bday = ev.date.slice(5);
+            if (bday === todayMD) {
+              try { await sendPush(fcmToken, '🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
+              catch(e) { console.error(`[LP] bday push:`, e.message); }
+            } else if (bday === tmrwMD) {
+              try { await sendPush(fcmToken, '🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
+              catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
+            }
+          }
+
+          // Události s časem — hodinu předem
+          if (ev.type === 'event' && ev.time) {
+            const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
+            if (evDate !== today) continue;
+            const evTime = new Date(`${today}T${ev.time}:00`);
+            const diffMin = Math.round((evTime - prague) / 60000);
+            if (diffMin >= 55 && diffMin <= 65) {
+              try { await sendPush(fcmToken, `📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
+              catch(e) { console.error(`[LP] event push:`, e.message); }
+            }
           }
         }
+      } catch(userErr) {
+        console.error(`[LP] Chyba při zpracování uid=${uid}:`, userErr.message);
       }
     }
 
