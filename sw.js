@@ -86,20 +86,5 @@ self.addEventListener('notificationclick', e => {
   }
 });
 
-// ── Push notifikace (Web Push API) ──
-self.addEventListener('push', e => {
-  if (!e.data) return;
-  try {
-    const data = e.data.json();
-    e.waitUntil(
-      self.registration.showNotification(data.title || 'LifePocket', {
-        body: data.body || '',
-        icon: data.icon || '/icon-192.png',
-        badge: '/icon-192.png',
-        tag: data.tag || 'lifepocket',
-        data: data.data || {},
-        actions: data.actions || []
-      })
-    );
-  } catch(err) { /* ignore */ }
-});
+// Poznámka: Firebase onBackgroundMessage (výše) již zpracovává všechny FCM push notifikace.
+// Ruční 'push' listener zde není potřeba — způsoboval by dvojité notifikace při zavřené appce.

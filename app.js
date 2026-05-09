@@ -14,8 +14,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 const CHANGELOG = [
+  { v:'4.1', items:[
+    '🐛 Checklist — smazání rodinného seznamu nyní funguje správně (mazalo se ze špatné cesty)',
+    '🔔 Notifikace — opraveny dvojité notifikace při zavřené appce (duplicitní push handler)',
+    '🤖 Rex — avatar a jméno se nyní načítají správně ve všech situacích',
+    '📊 Kalorický tracker — aktualizuje se v reálném čase (onSnapshot místo jednorázového načtení)',
+  ]},
   { v:'4.0', items:[
     '🔄 Nákupy — pravidelný nákup: mléko každé pondělí, jogurt každé 2 týdny…',
     '✅ Notifikace — tlačítko "Splněno" přímo v push notifikaci (bez otevření appky)',
@@ -249,9 +255,9 @@ onAuthStateChanged(auth,async u=>{
     CU=null;
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
-    [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal].forEach(u=>{if(u)u();});
+    [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
     unsub=null; unsubHabits=null; unsubLogs=null;
-    unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null;
+    unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null; unsubFamilyChecklist=null;
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[];
     ss('s-login');
@@ -2798,7 +2804,7 @@ async function rexProactiveGreeting() {
   // Vzory v návycích — posledních 7 dní
   const weekPatterns = analyzeWeekPatterns();
 
-  const sys = `Jsi ${prof?.avatarName || 'Rex'}, AI společník v LifePocket. Max 3 věty, přátelsky.
+  const sys = `Jsi ${AVS.find(a=>a.id===prof?.avatarId)?.name || 'Rex'}, AI společník v LifePocket. Max 3 věty, přátelsky.
 Ráno pozdravi uživatele a zmíň 1-2 relevantní věci ze seznamu:
 - Dnes splněno návyků: ${doneToday}/${totalH}
 - Narozeniny DNES: ${bdayToday.join(', ') || 'žádné'}
@@ -3570,6 +3576,7 @@ window.leaveFamily = async () => {
     if(unsubFamilyShop) { unsubFamilyShop(); unsubFamilyShop=null; }
     if(unsubFamilyCal) { unsubFamilyCal(); unsubFamilyCal=null; }
     if(unsubFamilyMeal) { unsubFamilyMeal(); unsubFamilyMeal=null; }
+    if(unsubFamilyChecklist) { unsubFamilyChecklist(); unsubFamilyChecklist=null; familyChecklists=[]; }
     renderFamilySettings();
     toast('Opustil jsi skupinu');
   } catch(e) { toast('❌ '+e.message); }
@@ -3914,11 +3921,12 @@ window.generateMealPlanAI = async () => {
 
 let foodLogs = []; // [{id, name, kcal, protein, carbs, fat, date, time}]
 
-async function subFoodLogs() {
-  if(!CU) return;
-  const today = new Date().toISOString().slice(0,10);
-  const snap = await getDocs(collection(db,'users',CU.uid,'foodLogs'));
-  foodLogs = snap.docs.map(d=>({id:d.id,...d.data()}));
+function subFoodLogs() {
+  if(_fireSubs['foodLogs']) return;
+  createFireSub('foodLogs',
+    collection(db,'users',CU.uid,'foodLogs'),
+    snap => { foodLogs = snap.docs.map(d=>({id:d.id,...d.data()})); }
+  );
 }
 
 window.renderKcalToday = async () => {
@@ -4594,11 +4602,16 @@ window.addChecklist = function() {
 };
 
 window.deleteChecklist = async function(id) {
-  if (checklists.length <= 1) return;
-  const list = checklists.find(c => c.id === id);
+  const list = [...checklists,...familyChecklists].find(c => c.id === id);
+  const isFamilyList = list?._family === true;
+  if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
   if (!confirm(`Smazat seznam "${list?.name}"? Tato akce je nevratná.`)) return;
-  await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
-  activeChecklist = checklists.find(c => c.id !== id)?.id || null;
+  if (isFamilyList && familyId) {
+    await deleteDoc(doc(db,'families',familyId,'checklists',id));
+  } else {
+    await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
+  }
+  activeChecklist = [...checklists,...familyChecklists].find(c => c.id !== id)?.id || null;
 };
 
 
@@ -5414,7 +5427,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
     }
   }
   const c=document.getElementById('chatmsgs');
-  const avCur=(typeof AVATARS!=='undefined'&&typeof userData!=='undefined'&&userData?.avatar&&AVATARS[userData.avatar])?AVATARS[userData.avatar]:{emoji:'⭐',name:'Rex'};
+  const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
   const {row:doneRow,bubble:done}=makeBotBubble(`✅ Přidal jsem <b>${added} surovin</b> do nákupního seznamu! Dobrou chuť 😋 <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`,avCur.emoji,avCur.name);
   c.appendChild(doneRow);scrollChat();
   toast(`✅ ${added} surovin přidáno do nákupu!`);
@@ -7123,7 +7136,7 @@ function makeBotBubble(htmlContent, labelEmoji='', labelName=''){
   row.className='msg-row bot-row';
   const avDiv=document.createElement('div');
   avDiv.className='msg-av';
-  const av=(typeof AVATARS!=='undefined'&&typeof userData!=='undefined'&&userData?.avatar&&AVATARS[userData.avatar])?AVATARS[userData.avatar]:null;
+  const av = AVS.find(a=>a.id===prof?.avatarId) || null;
   avDiv.textContent=av?av.emoji:(labelEmoji||'⭐');
   const bubble=document.createElement('div');
   bubble.className='msg bot';
@@ -7148,7 +7161,7 @@ function appendMsg(role,text,nm='',em=''){
   const avDiv=document.createElement('div');
   avDiv.className='msg-av '+(role==='user'?'user-av':'');
   if(role==='bot'){
-    const av=(typeof AVATARS!=='undefined'&&typeof userData!=='undefined'&&userData?.avatar&&AVATARS[userData.avatar])?AVATARS[userData.avatar]:null;
+    const av = AVS.find(a=>a.id===prof?.avatarId) || null;
     avDiv.textContent=av?av.emoji:(em||'⭐');
   } else {
     avDiv.textContent='👤';
