@@ -953,6 +953,12 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .shop-from-recipe{font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
 .fav-shop-chip{background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px;color:var(--text2);cursor:pointer;font-family:'Crimson Pro',serif}
 .fav-shop-chip:active{background:var(--accent);color:#1a1a1a}
+.recurring-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px 6px 3px 10px}
+.recurring-chip-name{background:none;border:none;font-size:12px;color:var(--text2);cursor:pointer;padding:0;font-family:'Crimson Pro',serif}
+.recurring-chip-name:active{color:var(--accent)}
+.recurring-chip-info{font-size:10px;color:var(--text3);white-space:nowrap}
+.recurring-chip-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:0 2px;line-height:1}
+.recurring-chip-del:hover{color:var(--red)}
 .saved-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:all .2s}
 .saved-recipe-card:hover{border-color:var(--accent);transform:translateY(-1px)}
 .saved-recipe-top{display:flex;align-items:center;gap:10px}

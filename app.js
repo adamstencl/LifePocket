@@ -14,8 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.9';
+const APP_VERSION = '4.0';
 const CHANGELOG = [
+  { v:'4.0', items:[
+    '🔄 Nákupy — pravidelný nákup: mléko každé pondělí, jogurt každé 2 týdny…',
+    '✅ Notifikace — tlačítko "Splněno" přímo v push notifikaci (bez otevření appky)',
+  ]},
   { v:'3.9', items:[
     '🔥 Focus — streak: počítá dny v řadě se nastaveným focusem',
     '📊 Focus — týdenní přehled: tečky Po–Ne (šedá=nenastaveno, žlutá=nastaveno, zelená=splněno)',
@@ -4601,7 +4605,7 @@ window.deleteChecklist = async function(id) {
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
-  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
+  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
   // Zpracuj "Splněno" akce uložené SW když byla appka zavřená
@@ -5678,6 +5682,144 @@ function renderFavShop() {
   wrap.style.display='block';
   chips.innerHTML = favs.map(f=>`<button onclick="addFavToShop('${esc(f.name)}','${esc(f.category||'Ostatní')}')" class="fav-shop-chip">${esc(f.name)}</button>`).join('');
 }
+
+// ── RECURRING SHOP ────────────────────────────────────────
+let recurringShopItems = [];
+
+function subRecurringShop() {
+  if (_fireSubs['recurringShop']) return;
+  createFireSub('recurringShop',
+    collection(db,'users',CU.uid,'recurringShop'),
+    snap => {
+      recurringShopItems = snap.docs.map(d=>({id:d.id,...d.data()}));
+      renderRecurringShop();
+      checkRecurringShop();
+    }
+  );
+}
+
+function checkRecurringShop() {
+  if (!recurringShopItems.length || !CU) return;
+  const today = new Date();
+  const todayISO = today.toISOString().slice(0,10);
+  const todayDay = today.getDay();
+  recurringShopItems.forEach(async item => {
+    if (item.lastAdded === todayISO) return;
+    let shouldAdd = false;
+    if (item.freq === 'weekly') {
+      shouldAdd = todayDay === item.day;
+    } else if (item.freq === 'biweekly') {
+      if (todayDay === item.day) {
+        const days = item.lastAdded ? Math.floor((today - new Date(item.lastAdded))/86400000) : 999;
+        shouldAdd = days >= 14;
+      }
+    } else if (item.freq === 'monthly') {
+      const days = item.lastAdded ? Math.floor((today - new Date(item.lastAdded))/86400000) : 999;
+      shouldAdd = days >= 30;
+    }
+    if (!shouldAdd) return;
+    const activeItems = isShopShared() ? familyShopItems : shopItems;
+    const alreadyIn = activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
+    if (!alreadyIn) {
+      const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
+      if (isShopShared()&&familyId) await addDoc(collection(db,'families',familyId,'shopItems'),si);
+      else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
+      toast(`🔄 Automaticky přidáno: ${item.name}`);
+    }
+    await updateDoc(doc(db,'users',CU.uid,'recurringShop',item.id),{lastAdded:todayISO});
+  });
+}
+
+function renderRecurringShop() {
+  const chips = document.getElementById('recurring-shop-chips');
+  if (!chips) return;
+  const DAY = ['Ne','Po','Út','St','Čt','Pá','So'];
+  const FREQ = {weekly:'týdně', biweekly:'2× měs.', monthly:'měsíčně'};
+  chips.innerHTML = recurringShopItems.map(item => {
+    const dayLbl = item.freq !== 'monthly' ? ` · ${DAY[item.day]||''}` : '';
+    return `<div class="recurring-chip">
+      <button onclick="addFromRecurring('${esc(item.id)}')" class="recurring-chip-name">${esc(item.name)}</button>
+      <span class="recurring-chip-info">${FREQ[item.freq]||''}${dayLbl}</span>
+      <button onclick="delRecurringShopItem('${esc(item.id)}')" class="recurring-chip-del">×</button>
+    </div>`;
+  }).join('');
+}
+
+window.addFromRecurring = async (id) => {
+  const item = recurringShopItems.find(r=>r.id===id);
+  if (!item) return;
+  const activeItems = isShopShared() ? familyShopItems : shopItems;
+  if (activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done)) { toast(`${item.name} už je v seznamu`); return; }
+  const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, addedAt:new Date().toISOString()};
+  if (isShopShared()&&familyId) await addDoc(collection(db,'families',familyId,'shopItems'),si);
+  else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
+  toast(`✓ ${item.name} přidáno`);
+};
+
+window.delRecurringShopItem = async (id) => {
+  if (!confirm('Odebrat z pravidelného nákupu?')) return;
+  await deleteDoc(doc(db,'users',CU.uid,'recurringShop',id));
+};
+
+window.openAddRecurringModal = function() {
+  document.getElementById('recurring-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'recurring-modal'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:380px">
+    <div class="mtitle">🔄 Pravidelný nákup</div>
+    <div class="fg"><label class="flbl">Název</label>
+      <input id="rec-name" class="finp" type="text" placeholder="Mléko, Rohlíky..."></div>
+    <div class="frow">
+      <div class="fg"><label class="flbl">Množství</label>
+        <input id="rec-qty" class="finp" type="text" placeholder="2 l"></div>
+      <div class="fg"><label class="flbl">Kategorie</label>
+        <select id="rec-cat" class="finp">
+          <option>Zelenina & ovoce</option><option>Maso & ryby</option>
+          <option selected>Mléčné výrobky</option><option>Pečivo</option>
+          <option>Trvanlivé</option><option>Ostatní</option>
+        </select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="flbl">Frekvence</label>
+        <select id="rec-freq" class="finp" onchange="toggleRecDay()">
+          <option value="weekly">Každý týden</option>
+          <option value="biweekly">Každé 2 týdny</option>
+          <option value="monthly">Každý měsíc</option>
+        </select></div>
+      <div class="fg" id="rec-day-wrap"><label class="flbl">Den</label>
+        <select id="rec-day" class="finp">
+          <option value="1">Pondělí</option><option value="2">Úterý</option>
+          <option value="3">Středa</option><option value="4">Čtvrtek</option>
+          <option value="5">Pátek</option><option value="6">Sobota</option>
+          <option value="0">Neděle</option>
+        </select></div>
+    </div>
+    <div class="macts">
+      <button class="btn-s" onclick="document.getElementById('recurring-modal').remove()">Zrušit</button>
+      <button class="btn-p" onclick="saveRecurringItem()">Uložit</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  setTimeout(()=>document.getElementById('rec-name')?.focus(),100);
+};
+
+window.toggleRecDay = function() {
+  const freq = document.getElementById('rec-freq')?.value;
+  const wrap = document.getElementById('rec-day-wrap');
+  if (wrap) wrap.style.display = freq==='monthly' ? 'none' : '';
+};
+
+window.saveRecurringItem = async function() {
+  const name = document.getElementById('rec-name')?.value.trim();
+  if (!name) { toast('⚠️ Zadej název'); return; }
+  const qty = document.getElementById('rec-qty')?.value.trim()||'';
+  const category = document.getElementById('rec-cat')?.value||'Ostatní';
+  const freq = document.getElementById('rec-freq')?.value||'weekly';
+  const day = parseInt(document.getElementById('rec-day')?.value??1);
+  await addDoc(collection(db,'users',CU.uid,'recurringShop'),{name,qty,category,freq,day,lastAdded:null,createdAt:new Date().toISOString()});
+  document.getElementById('recurring-modal')?.remove();
+  toast(`✓ ${name} přidáno do pravidelného nákupu`);
+};
 
 window.quickAddShopItem=async(name,cat)=>{
   const activeItems=isShopShared()?familyShopItems:shopItems;

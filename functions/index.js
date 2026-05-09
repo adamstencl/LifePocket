@@ -93,20 +93,18 @@ function isTimeMatch(h, m, timeStr) {
   return h === th && m >= tm && m < tm + 5;
 }
 
-async function sendPush(token, title, body, tag = 'lifepocket') {
+async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
+  const notif = {
+    title, body,
+    icon: 'https://lifepocket.app/icon-192.png',
+    badge: 'https://lifepocket.app/icon-192.png',
+    tag, renotify: true,
+  };
+  if (options.data)    notif.data = options.data;
+  if (options.actions?.length) { notif.actions = options.actions; notif.requireInteraction = true; }
   await getMessaging().send({
     token,
-    webpush: {
-      notification: {
-        title,
-        body,
-        icon: 'https://lifepocket.app/icon-192.png',
-        badge: 'https://lifepocket.app/icon-192.png',
-        tag,
-        renotify: true,
-      },
-      fcmOptions: {link: 'https://lifepocket.app/'}
-    }
+    webpush: { notification: notif, fcmOptions: {link: 'https://lifepocket.app/'} }
   });
   console.log(`[LP] Push odeslan: ${title}`);
 }
@@ -238,9 +236,13 @@ exports.sendScheduledNotifications = onSchedule(
             const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
             if (logSnap.exists && logSnap.data().done) continue;
             try {
-              await sendPush(fcmToken, `${habit.emoji || '🔔'} ${habit.name}`,
+              await sendPush(
+                fcmToken,
+                `${habit.emoji || '🔔'} ${habit.name}`,
                 `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
-                `habit-${habit.id}`);
+                `habit-${habitDoc.id}`,
+                { data: {habitId: habitDoc.id, date: today}, actions: [{action:'done', title:'✅ Splněno'}] }
+              );
             } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
         }

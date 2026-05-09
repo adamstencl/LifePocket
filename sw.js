@@ -16,12 +16,16 @@ const fmsg = firebase.messaging();
 // Zpracování push notifikací na pozadí (appka zavřená)
 fmsg.onBackgroundMessage(payload => {
   const n = payload.notification || {};
-  self.registration.showNotification(n.title || 'LifePocket', {
+  const opts = {
     body: n.body || '',
     icon: n.icon || '/icon-192.png',
     badge: '/icon-192.png',
-    tag: payload.data?.tag || 'lifepocket',
-  });
+    tag: n.tag || payload.data?.tag || 'lifepocket',
+    renotify: true,
+    data: n.data || payload.data || {},
+  };
+  if (n.actions?.length) { opts.actions = n.actions; opts.requireInteraction = true; }
+  self.registration.showNotification(n.title || 'LifePocket', opts);
 });
 
 const CACHE = 'lifepocket-v3';
