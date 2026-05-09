@@ -1228,11 +1228,25 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 /* Focus dual widget */
 .focus-dual{display:flex;flex-direction:column;gap:0}
 .focus-row{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
-.focus-row:last-child{border-bottom:none}
 .focus-row .focus-label{margin-bottom:0;white-space:nowrap;min-width:52px}
 .focus-row .focus-text{flex:1;font-size:14px;font-family:'Playfair Display',serif;font-style:italic;color:var(--text)}
 .focus-row-empty{cursor:pointer;opacity:.75}
 .focus-row-empty:hover{background:var(--bg2)}
+.focus-row-done{background:rgba(76,217,100,.04)}
+.focus-done-btn{background:none;border:none;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;flex-shrink:0;opacity:.7;transition:opacity .15s,transform .15s}
+.focus-done-btn:hover{opacity:1;transform:scale(1.15)}
+.focus-done-btn.active{opacity:1}
+/* Focus stats (streak + week) */
+.focus-stats{padding:10px 16px 12px;border-top:1px solid var(--border)}
+.focus-streak{display:inline-block;font-size:12px;font-weight:700;color:var(--accent);background:rgba(200,169,110,.12);border-radius:20px;padding:3px 10px;margin-top:8px}
+.focus-week-row{display:flex;align-items:center;gap:4px}
+.focus-dot-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+.focus-dot{width:10px;height:10px;border-radius:50%;background:var(--border);transition:background .2s}
+.focus-dot.set{background:rgba(200,169,110,.5)}
+.focus-dot.done{background:var(--green,#4cd964)}
+.focus-dot.future{background:var(--border);opacity:.35}
+.focus-dot.today{box-shadow:0 0 0 2px var(--accent)}
+.focus-dot-lbl{font-size:9px;color:var(--text3);font-weight:600;letter-spacing:.02em}
 
 /* ── CHECKLIST ──────────────────────────────────────── */
 .cl-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}

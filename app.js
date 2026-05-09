@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 const CHANGELOG = [
+  { v:'3.9', items:[
+    '🔥 Focus — streak: počítá dny v řadě se nastaveným focusem',
+    '📊 Focus — týdenní přehled: tečky Po–Ne (šedá=nenastaveno, žlutá=nastaveno, zelená=splněno)',
+    '☐ Focus — tlačítko "Splněno" pro dnešní focus',
+  ]},
   { v:'3.8', items:[
     '🎯 Dashboard — focus widget se dvěma poli: Dnes + Zítra, s historií předchozích dnů',
     '✏️ Kalendář — opraveno ukládání upraveného data/názvu události',
@@ -3021,6 +3026,7 @@ function waterWidgetHTML() {
 // 🎯  DAILY FOCUS (MIT)
 // ════════════════════════════════════════════════════════════
 let dailyFocus = null;
+let dailyFocusDone = false;
 let tomorrowFocus = null;
 
 function initFocus() {
@@ -3028,24 +3034,27 @@ function initFocus() {
   const tmrw  = new Date(Date.now() + 86400000).toDateString();
 
   // Dnešní focus
-  const stored = lsGet('lp_focus', {date: '', text: ''});
+  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
   if (stored.date === today) {
     dailyFocus = stored.text || null;
+    dailyFocusDone = stored.done || false;
   } else {
-    // Archivuj focus z minulého dne do historie
+    // Archivuj focus z minulého dne do historie (zachovej done stav)
     if (stored.text) {
       const history = lsGet('lp_focus_history', []);
-      history.unshift({date: stored.date, text: stored.text});
-      lsSave('lp_focus_history', history.slice(0, 7));
+      history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
+      lsSave('lp_focus_history', history.slice(0, 14));
     }
     // Pokud byl nastaven zítřejší focus a dnes je ten den, převezmi ho jako dnešní
     const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
     if (nextStored.date === today && nextStored.text) {
       dailyFocus = nextStored.text;
-      lsSave('lp_focus', {date: today, text: dailyFocus});
+      dailyFocusDone = false;
+      lsSave('lp_focus', {date: today, text: dailyFocus, done: false});
       lsSave('lp_focus_next', {date: '', text: ''});
     } else {
       dailyFocus = null;
+      dailyFocusDone = false;
     }
   }
 
@@ -3056,14 +3065,15 @@ function initFocus() {
 
 window.saveFocus = function(text) {
   const today = new Date().toDateString();
-  const stored = lsGet('lp_focus', {date: '', text: ''});
+  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
   if (stored.text && stored.date !== today) {
     const history = lsGet('lp_focus_history', []);
-    history.unshift({date: stored.date, text: stored.text});
-    lsSave('lp_focus_history', history.slice(0, 7));
+    history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
+    lsSave('lp_focus_history', history.slice(0, 14));
   }
   dailyFocus = text.trim();
-  lsSave('lp_focus', {date: today, text: dailyFocus});
+  dailyFocusDone = false;
+  lsSave('lp_focus', {date: today, text: dailyFocus, done: false});
   renderFocusInDash();
   document.getElementById('focus-modal')?.remove();
 };
@@ -3076,8 +3086,64 @@ window.saveTomorrowFocus = function(text) {
   document.getElementById('focus-modal')?.remove();
 };
 
+window.markFocusDone = function() {
+  const today = new Date().toDateString();
+  dailyFocusDone = !dailyFocusDone;
+  const stored = lsGet('lp_focus', {date: today, text: dailyFocus || '', done: false});
+  lsSave('lp_focus', {...stored, done: dailyFocusDone});
+  renderFocusInDash();
+};
+
+// Spočítá počet dní v řadě (od dnes zpátky) kdy byl focus nastaven
+function calcFocusStreak() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const stored = lsGet('lp_focus', {date: '', text: ''});
+  const history = lsGet('lp_focus_history', []);
+
+  // Mapa: dateString → byl focus nastaven?
+  const setDays = new Set();
+  if (stored.text) setDays.add(new Date(stored.date).toDateString());
+  history.forEach(h => { if (h.text) setDays.add(h.date); });
+
+  let streak = 0;
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    if (setDays.has(d.toDateString())) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// Vrátí data pro aktuální týden (Po–Ne)
+function getFocusWeek() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
+  const history = lsGet('lp_focus_history', []);
+
+  // Mapa dateString → {text, done}
+  const focusMap = {};
+  if (stored.text) focusMap[new Date(stored.date).toDateString()] = {text: stored.text, done: stored.done || false};
+  history.forEach(h => { if (h.text) focusMap[h.date] = {text: h.text, done: h.done || false}; });
+
+  // Pondělí aktuálního týdne
+  const dow = (today.getDay() + 6) % 7; // 0=Po, 6=Ne
+  const monday = new Date(today); monday.setDate(today.getDate() - dow);
+
+  return ['Po','Út','St','Čt','Pá','So','Ne'].map((day, i) => {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    const key = d.toDateString();
+    const data = focusMap[key];
+    return {
+      day,
+      set: !!data?.text,
+      done: data?.done || false,
+      isToday: key === today.toDateString(),
+      isFuture: d > today
+    };
+  });
+}
+
 window.openFocusModal = function(mode) {
-  // mode: 'today' (výchozí) nebo 'tomorrow'
   const isTmrw = mode === 'tomorrow';
   const existing = isTmrw ? (tomorrowFocus || '') : (dailyFocus || '');
   const history = (!isTmrw) ? lsGet('lp_focus_history', []) : [];
@@ -3086,7 +3152,8 @@ window.openFocusModal = function(mode) {
       <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📜 Historie</div>
       ${history.map(h => {
         const d = new Date(h.date).toLocaleDateString('cs-CZ', {day:'numeric', month:'short'});
-        return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:flex-start"><span style="color:var(--text3);font-size:11px;white-space:nowrap;margin-top:1px">${d}</span><span>${esc(h.text)}</span></div>`;
+        const doneIcon = h.done ? '<span style="color:var(--green);font-size:11px">✓</span>' : '';
+        return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
       }).join('')}
     </div>` : '';
   const title    = isTmrw ? '📅 Co musíš udělat zítra?' : '🎯 Co musíš udělat dnes?';
@@ -3110,35 +3177,85 @@ window.openFocusModal = function(mode) {
   document.getElementById('focus-inp').focus();
 };
 
-function focusRowHTML(label, text, emptyText, openArg) {
-  if (text) {
-    return `<div class="focus-row">
-      <span class="focus-label">${label}</span>
-      <div class="focus-text">${esc(text)}</div>
-      <button class="focus-edit-btn" onclick="openFocusModal('${openArg}')">✏️</button>
+function focusTodayRowHTML() {
+  if (!dailyFocus) {
+    return `<div class="focus-row focus-row-empty" onclick="openFocusModal('today')">
+      <span class="focus-label" style="color:var(--text3)">🎯 Dnes</span>
+      <span style="font-size:13px;color:var(--text3);flex:1">Nastav dnešní prioritu</span>
+      <span style="font-size:18px;color:var(--text3)">＋</span>
     </div>`;
   }
-  return `<div class="focus-row focus-row-empty" onclick="openFocusModal('${openArg}')">
-    <span class="focus-label" style="color:var(--text3)">${label}</span>
-    <span style="font-size:13px;color:var(--text3);flex:1">${emptyText}</span>
-    <span style="font-size:18px;color:var(--text3)">＋</span>
+  return `<div class="focus-row ${dailyFocusDone ? 'focus-row-done' : ''}">
+    <span class="focus-label">🎯 Dnes</span>
+    <div class="focus-text" style="${dailyFocusDone ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(dailyFocus)}</div>
+    <button class="focus-done-btn ${dailyFocusDone ? 'active' : ''}" onclick="markFocusDone()" title="${dailyFocusDone ? 'Zrušit splnění' : 'Označit jako splněno'}">
+      ${dailyFocusDone ? '✅' : '☐'}
+    </button>
+    <button class="focus-edit-btn" onclick="openFocusModal('today')">✏️</button>
   </div>`;
+}
+
+function focusTmrwRowHTML() {
+  if (!tomorrowFocus) {
+    return `<div class="focus-row focus-row-empty" onclick="openFocusModal('tomorrow')">
+      <span class="focus-label" style="color:var(--text3)">📅 Zítra</span>
+      <span style="font-size:13px;color:var(--text3);flex:1">Naplánuj si zítřek</span>
+      <span style="font-size:18px;color:var(--text3)">＋</span>
+    </div>`;
+  }
+  return `<div class="focus-row">
+    <span class="focus-label">📅 Zítra</span>
+    <div class="focus-text">${esc(tomorrowFocus)}</div>
+    <button class="focus-edit-btn" onclick="openFocusModal('tomorrow')">✏️</button>
+  </div>`;
+}
+
+function focusStatsHTML() {
+  const streak = calcFocusStreak();
+  const week = getFocusWeek();
+  const setCount = week.filter(d => !d.isFuture && d.set).length;
+  const doneCount = week.filter(d => !d.isFuture && d.done).length;
+
+  const streakHtml = streak > 0
+    ? `<span class="focus-streak">${streak >= 7 ? '🔥' : streak >= 3 ? '⚡' : '✨'} ${streak} ${streak === 1 ? 'den' : streak < 5 ? 'dny' : 'dní'} v řadě</span>`
+    : '';
+
+  const dotsHtml = week.map(d => {
+    let cls = 'focus-dot';
+    if (d.isFuture) cls += ' future';
+    else if (d.done) cls += ' done';
+    else if (d.set) cls += ' set';
+    if (d.isToday) cls += ' today';
+    const title = `${d.day}${d.set ? (d.done ? ' ✓' : ' ·') : ''}`;
+    return `<div class="focus-dot-wrap" title="${title}"><div class="${cls}"></div><div class="focus-dot-lbl">${d.day}</div></div>`;
+  }).join('');
+
+  return `<div class="focus-stats">
+    <div class="focus-week-row">
+      ${dotsHtml}
+      <span style="flex:1"></span>
+      <span style="font-size:11px;color:var(--text3)">${setCount}/7 nastaveno · ${doneCount}/7 splněno</span>
+    </div>
+    ${streakHtml}
+  </div>`;
+}
+
+function focusInnerHTML() {
+  return `<div class="focus-dual">
+    ${focusTodayRowHTML()}
+    ${focusTmrwRowHTML()}
+  </div>
+  ${focusStatsHTML()}`;
 }
 
 function renderFocusInDash() {
   const el = document.getElementById('focus-widget');
   if (!el) return;
-  el.innerHTML = `<div class="focus-dual">
-    ${focusRowHTML('🎯 Dnes', dailyFocus, 'Nastav dnešní prioritu', 'today')}
-    ${focusRowHTML('📅 Zítra', tomorrowFocus, 'Naplánuj si zítřek', 'tomorrow')}
-  </div>`;
+  el.innerHTML = focusInnerHTML();
 }
 
 function focusWidgetHTML() {
-  return `<div id="focus-widget" class="card focus-card"><div class="focus-dual">
-    ${focusRowHTML('🎯 Dnes', dailyFocus, 'Nastav dnešní prioritu', 'today')}
-    ${focusRowHTML('📅 Zítra', tomorrowFocus, 'Naplánuj si zítřek', 'tomorrow')}
-  </div></div>`;
+  return `<div id="focus-widget" class="card focus-card">${focusInnerHTML()}</div>`;
 }
 
 
