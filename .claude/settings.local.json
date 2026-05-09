@@ -25,7 +25,12 @@
       "Bash(firebase deploy:*)",
       "Bash(for func:*)",
       "Bash(do echo:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(ls /c/Users/Adam/Desktop/LifePocket/*.js)",
+      "Bash(firebase functions:delete sendScheduledNotifications --region us-central1 --force)",
+      "Bash(wait)",
+      "Bash(sed -i 's|<div class=\"habit-day-nav\">|<div style=\"display:flex;gap:8px;align-items:center;flex-wrap:wrap\">\\\\n          <div class=\"habit-day-nav\">|' \"C:\\\\Users\\\\Adam\\\\Desktop\\\\LifePocket\\\\index.html\")",
+      "Bash(sed -i 's|          <button class=\"cal-nav-btn\" onclick=\"habitNextDay\\(\\)\">›</button>\\\\n        </div>|          <button class=\"cal-nav-btn\" onclick=\"habitNextDay\\(\\)\">›</button>\\\\n          </div>\\\\n          <button id=\"habit-month-btn\" onclick=\"toggleHabitMonth\\(\\)\" style=\"background:var\\(--card2\\);border:1px solid var\\(--border\\);border-radius:8px;padding:4px 10px;font-size:13px;color:var\\(--text2\\);cursor:pointer;font-family:'\\\\''Crimson Pro'\\\\'',serif\">📊 Měsíc<\\\\/button>\\\\n        <\\\\/div>|' \"C:\\\\Users\\\\Adam\\\\Desktop\\\\LifePocket\\\\index.html\")"
     ]
   }
 }

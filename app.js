@@ -14,8 +14,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '3.7';
+const APP_VERSION = '3.8';
 const CHANGELOG = [
+  { v:'3.8', items:[
+    '🎯 Dashboard — focus přejmenován na "zítra", zobrazuje historii předchozích dnů',
+    '✏️ Kalendář — opraveno ukládání upraveného data/názvu události',
+    '📅 Kalendář — výchozí typ je nyní "Událost" (ne Narozeniny), opakování výchozně "Ne"',
+    '🛒 Nákupy — odstraněny předvybrané produkty, zůstaly jen oblíbené',
+  ]},
   { v:'3.7', items:[
     '📋 Checklist — CTRL+V obrázek přímo do checklistu',
     '↕️ Checklist — řazení položek šipkami ↑↓',
@@ -1287,7 +1293,7 @@ function renderArchivedHabits() {
 
 // ── CALENDAR ─────────────────────────────────────────
 let events=[], unsubEvents=null, calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
-let selEvType_val='birthday';
+let selEvType_val='event';
 let editingEventId = null;
 
 const EV_ICONS={birthday:'🎂',event:'📌'};
@@ -1496,8 +1502,9 @@ window.calDayClick=(ds)=>{
     const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
     const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
     const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='none';
-    selEvType_val='birthday';
-    document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='birthday'));
+    selEvType_val='event';
+    document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
+    const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
     document.getElementById('m-event').querySelector('.mtitle').textContent='📅 Nová událost';
     om('m-event');
     setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
@@ -1541,8 +1548,9 @@ window.addEventForDay = (ds) => {
   const eni = document.getElementById('ev-name-inp'); if(eni) eni.value = '';
   const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = '';
   const tr = document.getElementById('ev-time-row'); if(tr) tr.style.display = 'none';
-  selEvType_val = 'birthday';
-  document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === 'birthday'));
+  selEvType_val = 'event';
+  document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === 'event'));
+  const ri = document.getElementById('ev-repeat-inp'); if(ri) ri.value = 'no';
   document.getElementById('m-event').querySelector('.mtitle').textContent = '📅 Nová událost';
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
@@ -1579,8 +1587,9 @@ window.openEvModal=()=>{
   const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='none';
   const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value='';
   const eer=document.getElementById('ev-end-date-row'); if(eer) eer.style.display='none';
-  selEvType_val='birthday';
-  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='birthday'));
+  const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
+  selEvType_val='event';
+  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
   om('m-event');
 };
 
@@ -1608,11 +1617,16 @@ window.saveEvent=async()=>{
   if(dateEnd) ev.dateEnd=dateEnd;
   if(editingEventId) {
     const inFamily = familyEvents.some(e => e.id === editingEventId);
-    if(inFamily && familyId) {
-      await setDoc(doc(db,'families',familyId,'events',editingEventId), {...ev, createdAt: undefined});
-    } else {
-      await setDoc(doc(db,'users',CU.uid,'events',editingEventId), {...ev, createdAt: undefined});
-    }
+    const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
+    if(time) evUpdate.time = time;
+    if(dateEnd) evUpdate.dateEnd = dateEnd;
+    try {
+      if(inFamily && familyId) {
+        await setDoc(doc(db,'families',familyId,'events',editingEventId), evUpdate);
+      } else {
+        await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
+      }
+    } catch(e) { toast('⚠️ Chyba: '+e.message); return; }
     editingEventId = null;
     toast('✓ Událost upravena');
   } else {
@@ -1663,11 +1677,12 @@ window.resetAndCloseEventModal = () => {
   const repeatInp = document.getElementById('ev-repeat-inp');
   if(nameInp) nameInp.value = '';
   if(dateInp) dateInp.value = '';
-  if(repeatInp) repeatInp.value = 'yes';
+  if(repeatInp) repeatInp.value = 'no';
   document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.remove('sel'));
-  const firstBtn = document.querySelector('.ev-type-btn');
-  if(firstBtn) firstBtn.classList.add('sel');
-  selEvType_val = 'birthday';
+  const eventBtn = document.querySelector('.ev-type-btn[data-t="event"]');
+  if(eventBtn) eventBtn.classList.add('sel');
+  selEvType_val = 'event';
+  editingEventId = null;
   cm('m-event');
 };
 document.addEventListener('click',e=>{if(e.target.classList.contains('moverlay'))e.target.classList.remove('open');});
@@ -3013,12 +3028,25 @@ function initFocus() {
   if (stored.date === today) {
     dailyFocus = stored.text || null;
   } else {
+    // Archivuj focus z minulého dne do historie
+    if (stored.text) {
+      const history = lsGet('lp_focus_history', []);
+      history.unshift({date: stored.date, text: stored.text});
+      lsSave('lp_focus_history', history.slice(0, 7));
+    }
     dailyFocus = null;
   }
 }
 
 window.saveFocus = function(text) {
   const today = new Date().toDateString();
+  const stored = lsGet('lp_focus', {date: '', text: ''});
+  // Archivuj starý focus pokud je z jiného dne
+  if (stored.text && stored.date !== today) {
+    const history = lsGet('lp_focus_history', []);
+    history.unshift({date: stored.date, text: stored.text});
+    lsSave('lp_focus_history', history.slice(0, 7));
+  }
   dailyFocus = text.trim();
   lsSave('lp_focus', {date: today, text: dailyFocus});
   renderFocusInDash();
@@ -3027,17 +3055,27 @@ window.saveFocus = function(text) {
 
 window.openFocusModal = function() {
   const existing = dailyFocus || '';
+  const history = lsGet('lp_focus_history', []);
+  const histHtml = history.length ? `
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📜 Historie</div>
+      ${history.map(h => {
+        const d = new Date(h.date).toLocaleDateString('cs-CZ', {day:'numeric', month:'short'});
+        return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:flex-start"><span style="color:var(--text3);font-size:11px;white-space:nowrap;margin-top:1px">${d}</span><span>${esc(h.text)}</span></div>`;
+      }).join('')}
+    </div>` : '';
   const m = document.createElement('div');
   m.id = 'focus-modal';
   m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:420px">
-    <h3 style="margin:0 0 12px;font-family:'Playfair Display',serif">🎯 Co musíš dnes udělat?</h3>
-    <p style="font-size:13px;color:var(--text3);margin:0 0 14px">Jedna nejdůležitější věc na dnešek.</p>
-    <input id="focus-inp" type="text" class="finp" placeholder="Napiš svůj denní focus..." value="${esc(existing)}" style="margin-bottom:14px">
+    <h3 style="margin:0 0 12px;font-family:'Playfair Display',serif">🎯 Co musíš udělat zítra?</h3>
+    <p style="font-size:13px;color:var(--text3);margin:0 0 14px">Jedna nejdůležitější věc na zítřek.</p>
+    <input id="focus-inp" type="text" class="finp" placeholder="Nastav focus na zítra..." value="${esc(existing)}" style="margin-bottom:14px">
     <div style="display:flex;gap:8px">
       <button class="btn-sv" onclick="saveFocus(document.getElementById('focus-inp').value)" style="flex:1">✓ Uložit</button>
       <button class="btn-s" onclick="document.getElementById('focus-modal').remove()">Zrušit</button>
     </div>
+    ${histHtml}
   </div>`;
   document.body.appendChild(m);
   document.getElementById('focus-inp').focus();
@@ -3048,13 +3086,13 @@ function renderFocusInDash() {
   if (!el) return;
   if (dailyFocus) {
     el.innerHTML = `<div class="focus-content">
-      <span class="focus-label">🎯 Dnešní focus</span>
+      <span class="focus-label">🎯 Zítřejší focus</span>
       <div class="focus-text">${esc(dailyFocus)}</div>
       <button class="focus-edit-btn" onclick="openFocusModal()">✏️ Změnit</button>
     </div>`;
   } else {
     el.innerHTML = `<button class="focus-empty-btn" onclick="openFocusModal()">
-      🎯 <strong>Co musíš dnes udělat?</strong> <span style="color:var(--text3);font-weight:400">Nastav denní focus</span>
+      🎯 <strong>Co musíš udělat zítra?</strong> <span style="color:var(--text3);font-weight:400">Nastav focus</span>
     </button>`;
   }
 }
@@ -3062,13 +3100,13 @@ function renderFocusInDash() {
 function focusWidgetHTML() {
   if (dailyFocus) {
     return `<div id="focus-widget" class="card focus-card"><div class="focus-content">
-      <span class="focus-label">🎯 Dnešní focus</span>
+      <span class="focus-label">🎯 Zítřejší focus</span>
       <div class="focus-text">${esc(dailyFocus)}</div>
       <button class="focus-edit-btn" onclick="openFocusModal()">✏️ Změnit</button>
     </div></div>`;
   } else {
     return `<div id="focus-widget" class="card focus-card"><button class="focus-empty-btn" onclick="openFocusModal()">
-      🎯 <strong>Co musíš dnes udělat?</strong> <span style="color:var(--text3);font-weight:400">Nastav denní focus</span>
+      🎯 <strong>Co musíš udělat zítra?</strong> <span style="color:var(--text3);font-weight:400">Nastav focus</span>
     </button></div>`;
   }
 }
@@ -3088,7 +3126,7 @@ function quickStartHTML() {
   // Definice úkolů podle aktivních modulů
   const allTasks = [
     { id:'habit',    emoji:'🎯', text:'Přidej svůj první návyk',        page:'habits',   done: habits.length > 0 },
-    { id:'focus',    emoji:'🎯', text:'Nastav dnešní focus',             action:'openFocusModal()', done: !!dailyFocus },
+    { id:'focus',    emoji:'🎯', text:'Nastav zítřejší focus',            action:'openFocusModal()', done: !!dailyFocus },
     { id:'water',    emoji:'💧', text:'Dej si první sklenici vody',       action:'addWater()',       done: waterToday > 0 },
     { id:'recipe',   emoji:'🍳', text:'Vyzkoušej AI recept',             page:'cooking',  done: savedRecipes.length > 0 },
     { id:'shop',     emoji:'🛒', text:'Přidej položku do nákupu',        page:'shopping', done: shopItems.length > 0 },
