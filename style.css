@@ -254,7 +254,8 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .vedit:hover{background:rgba(245,200,66,.2)}
 .gcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;transition:all .25s;box-shadow:var(--shadow)}
 .gcard:hover{border-color:var(--border2);box-shadow:var(--shadow-lg)}
-.ghdr{padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.gcard-open{border-color:var(--border2)}
+.ghdr{padding:14px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
 .gdot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .gem{font-size:20px;flex-shrink:0}
 .ginf{flex:1;min-width:0}
@@ -265,8 +266,11 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .gpct{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;min-width:38px;text-align:right}
 .gpbar{width:70px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
 .gpfill{height:100%;border-radius:3px;transition:width .4s}
+.gchev{font-size:10px;color:var(--text3);flex-shrink:0;transition:transform .2s}
 .gacts{display:flex;gap:2px}
 .gsubs{padding:0 18px 14px 46px;display:none}.gsubs.open{display:block}
+.gnm-full{font-size:15px;font-weight:700;color:var(--text);line-height:1.4;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.gdesc{font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:10px;white-space:pre-wrap;background:var(--card2);border-radius:8px;padding:10px 12px;border-left:3px solid var(--border2)}
 .si{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:5px}
 .schk{width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;transition:all .2s;flex-shrink:0;color:transparent}
 .schk.done{background:var(--green);border-color:var(--green);color:white}

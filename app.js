@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 const CHANGELOG = [
+  { v:'4.2', items:[
+    '🌟 Cíle — nové pole Popis/poznámka: proč, jak, motivace',
+    '🌟 Cíle — kliknutím na kartu se rozbalí celý název + popis + dílčí cíle',
+    '🌟 Cíle — šipka ▼/▲ signalizuje, že je karta klikatelná',
+  ]},
   { v:'4.1', items:[
     '🐛 Checklist — smazání rodinného seznamu nyní funguje správně (mazalo se ze špatné cesty)',
     '🔔 Notifikace — opraveny dvojité notifikace při zavřené appce (duplicitní push handler)',
@@ -5107,21 +5112,30 @@ function subGoals(){loadV();if(unsub)unsub();unsub=onSnapshot(query(collection(d
 
 window.openGM=(gid=null)=>{
   editGId=gid;document.getElementById('gm-title').textContent=gid?'✏️ Upravit cíl':'🌟 Nový cíl';
-  if(gid){const g=goals.find(x=>x.id===gid);document.getElementById('g-name').value=g.name||'';document.getElementById('g-cat').value=g.category||'zdraví';document.getElementById('g-dl').value=g.deadline||'';document.getElementById('g-prog').value=g.progress||0;document.getElementById('g-pval').textContent=(g.progress||0)+'%';sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);}
-  else{document.getElementById('g-name').value='';document.getElementById('g-cat').value='zdraví';document.getElementById('g-dl').value='';document.getElementById('g-prog').value=0;document.getElementById('g-pval').textContent='0%';sGE('🌟',null);sGC('#f5c842',null);}
+  if(gid){const g=goals.find(x=>x.id===gid);document.getElementById('g-name').value=g.name||'';document.getElementById('g-desc').value=g.description||'';document.getElementById('g-cat').value=g.category||'zdraví';document.getElementById('g-dl').value=g.deadline||'';document.getElementById('g-prog').value=g.progress||0;document.getElementById('g-pval').textContent=(g.progress||0)+'%';sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);}
+  else{document.getElementById('g-name').value='';document.getElementById('g-desc').value='';document.getElementById('g-cat').value='zdraví';document.getElementById('g-dl').value='';document.getElementById('g-prog').value=0;document.getElementById('g-pval').textContent='0%';sGE('🌟',null);sGC('#f5c842',null);}
   om('m-goal');
 };
 window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-epick [data-e="${e}"]`);if(t)t.classList.add('sel');};
 window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
 window.saveG=async()=>{
   const nm=document.getElementById('g-name').value.trim();if(!nm){toast('⚠️ Zadej název');return;}
-  const d={name:nm,category:document.getElementById('g-cat').value,deadline:document.getElementById('g-dl').value,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
+  const desc=document.getElementById('g-desc').value.trim();
+  const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline:document.getElementById('g-dl').value,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
   if(editGId){await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);toast('✓ Cíl upraven');}
   else{d.createdAt=new Date().toISOString();const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);subs[r.id]=[];toast('✓ Cíl přidán');}
   cm('m-goal');
 };
 window.delG=async id=>{if(!CU||!confirm('Smazat cíl?'))return;await deleteDoc(doc(db,'users',CU.uid,'goals',id));delete subs[id];toast('Cíl smazán');};
-window.togSubs=gid=>document.getElementById('gs-'+gid)?.classList.toggle('open');
+window.togSubs=gid=>{
+  const sub=document.getElementById('gs-'+gid);
+  if(!sub)return;
+  const isOpen=sub.classList.toggle('open');
+  const card=sub.closest('.gcard');
+  card?.classList.toggle('gcard-open',isOpen);
+  const chev=card?.querySelector('.gchev');
+  if(chev)chev.textContent=isOpen?'▲':'▼';
+};
 window.addSub=async gid=>{const inp=document.getElementById('si-'+gid),nm=inp.value.trim();if(!nm)return;const d={name:nm,done:false,createdAt:new Date().toISOString()};const r=await addDoc(collection(db,'users',CU.uid,'goals',gid,'subgoals'),d);if(!subs[gid])subs[gid]=[];subs[gid].push({id:r.id,...d});inp.value='';rGoals();toast('✓ Dílčí cíl přidán');};
 window.togSub=async(gid,sid)=>{
   if(!CU)return;const s=subs[gid]?.find(x=>x.id===sid);if(!s)return;s.done=!s.done;await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});const arr=subs[gid]||[];if(arr.length>0){const pct=Math.round(arr.filter(x=>x.done).length/arr.length*100);await updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});}rGoals();};
@@ -5133,7 +5147,9 @@ function rGoals(){
   const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
   c.innerHTML=goals.map(g=>{
     const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
-    return`<div class="gcard"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${g.name}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${s.name}</div><button class="btn-xs" onclick="delSub('${esc(g.id)}','${esc(s.id)}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${esc(g.id)}')"><button class="btn-ads" onclick="addSub('${esc(g.id)}')">+ Přidat</button></div></div></div>`;
+    const descHtml = g.description ? `<div class="gdesc">${esc(g.description)}</div>` : '';
+    const fullNameHtml = g.name.length > 28 ? `<div class="gnm-full">${esc(g.name)}</div>` : '';
+    return`<div class="gcard ${io?'gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${esc(g.name)}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}${g.description?`<span class="gtag" style="color:var(--text3)">📝</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gchev">${io?'▲':'▼'}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${esc(s.name)}</div><button class="btn-xs" onclick="delSub('${esc(g.id)}','${esc(s.id)}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${esc(g.id)}')"><button class="btn-ads" onclick="addSub('${esc(g.id)}')">+ Přidat</button></div></div></div>`;
   }).join('');
 }
 
