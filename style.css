@@ -333,6 +333,27 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 /* Skip day */
 .htd-dot.skipped{background:rgba(160,160,176,.15)!important;color:var(--text3)!important;border:1px dashed var(--border)!important;font-size:10px}
 
+/* Goal card — completed state & archive button */
+.gcompleted{background:rgba(76,217,100,.12)!important;color:var(--green)!important;border-color:rgba(76,217,100,.3)!important}
+.gcomplete-btn{margin-top:12px;width:100%;background:linear-gradient(135deg,rgba(76,217,100,.1),rgba(76,217,100,.05));border:1px solid rgba(76,217,100,.3);color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;border-radius:10px;padding:9px;cursor:pointer;transition:all .2s}
+.gcomplete-btn:hover{background:rgba(76,217,100,.18)!important}
+/* Archived goals section */
+.garchived-wrap{margin-top:20px}
+.garchived-toggle{width:100%;background:transparent;border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-size:14px;cursor:pointer;text-align:left;font-family:'Crimson Pro',serif;display:flex;align-items:center;gap:6px;transition:all .2s}
+.garchived-toggle:hover{background:var(--card2)}
+.garch-arrow{margin-left:auto;font-size:10px;color:var(--text3)}
+/* Vision modal — dynamic areas */
+.vmodal-area{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.vmodal-area-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.vmodal-area-em{font-size:18px;flex-shrink:0}
+.vmodal-area-lbl{flex:1;font-size:13px;font-weight:600;color:var(--text2)}
+.vmodal-area-rm{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;line-height:1;transition:all .15s}
+.vmodal-area-rm:hover{color:#ff3b30;background:rgba(255,59,48,.1)}
+.vmodal-chips-lbl{font-size:12px;color:var(--text3);margin-bottom:8px}
+.vmodal-add-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.vmodal-chip{background:var(--card2);border:1px dashed var(--border2);border-radius:20px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:all .2s;font-family:'Crimson Pro',serif}
+.vmodal-chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,.08)}
+
 /* AVATAR PAGE */
 .avhero{text-align:center;padding:28px 20px 24px}
 .avhem{font-size:80px;line-height:1;margin-bottom:14px;display:block;animation:af 3s ease-in-out infinite}

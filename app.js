@@ -14,8 +14,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.6';
+const APP_VERSION = '4.7';
 const CHANGELOG = [
+  { v:'4.7', items:[
+    '✦ Vize — oblasti jsou teď volitelné: přidáš jen ty, co jsou pro tebe důležité',
+    '✨ Vize — vlastní oblasti: přidej libovolnou oblast nad rámec 8 výchozích',
+    '🎉 Cíle — splněný cíl lze archivovat jako splněný (opraveno)',
+    '📦 Cíle — sekce archivovaných cílů s rozbalovacím tlačítkem',
+  ]},
   { v:'4.6', items:[
     '🏆 Propojení návyk → cíl: každý návyk lze napojit na cíl — vidíš proč na sobě pracuješ',
     '✦ Vize po oblastech: zdraví, kariéra, rodina, finance… každá oblast má vlastní vizi',
@@ -219,14 +225,14 @@ const AVS=[
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
 const AREAS=[
-  {id:'zdraví',key:'zdravi',emoji:'💪',label:'Zdraví'},
-  {id:'práce',key:'prace',emoji:'💼',label:'Práce & kariéra'},
-  {id:'rodina',key:'rodina',emoji:'👨‍👩‍👧',label:'Rodina'},
-  {id:'finance',key:'finance',emoji:'💰',label:'Finance'},
-  {id:'vzdělání',key:'vzdelani',emoji:'📚',label:'Vzdělání'},
-  {id:'vztahy',key:'vztahy',emoji:'❤️',label:'Vztahy'},
-  {id:'koníčky',key:'konicky',emoji:'🎨',label:'Koníčky'},
-  {id:'osobní rozvoj',key:'rozvoj',emoji:'🌱',label:'Osobní rozvoj'},
+  {id:'zdraví',key:'zdravi',emoji:'💪',label:'Zdraví',ph:'Chci být fit a plný energie…'},
+  {id:'práce',key:'prace',emoji:'💼',label:'Práce & kariéra',ph:'Chci si vybudovat vlastní firmu…'},
+  {id:'rodina',key:'rodina',emoji:'👨‍👩‍👧',label:'Rodina',ph:'Chci trávit víc času s rodinou…'},
+  {id:'finance',key:'finance',emoji:'💰',label:'Finance',ph:'Chci mít finanční svobodu do 45…'},
+  {id:'vzdělání',key:'vzdelani',emoji:'📚',label:'Vzdělání',ph:'Chci se neustále učit a růst…'},
+  {id:'vztahy',key:'vztahy',emoji:'❤️',label:'Vztahy',ph:'Chci mít hluboké a smysluplné vztahy…'},
+  {id:'koníčky',key:'konicky',emoji:'🎨',label:'Koníčky',ph:'Chci mít čas na věci které mě baví…'},
+  {id:'osobní rozvoj',key:'rozvoj',emoji:'🌱',label:'Osobní rozvoj',ph:'Chci každý den být lepší verzí sebe…'},
 ];
 const MODS=[
   {id:'rex',emoji:'🤖',name:'AI asistent',desc:'Chat s tvým osobním AI průvodcem — rady, motivace, odpovědi na cokoliv.'},
@@ -244,7 +250,7 @@ const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:
 const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
-let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',gPriority=2,chatH=[],unsub=null,mood='',tmpAv='';
+let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',gPriority=2,chatH=[],unsub=null,mood='',tmpAv='',vmState=null;
 let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 const claudeKey = true; // klíč je na serveru (Firebase Function), klient ho nepotřebuje
@@ -5248,35 +5254,139 @@ window.setDailyMood = function(emoji) {
   toast(reactions[emoji] || `Nálada ${emoji} zaznamenána`);
 };
 
+// ── Vision modal helpers ──
+function saveVmCurrentTexts(){
+  if(!vmState)return;
+  const areas=prof.visionAreas||{};
+  for(const key of vmState.activeKeys){
+    const el=document.getElementById('vi-'+key);
+    if(el)areas[key]=el.value;
+  }
+  prof.visionAreas=areas;
+}
+function renderVisionModal(){
+  const body=document.getElementById('vision-modal-body');
+  if(!body||!vmState)return;
+  const areas=prof.visionAreas||{};
+  const defaultKeyToArea=Object.fromEntries(AREAS.map(a=>[a.id,a]));
+  const customKeyToLabel=Object.fromEntries(vmState.customAreas.map(c=>[c.key,c.label]));
+  let html='';
+  // Active areas (default + custom)
+  for(const key of vmState.activeKeys){
+    const defArea=defaultKeyToArea[key];
+    const em=defArea?defArea.emoji:'✨';
+    const lbl=defArea?defArea.label:(customKeyToLabel[key]||key);
+    const ph=defArea?defArea.ph:'';
+    const val=esc(areas[key]||'');
+    html+='<div class="vmodal-area">'
+      +'<div class="vmodal-area-hdr">'
+      +'<span class="vmodal-area-em">'+em+'</span>'
+      +'<span class="vmodal-area-lbl">'+esc(lbl)+'</span>'
+      +'<button class="vmodal-area-rm" onclick="vmRemoveArea(\''+esc(key)+'\')" title="Odebrat">✕</button>'
+      +'</div>'
+      +'<textarea class="finp" id="vi-'+esc(key)+'" rows="2" style="resize:none" placeholder="'+esc(ph)+'">'+val+'</textarea>'
+      +'</div>';
+  }
+  // Chips for inactive default areas
+  const inactiveDefault=AREAS.filter(a=>!vmState.activeKeys.has(a.id));
+  html+='<div class="vmodal-chips-lbl">+ Přidat oblast:</div>';
+  html+='<div class="vmodal-add-chips">';
+  for(const a of inactiveDefault){
+    html+='<button class="vmodal-chip" onclick="vmAddArea(\''+esc(a.id)+'\')">'+a.emoji+' '+a.label+'</button>';
+  }
+  html+='<button class="vmodal-chip" onclick="vmAddCustom()">✨ Vlastní…</button>';
+  html+='</div>';
+  body.innerHTML=html;
+}
+window.vmAddArea=(key)=>{
+  saveVmCurrentTexts();
+  vmState.activeKeys.add(key);
+  renderVisionModal();
+};
+window.vmRemoveArea=(key)=>{
+  saveVmCurrentTexts();
+  vmState.activeKeys.delete(key);
+  // remove from customAreas if present
+  vmState.customAreas=vmState.customAreas.filter(c=>c.key!==key);
+  renderVisionModal();
+};
+window.vmAddCustom=()=>{
+  // Don't open a second one
+  if(document.getElementById('vm-custom-row'))return;
+  const chips=document.querySelector('.vmodal-add-chips');
+  if(!chips)return;
+  const row=document.createElement('div');
+  row.id='vm-custom-row';
+  row.style.cssText='display:flex;gap:8px;margin-top:8px;width:100%';
+  row.innerHTML='<input class="finp" id="vm-custom-lbl" placeholder="Název oblasti…" maxlength="30" style="flex:1">'
+    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="vmConfirmCustom()">Přidat</button>';
+  chips.after(row);
+  setTimeout(()=>{ const inp=document.getElementById('vm-custom-lbl'); if(inp)inp.focus(); },50);
+};
+window.vmConfirmCustom=()=>{
+  const inp=document.getElementById('vm-custom-lbl');
+  if(!inp)return;
+  const label=inp.value.trim();
+  if(!label){toast('⚠️ Zadej název oblasti');return;}
+  const key='c_'+Date.now().toString(36);
+  vmState.customAreas.push({key,label});
+  vmState.activeKeys.add(key);
+  saveVmCurrentTexts();
+  renderVisionModal();
+};
 window.openVM=()=>{
   const areas=prof.visionAreas||{};
-  AREAS.forEach(a=>{
-    const el=document.getElementById('vi-'+a.key);
-    if(el)el.value=areas[a.id]||'';
-  });
+  const customAreaLabels=prof.customAreaLabels||{};
+  const defaultIds=new Set(AREAS.map(a=>a.id));
+  // Reconstruct customAreas from saved data
+  const customAreas=Object.keys(areas)
+    .filter(k=>!defaultIds.has(k))
+    .map(k=>({key:k,label:customAreaLabels[k]||k}));
+  // Active = default areas with text + all custom areas
+  const activeKeys=new Set([
+    ...AREAS.filter(a=>areas[a.id]).map(a=>a.id),
+    ...customAreas.map(c=>c.key),
+  ]);
+  vmState={activeKeys,customAreas};
+  renderVisionModal();
   om('m-vision');
 };
 window.saveV=async()=>{
   if(!CU)return;
+  saveVmCurrentTexts();
   const areas={};
-  AREAS.forEach(a=>{
-    const el=document.getElementById('vi-'+a.key);
-    if(el&&el.value.trim())areas[a.id]=el.value.trim();
-  });
+  const customAreaLabels={};
+  for(const key of vmState.activeKeys){
+    const el=document.getElementById('vi-'+key);
+    const val=el?el.value.trim():((prof.visionAreas||{})[key]||'');
+    if(val)areas[key]=val;
+  }
+  for(const c of vmState.customAreas)customAreaLabels[c.key]=c.label;
   prof.visionAreas=areas;
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{visionAreas:areas});
+  prof.customAreaLabels=customAreaLabels;
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{visionAreas:areas,customAreaLabels});
   loadV();cm('m-vision');toast('✓ Vize uložena');
 };
 function loadV(){
   const container=document.getElementById('vision-areas');
   if(!container)return;
   const areas=prof.visionAreas||{};
-  const filled=AREAS.filter(a=>areas[a.id]);
-  if(!filled.length){
+  const customAreaLabels=prof.customAreaLabels||{};
+  const defaultIds=new Set(AREAS.map(a=>a.id));
+  const rows=[];
+  // Default areas first (preserve order)
+  for(const a of AREAS){
+    if(areas[a.id])rows.push({emoji:a.emoji,label:a.label,text:areas[a.id]});
+  }
+  // Custom areas
+  for(const [key,text] of Object.entries(areas)){
+    if(!defaultIds.has(key)&&text)rows.push({emoji:'✨',label:customAreaLabels[key]||key,text});
+  }
+  if(!rows.length){
     container.innerHTML='<div class="vtxt empty" style="padding:0">Klikni ✏️ a napiš svoji vizi pro každou oblast…</div>';
     return;
   }
-  container.innerHTML=filled.map(a=>`<div class="varea-item"><span class="varea-em">${a.emoji}</span><div class="varea-body"><div class="varea-lbl">${a.label}</div><div class="varea-txt">${esc(areas[a.id])}</div></div></div>`).join('');
+  container.innerHTML=rows.map(r=>'<div class="varea-item"><span class="varea-em">'+r.emoji+'</span><div class="varea-body"><div class="varea-lbl">'+esc(r.label)+'</div><div class="varea-txt">'+esc(r.text)+'</div></div></div>').join('');
 }
 
 function subGoals(){
@@ -5491,50 +5601,171 @@ window.unarchiveGoal=async(id)=>{
 };
 
 // ── Render cílů ───────────────────────────────────────────
-function rGoals(){
-  const c=document.getElementById('goals-list');
-  const addBtn=document.querySelector('.add-goal');
-  const activeGoals=goals.filter(g=>!g.archivedGoal).sort((a,b)=>(a.priority||2)-(b.priority||2));
-  const archivedGoals=goals.filter(g=>g.archivedGoal);
-  if(!activeGoals.length&&!archivedGoals.length){
-    const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-    c.innerHTML=`<div class="empty-st"><div style="font-size:52px">${av.emoji}</div><div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div><div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div><button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">🌟 Přidat první cíl</button></div>`;
-    if(addBtn)addBtn.style.display='none';
-    // Populate goal selector in habit form
-    const sel=document.getElementById('habit-goal-sel');
-    if(sel){sel.innerHTML='<option value="">— bez cíle —</option>';}
+function buildGoalCard(g, openSet, doneToday) {
+  const sb = subs[g.id] || [];
+  const io = openSet.has(g.id);
+  const doneSubs = sb.filter(s => s.done).length;
+  const totalTasks = sb.reduce((n,s) => n + (s.tasks ? s.tasks.length : 0), 0);
+  const doneTasks  = sb.reduce((n,s) => n + (s.tasks ? s.tasks.filter(t => t.done).length : 0), 0);
+
+  const descHtml     = g.description ? '<div class="gdesc">' + esc(g.description) + '</div>' : '';
+  const fullNameHtml = g.name.length > 28 ? '<div class="gnm-full">' + esc(g.name) + '</div>' : '';
+
+  // Linked habits
+  const linked = habits.filter(hb => hb.goalId === g.id && !hb.archived);
+  let linkedHtml = '';
+  if (linked.length) {
+    const rows = linked.map(hb => {
+      const done = doneToday.has(hb.id);
+      return '<div class="gh-habit-row"><span>' + (hb.emoji||'🎯') + '</span>'
+        + '<span class="gh-habit-nm">' + esc(hb.name) + '</span>'
+        + '<span class="gh-habit-st' + (done?' done':'') + '">' + (done?'✓':'○') + '</span></div>';
+    }).join('');
+    linkedHtml = '<div class="sg-section-lbl">🔥 Propojené návyky</div>'
+      + '<div class="gh-habits-list">' + rows + '</div>';
+  }
+
+  // Subgoals
+  let subsHtml = '';
+  if (sb.length) {
+    const sgRows = sb.map(s => {
+      const tasks = s.tasks || [];
+      const taskRows = tasks.map(t =>
+        '<div class="task-item">'
+        + '<div class="task-chk' + (t.done?' done':'') + '" onclick="togTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\',\'' + esc(t.id) + '\')">' + (t.done?'✓':'') + '</div>'
+        + '<div class="task-nm' + (t.done?' done':'') + '">' + esc(t.name) + '</div>'
+        + '<button class="btn-xs2" onclick="delTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\',\'' + esc(t.id) + '\')">×</button>'
+        + '</div>'
+      ).join('');
+      const dlTag = s.deadline ? '<span class="sg-dl-tag">📅 ' + fd(s.deadline) + '</span>' : '';
+      return '<div class="sg-item' + (s.done?' sg-done':'') + '">'
+        + '<div class="sg-header">'
+        +   '<div class="sg-chk' + (s.done?' done':'') + '" onclick="togSubDone(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">' + (s.done?'✓':'') + '</div>'
+        +   '<div class="sg-info">'
+        +     '<div class="sg-name' + (s.done?' done':'') + '">' + esc(s.name) + '</div>'
+        +     (s.description ? '<div class="sg-desc-sm">' + esc(s.description) + '</div>' : '')
+        +     '<div class="sg-meta-row">' + dlTag + '</div>'
+        +   '</div>'
+        +   '<div class="sg-acts">'
+        +     '<button class="btn-xs2" onclick="openSubGM(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">✏️</button>'
+        +     '<button class="btn-xs2" onclick="delSubG(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">🗑️</button>'
+        +   '</div>'
+        + '</div>'
+        + (taskRows ? '<div class="tasks-list">' + taskRows + '</div>' : '')
+        + '<div class="task-add-row">'
+        +   '<input class="task-inp" id="ti-' + esc(s.id) + '" placeholder="Přidat úkol…" onkeydown="if(event.key===\'Enter\')addTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">'
+        +   '<button class="btn-xs2 btn-add-task" onclick="addTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">+</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+    subsHtml = '<div class="sg-section-lbl">📌 Podcíle</div>' + sgRows;
+  }
+
+  const prio = g.priority || 2;
+  const prioTag = prio===1 ? '<span class="gtag gprio-high">🔴 Vysoká</span>'
+                : prio===3 ? '<span class="gtag gprio-low">🟢 Nízká</span>' : '';
+  const completedTag = g.progress >= 100 ? '<span class="gtag gcompleted">🎉 Splněno!</span>' : '';
+  const archiveBtn = g.progress >= 100
+    ? '<button class="btn-p gcomplete-btn" onclick="archiveGoal(\'' + esc(g.id) + '\')">🎉 Archivovat jako splněný</button>'
+    : '';
+
+  const tagsRow = prioTag
+    + '<span class="gtag">📂 ' + (g.category||'ostatní') + '</span>'
+    + (g.deadline ? '<span class="gtag">🏁 ' + fd(g.deadline) + '</span>' : '')
+    + (sb.length ? '<span class="gtag">📌 ' + doneSubs + '/' + sb.length + '</span>' : '')
+    + (totalTasks ? '<span class="gtag">☑ ' + doneTasks + '/' + totalTasks + '</span>' : '')
+    + (g.description ? '<span class="gtag">📝</span>' : '')
+    + completedTag
+    + '<span class="gchev">' + (io?'▲':'▼') + '</span>';
+
+  return '<div class="gcard' + (io?' gcard-open':'') + '">'
+    + '<div class="ghdr" onclick="togSubs(\'' + esc(g.id) + '\')">'
+    +   '<div class="ghdr-r1">'
+    +     '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
+    +     '<div class="gem">' + (g.emoji||'🌟') + '</div>'
+    +     '<div class="gnm">' + esc(g.name) + '</div>'
+    +     '<div class="gacts" onclick="event.stopPropagation()">'
+    +       '<button class="btn-xs" onclick="openGM(\'' + esc(g.id) + '\')">✏️</button>'
+    +       '<button class="btn-xs" onclick="delG(\'' + esc(g.id) + '\')">🗑️</button>'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="ghdr-r2">'
+    +     '<div class="gpbar"><div class="gpfill" style="width:' + (g.progress||0) + '%;background:' + (g.color||'#f5c842') + '"></div></div>'
+    +     '<span class="gpct" style="color:' + (g.color||'#f5c842') + '">' + (g.progress||0) + '%</span>'
+    +   '</div>'
+    +   '<div class="ghdr-r3">' + tagsRow + '</div>'
+    + '</div>'
+    + '<div class="gsubs' + (io?' open':'') + '" id="gs-' + g.id + '">'
+    +   fullNameHtml + descHtml + linkedHtml + subsHtml
+    +   '<button class="btn-add-sg" onclick="openSubGM(\'' + esc(g.id) + '\')">+ Přidat podcíl</button>'
+    +   archiveBtn
+    + '</div>'
+    + '</div>';
+}
+
+function buildArchivedSection(archivedGoals) {
+  const rows = archivedGoals.map(g =>
+    '<div class="gcard" style="opacity:.7">'
+    + '<div class="ghdr-r1" style="padding:14px 16px">'
+    +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
+    +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
+    +   '<div class="gnm" style="text-decoration:line-through">' + esc(g.name) + '</div>'
+    +   '<div class="gacts"><button class="btn-xs" onclick="unarchiveGoal(\'' + esc(g.id) + '\')">↩ Obnovit</button></div>'
+    + '</div>'
+    + '</div>'
+  ).join('');
+  return '<div class="garchived-wrap" style="margin-top:20px">'
+    + '<button class="garchived-toggle" id="garch-btn" onclick="'
+    +   'var d=document.getElementById(\'garch-list\');'
+    +   'var op=d.style.display!==\'none\';'
+    +   'd.style.display=op?\'none\':\'block\';'
+    +   'this.querySelector(\'.garch-arrow\').textContent=op?\'▼\':\'▲\''
+    + '">'
+    +   '📦 Splněné cíle (' + archivedGoals.length + ') <span class="garch-arrow">▼</span>'
+    + '</button>'
+    + '<div id="garch-list" style="display:none;margin-top:10px">' + rows + '</div>'
+    + '</div>';
+}
+
+function rGoals() {
+  const c = document.getElementById('goals-list');
+  if (!c) return;
+  const addBtn = document.querySelector('.add-goal');
+  const activeGoals  = goals.filter(g => !g.archivedGoal).sort((a,b) => (a.priority||2)-(b.priority||2));
+  const archivedGoals = goals.filter(g =>  g.archivedGoal);
+
+  // Empty state
+  if (!activeGoals.length && !archivedGoals.length) {
+    const av = AVS.find(a => a.id === prof.avatarId) || AVS[0];
+    c.innerHTML = '<div class="empty-st">'
+      + '<div style="font-size:52px">' + av.emoji + '</div>'
+      + '<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div>'
+      + '<div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div>'
+      + '<button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">🌟 Přidat první cíl</button>'
+      + '</div>';
+    if (addBtn) addBtn.style.display = 'none';
+    const sel = document.getElementById('habit-goal-sel');
+    if (sel) sel.innerHTML = '<option value="">— bez cíle —</option>';
     return;
   }
-  if(addBtn)addBtn.style.display='';
-  const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
-  const todayDSg=new Set([...habitLogs.filter(l=>l.date===new Date().toISOString().slice(0,10)&&l.done).map(l=>l.habitId)]);
-  c.innerHTML=activeGoals.map(g=>{
-    const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
-    const totalTasks=sb.reduce((a,s)=>a+(s.tasks?.length||0),0);
-    const doneTasks=sb.reduce((a,s)=>a+(s.tasks?.filter(t=>t.done).length||0),0);
-    const descHtml=g.description?`<div class="gdesc">${esc(g.description)}</div>`:'';
-    const fullNameHtml=g.name.length>28?`<div class="gnm-full">${esc(g.name)}</div>`:'';
-    const linkedHabits=habits.filter(h=>h.goalId===g.id&&!h.archived);
-    const linkedHabitsHtml=linkedHabits.length?`<div class="sg-section-lbl">🔥 Propojené návyky</div><div class="gh-habits-list">${linkedHabits.map(h=>`<div class="gh-habit-row"><span>${h.emoji||'🎯'}</span><span class="gh-habit-nm">${esc(h.name)}</span><span class="gh-habit-st ${todayDSg.has(h.id)?'done':''}">${todayDSg.has(h.id)?'✓':'○'}</span></div>`).join('')}</div>`:'';
-    const subsHtml=sb.length?`<div class="sg-section-lbl">📌 Podcíle</div>${sb.map(s=>{
-      const tasksHtml=(s.tasks||[]).map(t=>`<div class="task-item"><div class="task-chk ${t.done?'done':''}" onclick="togTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">${t.done?'✓':''}</div><div class="task-nm ${t.done?'done':''}">${esc(t.name)}</div><button class="btn-xs2" onclick="delTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">×</button></div>`).join('');
-      const dlTag=s.deadline?`<span class="sg-dl-tag">📅 ${fd(s.deadline)}</span>`:'';
-      return`<div class="sg-item${s.done?' sg-done':''}"><div class="sg-header"><div class="sg-chk${s.done?' done':''}" onclick="togSubDone('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="sg-info"><div class="sg-name${s.done?' done':''}">${esc(s.name)}</div>${s.description?`<div class="sg-desc-sm">${esc(s.description)}</div>`:''}<div class="sg-meta-row">${dlTag}</div></div><div class="sg-acts"><button class="btn-xs2" onclick="openSubGM('${esc(g.id)}','${esc(s.id)}')">✏️</button><button class="btn-xs2" onclick="delSubG('${esc(g.id)}','${esc(s.id)}')">🗑️</button></div></div>${tasksHtml?`<div class="tasks-list">${tasksHtml}</div>`:''}<div class="task-add-row"><input class="task-inp" id="ti-${esc(s.id)}" placeholder="Přidat úkol…" onkeydown="if(event.key==='Enter')addTask('${esc(g.id)}','${esc(s.id)}')"><button class="btn-xs2 btn-add-task" onclick="addTask('${esc(g.id)}','${esc(s.id)}')">+</button></div></div>`;
-    }).join('')}`:'';
-    const prioTag=g.priority===1?'<span class="gtag gprio-high">🔴 Vysoká</span>':g.priority===3?'<span class="gtag gprio-low">🟢 Nízká</span>':'';
-    const completedTag=g.progress>=100?'<span class="gtag" style="background:rgba(76,217,100,.15);color:var(--green);border-color:rgba(76,217,100,.3)">🎉 Splněno!</span>':'';
-    const archiveBtn=g.progress>=100&&!g.archivedGoal?`<button class="btn-p" style="width:100%;margin-top:10px;background:rgba(76,217,100,.2);color:var(--green);border:1px solid rgba(76,217,100,.3)" onclick="archiveGoal('${esc(g.id)}')">🎉 Archivovat jako splněný</button>`:'';
-    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="ghdr-r1"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm">${esc(g.name)}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="ghdr-r2"><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div><span class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</span></div><div class="ghdr-r3">${prioTag}<span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}${completedTag}<span class="gchev">${io?'▲':'▼'}</span></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${linkedHabitsHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button>${archiveBtn}</div></div>`;
-  }).join('');
-  if(archivedGoals.length){
-    c.innerHTML+=`<div style="margin-top:20px"><button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'📦 Splněné cíle (${archivedGoals.length}) ▼':'📦 Splněné cíle (${archivedGoals.length}) ▲'" style="background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:7px 18px;font-size:13px;color:var(--text3);cursor:pointer;width:100%;text-align:left">📦 Splněné cíle (${archivedGoals.length}) ▼</button><div style="display:none;margin-top:10px">${archivedGoals.map(g=>`<div class="gcard" style="opacity:.65"><div class="ghdr-r1" style="padding:14px 16px;cursor:default"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm" style="text-decoration:line-through">${esc(g.name)}</div><div class="gacts"><button class="btn-xs" title="Obnovit" onclick="unarchiveGoal('${esc(g.id)}')">↩</button></div></div></div>`).join('')}</div></div>`;
-  }
+  if (addBtn) addBtn.style.display = '';
+
+  const openSet  = new Set([...document.querySelectorAll('.gsubs.open')].map(el => el.id.replace('gs-','')));
+  const todayStr = new Date().toISOString().slice(0,10);
+  const doneToday = new Set(habitLogs.filter(l => l.date === todayStr && l.done).map(l => l.habitId));
+
+  let html = activeGoals.map(g => buildGoalCard(g, openSet, doneToday)).join('');
+  if (archivedGoals.length) html += buildArchivedSection(archivedGoals);
+
+  c.innerHTML = html;
+
   // Populate goal selector in habit form
-  const sel=document.getElementById('habit-goal-sel');
-  if(sel){
-    const cur=sel.value;
-    sel.innerHTML='<option value="">— bez cíle —</option>'+activeGoals.map(g=>`<option value="${esc(g.id)}">${g.emoji||'🌟'} ${esc(g.name)}</option>`).join('');
-    if(cur)sel.value=cur;
+  const sel = document.getElementById('habit-goal-sel');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— bez cíle —</option>'
+      + activeGoals.map(g => '<option value="' + esc(g.id) + '">' + (g.emoji||'🌟') + ' ' + esc(g.name) + '</option>').join('');
+    if (cur) sel.value = cur;
   }
 }
 
