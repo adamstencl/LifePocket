@@ -14,8 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 const CHANGELOG = [
+  { v:'4.4', items:[
+    '🏆 Cíle — přepracovaný design karty: název čitelný na celou šířku, progress bar, tagy dole',
+    '📷 Checklist — více fotek v jednom řádku: klikni 📷 vícekrát a fotky se skládají vedle sebe',
+  ]},
   { v:'4.3', items:[
     '🏆 Cíle — 3 úrovně: Dlouhodobý cíl → Podcíle (s deadlinem) → Úkoly',
     '📌 Cíle — podcíle lze upravovat, mají vlastní popis a deadline',
@@ -283,6 +287,8 @@ function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
 function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
 function genId(){return Math.random().toString(36).substr(2,9);}
+// Vrátí pole fotek pro checklist položku (kompatibilní se starým formátem item.photo)
+function getItemPhotos(item){if(item?.photos?.length)return item.photos;if(item?.photo)return[item.photo];return[];}
 
 
 // ── JOURNAL ───────────────────────────────────────────
@@ -4452,7 +4458,7 @@ function renderChecklist() {
             ` : `
               <span class="cl-item-text" onclick="expandCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
             `}
-            ${item.photo ? `<div class="cl-item-photo-wrap"><img src="${item.photo}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}')"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}')">×</button></div>` : ''}
+            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${p}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}',${i})"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}',${i})">×</button></div>`).join('')}</div>`:''}
           </div>
           ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>` : ''}
           ${!isExpanded && !item.done ? `<button class="cl-item-move" onclick="moveCheckItem('${esc(item.id)}',-1)" title="Nahoru">↑</button>` : ''}
@@ -4491,7 +4497,7 @@ window.addCheckItem = function() {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
-  if (clNewPhoto) { item.photo = clNewPhoto; clNewPhoto = null; }
+  if (clNewPhoto) { item.photos = [clNewPhoto]; clNewPhoto = null; }
   list.items.unshift(item);
   inp.value = '';
   saveChecklistDoc(list);
@@ -4570,26 +4576,37 @@ window.triggerClItemPhoto = function(itemId) {
       const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
-      if (item) { item.photo = photo; saveChecklistDoc(list); renderChecklist(); }
+      if (item) {
+        if(!item.photos){item.photos=item.photo?[item.photo]:[];delete item.photo;}
+        item.photos.push(photo);
+        saveChecklistDoc(list); renderChecklist();
+      }
     } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
     inp.value = '';
   };
   inp.click();
 };
-window.removeClItemPhoto = function(itemId) {
+window.removeClItemPhoto = function(itemId, photoIdx=0) {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
-  if (item) { delete item.photo; saveChecklistDoc(list); renderChecklist(); }
+  if (!item) return;
+  if (!item.photos) { item.photos = item.photo ? [item.photo] : []; delete item.photo; }
+  item.photos.splice(photoIdx, 1);
+  if (!item.photos.length) delete item.photos;
+  saveChecklistDoc(list); renderChecklist();
 };
-window.showClItemPhoto = function(itemId) {
+window.showClItemPhoto = function(itemId, photoIdx=0) {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   const item = list?.items.find(i => i.id === itemId);
-  if (!item?.photo) return;
+  const photos = getItemPhotos(item);
+  if (!photos.length) return;
+  const photo = photos[photoIdx] || photos[0];
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div class="moverlay open" onclick="this.remove()" style="z-index:9999">
       <div class="modal" onclick="event.stopPropagation()" style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px">
-        <img src="${item.photo}" style="max-width:100%;max-height:70vh;border-radius:12px">
+        <img src="${photo}" style="max-width:100%;max-height:70vh;border-radius:12px">
+        ${photos.length>1?`<div style="font-size:12px;color:var(--text3)">${photoIdx+1} / ${photos.length}</div>`:''}
         <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
       </div>
     </div>`
@@ -5335,7 +5352,7 @@ function rGoals(){
       const dlTag=s.deadline?`<span class="sg-dl-tag">📅 ${fd(s.deadline)}</span>`:'';
       return`<div class="sg-item${s.done?' sg-done':''}"><div class="sg-header"><div class="sg-chk${s.done?' done':''}" onclick="togSubDone('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="sg-info"><div class="sg-name${s.done?' done':''}">${esc(s.name)}</div>${s.description?`<div class="sg-desc-sm">${esc(s.description)}</div>`:''}<div class="sg-meta-row">${dlTag}</div></div><div class="sg-acts"><button class="btn-xs2" onclick="openSubGM('${esc(g.id)}','${esc(s.id)}')">✏️</button><button class="btn-xs2" onclick="delSubG('${esc(g.id)}','${esc(s.id)}')">🗑️</button></div></div>${tasksHtml?`<div class="tasks-list">${tasksHtml}</div>`:''}<div class="task-add-row"><input class="task-inp" id="ti-${esc(s.id)}" placeholder="Přidat úkol…" onkeydown="if(event.key==='Enter')addTask('${esc(g.id)}','${esc(s.id)}')"><button class="btn-xs2 btn-add-task" onclick="addTask('${esc(g.id)}','${esc(s.id)}')">+</button></div></div>`;
     }).join('')}`:'';
-    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${esc(g.name)}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gchev">${io?'▲':'▼'}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button></div></div>`;
+    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="ghdr-r1"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm">${esc(g.name)}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="ghdr-r2"><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div><span class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</span></div><div class="ghdr-r3"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}<span class="gchev">${io?'▲':'▼'}</span></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button></div></div>`;
   }).join('');
 }
 
