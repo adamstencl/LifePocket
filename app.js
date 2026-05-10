@@ -14,8 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.5';
 const CHANGELOG = [
+  { v:'4.5', items:[
+    '⚙️ Nastavení modulů — vypnutí/zapnutí modulu se nyní pamatuje přes sessions',
+    '✅ Návyky — zakliknutí hotovo/nesplněno již neposunuje obrazovku',
+  ]},
   { v:'4.4', items:[
     '🏆 Cíle — přepracovaný design karty: název čitelný na celou šířku, progress bar, tagy dole',
     '📷 Checklist — více fotek v jednom řádku: klikni 📷 vícekrát a fotky se skládají vedle sebe',
@@ -765,6 +769,8 @@ function buildHabitCard(h){
 }
 
 function renderHabits(){
+  const scrollEl=document.getElementById('abody');
+  const savedScroll=scrollEl?scrollEl.scrollTop:0;
   const lbl=document.getElementById('habit-day-lbl');
   const list=document.getElementById('habits-list');
   const empty=document.getElementById('habits-empty');
@@ -776,11 +782,15 @@ function renderHabits(){
   const archToggle = document.getElementById('habits-archive-toggle');
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
-    list.innerHTML=''; empty.style.display='flex'; return;
+    list.innerHTML=''; empty.style.display='flex';
+    requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+    return;
   }
   if(!activeHabits.length){
     list.innerHTML='<div style="color:var(--text3);font-size:14px;padding:20px;text-align:center">Všechny návyky jsou archivovány. 📦</div>';
-    empty.style.display='none'; return;
+    empty.style.display='none';
+    requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+    return;
   }
   empty.style.display='none';
 
@@ -828,6 +838,7 @@ function renderHabits(){
   });
 
   list.innerHTML=html;
+  requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
 }
 
 // ── HABIT DETAIL ──────────────────────────────────────
@@ -5367,7 +5378,17 @@ function initSet(){
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${m.name}</div><div class="togds">${m.desc}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
 }
-window.togModSet=async(id,on)=>{const ms=new Set(prof.modules||[]);on?ms.add(id):ms.delete(id);prof.modules=[...ms];await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();toast(on?`✓ ${id} zapnut`:`${id} vypnut`);};
+window.togModSet=async(id,on)=>{
+  const ms=new Set(prof.modules||[]);
+  on?ms.add(id):ms.delete(id);
+  prof.modules=[...ms];
+  try{
+    await updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules});
+    buildNav();rDash();rSetMods();
+    const modName=MODS.find(m=>m.id===id)?.name||id;
+    toast(on?`✓ ${modName} zapnut`:`${modName} vypnut`);
+  }catch(e){toast('❌ Nepodařilo se uložit: '+e.message);}
+};
 window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);rDash();initSet();toast('✓ Jméno uloženo');};
 window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);toast('✓ Kalorický cíl uložen');renderMealPlan();};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
