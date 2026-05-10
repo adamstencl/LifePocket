@@ -691,6 +691,31 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   #shop-view-toggle,#meal-view-toggle{padding:2px;gap:1px}
   #shop-toggle-shared,#shop-toggle-personal,
   #meal-toggle-shared,#meal-toggle-personal{padding:3px 8px;font-size:11px}
+
+  /* ── DOTYKOVÁ ZÓNA — datum/čas inputy ── */
+  input[type="date"].finp,input[type="time"].finp{min-height:44px}
+  input[type="date"],input[type="time"]{scroll-margin-bottom:16px}
+
+  /* ── DOTYKOVÁ ZÓNA — malá tlačítka v kartách ── */
+  .btn-xs{min-height:36px;min-width:32px;padding:6px 8px;font-size:16px}
+  .btn-xs2{min-height:36px;padding:5px 10px}
+
+  /* ── DOTYKOVÁ ZÓNA — typ události a share toggle ── */
+  .ev-type-btn{padding:10px 16px;min-height:44px;font-size:15px}
+  .vmodal-chip{padding:8px 14px;font-size:14px;min-height:40px}
+  .vmodal-area-rm{min-width:40px;min-height:40px;font-size:18px}
+
+  /* ── KALENDÁŘ — navigační šipky ── */
+  .cal-nav-btn{min-height:44px;min-width:44px}
+}
+
+/* Velmi malé obrazovky (320px telefony) */
+@media(max-width:380px){
+  .moverlay{padding:8px 6px}
+  .modal{padding:16px 12px;border-radius:14px}
+  .mtitle{font-size:18px;margin-bottom:12px}
+  .macts{gap:6px;margin-top:14px}
+  .page{padding:10px 10px 90px}
 }
 
 /* DASHBOARD */

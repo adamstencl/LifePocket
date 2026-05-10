@@ -14,8 +14,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.8';
+const APP_VERSION = '4.9';
 const CHANGELOG = [
+  { v:'4.9', items:[
+    '📱 Datum/čas picker se scrolluje do viditelné oblasti modalu (konec picker mimo obrazovku)',
+    '👆 Větší dotyková plocha — tlačítka ✏️🗑️ a typ události jsou teď pohodlnější na dotek',
+    '📐 Úzké telefony (320px) — menší padding modalu, vše se vejde na obrazovku',
+    '📅 Navigace kalendáře má minimální velikost 44px pro jistý dotyk',
+  ]},
   { v:'4.8', items:[
     '🔒 Kalendář — každá událost soukromá nebo sdílená (vyber při přidání)',
     '👤 Kalendář — u sdílených událostí vidíš kdo je přidal',
@@ -1831,6 +1837,14 @@ window.delEvent=async(id)=>{
 
 function om(id){document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')}
 function cm(id){document.getElementById(id).classList.remove('open');}
+
+// Na mobilu scrollni datum/čas input do středu modalu hned po focusu
+// — předejde situaci, kdy nativní picker vyskočí mimo viditelnou plochu
+document.addEventListener('focusin', e => {
+  if (!e.target.matches('input[type="date"],input[type="time"],input[type="datetime-local"]')) return;
+  if (!e.target.closest('.modal')) return;
+  setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'center'}), 150);
+}, true);
 
 // ── Android back button (popstate) ──────────────────────────────────────
 window.addEventListener('popstate', () => {
