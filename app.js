@@ -271,7 +271,7 @@ onAuthStateChanged(auth,async u=>{
     unsub=null; unsubHabits=null; unsubLogs=null;
     unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null; unsubFamilyChecklist=null;
     // Reset dat
-    entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[];
+    entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     ss('s-login');
   }
 });
@@ -5256,10 +5256,7 @@ window.saveSubG=async()=>{
     toast('✓ Podcíl přidán');
   }
   // Sync deadline → kalendář
-  if(deadline){
-    const g=goals.find(x=>x.id===gid);
-    await syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
-  }
+  if(deadline) await syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
   cm('m-subgoal');
   rGoals();
 };
