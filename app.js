@@ -14,8 +14,15 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 const CHANGELOG = [
+  { v:'4.3', items:[
+    '🏆 Cíle — 3 úrovně: Dlouhodobý cíl → Podcíle (s deadlinem) → Úkoly',
+    '📌 Cíle — podcíle lze upravovat, mají vlastní popis a deadline',
+    '📅 Cíle — deadline cíle/podcíle se automaticky přidá do osobního kalendáře',
+    '☑ Cíle — úkoly pod podcílem: přidat, splnit, smazat',
+    '🔧 Cíle — opravena tlačítka „Přidat první cíl" a „Přidat nový cíl"',
+  ]},
   { v:'4.2', items:[
     '🌟 Cíle — nové pole Popis/poznámka: proč, jak, motivace',
     '🌟 Cíle — kliknutím na kartu se rozbalí celý název + popis + dílčí cíle',
@@ -210,7 +217,7 @@ const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:
 const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
-let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
+let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
 let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 const claudeKey = true; // klíč je na serveru (Firebase Function), klient ho nepotřebuje
@@ -5108,25 +5115,95 @@ window.saveV=async()=>{
   if(!CU)return;const v=document.getElementById('vi-inp').value.trim();prof.vision=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);const el=document.getElementById('vtxt');if(v){el.textContent=v;el.classList.remove('empty');}else{el.textContent='Klikni a napiš svoji velkou životní vizi…';el.classList.add('empty');}cm('m-vision');toast('✓ Vize uložena');};
 function loadV(){const el=document.getElementById('vtxt');if(prof.vision){el.textContent=prof.vision;el.classList.remove('empty');}}
 
-function subGoals(){loadV();if(unsub)unsub();unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),async snap=>{goals=snap.docs.map(d=>({id:d.id,...d.data()}));for(const g of goals){if(!subs[g.id]){const ss2=await getDocs(collection(db,'users',CU.uid,'goals',g.id,'subgoals'));subs[g.id]=ss2.docs.map(d=>({id:d.id,...d.data()}));}}rGoals();rAvPage();rDash();});}
+function subGoals(){
+  loadV();
+  if(unsub)unsub();
+  unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),async snap=>{
+    goals=snap.docs.map(d=>({id:d.id,...d.data()}));
+    for(const g of goals){
+      if(!subs[g.id]){
+        const ss2=await getDocs(collection(db,'users',CU.uid,'goals',g.id,'subgoals'));
+        subs[g.id]=ss2.docs.map(d=>({id:d.id,...d.data()}));
+      }
+    }
+    rGoals();rAvPage();rDash();
+  });
+}
+
+// Synchronizace deadline → osobní kalendář
+async function syncGoalToCalendar(eventId, name, date) {
+  if(!date||!CU) return;
+  try {
+    await setDoc(doc(db,'users',CU.uid,'events',eventId),
+      {name, date, type:'event', addedBy:CU.uid, fromGoal:true, updatedAt:new Date().toISOString()},
+      {merge:true}
+    );
+  } catch(e) { console.warn('[LP] calendar sync:', e.message); }
+}
+
+async function updateGoalProgress(gid) {
+  const arr=subs[gid]||[];
+  if(!arr.length) return;
+  const pct=Math.round(arr.filter(s=>s.done).length/arr.length*100);
+  await updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});
+}
 
 window.openGM=(gid=null)=>{
-  editGId=gid;document.getElementById('gm-title').textContent=gid?'✏️ Upravit cíl':'🌟 Nový cíl';
-  if(gid){const g=goals.find(x=>x.id===gid);document.getElementById('g-name').value=g.name||'';document.getElementById('g-desc').value=g.description||'';document.getElementById('g-cat').value=g.category||'zdraví';document.getElementById('g-dl').value=g.deadline||'';document.getElementById('g-prog').value=g.progress||0;document.getElementById('g-pval').textContent=(g.progress||0)+'%';sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);}
-  else{document.getElementById('g-name').value='';document.getElementById('g-desc').value='';document.getElementById('g-cat').value='zdraví';document.getElementById('g-dl').value='';document.getElementById('g-prog').value=0;document.getElementById('g-pval').textContent='0%';sGE('🌟',null);sGC('#f5c842',null);}
+  editGId=gid;
+  document.getElementById('gm-title').textContent=gid?'✏️ Upravit cíl':'🌟 Nový cíl';
+  if(gid){
+    const g=goals.find(x=>x.id===gid);
+    document.getElementById('g-name').value=g.name||'';
+    document.getElementById('g-desc').value=g.description||'';
+    document.getElementById('g-cat').value=g.category||'zdraví';
+    document.getElementById('g-dl').value=g.deadline||'';
+    document.getElementById('g-prog').value=g.progress||0;
+    document.getElementById('g-pval').textContent=(g.progress||0)+'%';
+    sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);
+  } else {
+    document.getElementById('g-name').value='';
+    document.getElementById('g-desc').value='';
+    document.getElementById('g-cat').value='zdraví';
+    document.getElementById('g-dl').value='';
+    document.getElementById('g-prog').value=0;
+    document.getElementById('g-pval').textContent='0%';
+    sGE('🌟',null);sGC('#f5c842',null);
+  }
   om('m-goal');
 };
 window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-epick [data-e="${e}"]`);if(t)t.classList.add('sel');};
 window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
+
 window.saveG=async()=>{
-  const nm=document.getElementById('g-name').value.trim();if(!nm){toast('⚠️ Zadej název');return;}
+  const nm=document.getElementById('g-name').value.trim();
+  if(!nm){toast('⚠️ Zadej název');return;}
   const desc=document.getElementById('g-desc').value.trim();
-  const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline:document.getElementById('g-dl').value,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
-  if(editGId){await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);toast('✓ Cíl upraven');}
-  else{d.createdAt=new Date().toISOString();const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);subs[r.id]=[];toast('✓ Cíl přidán');}
+  const deadline=document.getElementById('g-dl').value;
+  const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
+  let gid=editGId;
+  if(editGId){
+    await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
+    toast('✓ Cíl upraven');
+  } else {
+    d.createdAt=new Date().toISOString();
+    const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);
+    subs[r.id]=[];
+    gid=r.id;
+    toast('✓ Cíl přidán');
+  }
+  // Sync deadline → kalendář
+  if(deadline) await syncGoalToCalendar(`goal-${gid}`, `🏆 ${nm}`, deadline);
   cm('m-goal');
 };
-window.delG=async id=>{if(!CU||!confirm('Smazat cíl?'))return;await deleteDoc(doc(db,'users',CU.uid,'goals',id));delete subs[id];toast('Cíl smazán');};
+
+window.delG=async id=>{
+  if(!CU||!confirm('Smazat cíl a všechny podcíle?'))return;
+  await deleteDoc(doc(db,'users',CU.uid,'goals',id));
+  try{await deleteDoc(doc(db,'users',CU.uid,'events',`goal-${id}`));}catch(e){}
+  delete subs[id];
+  toast('Cíl smazán');
+};
+
 window.togSubs=gid=>{
   const sub=document.getElementById('gs-'+gid);
   if(!sub)return;
@@ -5136,20 +5213,132 @@ window.togSubs=gid=>{
   const chev=card?.querySelector('.gchev');
   if(chev)chev.textContent=isOpen?'▲':'▼';
 };
-window.addSub=async gid=>{const inp=document.getElementById('si-'+gid),nm=inp.value.trim();if(!nm)return;const d={name:nm,done:false,createdAt:new Date().toISOString()};const r=await addDoc(collection(db,'users',CU.uid,'goals',gid,'subgoals'),d);if(!subs[gid])subs[gid]=[];subs[gid].push({id:r.id,...d});inp.value='';rGoals();toast('✓ Dílčí cíl přidán');};
-window.togSub=async(gid,sid)=>{
-  if(!CU)return;const s=subs[gid]?.find(x=>x.id===sid);if(!s)return;s.done=!s.done;await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});const arr=subs[gid]||[];if(arr.length>0){const pct=Math.round(arr.filter(x=>x.done).length/arr.length*100);await updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});}rGoals();};
-window.delSub=async(gid,sid)=>{
-  if(!CU)return;await deleteDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid));subs[gid]=subs[gid]?.filter(x=>x.id!==sid)||[];rGoals();};
+
+// ── Podcíle (sub-goals) ───────────────────────────────────
+window.openSubGM=(gid,sid=null)=>{
+  editSGGoalId=gid; editSGId=sid;
+  document.getElementById('sgm-title').textContent=sid?'✏️ Upravit podcíl':'📌 Nový podcíl';
+  if(sid){
+    const sg=subs[gid]?.find(s=>s.id===sid)||{};
+    document.getElementById('sg-name').value=sg.name||'';
+    document.getElementById('sg-desc').value=sg.description||'';
+    document.getElementById('sg-dl').value=sg.deadline||'';
+  } else {
+    document.getElementById('sg-name').value='';
+    document.getElementById('sg-desc').value='';
+    document.getElementById('sg-dl').value='';
+  }
+  om('m-subgoal');
+};
+
+window.saveSubG=async()=>{
+  const nm=document.getElementById('sg-name').value.trim();
+  if(!nm){toast('⚠️ Zadej název podcíle');return;}
+  const desc=document.getElementById('sg-desc').value.trim();
+  const deadline=document.getElementById('sg-dl').value;
+  const gid=editSGGoalId;
+  let sid=editSGId;
+  if(sid){
+    // Editace
+    const sg=subs[gid]?.find(s=>s.id===sid)||{};
+    const updated={...sg,name:nm,description:desc,deadline,updatedAt:new Date().toISOString()};
+    await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updated);
+    const idx=subs[gid]?.findIndex(s=>s.id===sid);
+    if(idx>=0) subs[gid][idx]=updated;
+    toast('✓ Podcíl upraven');
+  } else {
+    // Nový
+    const d={name:nm,description:desc,deadline,done:false,tasks:[],createdAt:new Date().toISOString()};
+    const r=await addDoc(collection(db,'users',CU.uid,'goals',gid,'subgoals'),d);
+    if(!subs[gid])subs[gid]=[];
+    sid=r.id;
+    subs[gid].push({id:sid,...d});
+    toast('✓ Podcíl přidán');
+  }
+  // Sync deadline → kalendář
+  if(deadline){
+    const g=goals.find(x=>x.id===gid);
+    await syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
+  }
+  cm('m-subgoal');
+  rGoals();
+};
+
+window.togSubDone=async(gid,sid)=>{
+  if(!CU)return;
+  const s=subs[gid]?.find(x=>x.id===sid);
+  if(!s)return;
+  s.done=!s.done;
+  await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});
+  await updateGoalProgress(gid);
+  rGoals();
+};
+
+window.delSubG=async(gid,sid)=>{
+  if(!CU)return;
+  await deleteDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid));
+  try{await deleteDoc(doc(db,'users',CU.uid,'events',`subgoal-${sid}`));}catch(e){}
+  subs[gid]=subs[gid]?.filter(x=>x.id!==sid)||[];
+  await updateGoalProgress(gid);
+  rGoals();
+};
+
+// ── Úkoly (tasks pod podcílem) ────────────────────────────
+window.addTask=async(gid,sid)=>{
+  const inp=document.getElementById(`ti-${sid}`);
+  const nm=inp?.value.trim();
+  if(!nm)return;
+  const sg=subs[gid]?.find(s=>s.id===sid);
+  if(!sg)return;
+  const task={id:genId(),name:nm,done:false};
+  sg.tasks=[...(sg.tasks||[]),task];
+  await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
+  inp.value='';
+  rGoals();
+};
+
+window.togTask=async(gid,sid,tid)=>{
+  const sg=subs[gid]?.find(s=>s.id===sid);
+  if(!sg)return;
+  const t=sg.tasks?.find(x=>x.id===tid);
+  if(!t)return;
+  t.done=!t.done;
+  await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
+  rGoals();
+};
+
+window.delTask=async(gid,sid,tid)=>{
+  const sg=subs[gid]?.find(s=>s.id===sid);
+  if(!sg)return;
+  sg.tasks=(sg.tasks||[]).filter(x=>x.id!==tid);
+  await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
+  rGoals();
+};
+
+// ── Render cílů ───────────────────────────────────────────
 function rGoals(){
   const c=document.getElementById('goals-list');
-  if(!goals.length){const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];c.innerHTML=`<div class="empty-st"><div style="font-size:52px">${av.emoji}</div><div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div><div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div><button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="om('m-goal')">🌟 Přidat první cíl</button></div>`;return;}
+  const addBtn=document.querySelector('.add-goal');
+  if(!goals.length){
+    const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+    c.innerHTML=`<div class="empty-st"><div style="font-size:52px">${av.emoji}</div><div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div><div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div><button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">🌟 Přidat první cíl</button></div>`;
+    if(addBtn)addBtn.style.display='none';
+    return;
+  }
+  if(addBtn)addBtn.style.display='';
   const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
   c.innerHTML=goals.map(g=>{
     const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
-    const descHtml = g.description ? `<div class="gdesc">${esc(g.description)}</div>` : '';
-    const fullNameHtml = g.name.length > 28 ? `<div class="gnm-full">${esc(g.name)}</div>` : '';
-    return`<div class="gcard ${io?'gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${esc(g.name)}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">✓ ${sd}/${sb.length}</span>`:''}${g.description?`<span class="gtag" style="color:var(--text3)">📝</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gchev">${io?'▲':'▼'}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs ${io?'open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${sb.map(s=>`<div class="si"><div class="schk ${s.done?'done':''}" onclick="togSub('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="snm ${s.done?'done':''}">${esc(s.name)}</div><button class="btn-xs" onclick="delSub('${esc(g.id)}','${esc(s.id)}')">×</button></div>`).join('')}<div class="sarow"><input class="sainp" id="si-${g.id}" placeholder="Přidat dílčí cíl…" onkeydown="if(event.key==='Enter')addSub('${esc(g.id)}')"><button class="btn-ads" onclick="addSub('${esc(g.id)}')">+ Přidat</button></div></div></div>`;
+    const totalTasks=sb.reduce((a,s)=>a+(s.tasks?.length||0),0);
+    const doneTasks=sb.reduce((a,s)=>a+(s.tasks?.filter(t=>t.done).length||0),0);
+    const descHtml=g.description?`<div class="gdesc">${esc(g.description)}</div>`:'';
+    const fullNameHtml=g.name.length>28?`<div class="gnm-full">${esc(g.name)}</div>`:'';
+    const subsHtml=sb.length?`<div class="sg-section-lbl">📌 Podcíle</div>${sb.map(s=>{
+      const tasksHtml=(s.tasks||[]).map(t=>`<div class="task-item"><div class="task-chk ${t.done?'done':''}" onclick="togTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">${t.done?'✓':''}</div><div class="task-nm ${t.done?'done':''}">${esc(t.name)}</div><button class="btn-xs2" onclick="delTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">×</button></div>`).join('');
+      const dlTag=s.deadline?`<span class="sg-dl-tag">📅 ${fd(s.deadline)}</span>`:'';
+      return`<div class="sg-item${s.done?' sg-done':''}"><div class="sg-header"><div class="sg-chk${s.done?' done':''}" onclick="togSubDone('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="sg-info"><div class="sg-name${s.done?' done':''}">${esc(s.name)}</div>${s.description?`<div class="sg-desc-sm">${esc(s.description)}</div>`:''}<div class="sg-meta-row">${dlTag}</div></div><div class="sg-acts"><button class="btn-xs2" onclick="openSubGM('${esc(g.id)}','${esc(s.id)}')">✏️</button><button class="btn-xs2" onclick="delSubG('${esc(g.id)}','${esc(s.id)}')">🗑️</button></div></div>${tasksHtml?`<div class="tasks-list">${tasksHtml}</div>`:''}<div class="task-add-row"><input class="task-inp" id="ti-${esc(s.id)}" placeholder="Přidat úkol…" onkeydown="if(event.key==='Enter')addTask('${esc(g.id)}','${esc(s.id)}')"><button class="btn-xs2 btn-add-task" onclick="addTask('${esc(g.id)}','${esc(s.id)}')">+</button></div></div>`;
+    }).join('')}`:'';
+    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="ginf"><div class="gnm">${esc(g.name)}</div><div class="gmeta"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}</div></div><div class="gpw"><div class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</div><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div></div><div class="gchev">${io?'▲':'▼'}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button></div></div>`;
   }).join('');
 }
 

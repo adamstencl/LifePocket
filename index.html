@@ -998,6 +998,16 @@
   </div>
 </div>
 
+<div class="moverlay" id="m-subgoal">
+  <div class="modal">
+    <div class="mtitle" id="sgm-title">📌 Nový podcíl</div>
+    <div class="fg"><label class="flbl">Název podcíle</label><input class="finp" type="text" id="sg-name" placeholder="Dokončit kurz, Ušetřit 50 000 Kč…" maxlength="80"></div>
+    <div class="fg"><label class="flbl">Popis <span style="color:var(--text3);font-weight:400">(volitelné)</span></label><textarea class="finp" id="sg-desc" rows="2" placeholder="Co konkrétně chceš dosáhnout…" style="resize:none;font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5"></textarea></div>
+    <div class="fg"><label class="flbl">Deadline <span style="color:var(--text3);font-weight:400">(volitelné — přidá se do kalendáře)</span></label><input class="finp" type="date" id="sg-dl"></div>
+    <div class="macts"><button class="btn-s" onclick="cm('m-subgoal')">Zrušit</button><button class="btn-p" onclick="saveSubG()">Uložit podcíl</button></div>
+  </div>
+</div>
+
 <div class="moverlay" id="m-avchange">
   <div class="modal">
     <div class="mtitle">🔄 Změnit společníka</div>
