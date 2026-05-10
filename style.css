@@ -354,6 +354,9 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .vmodal-chip{background:var(--card2);border:1px dashed var(--border2);border-radius:20px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:all .2s;font-family:'Crimson Pro',serif}
 .vmodal-chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,.08)}
 
+/* Event author */
+.ev-author{font-size:11px;color:var(--text3);margin-top:2px}
+
 /* AVATAR PAGE */
 .avhero{text-align:center;padding:28px 20px 24px}
 .avhem{font-size:80px;line-height:1;margin-bottom:14px;display:block;animation:af 3s ease-in-out infinite}

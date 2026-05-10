@@ -14,8 +14,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.7';
+const APP_VERSION = '4.8';
 const CHANGELOG = [
+  { v:'4.8', items:[
+    '🔒 Kalendář — každá událost soukromá nebo sdílená (vyber při přidání)',
+    '👤 Kalendář — u sdílených událostí vidíš kdo je přidal',
+    '👥 Skupiny — více skupin najednou: sdílej moduly s různými lidmi',
+    '📅 Kamarádi mají jen kalendář, žena má nákupy — každá skupina sdílí jinak',
+  ]},
   { v:'4.7', items:[
     '✦ Vize — oblasti jsou teď volitelné: přidáš jen ty, co jsou pro tebe důležité',
     '✨ Vize — vlastní oblasti: přidej libovolnou oblast nad rámec 8 výchozích',
@@ -301,8 +307,11 @@ onAuthStateChanged(auth,async u=>{
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
+    Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
+    Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
     unsub=null; unsubHabits=null; unsubLogs=null;
     unsubFamily=null; unsubFamilyShop=null; unsubFamilyCal=null; unsubFamilyMeal=null; unsubFamilyChecklist=null;
+    extraGroupIds=[]; extraGroupsData={}; extraGroupEvents={}; unsubExtraGroupDocs={}; unsubExtraGroupCals={};
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     ss('s-login');
@@ -1509,14 +1518,14 @@ function getEventsForDate(ds){
     if(ev.dateEnd) return ds>=ev.date && ds<=ev.dateEnd;
     return ev.date===ds;
   };
-  return [...events.filter(match), ...familyEvents.filter(match)];
+  return [...events.filter(match), ...getAllFamilyEvents().filter(match)];
 }
 
 function getUpcoming14(){
   const today=new Date(); today.setHours(0,0,0,0);
   const future=new Date(today); future.setDate(future.getDate()+14);
   const result=[];
-  [...events, ...familyEvents].forEach(ev=>{
+  [...events, ...getAllFamilyEvents()].forEach(ev=>{
     let evDate=new Date(ev.date+'T12:00:00');
     if(ev.repeat==='yes'){
       const thisYear=new Date(today.getFullYear(),evDate.getMonth(),evDate.getDate());
@@ -1536,17 +1545,20 @@ function renderEvList(){
   const container=document.getElementById('cal-events-list');
   if(!container)return;
   if(!allEvents.length){container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">Žádné události v příštích 14 dnech</div>';return;}
-  container.innerHTML=allEvents.map(ev=>`
-    <div class="ev-card">
-      <div class="ev-icon">${EV_ICONS[ev.type]||'📌'}</div>
-      <div class="ev-info">
-        <div class="ev-name">${esc(ev.name)}${ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 rodina</span>':''}</div>
-        <div class="ev-date">${ev.dateEnd
-          ? ev._date.toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})+' – '+new Date(ev.dateEnd+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})
-          : ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'})}${ev.time?' · '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
-      </div>
-      ${!ev.shared?`<button class="ev-del" onclick="delEvent('${esc(ev.id)}')">🗑️</button>`:''}
-    </div>`).join('');
+  container.innerHTML=allEvents.map(ev=>{
+    const author=getEventAuthorName(ev);
+    return '<div class="ev-card">'
+      +'<div class="ev-icon">'+(EV_ICONS[ev.type]||'📌')+'</div>'
+      +'<div class="ev-info">'
+      +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
+      +'<div class="ev-date">'+(ev.dateEnd
+        ?ev._date.toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})+' – '+new Date(ev.dateEnd+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})
+        :ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'}))+(ev.time?' · '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
+      +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
+      +'</div>'
+      +'<button class="ev-del" onclick="delEvent(\''+esc(ev.id)+'\')">🗑️</button>'
+      +'</div>';
+  }).join('');
 }
 
 window.calPrev=()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();};
@@ -1666,6 +1678,7 @@ window.calDayClick=(ds)=>{
     document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
     const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
     document.getElementById('m-event').querySelector('.mtitle').textContent='📅 Nová událost';
+    updateEvShareUI(false);
     om('m-event');
     setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
   }
@@ -1676,16 +1689,18 @@ function showDayEventsModal(ds, dayEvs) {
   document.getElementById('m-day-events')?.remove();
   const date = new Date(ds + 'T12:00:00');
   const dateLabel = date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const evHtml = dayEvs.map(ev=>`
-    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">
-      <div style="font-size:22px">${EV_ICONS[ev.type]||'📌'}</div>
-      <div style="flex:1">
-        <div style="font-weight:600;color:var(--text1)">${ev.name}</div>
-        <div style="font-size:12px;color:var(--text3)">${EV_LABELS[ev.type]||'Událost'}${ev.time?' · ⏰ '+ev.time:''}${ev.repeat==='yes'?' · každý rok':''}</div>
-      </div>
-      <button onclick="openEditEvent(${JSON.stringify(ev).replace(/"/g,'&quot;')});document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>
-      <button onclick="delEvent('${esc(ev.id)}');document.getElementById('m-day-events')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>
-    </div>`).join('');
+  const evHtml = dayEvs.map(ev=>{
+    const author=getEventAuthorName(ev);
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
+      +'<div style="font-size:22px">'+(EV_ICONS[ev.type]||'📌')+'</div>'
+      +'<div style="flex:1">'
+      +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+(EV_LABELS[ev.type]||'Událost')+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
+      +'</div>'
+      +'<button onclick="openEditEvent('+JSON.stringify(ev).replace(/"/g,'&quot;')+');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
+      +'<button onclick="delEvent(\''+esc(ev.id)+'\');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
+      +'</div>';
+  }).join('');
   const modal = document.createElement('div');
   modal.className='moverlay open';
   modal.id='m-day-events';
@@ -1712,6 +1727,7 @@ window.addEventForDay = (ds) => {
   document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === 'event'));
   const ri = document.getElementById('ev-repeat-inp'); if(ri) ri.value = 'no';
   document.getElementById('m-event').querySelector('.mtitle').textContent = '📅 Nová událost';
+  updateEvShareUI(false);
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
@@ -1735,6 +1751,7 @@ window.openEditEvent = function(ev) {
     if(er) er.style.display = 'none';
   }
   document.getElementById('m-event').querySelector('.mtitle').textContent = '✏️ Upravit událost';
+  updateEvShareUI(!!(ev.shared));
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
@@ -1750,6 +1767,7 @@ window.openEvModal=()=>{
   const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
   selEvType_val='event';
   document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
+  updateEvShareUI(false);
   om('m-event');
 };
 
@@ -1776,13 +1794,15 @@ window.saveEvent=async()=>{
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
   if(editingEventId) {
-    const inFamily = familyEvents.some(e => e.id === editingEventId);
+    const allFamEvs = getAllFamilyEvents();
+    const inFamily = allFamEvs.some(e => e.id === editingEventId);
+    const editGroupId = allFamEvs.find(e => e.id === editingEventId)?.groupId || familyId;
     const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
     if(time) evUpdate.time = time;
     if(dateEnd) evUpdate.dateEnd = dateEnd;
     try {
-      if(inFamily && familyId) {
-        await setDoc(doc(db,'families',familyId,'events',editingEventId), evUpdate);
+      if(inFamily && editGroupId) {
+        await setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate);
       } else {
         await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
       }
@@ -1790,8 +1810,8 @@ window.saveEvent=async()=>{
     editingEventId = null;
     toast('✓ Událost upravena');
   } else {
-    if(isCalShared()) {
-      await addDoc(collection(db,'families',familyId,'events'),ev);
+    if(selEvShare && selEvShareGroupId) {
+      await addDoc(collection(db,'families',selEvShareGroupId,'events'),ev);
     } else {
       await addDoc(collection(db,'users',CU.uid,'events'),ev);
     }
@@ -1802,9 +1822,8 @@ window.saveEvent=async()=>{
 
 window.delEvent=async(id)=>{
   if(!CU||!confirm('Smazat událost?'))return;
-  // Zkus smazat z rodiny i z osobního — v jednom existuje
-  const delPromises = [];
-  if(isCalShared()) delPromises.push(deleteDoc(doc(db,'families',familyId,'events',id)).catch(()=>{}));
+  const allGids = [familyId, ...extraGroupIds].filter(Boolean);
+  const delPromises = allGids.map(gid => deleteDoc(doc(db,'families',gid,'events',id)).catch(()=>{}));
   delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
   await Promise.all(delPromises);
   toast('Smazáno');
@@ -3645,8 +3664,67 @@ window.setMealView = (mode) => { mealViewMode = mode; renderMealPlan(); };
 let shopViewMode = 'shared'; // 'shared' | 'personal'
 window.setShopView = (mode) => { shopViewMode = mode; renderShop(); };
 function isShopShared() { return !!(familyId && familyData?.shareShop && shopViewMode === 'shared'); }
-function isCalShared() { return !!(familyId && familyData?.shareCal); }
-let familyEvents = [];
+function isCalShared() {
+  return !!(familyId && familyData?.shareCal) ||
+         extraGroupIds.some(gid => !!(extraGroupsData[gid]?.shareCal));
+}
+let familyEvents = []; // primary group cal events
+let extraGroupIds = []; // additional group IDs
+let extraGroupsData = {}; // { gid: groupData }
+let extraGroupEvents = {}; // { gid: events[] }
+let unsubExtraGroupDocs = {}; // { gid: unsubFn }
+let unsubExtraGroupCals = {}; // { gid: unsubFn }
+let selEvShare = false; // event modal share toggle
+let selEvShareGroupId = null; // which group to share event to
+
+function getAllFamilyEvents() {
+  return [...familyEvents, ...Object.values(extraGroupEvents).flat()];
+}
+function getCalShareGroups() {
+  const groups = [];
+  if (familyId && familyData?.shareCal) groups.push({id: familyId, name: familyData?.groupName || 'Skupina'});
+  for (const gid of extraGroupIds) {
+    if (extraGroupsData[gid]?.shareCal) groups.push({id: gid, name: extraGroupsData[gid]?.groupName || 'Skupina'});
+  }
+  return groups;
+}
+function getEventAuthorName(ev) {
+  if (!ev.addedBy || ev.addedBy === CU?.uid) return null;
+  const allGDs = [familyData, ...Object.values(extraGroupsData)].filter(Boolean);
+  for (const gd of allGDs) {
+    if (gd?.members?.[ev.addedBy]) return gd.members[ev.addedBy].name || 'Člen';
+  }
+  return 'Člen';
+}
+function updateEvShareUI(isShared) {
+  const row = document.getElementById('ev-share-row');
+  if (!row) return;
+  const shareGroups = getCalShareGroups();
+  if (!shareGroups.length) { row.style.display = 'none'; return; }
+  row.style.display = '';
+  selEvShare = isShared;
+  selEvShareGroupId = isShared ? (shareGroups[0]?.id || null) : null;
+  document.querySelectorAll('.ev-share-btn').forEach(b =>
+    b.classList.toggle('sel', (b.dataset.s === '1') === isShared)
+  );
+  const grpSel = document.getElementById('ev-share-group-sel');
+  if (grpSel) {
+    if (isShared && shareGroups.length > 1) {
+      grpSel.style.display = '';
+      grpSel.innerHTML = shareGroups.map(g =>
+        '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>'
+      ).join('');
+      selEvShareGroupId = shareGroups[0].id;
+    } else {
+      grpSel.style.display = 'none';
+    }
+  }
+}
+window.setEvShare = (shared) => updateEvShareUI(shared);
+window.onEvShareGroupChange = () => {
+  const sel = document.getElementById('ev-share-group-sel');
+  if (sel) selEvShareGroupId = sel.value || null;
+};
 
 function genFamilyCode() {
   const words = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
@@ -3751,14 +3829,96 @@ window.saveFamilyPrefs = async () => {
   if(shareChecklist) syncChecklistToFamily();
 };
 
-window.toggleFamilyModule = async (key) => {
-  if(!familyId || !familyData) return;
-  const newVal = !familyData[key];
-  familyData[key] = newVal;
-  await setDoc(doc(db,'families',familyId), {[key]: newVal}, {merge:true});
-  if(key==='shareShop' && newVal) syncShopToFamily();
-  if(key==='shareChecklist' && newVal) syncChecklistToFamily();
+window.toggleFamilyModule = async (key, gid = null) => {
+  const targetGid = gid || familyId;
+  const targetData = gid ? extraGroupsData[gid] : familyData;
+  if(!targetGid || !targetData) return;
+  const newVal = !targetData[key];
+  targetData[key] = newVal;
+  await setDoc(doc(db,'families',targetGid), {[key]: newVal}, {merge:true});
+  if(!gid) {
+    if(key==='shareShop' && newVal) syncShopToFamily();
+    if(key==='shareChecklist' && newVal) syncChecklistToFamily();
+  }
+  // Handle extra group cal subscription changes
+  if(gid && key === 'shareCal') {
+    if(newVal && !unsubExtraGroupCals[gid]) {
+      unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap => {
+        extraGroupEvents[gid] = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
+        renderCal();
+      });
+    } else if(!newVal && unsubExtraGroupCals[gid]) {
+      unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid];
+      delete extraGroupEvents[gid]; renderCal();
+    }
+  }
   renderFamilySettings();
+};
+
+window.showExtraGroupForm = () => {
+  const form = document.getElementById('extra-group-form');
+  if(form) form.style.display = form.style.display === 'none' ? '' : 'none';
+};
+window.createExtraGroup = async () => {
+  if(!CU) return;
+  const inp = document.getElementById('extra-group-name-inp');
+  const groupName = (inp?.value || '').trim() || 'Nová skupina';
+  const code = genFamilyCode();
+  const data = {
+    code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
+    members: { [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName||'Já', avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
+    shareShop: false, shareCal: true, shareMeal: false, shareChecklist: false
+  };
+  await setDoc(doc(db,'families',code), data);
+  extraGroupIds = [...extraGroupIds, code];
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+  prof.extraGroupIds = extraGroupIds;
+  subscribeExtraGroup(code);
+  document.getElementById('extra-group-form').style.display = 'none';
+  if(inp) inp.value = '';
+  renderFamilySettings();
+  toast('✅ Skupina "' + groupName + '" vytvořena! Kód: ' + code);
+};
+window.joinExtraGroup = async () => {
+  if(!CU) return;
+  const inp = document.getElementById('extra-group-join-code');
+  const code = (inp?.value || '').trim().toUpperCase();
+  if(code.length < 4) { toast('⚠️ Zadej kód skupiny'); return; }
+  if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return; }
+  const fSnap = await getDoc(doc(db,'families',code));
+  if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return; }
+  const fData = fSnap.data();
+  if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return; }
+  await updateDoc(doc(db,'families',code), {
+    ['members.' + CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName||'Já', avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
+  });
+  extraGroupIds = [...extraGroupIds, code];
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+  prof.extraGroupIds = extraGroupIds;
+  subscribeExtraGroup(code);
+  document.getElementById('extra-group-form').style.display = 'none';
+  if(inp) inp.value = '';
+  renderFamilySettings();
+  toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
+};
+window.leaveExtraGroup = async (gid) => {
+  if(!confirm('Opustit skupinu?')) return;
+  try {
+    const fSnap = await getDoc(doc(db,'families',gid));
+    if(fSnap.exists()) {
+      const members = {...(fSnap.data().members||{})};
+      delete members[CU.uid];
+      await setDoc(doc(db,'families',gid), {members}, {merge:true});
+    }
+  } catch(e){}
+  extraGroupIds = extraGroupIds.filter(id => id !== gid);
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+  prof.extraGroupIds = extraGroupIds;
+  if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
+  if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
+  delete extraGroupsData[gid]; delete extraGroupEvents[gid];
+  renderFamilySettings(); renderCal();
+  toast('Skupinu opuštěna');
 };
 
 window.removeFamilyMember = async (uid) => {
@@ -3772,8 +3932,27 @@ window.removeFamilyMember = async (uid) => {
   toast('✓ Člen odebrán');
 };
 
+function subscribeExtraGroup(gid) {
+  if (unsubExtraGroupDocs[gid]) return;
+  unsubExtraGroupDocs[gid] = onSnapshot(doc(db,'families',gid), snap => {
+    if (!snap.exists()) return;
+    extraGroupsData[gid] = snap.data();
+    // Subscribe to cal events if shareCal enabled
+    if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
+      unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap2 => {
+        extraGroupEvents[gid] = snap2.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
+        renderCal();
+      });
+    }
+    renderFamilySettings();
+  });
+}
+
 function subscribeFamily() {
   if(!familyId) return;
+  // Subscribe to extra groups from profile
+  extraGroupIds = prof.extraGroupIds || [];
+  for (const gid of extraGroupIds) subscribeExtraGroup(gid);
 
   // Sleduj data skupiny (členové)
   unsubFamily = onSnapshot(doc(db,'families',familyId), snap => {
@@ -3862,61 +4041,99 @@ window.toggleChecklistShare = async function(listId) {
   renderChecklist();
 };
 
-function renderFamilySettings() {
-  const noGroup = document.getElementById('family-no-group');
-  const groupView = document.getElementById('family-group-view');
-  if(!noGroup || !groupView) return;
-
-  if(!familyId || !familyData) {
-    noGroup.style.display = 'block';
-    groupView.style.display = 'none';
-    return;
-  }
-  noGroup.style.display = 'none';
-  groupView.style.display = 'block';
-
-  const fgn = document.getElementById('family-group-name-display');
-  if(fgn) {
-    const gn = familyData.groupName || 'Moje skupina';
-    fgn.innerHTML = `${gn} <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px" title="Přejmenovat">✏️</button>`;
-  }
-
-  const fcd = document.getElementById('family-code-display');
-  if(fcd) fcd.textContent = familyId;
-
-  // Členové
-  const members = familyData.members || {};
+function buildGroupCard(gid, gData, isPrimary) {
+  const members = gData.members || {};
   const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
   const isAdmin = members[CU?.uid]?.role === 'admin';
-  const fml = document.getElementById('family-members-list');
-  if(fml) fml.innerHTML = `
-    <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Členové (${Object.keys(members).length})</div>
-    ${Object.entries(members).map(([uid,m])=>`
-    <div class="family-member">
-      <div class="family-member-av">${avs[m.avatar]||'👤'}</div>
-      <div class="family-member-info">
-        <div class="family-member-name">${m.name||'Člen'}${uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':''}</div>
-        <div class="family-member-role">${m.role==='admin'?'Správce':'Člen'} · připojen ${new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
-      </div>
-      ${isAdmin && uid !== CU?.uid ? `<button onclick="removeFamilyMember('${uid}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7" title="Odebrat člena">✕</button>` : ''}
-    </div>`).join('')}`;
-
-  // Moduly — kartičky s toggle
   const shareModules = [
-    {key:'shareShop', emoji:'🛒', label:'Nákupní seznam', val: familyData.shareShop!==false},
-    {key:'shareCal',  emoji:'📅', label:'Kalendář',       val: familyData.shareCal!==false},
-    {key:'shareMeal', emoji:'🥗', label:'Jídelníček',     val: familyData.shareMeal!==false},
-    {key:'shareChecklist', emoji:'📋', label:'Checklist', val: familyData.shareChecklist!==false},
+    {key:'shareShop', emoji:'🛒', label:'Nákupy', val: !!gData.shareShop},
+    {key:'shareCal',  emoji:'📅', label:'Kalendář', val: !!gData.shareCal},
+    {key:'shareMeal', emoji:'🥗', label:'Jídelníček', val: !!gData.shareMeal},
+    {key:'shareChecklist', emoji:'📋', label:'Checklist', val: gData.shareChecklist !== false && !!gData.shareChecklist},
   ];
-  const fsm = document.getElementById('family-share-modules');
-  if(fsm) fsm.innerHTML = shareModules.map(m=>`
-    <div class="fshare-mod-row" onclick="toggleFamilyModule('${m.key}')" style="cursor:pointer">
-      <span style="font-size:20px">${m.emoji}</span>
-      <span style="flex:1;font-size:14px;color:var(--text1)">${m.label}</span>
-      <div class="fshare-toggle ${m.val?'on':''}">
-        <div class="fshare-thumb"></div>
-      </div>
-    </div>`).join('');
+  const gidParam = isPrimary ? 'null' : '\'' + gid + '\'';
+  const membersHtml = Object.entries(members).map(([uid,m])=>
+    '<div class="family-member">'
+    +'<div class="family-member-av">'+(avs[m.avatar]||'👤')+'</div>'
+    +'<div class="family-member-info">'
+    +'<div class="family-member-name">'+(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
+    +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
+    +'</div>'
+    +(isAdmin&&uid!==CU?.uid?'<button onclick="removeFamilyMember(\''+uid+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
+    +'</div>'
+  ).join('');
+  const modsHtml = shareModules.map(m=>
+    '<div class="fshare-mod-row" onclick="toggleFamilyModule(\''+m.key+'\','+gidParam+')" style="cursor:pointer">'
+    +'<span style="font-size:18px">'+m.emoji+'</span>'
+    +'<span style="flex:1;font-size:14px;color:var(--text1)">'+m.label+'</span>'
+    +'<div class="fshare-toggle '+(m.val?'on':'')+'"><div class="fshare-thumb"></div></div>'
+    +'</div>'
+  ).join('');
+  const leaveBtn = isPrimary
+    ? '<button onclick="leaveFamily()" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>'
+    : '<button onclick="leaveExtraGroup(\''+gid+'\')" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>';
+  const nameLabel = (gData.groupName || 'Skupina') + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">⭐ hlavní</span>' : '');
+  const renameBtn = isPrimary ? ' <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px">✏️</button>' : '';
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
+    +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
+    +'<div class="family-code-box" style="margin-bottom:12px">'
+    +'<div class="family-code">'+gid+'</div>'
+    +'<div class="family-code-lbl">Pošli tento kód ostatním členům</div>'
+    +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
+    +'<button onclick="navigator.clipboard.writeText(\''+gid+'\').then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
+    +'<button onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: '+gid+'\',url:\'https://adamstencl.github.io/LifePocket/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
+    +'</div></div>'
+    +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
+    +membersHtml
+    +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">Sdílené moduly</div>'
+    +modsHtml
+    +leaveBtn
+    +'</div>';
+}
+
+function renderFamilySettings() {
+  const section = document.getElementById('family-section');
+  if(!section) return;
+  const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+
+  const noGroup = document.getElementById('family-no-group');
+  const groupView = document.getElementById('family-group-view');
+
+  if(!familyId || !familyData) {
+    if(noGroup) noGroup.style.display = 'block';
+    if(groupView) groupView.style.display = 'none';
+    // Hide extra groups section
+    const eg = document.getElementById('family-extra-groups');
+    if(eg) eg.innerHTML = '';
+    return;
+  }
+  if(noGroup) noGroup.style.display = 'none';
+  if(groupView) groupView.style.display = 'none'; // We use dynamic rendering below
+
+  // Render all groups dynamically into family-extra-groups container
+  const eg = document.getElementById('family-extra-groups');
+  if(!eg) return;
+
+  let html = buildGroupCard(familyId, familyData, true);
+
+  // Extra groups
+  for(const gid of extraGroupIds) {
+    const gData = extraGroupsData[gid];
+    if(gData) html += buildGroupCard(gid, gData, false);
+  }
+
+  // "Přidat skupinu" section
+  html += '<div id="extra-group-form" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">'
+    +'<div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">➕ Nová skupina</div>'
+    +'<input class="finp" id="extra-group-name-inp" placeholder="Název skupiny (Kamarádi, Spolubydlící…)" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
+    +'<button class="btn-p" onclick="createExtraGroup()" style="width:100%;margin-bottom:10px">Vytvořit skupinu</button>'
+    +'<div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">— nebo připojit se kódem —</div>'
+    +'<input class="finp" id="extra-group-join-code" placeholder="XXXX-1234" maxlength="9" oninput="this.value=this.value.toUpperCase()" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
+    +'<button class="btn-sv" onclick="joinExtraGroup()" style="width:100%">Připojit se →</button>'
+    +'</div>'
+    +'<button onclick="showExtraGroupForm()" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:\'Crimson Pro\',serif;font-size:14px;cursor:pointer">➕ Přidat skupinu</button>';
+
+  eg.innerHTML = html;
 }
 
 window.renameFamilyGroup = async () => {
@@ -4793,6 +5010,7 @@ async function initApp(){
   setInterval(checkAutoWeeklyReport,3600000); // opakuj každou hodinu (v neděli spustí report)
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
+  else if(prof.extraGroupIds?.length){extraGroupIds=prof.extraGroupIds;for(const gid of extraGroupIds)subscribeExtraGroup(gid);}
 }
 
 function buildNav(){

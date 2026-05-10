@@ -854,8 +854,8 @@
       </div>
 
       <div class="setsec">
-        <div class="setsec-t">👨‍👩‍👧 Rodina &amp; sdílení</div>
-        <div class="setsec-d">Sdílej nákupní seznam, jídelníček a kalendář s partnerem nebo rodinou.</div>
+        <div class="setsec-t">👨‍👩‍👧 Skupiny &amp; sdílení</div>
+        <div class="setsec-d">Sdílej moduly s různými lidmi. Každá skupina sdílí jen to, co chceš — kalendář s kamarády, nákupy jen se ženou.</div>
         <div id="family-section">
           <div id="family-no-group">
             <div style="margin-bottom:10px">
@@ -873,23 +873,8 @@
               <button class="btn-sv" onclick="joinFamily()" style="flex:1">Připojit se →</button>
             </div>
           </div>
-          <div id="family-group-view" style="display:none">
-            <div class="family-code-box">
-              <div id="family-group-name-display" style="font-family:'Playfair Display',serif;font-size:18px;color:var(--accent);font-weight:700;margin-bottom:6px"></div>
-              <div class="family-code" id="family-code-display">—</div>
-              <div class="family-code-lbl">Pošli tento kód partnerovi/partnerce</div>
-              <div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">
-                <button onclick="copyFamilyCode()" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:&#39;Crimson Pro&#39;,serif;font-size:13px">📋 Kopírovat</button>
-                <button onclick="shareFamilyCode()" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:&#39;Crimson Pro&#39;,serif;font-size:13px;font-weight:700">📤 Sdílet</button>
-              </div>
-            </div>
-            <div id="family-members-list"></div>
-            <div style="margin-top:14px">
-              <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Sdílené moduly</div>
-              <div id="family-share-modules"></div>
-            </div>
-            <button onclick="leaveFamily()" style="margin-top:14px;background:none;border:1px solid var(--red);border-radius:8px;padding:7px 16px;color:var(--red);cursor:pointer;font-family:'Crimson Pro',serif;font-size:13px;width:100%">Opustit skupinu</button>
-          </div>
+          <div id="family-group-view" style="display:none"></div>
+          <div id="family-extra-groups"></div>
         </div>
         <div class="setsec-t">☕ Podpořit projekt</div>
         <div class="setsec-d">LifePocket vznikl jako osobní projekt a zůstává zdarma a bez reklam. Každý příspěvek pomáhá pokrýt náklady na provoz a motivuje k dalšímu vývoji nových funkcí. Pokud ti appka usnadňuje každodenní život, budu rád za jakoukoli podporu. Díky moc! 🙏</div>
@@ -1066,6 +1051,14 @@
           <option value="yes">Ano (narozeniny, výročí…)</option>
         </select>
       </div>
+    </div>
+    <div class="fg" id="ev-share-row" style="display:none">
+      <label class="flbl">👁️ Viditelnost</label>
+      <div class="ev-type-row">
+        <button class="ev-share-btn ev-type-btn sel" data-s="0" onclick="setEvShare(false)">🔒 Soukromá</button>
+        <button class="ev-share-btn ev-type-btn" data-s="1" onclick="setEvShare(true)">👨‍👩‍👧 Sdílená</button>
+      </div>
+      <select class="finp" id="ev-share-group-sel" style="display:none;margin-top:6px" onchange="onEvShareGroupChange()"></select>
     </div>
     <div class="macts">
       <button class="btn-s" onclick="resetAndCloseEventModal()">Zrušit</button>
