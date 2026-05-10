@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.9';
+const APP_VERSION = '4.10';
 const CHANGELOG = [
+  { v:'4.10', items:[
+    '🐛 Opraveno přidávání vize — oblast "Osobní rozvoj" se správně ukládá i načítá',
+  ]},
   { v:'4.9', items:[
     '📱 Datum/čas picker se scrolluje do viditelné oblasti modalu (konec picker mimo obrazovku)',
     '👆 Větší dotyková plocha — tlačítka ✏️🗑️ a typ události jsou teď pohodlnější na dotek',
@@ -5487,11 +5490,13 @@ window.setDailyMood = function(emoji) {
 };
 
 // ── Vision modal helpers ──
+// Sanitize a Firestore key for use as a DOM id (spaces not allowed in HTML ids)
+function vDomId(key){ return 'vi-'+key.replace(/\s+/g,'_'); }
 function saveVmCurrentTexts(){
   if(!vmState)return;
   const areas=prof.visionAreas||{};
   for(const key of vmState.activeKeys){
-    const el=document.getElementById('vi-'+key);
+    const el=document.getElementById(vDomId(key));
     if(el)areas[key]=el.value;
   }
   prof.visionAreas=areas;
@@ -5516,7 +5521,7 @@ function renderVisionModal(){
       +'<span class="vmodal-area-lbl">'+esc(lbl)+'</span>'
       +'<button class="vmodal-area-rm" onclick="vmRemoveArea(\''+esc(key)+'\')" title="Odebrat">✕</button>'
       +'</div>'
-      +'<textarea class="finp" id="vi-'+esc(key)+'" rows="2" style="resize:none" placeholder="'+esc(ph)+'">'+val+'</textarea>'
+      +'<textarea class="finp" id="'+vDomId(key)+'" rows="2" style="resize:none" placeholder="'+esc(ph)+'">'+val+'</textarea>'
       +'</div>';
   }
   // Chips for inactive default areas
@@ -5589,7 +5594,7 @@ window.saveV=async()=>{
   const areas={};
   const customAreaLabels={};
   for(const key of vmState.activeKeys){
-    const el=document.getElementById('vi-'+key);
+    const el=document.getElementById(vDomId(key));
     const val=el?el.value.trim():((prof.visionAreas||{})[key]||'');
     if(val)areas[key]=val;
   }
