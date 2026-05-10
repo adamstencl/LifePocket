@@ -14,8 +14,17 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 const CHANGELOG = [
+  { v:'4.6', items:[
+    '🏆 Propojení návyk → cíl: každý návyk lze napojit na cíl — vidíš proč na sobě pracuješ',
+    '✦ Vize po oblastech: zdraví, kariéra, rodina, finance… každá oblast má vlastní vizi',
+    '⏸ Pauza návyku: dovolená nebo nemoc? Pozastav na 3 dny–měsíc, streak se nezlomí',
+    '🏆 Nejlepší série: detailní statistiky návyku + výkon za 30/60/90 dní',
+    '🎉 Splněný cíl: 100% progress → nabídne archivaci s oslavou',
+    '🔴🟡🟢 Priorita cíle: označ důležité cíle, automatické řazení',
+    '⏭ Přeskočit den: záměrné přeskočení (ne nesplnění) — nezlomí streak',
+  ]},
   { v:'4.5', items:[
     '⚙️ Nastavení modulů — vypnutí/zapnutí modulu se nyní pamatuje přes sessions',
     '✅ Návyky — zakliknutí hotovo/nesplněno již neposunuje obrazovku',
@@ -209,6 +218,16 @@ const AVS=[
   {id:'nora',emoji:'🏡',name:'Nora',vibe:'Teplo domova,\npéče o blízké.'},
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
+const AREAS=[
+  {id:'zdraví',key:'zdravi',emoji:'💪',label:'Zdraví'},
+  {id:'práce',key:'prace',emoji:'💼',label:'Práce & kariéra'},
+  {id:'rodina',key:'rodina',emoji:'👨‍👩‍👧',label:'Rodina'},
+  {id:'finance',key:'finance',emoji:'💰',label:'Finance'},
+  {id:'vzdělání',key:'vzdelani',emoji:'📚',label:'Vzdělání'},
+  {id:'vztahy',key:'vztahy',emoji:'❤️',label:'Vztahy'},
+  {id:'koníčky',key:'konicky',emoji:'🎨',label:'Koníčky'},
+  {id:'osobní rozvoj',key:'rozvoj',emoji:'🌱',label:'Osobní rozvoj'},
+];
 const MODS=[
   {id:'rex',emoji:'🤖',name:'AI asistent',desc:'Chat s tvým osobním AI průvodcem — rady, motivace, odpovědi na cokoliv.'},
   {id:'habits',emoji:'🔥',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
@@ -225,7 +244,7 @@ const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:
 const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
-let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',chatH=[],unsub=null,mood='',tmpAv='';
+let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',gPriority=2,chatH=[],unsub=null,mood='',tmpAv='';
 let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 const claudeKey = true; // klíč je na serveru (Firebase Function), klient ho nepotřebuje
@@ -570,7 +589,7 @@ window.stopJournalMic=()=>{
 
 // ── HABITS ────────────────────────────────────────────
 let habitDay=new Date().toISOString().slice(0,10);
-let selHabitType='yesno', selHabitEmoji='🏃';
+let selHabitType='yesno', selHabitEmoji='🏃', selHabitGoalId=null;
 let selFreqType='daily', selFreqTimes=3, selFreqDays=new Set();
 let selHabitGroup='morning'; // default group
 function loadOpenGroups(){
@@ -622,6 +641,8 @@ function buildHabitCard(h){
   const val=log?log.value:0;
   const goal=h.goal||1;
   const todayDS=toDS(new Date());
+  const linkedGoal=h.goalId?goals.find(x=>x.id===h.goalId):null;
+  const isPaused=h.pausedUntil&&h.pausedUntil>=habitDay;
 
   // Streak
   let streak=0;
@@ -629,7 +650,9 @@ function buildHabitCard(h){
   for(let i=0;i<365;i++){
     const ds=toDS(sd);
     const l=habitLogs.find(l=>l.id===h.id+'_'+ds);
-    if(l&&l.done)streak++; else break;
+    if(l&&l.done)streak++;
+    else if(l&&l.skipped){sd.setDate(sd.getDate()-1);continue;}
+    else break;
     sd.setDate(sd.getDate()-1);
   }
 
@@ -689,9 +712,11 @@ function buildHabitCard(h){
     const isPartial=l&&l.value>0&&!l.done&&!l.failed;
     const isToday=ds===todayDS;
     const isHabitDay=ds===habitDay;
+    const isSkipped=l&&l.skipped;
     let cls='htd-dot';
     if(!active) cls+=' inactive';
     else if(isDone) cls+=' done';
+    else if(isSkipped) cls+=' skipped';
     else if(isFailed) cls+=' failed';
     else if(isZero) cls+=' failed';
     else if(isPartial) cls+=' partial';
@@ -701,6 +726,7 @@ function buildHabitCard(h){
     let inner='';
     if(!active) inner='—';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${l.value}</span>`:'✓';
+    else if(isSkipped) inner='⏭';
     else if(isFailed) inner='✕';
     else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
     else if(isPartial) inner=`<span style="font-size:10px">${l.value}</span>`;
@@ -749,19 +775,26 @@ function buildHabitCard(h){
       <div class="habit-emoji" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
       <div class="habit-info" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
         <div class="habit-name">${h.name}</div>
+        ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
+        ${isPaused?`<div class="habit-pause-badge">⏸ Pauza do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>`:''}
         <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${h.reminderTime}</span>` : ''}</div>
       </div>
       ${badgeHtml}
-      ${h.type==='count'
-        ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-            <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
-            <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
-              <div class="cnt-val cnt-clickable">${val}</div>
-              <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
-            </div>
-            <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
-          </div>`
-        : `<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`
+      ${isPaused
+        ? `<span style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
+        : h.type==='count'
+          ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
+              <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+                <div class="cnt-val cnt-clickable">${val}</div>
+                <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
+              </div>
+              <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
+            </div>`
+          : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
+              ${habitDay===todayDS?`<button onclick="skipHabitDay('${esc(h.id)}','${habitDay}')" title="${(log&&log.skipped)?'Zrušit přeskočení':'Přeskočit dnes'}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?'⏭ Přeskočeno':'⏭'}</button>`:''}
+            </div>`
       }
     </div>
     <table class="habit-table" style="margin-top:10px"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>
@@ -900,6 +933,24 @@ function renderHabitDetail(h) {
   const doneThisMonth = logs.filter(l => l.date.startsWith(thisMonthKey)).length;
   const pctMonth = daysSoFar > 0 ? Math.round(doneThisMonth / daysSoFar * 100) : 0;
 
+  // 30/60/90 day success rates
+  const calcPct=(days)=>{
+    let done=0,total=0;
+    for(let i=0;i<days;i++){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const ds=toDS(d);
+      const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
+      let active=true;
+      if(freq.type==='days')active=(freq.days||[]).includes(d.getDay());
+      if(active){total++;if(habitLogs.some(l=>l.id===h.id+'_'+ds&&l.done))done++;}
+    }
+    return total>0?Math.round(done/total*100):0;
+  };
+  const pct30=calcPct(30),pct60=calcPct(60),pct90=calcPct(90);
+
+  // Linked goal
+  const hdLinkedGoal = h.goalId ? goals.find(x=>x.id===h.goalId) : null;
+
   // Build line chart — last 12 weeks (% per week)
   const weeks = [];
   for (let i = 11; i >= 0; i--) {
@@ -1003,7 +1054,12 @@ function renderHabitDetail(h) {
         <div class="hd-stat-num">${(() => { const daysSince = Math.max(1, Math.round((new Date() - new Date(h.createdAt || Date.now())) / 86400000)); return Math.min(100, Math.round(totalDone / daysSince * 100)); })()}%</div>
         <div class="hd-stat-lbl">📊 Celkový výkon</div>
       </div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct30>=80?'color:var(--green)':pct30>=50?'color:var(--accent)':''}">${pct30}%</div><div class="hd-stat-lbl">📅 30 dní</div></div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct60>=80?'color:var(--green)':pct60>=50?'color:var(--accent)':''}">${pct60}%</div><div class="hd-stat-lbl">📅 60 dní</div></div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct90>=80?'color:var(--green)':pct90>=50?'color:var(--accent)':''}">${pct90}%</div><div class="hd-stat-lbl">📅 90 dní</div></div>
     </div>
+
+    ${hdLinkedGoal ? `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">🏆</span><div><div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Propojený cíl</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${esc(hdLinkedGoal.name)}</div><div class="habit-prog-bar" style="margin-top:6px;width:120px"><div class="habit-prog-fill" style="width:${hdLinkedGoal.progress||0}%"></div></div></div></div>` : ''}
 
     ${chartHtml}
     <div class="hd-section-title" style="margin-top:20px">📅 Historie po měsících</div>
@@ -1021,6 +1077,21 @@ function renderHabitDetail(h) {
         ${h.reminderTime ? `<button class="btn-s" onclick="saveHabitReminder('${esc(h.id)}',null)">🔕 Vypnout</button>` : ''}
         <button class="btn-p" onclick="saveHabitReminder('${esc(h.id)}',document.getElementById('hd-notif-time').value)">💾 Uložit</button>
       </div>
+    </div>
+
+    <div class="hd-section-title" style="margin-top:20px">⏸ Pauza návyku</div>
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;">
+      <div style="font-size:14px;color:var(--text2);margin-bottom:12px">Pozastav návyk na dobu nemoci nebo dovolené. Streak se nezlomí.</div>
+      ${h.pausedUntil && h.pausedUntil >= new Date().toISOString().slice(0,10)
+        ? `<div style="color:var(--accent);margin-bottom:10px;font-size:14px">⏸ Pauza aktivní do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})}</div>
+           <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',0)">▶️ Ukončit pauzu</button>`
+        : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',3)">3 dny</button>
+             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',7)">1 týden</button>
+             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',14)">2 týdny</button>
+             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',30)">Měsíc</button>
+           </div>`
+      }
     </div>
 
     <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
@@ -1141,7 +1212,8 @@ window.toggleHabitDay=async(hid,date)=>{
   if(!CU)return;
   const logId=hid+'_'+date;
   const existing=habitLogs.find(l=>l.id===logId);
-  const curState=existing?(existing.done?'done':'failed'):'empty';
+  // If skipped, treat as empty → mark done
+  const curState=existing?(existing.skipped?'empty':existing.done?'done':'failed'):'empty';
   if(curState==='done'){
     const log={id:logId,habitId:hid,date,done:false,failed:true,value:0};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
@@ -1154,6 +1226,23 @@ window.toggleHabitDay=async(hid,date)=>{
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
     const ex=habitLogs.find(l=>l.id===logId);
     if(ex)Object.assign(ex,log); else habitLogs.push(log);
+  }
+  renderHabits();
+};
+
+window.skipHabitDay=async(hid,date)=>{
+  if(!CU)return;
+  const logId=hid+'_'+date;
+  const existing=habitLogs.find(l=>l.id===logId);
+  if(existing?.skipped){
+    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    toast('↩ Přeskočení zrušeno');
+  } else {
+    const log={id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0};
+    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
+    if(existing)Object.assign(existing,log); else habitLogs.push(log);
+    toast('⏭ Den přeskočen');
   }
   renderHabits();
 };
@@ -1198,12 +1287,14 @@ window.saveHabit=async()=>{
   if(selFreqType==='weekly')freq.times=selFreqTimes;
   if(selFreqType==='days')freq.days=[...selFreqDays];
   const reminderTime = document.getElementById('habit-notif-time').value || null;
+  const selGoalId=document.getElementById('habit-goal-sel')?.value||null;
   const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
-  const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,order:maxOrder+1,createdAt:new Date().toISOString()};
+  const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,goalId:selGoalId||null,order:maxOrder+1,createdAt:new Date().toISOString()};
   await addDoc(collection(db,'users',CU.uid,'habits'),h);
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
   const hnt=document.getElementById('habit-notif-time'); if(hnt) hnt.value='';
+  const hgs=document.getElementById('habit-goal-sel'); if(hgs) hgs.value='';
   // Reset frequency UI
   selFreqType='daily'; selFreqTimes=3; selFreqDays=new Set();
   document.querySelectorAll('.freq-type-row .ev-type-btn').forEach((b,i)=>b.classList.toggle('sel',i===0));
@@ -1304,6 +1395,25 @@ window.archiveHabit = async (id) => {
   toast(isArchived ? '✅ Návyk obnoven' : '📦 Návyk archivován');
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
+};
+
+window.pauseHabit=async(id,days)=>{
+  if(!CU)return;
+  const h=habits.find(h=>h.id===id);
+  if(!h)return;
+  if(!days){
+    await updateDoc(doc(db,'users',CU.uid,'habits',id),{pausedUntil:null});
+    h.pausedUntil=null;
+    toast('▶️ Pauza ukončena');
+  } else {
+    const until=new Date(); until.setDate(until.getDate()+days);
+    const untilStr=until.toISOString().slice(0,10);
+    await updateDoc(doc(db,'users',CU.uid,'habits',id),{pausedUntil:untilStr});
+    h.pausedUntil=untilStr;
+    toast(`⏸ Pauza do ${until.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}`);
+  }
+  renderHabits();
+  if(detailHabitId===id)renderHabitDetail(h);
 };
 
 window.toggleArchivedHabits = () => {
@@ -5138,10 +5248,36 @@ window.setDailyMood = function(emoji) {
   toast(reactions[emoji] || `Nálada ${emoji} zaznamenána`);
 };
 
-window.openVM=()=>{document.getElementById('vi-inp').value=prof.vision||'';om('m-vision');};
+window.openVM=()=>{
+  const areas=prof.visionAreas||{};
+  AREAS.forEach(a=>{
+    const el=document.getElementById('vi-'+a.key);
+    if(el)el.value=areas[a.id]||'';
+  });
+  om('m-vision');
+};
 window.saveV=async()=>{
-  if(!CU)return;const v=document.getElementById('vi-inp').value.trim();prof.vision=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);const el=document.getElementById('vtxt');if(v){el.textContent=v;el.classList.remove('empty');}else{el.textContent='Klikni a napiš svoji velkou životní vizi…';el.classList.add('empty');}cm('m-vision');toast('✓ Vize uložena');};
-function loadV(){const el=document.getElementById('vtxt');if(prof.vision){el.textContent=prof.vision;el.classList.remove('empty');}}
+  if(!CU)return;
+  const areas={};
+  AREAS.forEach(a=>{
+    const el=document.getElementById('vi-'+a.key);
+    if(el&&el.value.trim())areas[a.id]=el.value.trim();
+  });
+  prof.visionAreas=areas;
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{visionAreas:areas});
+  loadV();cm('m-vision');toast('✓ Vize uložena');
+};
+function loadV(){
+  const container=document.getElementById('vision-areas');
+  if(!container)return;
+  const areas=prof.visionAreas||{};
+  const filled=AREAS.filter(a=>areas[a.id]);
+  if(!filled.length){
+    container.innerHTML='<div class="vtxt empty" style="padding:0">Klikni ✏️ a napiš svoji vizi pro každou oblast…</div>';
+    return;
+  }
+  container.innerHTML=filled.map(a=>`<div class="varea-item"><span class="varea-em">${a.emoji}</span><div class="varea-body"><div class="varea-lbl">${a.label}</div><div class="varea-txt">${esc(areas[a.id])}</div></div></div>`).join('');
+}
 
 function subGoals(){
   loadV();
@@ -5187,7 +5323,7 @@ window.openGM=(gid=null)=>{
     document.getElementById('g-dl').value=g.deadline||'';
     document.getElementById('g-prog').value=g.progress||0;
     document.getElementById('g-pval').textContent=(g.progress||0)+'%';
-    sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);
+    sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);sGP(g.priority||2,null);
   } else {
     document.getElementById('g-name').value='';
     document.getElementById('g-desc').value='';
@@ -5195,19 +5331,20 @@ window.openGM=(gid=null)=>{
     document.getElementById('g-dl').value='';
     document.getElementById('g-prog').value=0;
     document.getElementById('g-pval').textContent='0%';
-    sGE('🌟',null);sGC('#f5c842',null);
+    sGE('🌟',null);sGC('#f5c842',null);sGP(2,null);
   }
   om('m-goal');
 };
 window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-epick [data-e="${e}"]`);if(t)t.classList.add('sel');};
 window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
+window.sGP=(p,btn)=>{gPriority=p;document.querySelectorAll('#g-prio-row .gprio-btn').forEach(x=>x.classList.remove('sel'));const t=btn||document.querySelector(`#g-prio-row [data-p="${p}"]`);if(t)t.classList.add('sel');};
 
 window.saveG=async()=>{
   const nm=document.getElementById('g-name').value.trim();
   if(!nm){toast('⚠️ Zadej název');return;}
   const desc=document.getElementById('g-desc').value.trim();
   const deadline=document.getElementById('g-dl').value;
-  const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,updatedAt:new Date().toISOString()};
+  const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,priority:gPriority,updatedAt:new Date().toISOString()};
   let gid=editGId;
   if(editGId){
     await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
@@ -5340,31 +5477,65 @@ window.delTask=async(gid,sid,tid)=>{
   rGoals();
 };
 
+window.archiveGoal=async(id)=>{
+  if(!CU)return;
+  await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:true,archivedAt:new Date().toISOString()});
+  const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=true;
+  toast('🎉 Výborně! Cíl splněn a archivován!');rGoals();
+};
+window.unarchiveGoal=async(id)=>{
+  if(!CU)return;
+  await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:false});
+  const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=false;
+  toast('✓ Cíl obnoven');rGoals();
+};
+
 // ── Render cílů ───────────────────────────────────────────
 function rGoals(){
   const c=document.getElementById('goals-list');
   const addBtn=document.querySelector('.add-goal');
-  if(!goals.length){
+  const activeGoals=goals.filter(g=>!g.archivedGoal).sort((a,b)=>(a.priority||2)-(b.priority||2));
+  const archivedGoals=goals.filter(g=>g.archivedGoal);
+  if(!activeGoals.length&&!archivedGoals.length){
     const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
     c.innerHTML=`<div class="empty-st"><div style="font-size:52px">${av.emoji}</div><div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div><div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div><button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">🌟 Přidat první cíl</button></div>`;
     if(addBtn)addBtn.style.display='none';
+    // Populate goal selector in habit form
+    const sel=document.getElementById('habit-goal-sel');
+    if(sel){sel.innerHTML='<option value="">— bez cíle —</option>';}
     return;
   }
   if(addBtn)addBtn.style.display='';
   const open=new Set([...document.querySelectorAll('.gsubs.open')].map(el=>el.id.replace('gs-','')));
-  c.innerHTML=goals.map(g=>{
+  const todayDSg=new Set([...habitLogs.filter(l=>l.date===new Date().toISOString().slice(0,10)&&l.done).map(l=>l.habitId)]);
+  c.innerHTML=activeGoals.map(g=>{
     const sb=subs[g.id]||[],io=open.has(g.id),sd=sb.filter(s=>s.done).length;
     const totalTasks=sb.reduce((a,s)=>a+(s.tasks?.length||0),0);
     const doneTasks=sb.reduce((a,s)=>a+(s.tasks?.filter(t=>t.done).length||0),0);
     const descHtml=g.description?`<div class="gdesc">${esc(g.description)}</div>`:'';
     const fullNameHtml=g.name.length>28?`<div class="gnm-full">${esc(g.name)}</div>`:'';
+    const linkedHabits=habits.filter(h=>h.goalId===g.id&&!h.archived);
+    const linkedHabitsHtml=linkedHabits.length?`<div class="sg-section-lbl">🔥 Propojené návyky</div><div class="gh-habits-list">${linkedHabits.map(h=>`<div class="gh-habit-row"><span>${h.emoji||'🎯'}</span><span class="gh-habit-nm">${esc(h.name)}</span><span class="gh-habit-st ${todayDSg.has(h.id)?'done':''}">${todayDSg.has(h.id)?'✓':'○'}</span></div>`).join('')}</div>`:'';
     const subsHtml=sb.length?`<div class="sg-section-lbl">📌 Podcíle</div>${sb.map(s=>{
       const tasksHtml=(s.tasks||[]).map(t=>`<div class="task-item"><div class="task-chk ${t.done?'done':''}" onclick="togTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">${t.done?'✓':''}</div><div class="task-nm ${t.done?'done':''}">${esc(t.name)}</div><button class="btn-xs2" onclick="delTask('${esc(g.id)}','${esc(s.id)}','${esc(t.id)}')">×</button></div>`).join('');
       const dlTag=s.deadline?`<span class="sg-dl-tag">📅 ${fd(s.deadline)}</span>`:'';
       return`<div class="sg-item${s.done?' sg-done':''}"><div class="sg-header"><div class="sg-chk${s.done?' done':''}" onclick="togSubDone('${esc(g.id)}','${esc(s.id)}')">${s.done?'✓':''}</div><div class="sg-info"><div class="sg-name${s.done?' done':''}">${esc(s.name)}</div>${s.description?`<div class="sg-desc-sm">${esc(s.description)}</div>`:''}<div class="sg-meta-row">${dlTag}</div></div><div class="sg-acts"><button class="btn-xs2" onclick="openSubGM('${esc(g.id)}','${esc(s.id)}')">✏️</button><button class="btn-xs2" onclick="delSubG('${esc(g.id)}','${esc(s.id)}')">🗑️</button></div></div>${tasksHtml?`<div class="tasks-list">${tasksHtml}</div>`:''}<div class="task-add-row"><input class="task-inp" id="ti-${esc(s.id)}" placeholder="Přidat úkol…" onkeydown="if(event.key==='Enter')addTask('${esc(g.id)}','${esc(s.id)}')"><button class="btn-xs2 btn-add-task" onclick="addTask('${esc(g.id)}','${esc(s.id)}')">+</button></div></div>`;
     }).join('')}`:'';
-    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="ghdr-r1"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm">${esc(g.name)}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="ghdr-r2"><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div><span class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</span></div><div class="ghdr-r3"><span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}<span class="gchev">${io?'▲':'▼'}</span></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button></div></div>`;
+    const prioTag=g.priority===1?'<span class="gtag gprio-high">🔴 Vysoká</span>':g.priority===3?'<span class="gtag gprio-low">🟢 Nízká</span>':'';
+    const completedTag=g.progress>=100?'<span class="gtag" style="background:rgba(76,217,100,.15);color:var(--green);border-color:rgba(76,217,100,.3)">🎉 Splněno!</span>':'';
+    const archiveBtn=g.progress>=100&&!g.archivedGoal?`<button class="btn-p" style="width:100%;margin-top:10px;background:rgba(76,217,100,.2);color:var(--green);border:1px solid rgba(76,217,100,.3)" onclick="archiveGoal('${esc(g.id)}')">🎉 Archivovat jako splněný</button>`:'';
+    return`<div class="gcard${io?' gcard-open':''}"><div class="ghdr" onclick="togSubs('${esc(g.id)}')"><div class="ghdr-r1"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm">${esc(g.name)}</div><div class="gacts" onclick="event.stopPropagation()"><button class="btn-xs" onclick="openGM('${esc(g.id)}')">✏️</button><button class="btn-xs" onclick="delG('${esc(g.id)}')">🗑️</button></div></div><div class="ghdr-r2"><div class="gpbar"><div class="gpfill" style="width:${g.progress||0}%;background:${g.color||'#f5c842'}"></div></div><span class="gpct" style="color:${g.color||'#f5c842'}">${g.progress||0}%</span></div><div class="ghdr-r3">${prioTag}<span class="gtag">📂 ${g.category||'ostatní'}</span>${g.deadline?`<span class="gtag">🏁 ${fd(g.deadline)}</span>`:''}${sb.length?`<span class="gtag">📌 ${sd}/${sb.length}</span>`:''}${totalTasks?`<span class="gtag">☑ ${doneTasks}/${totalTasks}</span>`:''}${g.description?`<span class="gtag">📝</span>`:''}${completedTag}<span class="gchev">${io?'▲':'▼'}</span></div></div><div class="gsubs${io?' open':''}" id="gs-${g.id}">${fullNameHtml}${descHtml}${linkedHabitsHtml}${subsHtml}<button class="btn-add-sg" onclick="openSubGM('${esc(g.id)}')">+ Přidat podcíl</button>${archiveBtn}</div></div>`;
   }).join('');
+  if(archivedGoals.length){
+    c.innerHTML+=`<div style="margin-top:20px"><button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'📦 Splněné cíle (${archivedGoals.length}) ▼':'📦 Splněné cíle (${archivedGoals.length}) ▲'" style="background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:7px 18px;font-size:13px;color:var(--text3);cursor:pointer;width:100%;text-align:left">📦 Splněné cíle (${archivedGoals.length}) ▼</button><div style="display:none;margin-top:10px">${archivedGoals.map(g=>`<div class="gcard" style="opacity:.65"><div class="ghdr-r1" style="padding:14px 16px;cursor:default"><div class="gdot" style="background:${g.color||'#f5c842'}"></div><div class="gem">${g.emoji||'🌟'}</div><div class="gnm" style="text-decoration:line-through">${esc(g.name)}</div><div class="gacts"><button class="btn-xs" title="Obnovit" onclick="unarchiveGoal('${esc(g.id)}')">↩</button></div></div></div>`).join('')}</div></div>`;
+  }
+  // Populate goal selector in habit form
+  const sel=document.getElementById('habit-goal-sel');
+  if(sel){
+    const cur=sel.value;
+    sel.innerHTML='<option value="">— bez cíle —</option>'+activeGoals.map(g=>`<option value="${esc(g.id)}">${g.emoji||'🌟'} ${esc(g.name)}</option>`).join('');
+    if(cur)sel.value=cur;
+  }
 }
 
 // SETTINGS
@@ -5471,7 +5642,7 @@ async function finishDS(text){
   }).join('\n');
   const sys=`Jsi ${av.name}, osobní AI společník uživatele ${prof.prezdivka||prof.nickname}.
 Mluvíš česky, přátelsky, stručně (max 5 vět).
-Vize: "${prof.vision||'nezadána'}"
+Vize: "${(()=>{const a=prof.visionAreas||{};const va=Object.entries(a).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('; ');return va||prof.vision||'nezadána';})()}"
 
 CÍLE: ${gCtx}
 DNEŠNÍ NÁVYKY: ${todayHabits||'Žádné'}
@@ -5561,7 +5732,7 @@ Odpovídej jako skutečný osobní asistent který zná člověka dobře.
 ${memorySec}
 
 Dnes: ${todayLabel}
-Vize uživatele: "${prof.vision||'zatím nezadána'}"
+Vize uživatele: "${(()=>{const a=prof.visionAreas||{};const va=Object.entries(a).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('; ');return va||prof.vision||'zatím nezadána';})()}"
 
 CÍLE:
 ${gCtx}

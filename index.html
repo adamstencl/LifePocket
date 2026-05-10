@@ -295,6 +295,12 @@
               <span style="font-size:13px;color:var(--text3)">Každý den tě upozorním, pokud návyk ještě nesplníš</span>
             </div>
           </div>
+          <div class="fg" id="habit-goal-wrap2">
+            <label class="flbl">🏆 Propojit s cílem <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
+            <select class="finp" id="habit-goal-sel">
+              <option value="">— bez cíle —</option>
+            </select>
+          </div>
           <div class="add-habit-actions">
             <button class="btn-s" onclick="toggleAddHabit()">Zrušit</button>
             <button class="btn-p" style="flex:1" onclick="saveHabit()">Přidat návyk</button>
@@ -644,7 +650,7 @@
       </div>
       <div class="vcard">
         <div class="vlbl">✦ Moje vize</div>
-        <div class="vtxt empty" id="vtxt">Klikni a napiš svoji velkou životní vizi…</div>
+        <div id="vision-areas"><div class="vtxt empty">Klikni ✏️ a napiš svoji vizi pro každou oblast…</div></div>
         <button class="vedit" onclick="openVM()">✏️ Upravit</button>
       </div>
       <div id="goals-list"></div>
@@ -948,9 +954,16 @@
 <div class="moverlay" id="m-vision">
   <div class="modal">
     <div class="mtitle">✦ Moje vize</div>
-    <div class="fg"><label class="flbl">Co chceš v životě dosáhnout?</label>
-      <textarea class="vtarea" id="vi-inp" placeholder="Chci být zdravý a fit ve 50 letech…" rows="4"></textarea></div>
-    <div class="macts"><button class="btn-s" onclick="cm(&#39;m-vision&#39;)">Zrušit</button><button class="btn-p" onclick="saveV()">Uložit vizi</button></div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.5">Napiš krátce svoji vizi pro každou životní oblast. Pomůže ti soustředit se na to, co je důležité.</div>
+    <div class="fg"><label class="flbl">💪 Zdraví</label><textarea class="finp" id="vi-zdravi" rows="2" placeholder="Chci být fit a plný energie…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">💼 Práce &amp; kariéra</label><textarea class="finp" id="vi-prace" rows="2" placeholder="Chci si vybudovat vlastní firmu…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">👨‍👩‍👧 Rodina</label><textarea class="finp" id="vi-rodina" rows="2" placeholder="Chci trávit víc času s rodinou…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">💰 Finance</label><textarea class="finp" id="vi-finance" rows="2" placeholder="Chci mít finanční svobodu do 45…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">📚 Vzdělání</label><textarea class="finp" id="vi-vzdelani" rows="2" placeholder="Chci se neustále učit a růst…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">❤️ Vztahy</label><textarea class="finp" id="vi-vztahy" rows="2" placeholder="Chci mít hluboké a smysluplné vztahy…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">🎨 Koníčky</label><textarea class="finp" id="vi-konicky" rows="2" placeholder="Chci mít čas na věci které mě baví…" style="resize:none"></textarea></div>
+    <div class="fg"><label class="flbl">🌱 Osobní rozvoj</label><textarea class="finp" id="vi-rozvoj" rows="2" placeholder="Chci každý den být lepší verzí sebe…" style="resize:none"></textarea></div>
+    <div class="macts"><button class="btn-s" onclick="cm('m-vision')">Zrušit</button><button class="btn-p" onclick="saveV()">Uložit vizi</button></div>
   </div>
 </div>
 
@@ -994,6 +1007,14 @@
     </div>
     <div class="fg"><label class="flbl">Počáteční progres: <span id="g-pval">0%</span></label>
       <input class="finp" type="range" id="g-prog" min="0" max="100" value="0" oninput="document.getElementById(&#39;g-pval&#39;).textContent=this.value+&#39;%&#39;" style="accent-color:var(--accent);padding:6px 0"></div>
+    <div class="fg">
+      <label class="flbl">Priorita</label>
+      <div class="habit-type-row" id="g-prio-row">
+        <button class="ev-type-btn gprio-btn" data-p="1" onclick="sGP(1,this)">🔴 Vysoká</button>
+        <button class="ev-type-btn gprio-btn sel" data-p="2" onclick="sGP(2,this)">🟡 Střední</button>
+        <button class="ev-type-btn gprio-btn" data-p="3" onclick="sGP(3,this)">🟢 Nízká</button>
+      </div>
+    </div>
     <div class="macts"><button class="btn-s" onclick="cm(&#39;m-goal&#39;)">Zrušit</button><button class="btn-p" onclick="saveG()">Uložit cíl</button></div>
   </div>
 </div>
