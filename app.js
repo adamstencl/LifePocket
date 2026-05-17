@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.10';
+const APP_VERSION = '4.11';
 const CHANGELOG = [
+  { v:'4.11', items:[
+    '📅 Kalendář — 6 nových typů: ☕ Káva, 🎉 Oslava, 💼 Schůzka, 🏋️ Sport, 🏥 Doktor, ✈️ Cestování',
+    '🔍 Kalendář — filtrování událostí podle typu (chipy nad seznamem, jen když máš různé typy)',
+    '⏰ Čas se zobrazuje pro všechny typy (Narozeniny nemají čas)',
+  ]},
   { v:'4.10', items:[
     '🐛 Opraveno přidávání vize — oblast "Osobní rozvoj" se správně ukládá i načítá',
   ]},
@@ -1473,9 +1478,14 @@ function renderArchivedHabits() {
 let events=[], unsubEvents=null, calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
 let selEvType_val='event';
 let editingEventId = null;
+let calFilter='all';
 
-const EV_ICONS={birthday:'🎂',event:'📌'};
-const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
+const EV_ICONS={birthday:'🎂',event:'📌',coffee:'☕',party:'🎉',work:'💼',sport:'🏋️',doctor:'🏥',travel:'✈️'};
+const EV_LABELS={birthday:'Narozeniny',event:'Událost',coffee:'Káva',party:'Oslava',work:'Schůzka',sport:'Sport',doctor:'Doktor',travel:'Cestování'};
+// Typy u kterých se zobrazuje čas
+const EV_HAS_TIME = new Set(['event','coffee','party','work','sport','doctor','travel']);
+// Typy u kterých se zobrazuje datum konce
+const EV_HAS_END  = new Set(['event','travel']);
 
 function subEvents(){
   createFireSub('events',
@@ -1549,12 +1559,38 @@ function getUpcoming14(){
 }
 
 
+window.setCalFilter=t=>{calFilter=t;renderEvList();};
+
 function renderEvList(){
   const allEvents=getUpcoming14();
   const container=document.getElementById('cal-events-list');
+  const filterBar=document.getElementById('cal-filter-bar');
   if(!container)return;
-  if(!allEvents.length){container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">Žádné události v příštích 14 dnech</div>';return;}
-  container.innerHTML=allEvents.map(ev=>{
+
+  // ── Filter chips ──
+  if(filterBar){
+    const types=[...new Set(allEvents.map(e=>e.type||'event'))];
+    if(types.length>1){
+      let fb='<div class="cal-filter-chips">';
+      fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
+      for(const t of types){
+        const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\')">'+(EV_ICONS[t]||'📌')+' '+(EV_LABELS[t]||t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+      }
+      fb+='</div>';
+      filterBar.innerHTML=fb;
+    }else{
+      filterBar.innerHTML='';
+      if(calFilter!=='all'&&(allEvents.length===0||!types.includes(calFilter)))calFilter='all';
+    }
+  }
+
+  const filtered=calFilter==='all'?allEvents:allEvents.filter(e=>(e.type||'event')===calFilter);
+  if(!filtered.length){
+    container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">'+(calFilter==='all'?'Žádné události v příštích 14 dnech':'Žádné události tohoto typu v příštích 14 dnech')+'</div>';
+    return;
+  }
+  container.innerHTML=filtered.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div class="ev-card">'
       +'<div class="ev-icon">'+(EV_ICONS[ev.type]||'📌')+'</div>'
@@ -1746,18 +1782,17 @@ window.openEditEvent = function(ev) {
   document.getElementById('ev-name-inp').value = ev.name || '';
   document.getElementById('ev-date-inp').value = ev.date || '';
   document.getElementById('ev-repeat-inp').value = ev.repeat || 'no';
-  selEvType_val = ev.type || 'birthday';
-  document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === selEvType_val));
+  selEvType_val = ev.type || 'event';
+  document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b => b.classList.toggle('sel', b.dataset.t === selEvType_val));
   const tr = document.getElementById('ev-time-row');
   const er = document.getElementById('ev-end-date-row');
-  if(selEvType_val === 'event') {
-    if(tr) tr.style.display = '';
-    if(er) er.style.display = '';
+  if(tr) tr.style.display = EV_HAS_TIME.has(selEvType_val) ? '' : 'none';
+  if(er) er.style.display = EV_HAS_END.has(selEvType_val)  ? '' : 'none';
+  if(EV_HAS_TIME.has(selEvType_val)) {
     const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = ev.time || '';
+  }
+  if(EV_HAS_END.has(selEvType_val)) {
     const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = ev.dateEnd || '';
-  } else {
-    if(tr) tr.style.display = 'none';
-    if(er) er.style.display = 'none';
   }
   document.getElementById('m-event').querySelector('.mtitle').textContent = '✏️ Upravit událost';
   updateEvShareUI(!!(ev.shared));
@@ -1770,32 +1805,32 @@ window.openEvModal=()=>{
   const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
   const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=new Date().toISOString().slice(0,10);
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
-  const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='none';
+  const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='block'; // event type has time
   const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value='';
-  const eer=document.getElementById('ev-end-date-row'); if(eer) eer.style.display='none';
+  const eer=document.getElementById('ev-end-date-row'); if(eer) eer.style.display='block'; // event type has end date
   const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
   selEvType_val='event';
-  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
+  document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
   updateEvShareUI(false);
   om('m-event');
 };
 
 window.selEvType=(t,btn)=>{
   selEvType_val=t;
-  document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.remove('sel'));
+  document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
   const tr=document.getElementById('ev-time-row');
-  if(tr) tr.style.display=t==='event'?'block':'none';
+  if(tr) tr.style.display=EV_HAS_TIME.has(t)?'block':'none';
   const er=document.getElementById('ev-end-date-row');
-  if(er) er.style.display=t==='event'?'block':'none';
+  if(er) er.style.display=EV_HAS_END.has(t)?'block':'none';
 };
 
 window.saveEvent=async()=>{
   const name=document.getElementById('ev-name-inp').value.trim();
   const date=document.getElementById('ev-date-inp').value;
   const repeat=document.getElementById('ev-repeat-inp').value;
-  const time=selEvType_val==='event'?(document.getElementById('ev-time-inp')?.value||null):null;
-  const dateEnd=selEvType_val==='event'?(document.getElementById('ev-end-date-inp')?.value||null):null;
+  const time=EV_HAS_TIME.has(selEvType_val)?(document.getElementById('ev-time-inp')?.value||null):null;
+  const dateEnd=EV_HAS_END.has(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
   if(!name){toast('⚠️ Zadej název');return;}
   if(!date){toast('⚠️ Vyber datum');return;}
   if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
