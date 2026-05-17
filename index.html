@@ -1026,15 +1026,10 @@
     </div>
     <div class="fg">
       <label class="flbl">Typ</label>
-      <div class="ev-type-row">
-        <button class="ev-type-btn sel" data-t="event"   onclick="selEvType(&#39;event&#39;,this)">📌 Událost</button>
-        <button class="ev-type-btn" data-t="birthday"    onclick="selEvType(&#39;birthday&#39;,this)">🎂 Narozeniny</button>
-        <button class="ev-type-btn" data-t="coffee"      onclick="selEvType(&#39;coffee&#39;,this)">☕ Káva</button>
-        <button class="ev-type-btn" data-t="party"       onclick="selEvType(&#39;party&#39;,this)">🎉 Oslava</button>
-        <button class="ev-type-btn" data-t="work"        onclick="selEvType(&#39;work&#39;,this)">💼 Schůzka</button>
-        <button class="ev-type-btn" data-t="sport"       onclick="selEvType(&#39;sport&#39;,this)">🏋️ Sport</button>
-        <button class="ev-type-btn" data-t="doctor"      onclick="selEvType(&#39;doctor&#39;,this)">🏥 Doktor</button>
-        <button class="ev-type-btn" data-t="travel"      onclick="selEvType(&#39;travel&#39;,this)">✈️ Cestování</button>
+      <div class="ev-type-row" id="ev-type-row">
+        <!-- dynamicky renderováno přes renderEvTypeButtons() -->
+        <button class="ev-type-btn sel" data-t="event" onclick="selEvType(&#39;event&#39;,this)">📌 Událost</button>
+        <button class="ev-type-btn" data-t="birthday" onclick="selEvType(&#39;birthday&#39;,this)">🎂 Narozeniny</button>
       </div>
     </div>
     <div class="frow">

@@ -17,9 +17,9 @@ const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvq
 const APP_VERSION = '4.11';
 const CHANGELOG = [
   { v:'4.11', items:[
-    '📅 Kalendář — 6 nových typů: ☕ Káva, 🎉 Oslava, 💼 Schůzka, 🏋️ Sport, 🏥 Doktor, ✈️ Cestování',
-    '🔍 Kalendář — filtrování událostí podle typu (chipy nad seznamem, jen když máš různé typy)',
-    '⏰ Čas se zobrazuje pro všechny typy (Narozeniny nemají čas)',
+    '🗂️ Kalendář — vlastní kategorie událostí: přidej si Figurky, Deskové hry nebo cokoliv chceš',
+    '🔍 Kalendář — filtrování událostí podle kategorie (chipy nad seznamem)',
+    '⏰ Čas se zobrazuje pro všechny typy kromě Narozenin',
   ]},
   { v:'4.10', items:[
     '🐛 Opraveno přidávání vize — oblast "Osobní rozvoj" se správně ukládá i načítá',
@@ -1480,12 +1480,15 @@ let selEvType_val='event';
 let editingEventId = null;
 let calFilter='all';
 
-const EV_ICONS={birthday:'🎂',event:'📌',coffee:'☕',party:'🎉',work:'💼',sport:'🏋️',doctor:'🏥',travel:'✈️'};
-const EV_LABELS={birthday:'Narozeniny',event:'Událost',coffee:'Káva',party:'Oslava',work:'Schůzka',sport:'Sport',doctor:'Doktor',travel:'Cestování'};
-// Typy u kterých se zobrazuje čas
-const EV_HAS_TIME = new Set(['event','coffee','party','work','sport','doctor','travel']);
-// Typy u kterých se zobrazuje datum konce
-const EV_HAS_END  = new Set(['event','travel']);
+const EV_ICONS={birthday:'🎂',event:'📌'};
+const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
+// Vrátí ikonu i pro vlastní typy
+function getEvIcon(type){return EV_ICONS[type]||((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||'📌';}
+// Vrátí popisek i pro vlastní typy
+function getEvLabel(type){return EV_LABELS[type]||((prof.customEvTypes||[]).find(t=>t.key===type)?.label)||type||'Událost';}
+// Typ narozenin nemá čas ani datum konce
+const evHasTime=t=>t!=='birthday';
+const evHasEnd =t=>t==='event';
 
 function subEvents(){
   createFireSub('events',
@@ -1517,7 +1520,7 @@ function renderCal(){
     const hasEv=dayEvs.length>0;
     html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
       ${day}
-      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?EV_ICONS[dayEvs[0].type]||'•':''}</span>`:''}
+      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?getEvIcon(dayEvs[0].type):''}</span>`:''}
     </div>`;
   }
   // Next month
@@ -1575,7 +1578,7 @@ function renderEvList(){
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\')">'+(EV_ICONS[t]||'📌')+' '+(EV_LABELS[t]||t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\'">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       fb+='</div>';
       filterBar.innerHTML=fb;
@@ -1593,7 +1596,7 @@ function renderEvList(){
   container.innerHTML=filtered.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div class="ev-card">'
-      +'<div class="ev-icon">'+(EV_ICONS[ev.type]||'📌')+'</div>'
+      +'<div class="ev-icon">'+getEvIcon(ev.type)+'</div>'
       +'<div class="ev-info">'
       +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
@@ -1718,10 +1721,10 @@ window.calDayClick=(ds)=>{
     const edi=document.getElementById('ev-date-inp'); if(edi) edi.value=ds;
     const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
     const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
-    const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='none';
-    selEvType_val='event';
-    document.querySelectorAll('.ev-type-btn').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
     const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
+    selEvType_val='event';
+    renderEvTypeButtons();
+    selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
     document.getElementById('m-event').querySelector('.mtitle').textContent='📅 Nová událost';
     updateEvShareUI(false);
     om('m-event');
@@ -1737,10 +1740,10 @@ function showDayEventsModal(ds, dayEvs) {
   const evHtml = dayEvs.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
-      +'<div style="font-size:22px">'+(EV_ICONS[ev.type]||'📌')+'</div>'
+      +'<div style="font-size:22px">'+getEvIcon(ev.type)+'</div>'
       +'<div style="flex:1">'
       +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+(EV_LABELS[ev.type]||'Událost')+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+getEvLabel(ev.type)+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
       +'</div>'
       +'<button onclick="openEditEvent('+JSON.stringify(ev).replace(/"/g,'&quot;')+');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
       +'<button onclick="delEvent(\''+esc(ev.id)+'\');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
@@ -1783,15 +1786,16 @@ window.openEditEvent = function(ev) {
   document.getElementById('ev-date-inp').value = ev.date || '';
   document.getElementById('ev-repeat-inp').value = ev.repeat || 'no';
   selEvType_val = ev.type || 'event';
+  renderEvTypeButtons();
   document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b => b.classList.toggle('sel', b.dataset.t === selEvType_val));
   const tr = document.getElementById('ev-time-row');
   const er = document.getElementById('ev-end-date-row');
-  if(tr) tr.style.display = EV_HAS_TIME.has(selEvType_val) ? '' : 'none';
-  if(er) er.style.display = EV_HAS_END.has(selEvType_val)  ? '' : 'none';
-  if(EV_HAS_TIME.has(selEvType_val)) {
+  if(tr) tr.style.display = evHasTime(selEvType_val) ? '' : 'none';
+  if(er) er.style.display = evHasEnd(selEvType_val)  ? '' : 'none';
+  if(evHasTime(selEvType_val)) {
     const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = ev.time || '';
   }
-  if(EV_HAS_END.has(selEvType_val)) {
+  if(evHasEnd(selEvType_val)) {
     const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = ev.dateEnd || '';
   }
   document.getElementById('m-event').querySelector('.mtitle').textContent = '✏️ Upravit událost';
@@ -1805,32 +1809,92 @@ window.openEvModal=()=>{
   const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
   const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=new Date().toISOString().slice(0,10);
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
-  const tr=document.getElementById('ev-time-row'); if(tr) tr.style.display='block'; // event type has time
   const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value='';
-  const eer=document.getElementById('ev-end-date-row'); if(eer) eer.style.display='block'; // event type has end date
   const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
   selEvType_val='event';
-  document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b=>b.classList.toggle('sel',b.dataset.t==='event'));
+  renderEvTypeButtons();
+  selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
   updateEvShareUI(false);
   om('m-event');
+  setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
+};
+
+// ── Vlastní typy událostí ──────────────────────────────────────────────────
+function renderEvTypeButtons(){
+  const row=document.getElementById('ev-type-row');
+  if(!row) return;
+  const custom=prof.customEvTypes||[];
+  let html='';
+  // Základní typy
+  html+='<button class="ev-type-btn'+(selEvType_val==='event'?' sel':'')+'" data-t="event" onclick="selEvType(\'event\',this)">📌 Událost</button>';
+  html+='<button class="ev-type-btn'+(selEvType_val==='birthday'?' sel':'')+'" data-t="birthday" onclick="selEvType(\'birthday\',this)">🎂 Narozeniny</button>';
+  // Vlastní typy
+  for(const ct of custom){
+    html+='<button class="ev-type-btn'+(selEvType_val===ct.key?' sel':'')+'" data-t="'+esc(ct.key)+'" onclick="selEvType(\''+esc(ct.key)+'\',this)">'
+      +ct.emoji+' '+esc(ct.label)
+      +' <span class="ev-ctype-del" onclick="event.stopPropagation();delCustomEvType(\''+esc(ct.key)+'\')">×</span>'
+      +'</button>';
+  }
+  // Přidat typ
+  html+='<button class="ev-type-btn ev-type-add" onclick="addCustomEvType()">＋ Typ</button>';
+  row.innerHTML=html;
+}
+window.addCustomEvType=()=>{
+  if(document.getElementById('ev-ctype-form'))return;
+  const row=document.getElementById('ev-type-row');
+  if(!row)return;
+  const form=document.createElement('div');
+  form.id='ev-ctype-form';
+  form.style.cssText='display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;width:100%';
+  form.innerHTML='<input id="ev-ctype-emoji" class="finp" placeholder="😀" maxlength="2" style="width:58px;text-align:center;font-size:18px">'
+    +'<input id="ev-ctype-label" class="finp" placeholder="Název kategorie…" maxlength="25" style="flex:1;min-width:110px" onkeydown="if(event.key===\'Enter\')confirmCustomEvType()">'
+    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="confirmCustomEvType()">Přidat</button>'
+    +'<button class="btn-s" style="padding:6px 10px;font-size:13px" onclick="document.getElementById(\'ev-ctype-form\').remove()">✕</button>';
+  row.after(form);
+  setTimeout(()=>document.getElementById('ev-ctype-emoji')?.focus(),50);
+};
+window.confirmCustomEvType=async()=>{
+  if(!CU)return;
+  const emojiInp=document.getElementById('ev-ctype-emoji');
+  const labelInp=document.getElementById('ev-ctype-label');
+  if(!emojiInp||!labelInp)return;
+  const emoji=emojiInp.value.trim()||'📌';
+  const label=labelInp.value.trim();
+  if(!label){toast('⚠️ Zadej název kategorie');return;}
+  const key='c_'+Date.now().toString(36);
+  const customEvTypes=[...(prof.customEvTypes||[]),{key,emoji,label}];
+  prof.customEvTypes=customEvTypes;
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
+  document.getElementById('ev-ctype-form')?.remove();
+  renderEvTypeButtons();
+  toast('✓ Kategorie "'+label+'" přidána');
+};
+window.delCustomEvType=async(key)=>{
+  if(!CU||!confirm('Smazat tuto kategorii?'))return;
+  const customEvTypes=(prof.customEvTypes||[]).filter(t=>t.key!==key);
+  prof.customEvTypes=customEvTypes;
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
+  if(selEvType_val===key){selEvType_val='event';}
+  renderEvTypeButtons();
+  selEvType(selEvType_val,document.querySelector('.ev-type-btn[data-t="'+selEvType_val+'"]'));
 };
 
 window.selEvType=(t,btn)=>{
   selEvType_val=t;
   document.querySelectorAll('.ev-type-btn:not(.ev-share-btn)').forEach(b=>b.classList.remove('sel'));
-  btn.classList.add('sel');
+  if(btn) btn.classList.add('sel');
   const tr=document.getElementById('ev-time-row');
-  if(tr) tr.style.display=EV_HAS_TIME.has(t)?'block':'none';
+  if(tr) tr.style.display=evHasTime(t)?'block':'none';
   const er=document.getElementById('ev-end-date-row');
-  if(er) er.style.display=EV_HAS_END.has(t)?'block':'none';
+  if(er) er.style.display=evHasEnd(t)?'block':'none';
 };
 
 window.saveEvent=async()=>{
   const name=document.getElementById('ev-name-inp').value.trim();
   const date=document.getElementById('ev-date-inp').value;
   const repeat=document.getElementById('ev-repeat-inp').value;
-  const time=EV_HAS_TIME.has(selEvType_val)?(document.getElementById('ev-time-inp')?.value||null):null;
-  const dateEnd=EV_HAS_END.has(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
+  const time=evHasTime(selEvType_val)?(document.getElementById('ev-time-inp')?.value||null):null;
+  const dateEnd=evHasEnd(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
   if(!name){toast('⚠️ Zadej název');return;}
   if(!date){toast('⚠️ Vyber datum');return;}
   if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
@@ -5364,7 +5428,7 @@ function rDash(){
         const diffLbl=diff===0?'Dnes 🔥':diff===1?'Zítra':'Za '+diff+' dní';
         const isSoon=diff<=2;
         return `<div class="dw-ev-row">
-          <div class="dw-ev-ico">${EV_ICONS[ev.type]||'📌'}</div>
+          <div class="dw-ev-ico">${getEvIcon(ev.type)}</div>
           <div style="flex:1">
             <div class="dw-ev-name">${ev.name}</div>
             <div class="dw-ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'long'})}</div>
