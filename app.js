@@ -1578,7 +1578,7 @@ function renderEvList(){
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\'">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\')">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       fb+='</div>';
       filterBar.innerHTML=fb;
@@ -1770,10 +1770,10 @@ window.addEventForDay = (ds) => {
   const edi = document.getElementById('ev-date-inp'); if(edi) edi.value = ds;
   const eni = document.getElementById('ev-name-inp'); if(eni) eni.value = '';
   const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = '';
-  const tr = document.getElementById('ev-time-row'); if(tr) tr.style.display = 'none';
-  selEvType_val = 'event';
-  document.querySelectorAll('.ev-type-btn').forEach(b => b.classList.toggle('sel', b.dataset.t === 'event'));
   const ri = document.getElementById('ev-repeat-inp'); if(ri) ri.value = 'no';
+  selEvType_val = 'event';
+  renderEvTypeButtons();
+  selEvType('event', document.querySelector('.ev-type-btn[data-t="event"]'));
   document.getElementById('m-event').querySelector('.mtitle').textContent = '📅 Nová událost';
   updateEvShareUI(false);
   om('m-event');
