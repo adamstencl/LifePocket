@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.12';
+const APP_VERSION = '4.13';
 const CHANGELOG = [
+  { v:'4.13', items:[
+    '📜 Historie fokusu je teď také cross-device — streak a týdenní přehled sedí na všech zařízeních',
+  ]},
   { v:'4.12', items:[
     '🔄 Denní fokus se synchronizuje mezi zařízeními — nastav na mobilu, vidíš na PC',
   ]},
@@ -3321,14 +3324,29 @@ function waterWidgetHTML() {
 let dailyFocus = null;
 let dailyFocusDone = false;
 let tomorrowFocus = null;
+let focusHistory = []; // merged cross-device history
+
+// Uloží historii fokusu do localStorage + Firestore
+function saveFocusHistory(hist) {
+  focusHistory = hist.slice(0, 30);
+  lsSave('lp_focus_history', focusHistory);
+  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusHistory: focusHistory}).catch(()=>{});
+}
 
 function initFocus() {
   const today = new Date().toDateString();
   const tmrw  = new Date(Date.now() + 86400000).toDateString();
 
+  // ── Merge historie z localStorage + Firestore (deduplikace podle date) ──
+  const lsHist = lsGet('lp_focus_history', []);
+  const fsHist = prof.focusHistory || [];
+  const histMap = {};
+  [...lsHist, ...fsHist].forEach(h => { if(h.text && h.date) histMap[h.date] = h; }); // fsHist přepíše ls (zdroj pravdy)
+  focusHistory = Object.values(histMap).sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0, 30);
+  lsSave('lp_focus_history', focusHistory);
+
   // ── Dnešní focus ──
   // Firestore (prof.focusToday) = zdroj pravdy pro cross-device sync
-  // localStorage = cache pro rychlost + offline
   const stored  = lsGet('lp_focus', {date: '', text: '', done: false});
   const fsToday = prof.focusToday || {date: '', text: '', done: false};
 
@@ -3342,11 +3360,10 @@ function initFocus() {
     dailyFocus     = stored.text || null;
     dailyFocusDone = stored.done || false;
   } else {
-    // Žádné zařízení nemá dnešní focus — archivuj starý
-    if (stored.text) {
-      const history = lsGet('lp_focus_history', []);
-      history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
-      lsSave('lp_focus_history', history.slice(0, 14));
+    // Žádné zařízení nemá dnešní focus — archivuj starý lokální do historie
+    if (stored.text && !histMap[stored.date]) {
+      focusHistory.unshift({date: stored.date, text: stored.text, done: stored.done || false});
+      saveFocusHistory(focusHistory);
     }
     // Zítřejší focus jako dnešní?
     const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
@@ -3374,10 +3391,13 @@ function initFocus() {
 window.saveFocus = function(text) {
   const today = new Date().toDateString();
   const stored = lsGet('lp_focus', {date: '', text: '', done: false});
+  // Archivuj starý fokus do cross-device historie
   if (stored.text && stored.date !== today) {
-    const history = lsGet('lp_focus_history', []);
-    history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
-    lsSave('lp_focus_history', history.slice(0, 14));
+    const updated = [
+      {date: stored.date, text: stored.text, done: stored.done || false},
+      ...focusHistory.filter(h => h.date !== stored.date)
+    ];
+    saveFocusHistory(updated);
   }
   dailyFocus     = text.trim();
   dailyFocusDone = false;
@@ -3414,12 +3434,10 @@ window.markFocusDone = function() {
 function calcFocusStreak() {
   const today = new Date(); today.setHours(0,0,0,0);
   const stored = lsGet('lp_focus', {date: '', text: ''});
-  const history = lsGet('lp_focus_history', []);
 
-  // Mapa: dateString → byl focus nastaven?
   const setDays = new Set();
   if (stored.text) setDays.add(new Date(stored.date).toDateString());
-  history.forEach(h => { if (h.text) setDays.add(h.date); });
+  focusHistory.forEach(h => { if (h.text) setDays.add(h.date); });
 
   let streak = 0;
   for (let i = 0; i < 90; i++) {
@@ -3434,12 +3452,10 @@ function calcFocusStreak() {
 function getFocusWeek() {
   const today = new Date(); today.setHours(0,0,0,0);
   const stored = lsGet('lp_focus', {date: '', text: '', done: false});
-  const history = lsGet('lp_focus_history', []);
 
-  // Mapa dateString → {text, done}
   const focusMap = {};
   if (stored.text) focusMap[new Date(stored.date).toDateString()] = {text: stored.text, done: stored.done || false};
-  history.forEach(h => { if (h.text) focusMap[h.date] = {text: h.text, done: h.done || false}; });
+  focusHistory.forEach(h => { if (h.text) focusMap[h.date] = {text: h.text, done: h.done || false}; });
 
   // Pondělí aktuálního týdne
   const dow = (today.getDay() + 6) % 7; // 0=Po, 6=Ne
@@ -3462,7 +3478,7 @@ function getFocusWeek() {
 window.openFocusModal = function(mode) {
   const isTmrw = mode === 'tomorrow';
   const existing = isTmrw ? (tomorrowFocus || '') : (dailyFocus || '');
-  const history = (!isTmrw) ? lsGet('lp_focus_history', []) : [];
+  const history = (!isTmrw) ? focusHistory : [];
   const histHtml = history.length ? `
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
       <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📜 Historie</div>
