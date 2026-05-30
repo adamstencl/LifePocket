@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.11';
+const APP_VERSION = '4.12';
 const CHANGELOG = [
+  { v:'4.12', items:[
+    '🔄 Denní fokus se synchronizuje mezi zařízeními — nastav na mobilu, vidíš na PC',
+  ]},
   { v:'4.11', items:[
     '🗂️ Kalendář — vlastní kategorie událostí: přidej si Figurky, Deskové hry nebo cokoliv chceš',
     '🔍 Kalendář — filtrování událostí podle kategorie (chipy nad seznamem)',
@@ -3323,34 +3326,49 @@ function initFocus() {
   const today = new Date().toDateString();
   const tmrw  = new Date(Date.now() + 86400000).toDateString();
 
-  // Dnešní focus
-  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
-  if (stored.date === today) {
-    dailyFocus = stored.text || null;
+  // ── Dnešní focus ──
+  // Firestore (prof.focusToday) = zdroj pravdy pro cross-device sync
+  // localStorage = cache pro rychlost + offline
+  const stored  = lsGet('lp_focus', {date: '', text: '', done: false});
+  const fsToday = prof.focusToday || {date: '', text: '', done: false};
+
+  if (fsToday.date === today && fsToday.text) {
+    // Firestore má dnešní focus (nastaven i z jiného zařízení)
+    dailyFocus     = fsToday.text;
+    dailyFocusDone = fsToday.done || false;
+    lsSave('lp_focus', {date: today, text: dailyFocus, done: dailyFocusDone});
+  } else if (stored.date === today) {
+    // Jen localStorage má dnešní focus (offline nebo starší verze)
+    dailyFocus     = stored.text || null;
     dailyFocusDone = stored.done || false;
   } else {
-    // Archivuj focus z minulého dne do historie (zachovej done stav)
+    // Žádné zařízení nemá dnešní focus — archivuj starý
     if (stored.text) {
       const history = lsGet('lp_focus_history', []);
       history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
       lsSave('lp_focus_history', history.slice(0, 14));
     }
-    // Pokud byl nastaven zítřejší focus a dnes je ten den, převezmi ho jako dnešní
+    // Zítřejší focus jako dnešní?
     const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
-    if (nextStored.date === today && nextStored.text) {
-      dailyFocus = nextStored.text;
+    const fsNext     = prof.focusNext || {date: '', text: ''};
+    const nextText   = (nextStored.date === today && nextStored.text) ? nextStored.text
+                     : (fsNext.date === today && fsNext.text)          ? fsNext.text : null;
+    if (nextText) {
+      dailyFocus     = nextText;
       dailyFocusDone = false;
       lsSave('lp_focus', {date: today, text: dailyFocus, done: false});
       lsSave('lp_focus_next', {date: '', text: ''});
     } else {
-      dailyFocus = null;
+      dailyFocus     = null;
       dailyFocusDone = false;
     }
   }
 
-  // Zítřejší focus
+  // ── Zítřejší focus ──
   const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
-  tomorrowFocus = (nextStored.date === tmrw) ? (nextStored.text || null) : null;
+  const fsNext     = prof.focusNext || {date: '', text: ''};
+  tomorrowFocus = (nextStored.date === tmrw && nextStored.text) ? nextStored.text
+                : (fsNext.date === tmrw && fsNext.text)          ? fsNext.text : null;
 }
 
 window.saveFocus = function(text) {
@@ -3361,9 +3379,12 @@ window.saveFocus = function(text) {
     history.unshift({date: stored.date, text: stored.text, done: stored.done || false});
     lsSave('lp_focus_history', history.slice(0, 14));
   }
-  dailyFocus = text.trim();
+  dailyFocus     = text.trim();
   dailyFocusDone = false;
-  lsSave('lp_focus', {date: today, text: dailyFocus, done: false});
+  const focusData = {date: today, text: dailyFocus, done: false};
+  lsSave('lp_focus', focusData);
+  // Sync do Firestore — viditelné na všech zařízeních
+  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusToday: focusData}).catch(()=>{});
   renderFocusInDash();
   document.getElementById('focus-modal')?.remove();
 };
@@ -3371,7 +3392,10 @@ window.saveFocus = function(text) {
 window.saveTomorrowFocus = function(text) {
   const tmrw = new Date(Date.now() + 86400000).toDateString();
   tomorrowFocus = text.trim();
-  lsSave('lp_focus_next', {date: tmrw, text: tomorrowFocus});
+  const focusNextData = {date: tmrw, text: tomorrowFocus};
+  lsSave('lp_focus_next', focusNextData);
+  // Sync do Firestore
+  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusNext: focusNextData}).catch(()=>{});
   renderFocusInDash();
   document.getElementById('focus-modal')?.remove();
 };
@@ -3379,8 +3403,10 @@ window.saveTomorrowFocus = function(text) {
 window.markFocusDone = function() {
   const today = new Date().toDateString();
   dailyFocusDone = !dailyFocusDone;
-  const stored = lsGet('lp_focus', {date: today, text: dailyFocus || '', done: false});
-  lsSave('lp_focus', {...stored, done: dailyFocusDone});
+  const focusData = {date: today, text: dailyFocus || '', done: dailyFocusDone};
+  lsSave('lp_focus', focusData);
+  // Sync do Firestore
+  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusToday: focusData}).catch(()=>{});
   renderFocusInDash();
 };
 
