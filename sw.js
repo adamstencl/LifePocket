@@ -1,20 +1,25 @@
 // LifePocket Service Worker
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-firebase.initializeApp({
-  apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",
-  authDomain:"lifepocket-d8f0e.firebaseapp.com",
-  projectId:"lifepocket-d8f0e",
-  storageBucket:"lifepocket-d8f0e.firebasestorage.app",
-  messagingSenderId:"763710336120",
-  appId:"1:763710336120:web:84085b690117f605f8918d"
-});
-
-const fmsg = firebase.messaging();
+// Firebase pro push notifikace — obaleno v try-catch aby SW přežil výpadek CDN
+let fmsg = null;
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+  firebase.initializeApp({
+    apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",
+    authDomain:"lifepocket-d8f0e.firebaseapp.com",
+    projectId:"lifepocket-d8f0e",
+    storageBucket:"lifepocket-d8f0e.firebasestorage.app",
+    messagingSenderId:"763710336120",
+    appId:"1:763710336120:web:84085b690117f605f8918d"
+  });
+  fmsg = firebase.messaging();
+} catch(e) {
+  console.warn('[SW] Firebase init failed (push notifikace nebudou fungovat):', e.message);
+}
 
 // Zpracování push notifikací na pozadí (appka zavřená)
-fmsg.onBackgroundMessage(payload => {
+if (fmsg) fmsg.onBackgroundMessage(payload => {
   const n = payload.notification || {};
   const opts = {
     body: n.body || '',
@@ -28,12 +33,15 @@ fmsg.onBackgroundMessage(payload => {
   self.registration.showNotification(n.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v3';
+const CACHE = 'lifepocket-v4';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
   '/app.js',
-  '/style.css'
+  '/style.css',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
