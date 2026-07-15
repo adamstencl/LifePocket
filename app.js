@@ -14,8 +14,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.13';
+const APP_VERSION = '4.14';
 const CHANGELOG = [
+  { v:'4.14', items:[
+    '🍊 Nový oranžový vzhled — třetí barevné téma v Nastavení → Vzhled',
+  ]},
   { v:'4.13', items:[
     '📜 Historie fokusu je teď také cross-device — streak a týdenní přehled sedí na všech zařízeních',
   ]},
@@ -2416,6 +2419,7 @@ let isDark = false;
 const THEMES = {
   'dark-gold':  { emoji:'🌑', label:'Tmavé',   bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
   'sunshine':   { emoji:'☀️', label:'Světlé',  bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
+  'tangerine':  { emoji:'🍊', label:'Oranžové', bg:'#fff1e6', accent:'#c94800', tc:'#fff1e6' },
 };
 
 window.setTheme = (id) => {
@@ -2436,7 +2440,7 @@ window.setTheme = (id) => {
 
 window.toggleTheme = () => {
   const cur = localStorage.getItem('lp_theme') || 'sunshine';
-  const order = ['sunshine','dark-gold'];
+  const order = ['sunshine','tangerine','dark-gold'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
 };
