@@ -14,10 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.14';
+const APP_VERSION = '4.15';
 const CHANGELOG = [
-  { v:'4.14', items:[
+  { v:'4.15', items:[
     '🍊 Nový oranžový vzhled — třetí barevné téma v Nastavení → Vzhled',
+    '🎨 Uložený vzhled se aplikuje hned při startu — i přihlašovací obrazovka je ve tvém tématu',
+    '🔧 Drobné opravy pod kapotou',
   ]},
   { v:'4.13', items:[
     '📜 Historie fokusu je teď také cross-device — streak a týdenní přehled sedí na všech zařízeních',
@@ -2422,7 +2424,7 @@ const THEMES = {
   'tangerine':  { emoji:'🍊', label:'Oranžové', bg:'#fff1e6', accent:'#c94800', tc:'#fff1e6' },
 };
 
-window.setTheme = (id) => {
+window.setTheme = (id, silent) => {
   if (!THEMES[id]) id = 'sunshine';
   localStorage.setItem('lp_theme', id);
   document.documentElement.setAttribute('data-theme', id);
@@ -2435,7 +2437,7 @@ window.setTheme = (id) => {
     c.style.outline = c.dataset.t === id ? '3px solid ' + THEMES[id].accent : 'none';
     c.style.transform = c.dataset.t === id ? 'scale(1.03)' : 'scale(1)';
   });
-  toast(THEMES[id].emoji + ' ' + THEMES[id].label);
+  if (!silent) toast(THEMES[id].emoji + ' ' + THEMES[id].label);
 };
 
 window.toggleTheme = () => {
@@ -2447,8 +2449,11 @@ window.toggleTheme = () => {
 
 function loadTheme() {
   const saved = localStorage.getItem('lp_theme') || 'sunshine';
-  window.setTheme(saved);
+  window.setTheme(saved, true); // silent — bez toastu při startu
 }
+// Aplikuj téma hned při startu, ať i login obrazovka respektuje uložený vzhled
+// (modul běží až po parsování DOM, meta theme-color i #toast už existují)
+loadTheme();
 
 
 // ════════════════════════════════════════════════════════════

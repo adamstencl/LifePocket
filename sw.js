@@ -33,7 +33,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   self.registration.showNotification(n.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v5';
+const CACHE = 'lifepocket-v6';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -50,8 +50,10 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
+  // 'lp-pending' drží čekající akce z notifikací — nesmí se smazat při updatu SW
+  const KEEP = [CACHE, 'lp-pending'];
   e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    Promise.all(keys.filter(k => !KEEP.includes(k)).map(k => caches.delete(k)))
   ));
   self.clients.claim();
 });
