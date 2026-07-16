@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -14,12 +14,12 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.15';
+const APP_VERSION = '4.16';
 const CHANGELOG = [
-  { v:'4.15', items:[
+  { v:'4.16', items:[
     '🍊 Nový oranžový vzhled — třetí barevné téma v Nastavení → Vzhled',
     '🎨 Uložený vzhled se aplikuje hned při startu — i přihlašovací obrazovka je ve tvém tématu',
-    '🔧 Drobné opravy pod kapotou',
+    '🔧 Drobné opravy a úklid pod kapotou',
   ]},
   { v:'4.13', items:[
     '📜 Historie fokusu je teď také cross-device — streak a týdenní přehled sedí na všech zařízeních',
@@ -321,7 +321,7 @@ onAuthStateChanged(auth,async u=>{
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
     if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
-    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),prof);
+    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),prof,{merge:true});
     selMods=new Set(prof.modules||[]);initApp();
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
@@ -628,7 +628,7 @@ window.stopJournalMic=()=>{
 };
 
 // ── HABITS ────────────────────────────────────────────
-let habitDay=new Date().toISOString().slice(0,10);
+let habitDay=toDS();
 let selHabitType='yesno', selHabitEmoji='🏃', selHabitGoalId=null;
 let selFreqType='daily', selFreqTimes=3, selFreqDays=new Set();
 let selHabitGroup='morning'; // default group
@@ -637,14 +637,16 @@ function loadOpenGroups(){
     const saved = localStorage.getItem('lp_open_groups');
     if (saved) {
       const {date, groups} = JSON.parse(saved);
-      if (date === new Date().toISOString().slice(0,10)) return new Set(groups);
+      if (date === toDS()) return new Set(groups);
     }
   } catch(e){}
   return new Set(['morning','day','evening']);
 }
 let openGroups=loadOpenGroups();
 
-function toDS(d){return d.toISOString().slice(0,10);}
+function toDS(d=new Date()){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// Lokální den (DS) záznamu z UTC ISO createdAt — pro porovnání s toDS() bez posunu kolem půlnoci
+function entryDS(e){return e && e.createdAt ? toDS(new Date(e.createdAt)) : '';}
 
 let habits=[], habitLogs=[], unsubHabits=null, unsubLogs=null;
 
@@ -1122,7 +1124,7 @@ function renderHabitDetail(h) {
     <div class="hd-section-title" style="margin-top:20px">⏸ Pauza návyku</div>
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;">
       <div style="font-size:14px;color:var(--text2);margin-bottom:12px">Pozastav návyk na dobu nemoci nebo dovolené. Streak se nezlomí.</div>
-      ${h.pausedUntil && h.pausedUntil >= new Date().toISOString().slice(0,10)
+      ${h.pausedUntil && h.pausedUntil >= toDS()
         ? `<div style="color:var(--accent);margin-bottom:10px;font-size:14px">⏸ Pauza aktivní do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})}</div>
            <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',0)">▶️ Ukončit pauzu</button>`
         : `<div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1242,7 +1244,7 @@ window.toggleHabitGroup=(groupId)=>{
   if(openGroups.has(groupId)) openGroups.delete(groupId);
   else openGroups.add(groupId);
   localStorage.setItem('lp_open_groups', JSON.stringify({
-    date: new Date().toISOString().slice(0,10),
+    date: toDS(),
     groups: [...openGroups]
   }));
   renderHabits();
@@ -1447,7 +1449,7 @@ window.pauseHabit=async(id,days)=>{
     toast('▶️ Pauza ukončena');
   } else {
     const until=new Date(); until.setDate(until.getDate()+days);
-    const untilStr=until.toISOString().slice(0,10);
+    const untilStr=toDS(until);
     await updateDoc(doc(db,'users',CU.uid,'habits',id),{pausedUntil:untilStr});
     h.pausedUntil=untilStr;
     toast(`⏸ Pauza do ${until.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}`);
@@ -1818,7 +1820,7 @@ window.openEditEvent = function(ev) {
 window.openEvModal=()=>{
   editingEventId = null;
   const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
-  const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=new Date().toISOString().slice(0,10);
+  const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=toDS();
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
   const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value='';
   const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
@@ -2105,7 +2107,7 @@ function rMods(){
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);initApp();};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof,{merge:true});initApp();};
 
 
 function rEmptyStates(){
@@ -2121,7 +2123,7 @@ function rEmptyStates(){
 }
 
 function getRexEnergy() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   let score = 0;
   let hasAnyActivity = false;
 
@@ -2134,7 +2136,7 @@ function getRexEnergy() {
   }
 
   // Zápisník — 20 bodů (má dnes záznam?)
-  const hasJournal = entries.some(e => e.createdAt?.startsWith(today));
+  const hasJournal = entries.some(e => entryDS(e) === today);
   if (hasJournal) { score += 20; hasAnyActivity = true; }
 
   // Checklist — 20 bodů (splnil dnes aspoň 1 položku?)
@@ -2276,7 +2278,7 @@ function rAvPage(){
 }
 
 // ── ZDRAVÍ MODUL ──────────────────────────────────────
-let healthDay = new Date().toISOString().slice(0,10);
+let healthDay = toDS();
 let healthLog = {}; // {mood, sleepH, sleepQ, energy, stress, water, note}
 let unsubHealthLogs = null;
 let healthLogs = {}; // {date: log}
@@ -2285,20 +2287,20 @@ let sleepQual = 0;
 window.healthPrevDay = () => {
   const d = new Date(healthDay+'T12:00:00');
   d.setDate(d.getDate()-1);
-  healthDay = d.toISOString().slice(0,10);
+  healthDay = toDS(d);
   loadHealthDay();
 };
 window.healthNextDay = () => {
   const d = new Date(healthDay+'T12:00:00');
   d.setDate(d.getDate()+1);
-  healthDay = d.toISOString().slice(0,10);
+  healthDay = toDS(d);
   loadHealthDay();
 };
 
 function updateHealthDayLabel() {
   const lbl = document.getElementById('health-day-lbl');
   if (!lbl) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const d = new Date(healthDay+'T12:00:00');
   const diff = Math.round((new Date(healthDay)-new Date(today))/(86400000));
   lbl.textContent = diff===0?'Dnes':diff===-1?'Včera':diff===1?'Zítra':
@@ -2398,7 +2400,7 @@ function renderHealthWeek() {
   const today = new Date();
   for(let i=6;i>=0;i--) {
     const d = new Date(today); d.setDate(d.getDate()-i);
-    const ds = d.toISOString().slice(0,10);
+    const ds = toDS(d);
     days.push({ds, log: healthLogs[ds]||null, label: d.toLocaleDateString('cs-CZ',{weekday:'short'})});
   }
   const maxEnergy = 10;
@@ -2416,8 +2418,6 @@ function renderHealthWeek() {
 
 
 // ── THEME TOGGLE ──────────────────────────────────────
-let isDark = false;
-
 const THEMES = {
   'dark-gold':  { emoji:'🌑', label:'Tmavé',   bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
   'sunshine':   { emoji:'☀️', label:'Světlé',  bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
@@ -2494,7 +2494,8 @@ async function registerFcmToken() {
     if (token && prof) {
       prof.fcmToken = token;
       prof.notifSettings = notifSettings;
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+      // Zapiš jen změněná pole — ne celý profil (jiné zařízení mohlo mezitím uložit něco jiného)
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token, notifSettings}, {merge:true});
       console.log('[LP] FCM token uložen:', token.slice(0,20) + '...');
     } else {
       console.warn('[LP] FCM getToken vrátil prázdný token');
@@ -2550,7 +2551,7 @@ window.saveNotifSettings = () => {
   // Ulož nastavení i do Firestore pro Cloud Functions
   if (CU && prof) {
     prof.notifSettings = notifSettings;
-    setDoc(doc(db,'users',CU.uid,'profile','main'), prof).catch(()=>{});
+    setDoc(doc(db,'users',CU.uid,'profile','main'), {notifSettings}, {merge:true}).catch(()=>{});
   }
   toast('✅ Nastavení notifikací uloženo');
 };
@@ -2664,7 +2665,7 @@ window.refreshFcmToken = async () => {
     if (token) {
       log('8. Token: ✅ ' + token.slice(0, 30) + '...');
       prof.fcmToken = token;
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token}, {merge:true});
       log('9. Uloženo do Firestore: ✅');
       toast('✅ FCM token uložen!');
     } else {
@@ -2677,7 +2678,7 @@ window.refreshFcmToken = async () => {
 
 window.sendTestNotif = () => {
   const doneToday = habits.filter(h => {
-    const logId = `${h.id}_${new Date().toISOString().slice(0,10)}`;
+    const logId = `${h.id}_${toDS()}`;
     return habitLogs.some(l => l.id === logId && l.done);
   }).length;
   const total = habits.length;
@@ -2725,7 +2726,7 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
 
 // Uzivatel klikl "Splneno" v notifikaci — zaznamenej navyk
 async function handleNotifHabitDone(data) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDS();
   const date = data.date || today;
 
   // Splneni navyku
@@ -2797,7 +2798,7 @@ function scheduleDaily(hour, minute, callback) {
   // Ulož plánované časy do localStorage — při probuzení appky zkontrolujeme
   const key = `lp_sched_${hour}_${minute}`;
   const existing = lsGet(key, {});
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   existing.hour = hour; existing.minute = minute; existing.lastRun = existing.lastRun || '';
   localStorage.setItem(key, JSON.stringify(existing));
 
@@ -2809,7 +2810,7 @@ function scheduleDaily(hour, minute, callback) {
 
   const fire = () => {
     const stored = lsGet(key, {});
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = toDS();
     if (stored.lastRun === todayStr) return; // už dnes proběhl
     stored.lastRun = todayStr;
     localStorage.setItem(key, JSON.stringify(stored));
@@ -2817,7 +2818,7 @@ function scheduleDaily(hour, minute, callback) {
     // Naplánuj na zítřek
     const daily = setInterval(() => {
       const s2 = lsGet(key, {});
-      const t2 = new Date().toISOString().slice(0,10);
+      const t2 = toDS();
       if (s2.lastRun === t2) return;
       s2.lastRun = t2;
       localStorage.setItem(key, JSON.stringify(s2));
@@ -2842,7 +2843,7 @@ function checkMissedNotifications() {
     if (!isNaN(mh) && !isNaN(mm)) {
       const key = `lp_sched_${mh}_${mm}`;
       const stored = lsGet(key, {});
-      const today = now.toISOString().slice(0,10);
+      const today = toDS(now);
       if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm))) {
         stored.lastRun = today;
         localStorage.setItem(key, JSON.stringify(stored));
@@ -2856,7 +2857,7 @@ function checkMissedNotifications() {
     if (!isNaN(eh) && !isNaN(em)) {
       const key = `lp_sched_${eh}_${em}`;
       const stored = lsGet(key, {});
-      const today = now.toISOString().slice(0,10);
+      const today = toDS(now);
       if (stored.lastRun !== today && (h > eh || (h === eh && m >= em))) {
         stored.lastRun = today;
         localStorage.setItem(key, JSON.stringify(stored));
@@ -2867,7 +2868,7 @@ function checkMissedNotifications() {
   // Návyky — zkontroluj pokud je 10+ hodin a nebyla dnešní připomínka
   if (notifSettings.habits && h >= 10) {
     const lastRemind = localStorage.getItem('lp_last_remind');
-    const today = now.toISOString().slice(0,10);
+    const today = toDS(now);
     if (lastRemind !== today) checkAndRemindHabits();
   }
 }
@@ -2893,7 +2894,7 @@ function scheduleHabitReminders() {
 function checkPerHabitReminders() {
   if (Notification.permission !== 'granted') return;
   const now = new Date();
-  const today = now.toISOString().slice(0,10);
+  const today = toDS(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const av = AVS.find(a => a.id === prof?.avatarId);
 
@@ -2926,7 +2927,7 @@ function checkPerHabitReminders() {
 
 // ── Obsah notifikací ──
 function sendMorningNotif() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const todayEvents = events.filter(ev => {
     if (ev.repeat === 'yes') return ev.date.slice(5) === today.slice(5);
     return ev.date === today;
@@ -2946,7 +2947,7 @@ function sendMorningNotif() {
 }
 
 function sendEveningNotif() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const done = habits.filter(h => habitLogs.some(l => l.id === `${h.id}_${today}` && l.done)).length;
   const total = habits.length;
   const a = prof?.gender === 'f' ? 'a' : '';
@@ -2965,7 +2966,7 @@ function sendEveningNotif() {
 }
 
 function checkAndRemindHabits() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const undone = habits.filter(h => {
     const freq = (typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
     const dow = new Date().getDay();
@@ -2980,7 +2981,7 @@ function checkAndRemindHabits() {
       let weekDone = 0;
       for (let i = 0; i < 7; i++) {
         const d = new Date(weekStart); d.setDate(weekStart.getDate()+i);
-        const ds = d.toISOString().slice(0,10);
+        const ds = toDS(d);
         if (habitLogs.some(l => l.id===`${h.id}_${ds}`&&l.done)) weekDone++;
       }
       if (weekDone >= (freq.times||3)) return false; // cíl splněn
@@ -3015,7 +3016,7 @@ function checkBirthdayNotifs() {
   const todayMMDD = `${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const in7 = new Date(now); in7.setDate(now.getDate()+7);
   const in7MMDD = `${String(in7.getMonth()+1).padStart(2,'0')}-${String(in7.getDate()).padStart(2,'0')}`;
-  const today = now.toISOString().slice(0,10);
+  const today = toDS(now);
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
 
   events.forEach(ev => {
@@ -3047,7 +3048,7 @@ function checkBirthdayNotifs() {
 function checkEventReminders() {
   if (Notification.permission !== 'granted') return;
   const now = new Date();
-  const today = now.toISOString().slice(0,10);
+  const today = toDS(now);
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
 
   events.forEach(ev => {
@@ -3076,12 +3077,12 @@ function checkEventReminders() {
 // Proaktivní zpráva od Rexe po přihlášení
 async function rexProactiveGreeting() {
   const lastGreet = localStorage.getItem('lp_rex_greet');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDS();
   if (lastGreet === today) return; // jednou denně
   localStorage.setItem('lp_rex_greet', today);
 
   const today_date = new Date();
-  const todayStr = today_date.toISOString().slice(0, 10);
+  const todayStr = toDS(today_date);
 
   // Sestav kontext
   const doneToday = habits.filter(h =>
@@ -3125,7 +3126,7 @@ function analyzeWeekPatterns() {
     const dayCounts = [0,0,0,0,0,0,0];
     for (let i = 0; i < 28; i++) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const ds = d.toISOString().slice(0,10);
+      const ds = toDS(d);
       const dow = d.getDay();
       dayCounts[dow]++;
       if (habitLogs.some(l => l.id === `${h.id}_${ds}` && l.done)) dayStats[dow]++;
@@ -3173,8 +3174,8 @@ window.getRexWeeklyReport = async () => {
   const week = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today); d.setDate(d.getDate() - i);
-    const ds = d.toISOString().slice(0,10);
-    const dayEntries = entries.filter(e => (e.createdAt||'').startsWith(ds));
+    const ds = toDS(d);
+    const dayEntries = entries.filter(e => entryDS(e) === ds);
     const dayHabits = habits.filter(h => habitLogs.some(l => l.id===`${h.id}_${ds}` && l.done));
     week.push({
       date: d.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'}),
@@ -3208,12 +3209,11 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
 function checkAutoWeeklyReport() {
   const now = new Date();
   if(now.getDay() !== 0) return; // jen v neděli
-  // Zjisti ISO datum v lokálním čase (ne UTC) pro konzistentní porovnání
-  const localDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const localDateStr = toDS(now);
   const stored = lsGet('lp_weekly_report', null);
   if(stored) {
     const reportDate = new Date(stored.date);
-    const reportLocalStr = `${reportDate.getFullYear()}-${String(reportDate.getMonth()+1).padStart(2,'0')}-${String(reportDate.getDate()).padStart(2,'0')}`;
+    const reportLocalStr = toDS(reportDate);
     if(reportLocalStr === localDateStr) return; // už byl dnes generován
   }
   // Vygeneruj tiše a ulož
@@ -3225,8 +3225,8 @@ async function generateWeeklyReportSilent() {
   const week = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today); d.setDate(d.getDate() - i);
-    const ds = d.toISOString().slice(0,10);
-    const dayEntries = entries.filter(e => (e.createdAt||'').startsWith(ds));
+    const ds = toDS(d);
+    const dayEntries = entries.filter(e => entryDS(e) === ds);
     const dayHabits = habits.filter(h => habitLogs.some(l => l.id===`${h.id}_${ds}` && l.done));
     week.push({
       date: d.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'}),
@@ -3720,7 +3720,7 @@ function getStreak(hid) {
   let streak = 0;
   const d = new Date();
   for(let i=0; i<365; i++) {
-    const ds = d.toISOString().slice(0,10);
+    const ds = toDS(d);
     if(habitLogs.some(l=>l.id===`${hid}_${ds}`&&l.done)) streak++;
     else break;
     d.setDate(d.getDate()-1);
@@ -3732,7 +3732,7 @@ function checkAvatarReactions(hid, date, justCompleted) {
   if(!justCompleted) return; // jen při splnění, ne při odškrtnutí
   const av = AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
   const name = prof?.prezdivka||prof?.nickname||'';
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   if(date !== today) return; // jen pro dnešek
 
   // Streak milník
@@ -3789,7 +3789,7 @@ function checkInactivity() {
   // Najdi poslední den kdy byl splněn aspoň 1 návyk
   for(let i=1; i<=30; i++) {
     const d = new Date(today); d.setDate(d.getDate()-i);
-    const ds = d.toISOString().slice(0,10);
+    const ds = toDS(d);
     if(habitLogs.some(l=>l.date===ds&&l.done)) { lastActive=i; break; }
   }
 
@@ -3803,7 +3803,7 @@ function checkInactivity() {
     rio: `Hej! ${lastActive} dní mimo. Pojď zase žít naplno!`,
   };
 
-  const k = `lp_inactivity_shown_${today.toISOString().slice(0,10)}`;
+  const k = `lp_inactivity_shown_${toDS(today)}`;
   if(localStorage.getItem(k)) return;
   localStorage.setItem(k, '1');
 
@@ -3913,7 +3913,7 @@ window.createFamily = async () => {
     shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
   await setDoc(doc(db,'families',fid), data);
-  await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid});
+  await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid}, {merge:true});
   prof.familyId = fid;
   familyId = fid;
   subscribeFamily();
@@ -3938,7 +3938,7 @@ window.joinFamily = async () => {
     await setDoc(doc(db,'families',code), {
       members: { ...fData.members, [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName, avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
     }, {merge:true});
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: code});
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: code}, {merge:true});
     prof.familyId = code;
     familyId = code;
     document.getElementById('family-join-form').style.display='none';
@@ -3960,7 +3960,8 @@ window.leaveFamily = async () => {
     }
     const newProf = {...prof}; delete newProf.familyId;
     prof = newProf;
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+    // deleteField() smaže jen familyId, ostatní pole necháme netknutá
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: deleteField()}, {merge:true});
     familyId = null; familyData = null;
     if(unsubFamily) { unsubFamily(); unsubFamily=null; }
     if(unsubFamilyShop) { unsubFamilyShop(); unsubFamilyShop=null; }
@@ -4417,7 +4418,7 @@ window.saveMealPlanItem = async (dayKey, mealKey, val) => {
     if(!prof.mealPlan) prof.mealPlan = {};
     if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
     prof.mealPlan[dayKey][mealKey] = val;
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: prof.mealPlan}, {merge:true});
   }
 };
 
@@ -4437,7 +4438,7 @@ window.generateMealPlanAI = async () => {
       renderMealPlan();
     } else {
       prof.mealPlan = plan;
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), prof);
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: plan}, {merge:true});
       renderMealPlan();
     }
     toast('✅ Jídelníček vygenerován!');
@@ -4461,7 +4462,7 @@ function subFoodLogs() {
 window.renderKcalToday = async () => {
   const sec = document.getElementById('kcal-today-section');
   if(!sec) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const todayLogs = foodLogs.filter(l=>l.date===today);
   const goal = prof.kcalGoal || 2000;
   const totalKcal = todayLogs.reduce((s,l)=>s+(l.kcal||0),0);
@@ -4596,7 +4597,7 @@ window.addFoodFromPlan = async (name, mealKey) => {
     if (!raw) throw new Error('AI není k dispozici');
     const txt = raw.replace(/```json|```/g,'').trim();
     const est = JSON.parse(txt);
-    const today = new Date().toISOString().slice(0,10);
+    const today = toDS();
     const now = new Date().toTimeString().slice(0,5);
     const log = {name, kcal:est.kcal||0, protein:est.protein||0, carbs:est.carbs||0, fat:est.fat||0, date:today, time:now};
     const ref = await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
@@ -4610,7 +4611,7 @@ window.addFoodFromPlan = async (name, mealKey) => {
 window.saveFoodLog = async (modalEl) => {
   const name = document.getElementById('fl-name').value.trim();
   if(!name) { toast('⚠️ Zadej název jídla'); return; }
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const now = new Date().toTimeString().slice(0,5);
   const log = {
     name,
@@ -4728,8 +4729,8 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
           onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span style="font-size:20px">🍽️</span>
           <div style="flex:1">
-            <div style="font-family:'Crimson Pro',serif;font-size:15px;color:var(--text);font-weight:600">${r.name}</div>
-            <div style="font-size:12px;color:var(--text3)">⏱ ${r.time||'?'} · 🍽 ${r.mealType||r.difficulty||'?'}</div>
+            <div style="font-family:'Crimson Pro',serif;font-size:15px;color:var(--text);font-weight:600">${esc(r.name)}</div>
+            <div style="font-size:12px;color:var(--text3)">⏱ ${esc(r.time||'?')} · 🍽 ${esc(r.mealType||r.difficulty||'?')}</div>
           </div>
         </div>`).join('')
     : `<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px">Zatím nemáš žádné uložené recepty.<br>Jdi do Vaření a ulož si oblíbené! 🔖</div>`;
@@ -5158,7 +5159,7 @@ window.deleteChecklist = async function(id) {
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
-  initWater();initFocus();subChecklist();loadTheme();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
+  initWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
   // Zpracuj "Splněno" akce uložené SW když byla appka zavřená
@@ -5243,7 +5244,7 @@ const FALLBACK_QUOTES = [
 ];
 
 async function loadDailyQuote() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   const cached = lsGet('lp_daily_quote', null);
   if (cached?.date === today) return cached.text;
 
@@ -5278,7 +5279,7 @@ function rDash(){
   const dem=document.getElementById('d-avem'); if(dem) dem.textContent=av.emoji;
   const dnm=document.getElementById('d-avnm'); if(dnm) dnm.textContent=av.name;
   // Dynamická Rex zpráva podle skutečného stavu
-  const today_r=new Date().toISOString().slice(0,10);
+  const today_r=toDS();
   const h_r=new Date().getHours();
   const doneToday_r=habitLogs.filter(l=>l.date===today_r&&l.done).length;
   const totalHabits_r=habits.length;
@@ -5340,7 +5341,7 @@ function rDash(){
   
   const dtx=document.getElementById('d-avtxt'); if(dtx) dtx.textContent=dynamicMsg;
 
-  const today=new Date().toISOString().slice(0,10);
+  const today=toDS();
   const mods=prof.modules||[];
   // Focus widget always at top
   let html=focusWidgetHTML();
@@ -5368,7 +5369,7 @@ function rDash(){
 
   // ── WIDGET: DENNÍ CITÁT ──
   const quoteToday = lsGet('lp_daily_quote', null);
-  const quoteTodayStr = new Date().toISOString().slice(0,10);
+  const quoteTodayStr = toDS();
   const quoteText = quoteToday?.date === quoteTodayStr ? quoteToday.text : null;
   html += `<div class="dw" id="dash-quote-widget">
     <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${av.name} říká</div>
@@ -5394,7 +5395,7 @@ function rDash(){
       const isCount=hb.type==='count';
       const val=isCount?(log?.value||0)+'/'+hb.goal:'';
       let streak=0;const sd=new Date(today+'T12:00:00');
-      for(let i=0;i<30;i++){const ds=sd.toISOString().slice(0,10);if(habitLogs.some(l=>l.habitId===hb.id&&l.date===ds&&l.done))streak++;else break;sd.setDate(sd.getDate()-1);}
+      for(let i=0;i<30;i++){const ds=toDS(sd);if(habitLogs.some(l=>l.habitId===hb.id&&l.date===ds&&l.done))streak++;else break;sd.setDate(sd.getDate()-1);}
       return `<div class="dw-habit-row">
         <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
         <div class="dw-hname">${hb.emoji} ${hb.name}</div>
@@ -5420,7 +5421,7 @@ function rDash(){
 
   // ── WIDGET: ZÁPISNÍK ──
   if(mods.includes('journal')){
-    const todayEntries=entries.filter(e=>e.createdAt?.startsWith(today));
+    const todayEntries=entries.filter(e=>entryDS(e)===today);
     const lastEntry=entries[0];
     const todayMood=todayEntries.find(e=>e.mood)?.mood||'';
     if(lastEntry){
@@ -5531,10 +5532,10 @@ function rDash(){
 
   // ── WIDGET: NÁLADA (pokud aktivní) ──
   if(mods.includes('mood')){
-    const todayMoodEntry=entries.filter(e=>e.createdAt?.startsWith(today)&&e.mood);
+    const todayMoodEntry=entries.filter(e=>entryDS(e)===today&&e.mood);
     const todayMoodVal=todayMoodEntry[0]?.mood||'';
     const weekMoods=[];
-    for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);const me=entries.filter(e=>e.createdAt?.startsWith(ds)&&e.mood);weekMoods.push(me[0]?.mood||'');}
+    for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=toDS(d);const me=entries.filter(e=>entryDS(e)===ds&&e.mood);weekMoods.push(me[0]?.mood||'');}
     html+=`<div class="dw" onclick="sp('journal')">
       <div class="dw-head">
         <div class="dw-title">💭 Nálada</div>
@@ -5580,7 +5581,7 @@ function rDash(){
       let streak = 0;
       const d = new Date();
       while(streak < 365) {
-        const ds = d.toISOString().slice(0,10);
+        const ds = toDS(d);
         const log = habitLogs.find(l => l.id===`${h.id}_${ds}` && l.done);
         if(!log) break;
         streak++;
@@ -5616,14 +5617,14 @@ function rDash(){
 }
 window.selMood=em=>{
   mood=em;
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   lsSave('lp_daily_mood', {emoji:em, date:today});
   rAvPage();
   toast(`Nálada ${em} zaznamenána`);
 };
 
 window.setDailyMood = function(emoji) {
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
   lsSave('lp_daily_mood', {emoji, date: today});
   mood = emoji;
   rAvPage();
@@ -6138,7 +6139,7 @@ function rGoals() {
   if (addBtn) addBtn.style.display = '';
 
   const openSet  = new Set([...document.querySelectorAll('.gsubs.open')].map(el => el.id.replace('gs-','')));
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = toDS();
   const doneToday = new Set(habitLogs.filter(l => l.date === todayStr && l.done).map(l => l.habitId));
 
   let html = activeGoals.map(g => buildGoalCard(g, openSet, doneToday)).join('');
@@ -6178,10 +6179,10 @@ window.togModSet=async(id,on)=>{
     toast(on?`✓ ${modName} zapnut`:`${modName} vypnut`);
   }catch(e){toast('❌ Nepodařilo se uložit: '+e.message);}
 };
-window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);rDash();initSet();toast('✓ Jméno uloženo');};
-window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);toast('✓ Kalorický cíl uložen');renderMealPlan();};
+window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast('✓ Jméno uloženo');};
+window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{kcalGoal:v},{merge:true});toast('✓ Kalorický cíl uložen');renderMealPlan();};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
-window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),prof);buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
+window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
 
 // VOICE — chat mic
 window.togMic=()=>{
@@ -6252,7 +6253,7 @@ async function finishDS(text){
   saveChatMessage('user',text);
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   document.getElementById('typing').classList.add('active');scrollChat();
-  const today=new Date().toISOString().slice(0,10);
+  const today=toDS();
   const gCtx=goals.length ? goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%)`).join('\n') : 'Žádné';
   const todayHabits=habits.map(h=>{
     const log=habitLogs.find(l=>l.habitId===h.id&&l.date===today);
@@ -6291,7 +6292,7 @@ window.send=async()=>{
   appendMsg('user',t);saveChatMessage('user',t);
   document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-  const today=new Date().toISOString().slice(0,10);
+  const today=toDS();
 
   // ── Kontext: Cíle ──
   const gCtx=goals.length
@@ -6307,7 +6308,7 @@ window.send=async()=>{
     let streak=0;
     const sd=new Date(today);
     for(let i=0;i<30;i++){
-      const ds=sd.toISOString().slice(0,10);
+      const ds=toDS(sd);
       if(habitLogs.some(l=>l.habitId===h.id&&l.date===ds&&l.done)) streak++;
       else break;
       sd.setDate(sd.getDate()-1);
@@ -6387,7 +6388,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
       const btns=document.createElement('div');
       btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
       const esc2=food.replace(/'/g,"\\'");
-      btns.innerHTML=`<button onclick="rexRecipe('${esc2}',this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${food}</b></button>`;
+      btns.innerHTML=`<button onclick="rexRecipe('${esc2}',this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
       c.appendChild(btns);scrollChat();
     }
   }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
@@ -6415,13 +6416,13 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
     lastRecipe=recipe;
     // Nahraď loading za kartu receptu v chatu
     loading.innerHTML=`<div class="mlbl">🍳 Navrhovaný recept</div>
-      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${recipe.name}</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${recipe.time} · 🍽 ${recipe.mealType||recipe.difficulty||'?'} · 🍽 ${recipe.portions} porcí</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${esc(recipe.name)}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${esc(recipe.time)} · 🍽 ${esc(recipe.mealType||recipe.difficulty||'?')} · 🍽 ${esc(recipe.portions)} porcí</div>
       <div style="font-size:13px;color:var(--text2);font-weight:700;margin-bottom:8px">SUROVINY:</div>
-      ${recipe.ingredients.map(i=>`<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;display:flex;justify-content:space-between"><span>• ${i.name}</span><span style="color:var(--text3)">${i.qty}</span></div>`).join('')}
+      ${recipe.ingredients.map(i=>`<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;display:flex;justify-content:space-between"><span>• ${esc(i.name)}</span><span style="color:var(--text3)">${esc(i.qty)}</span></div>`).join('')}
       <div style="font-size:13px;color:var(--text2);font-weight:700;margin:12px 0 8px">POSTUP:</div>
-      ${recipe.steps.map((s,i)=>`<div style="padding:5px 0;font-size:14px;color:var(--text2)"><span style="color:var(--accent);font-weight:700">${i+1}.</span> ${s}</div>`).join('')}
-      ${recipe.tip?`<div style="margin-top:10px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text2)">💡 ${recipe.tip}</div>`:''}`;
+      ${recipe.steps.map((s,i)=>`<div style="padding:5px 0;font-size:14px;color:var(--text2)"><span style="color:var(--accent);font-weight:700">${i+1}.</span> ${esc(s)}</div>`).join('')}
+      ${recipe.tip?`<div style="margin-top:10px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text2)">💡 ${esc(recipe.tip)}</div>`:''}`;
     // Přidej potvrzovací tlačítka
     const confirm=document.createElement('div');
     confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
@@ -6562,10 +6563,10 @@ function renderShop(){
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
           <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${esc(i.id)}',${i.done})">${i.done?'✓':''}</div>
-          <span class="shop-item-name">${i.name}</span>
+          <span class="shop-item-name">${esc(i.name)}</span>
           ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','${esc(i.qty||'')}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
           <span class="shop-item-cat" data-id="${esc(i.id)}" onclick="editShopCat('${esc(i.id)}','${esc(i.category||'Ostatní')}')" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
-          ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${i.fromRecipe}</span>`:''}
+          ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${esc(i.fromRecipe)}</span>`:''}
           <button class="shop-item-fav" onclick="toggleFavShopItem('${esc(i.name)}','${esc(i.category||'Ostatní')}')" title="Přidat k oblíbeným">${isFavShopItem(i.name)?'⭐':'☆'}</button>
           <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
         </div>`).join('')}
@@ -6687,7 +6688,7 @@ window.addShopItem=async()=>{
 };
 
 // ── OBLÍBENÉ POLOŽKY NÁKUPU ──────────────────────────
-function getFavShopItems() { return JSON.parse(localStorage.getItem('lp_fav_shop')||'[]'); }
+function getFavShopItems() { return lsGet('lp_fav_shop', []); }
 function saveFavShopItems(favs) { localStorage.setItem('lp_fav_shop', JSON.stringify(favs)); }
 function isFavShopItem(name) { return getFavShopItems().some(f=>f.name.toLowerCase()===name.toLowerCase()); }
 
@@ -6743,7 +6744,7 @@ function subRecurringShop() {
 function checkRecurringShop() {
   if (!recurringShopItems.length || !CU) return;
   const today = new Date();
-  const todayISO = today.toISOString().slice(0,10);
+  const todayISO = toDS(today);
   const todayDay = today.getDay();
   recurringShopItems.forEach(async item => {
     if (item.lastAdded === todayISO) return;
@@ -7005,7 +7006,7 @@ window.openRecipePickerForShop = function() {
             <span style="font-size:22px">🍽️</span>
             <div style="flex:1;min-width:0">
               <div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--text)">${esc(r.name)}</div>
-              <div style="font-size:12px;color:var(--text3);margin-top:2px">⏱ ${r.time||'?'} · 🥘 ${r.ingredients?.length||0} surovin</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px">⏱ ${esc(r.time||'?')} · 🥘 ${r.ingredients?.length||0} surovin</div>
             </div>
           </div>`).join('')}
       </div>` : `
@@ -7279,8 +7280,8 @@ function renderRecipe(r, scaledPortions){
   if(titleEl) titleEl.textContent = r.name;
   document.getElementById('cook-recipe-card').innerHTML=`
     <div class="cook-recipe-meta" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span>⏱ ${r.time}</span>
-      <span>🍽 ${r.mealType||r.difficulty||'?'}</span>
+      <span>⏱ ${esc(r.time)}</span>
+      <span>🍽 ${esc(r.mealType||r.difficulty||'?')}</span>
       <span style="display:flex;align-items:center;gap:6px">🍽
         <button onclick="changePortions(-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">−</button>
         <span id="portions-display" style="font-weight:700;min-width:20px;text-align:center">${portions}</span>
@@ -7292,17 +7293,17 @@ function renderRecipe(r, scaledPortions){
     ${r.ingredients.map((ing,i)=>`
       <div class="cook-ingredient" id="cing-row-${i}">
         <div class="cook-ing-check" id="cing-${i}" onclick="toggleIng(${i})"></div>
-        <span id="ing-name-${i}">${ing.name}</span>
-        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="Klikni pro úpravu" onclick="editRecipeQty(${i},this)">${scale===1?ing.qty:scaleQty(ing.qty)}</span>
+        <span id="ing-name-${i}">${esc(ing.name)}</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="Klikni pro úpravu" onclick="editRecipeQty(${i},this)">${esc(scale===1?ing.qty:scaleQty(ing.qty))}</span>
         <span id="cing-badge-${i}" style="display:none;font-size:11px;background:rgba(76,217,100,.15);color:var(--green);border-radius:6px;padding:2px 7px;border:1px solid rgba(76,217,100,.3)">mám doma</span>
       </div>`).join('')}
     <div class="cook-section">Postup</div>
     ${r.steps.map((s,i)=>`
       <div class="cook-step">
         <span class="cook-step-num">${i+1}.</span>
-        <span>${s}</span>
+        <span>${esc(s)}</span>
       </div>`).join('')}
-    ${r.tip?`<div style="margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)">💡 ${r.tip}</div>`:''}
+    ${r.tip?`<div style="margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)">💡 ${esc(r.tip)}</div>`:''}
   `;
   // Ulož aktuální porce pro škálování
   window._currentPortions = portions;
@@ -7432,8 +7433,8 @@ function renderSavedRecipes(){
       <div class="saved-recipe-top">
         <div style="font-size:24px">🍽️</div>
         <div style="flex:1">
-          <div class="saved-recipe-name">${r.name}</div>
-          <div class="saved-recipe-meta">⏱ ${r.time||'?'} · 🍽 ${r.mealType||r.difficulty||'?'} · ${r.portions||2} porcí · Uloženo ${new Date(r.savedAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
+          <div class="saved-recipe-name">${esc(r.name)}</div>
+          <div class="saved-recipe-meta">⏱ ${esc(r.time||'?')} · 🍽 ${esc(r.mealType||r.difficulty||'?')} · ${r.portions||2} porcí · Uloženo ${new Date(r.savedAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
         </div>
         <button onclick="deleteSavedRecipe('${esc(r.id)}',event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
       </div>
@@ -8094,7 +8095,7 @@ function showHabitDetectBanner(completed, newHabits) {
 // Zaznamenat splněný návyk (existující nebo nový)
 window.logHabitFromEntry = async (dataEnc) => {
   const {item, existingHabitId} = JSON.parse(decodeURIComponent(dataEnc));
-  const today = new Date().toISOString().slice(0,10);
+  const today = toDS();
 
   if (existingHabitId) {
     // Zaznamenat do existujícího návyku
@@ -8147,8 +8148,8 @@ window.createHabitFromEntry = async (dataEnc) => {
   const newRef = await addDoc(collection(db,'users',CU.uid,'habits'), newH);
   // Zaznamenat dnešní splnění pokud je k dispozici
   if (h.logToday) {
-    const lId = newRef.id + '_' + new Date().toISOString().slice(0,10);
-    const lg = {id:lId, habitId:newRef.id, date:new Date().toISOString().slice(0,10), done:true, value:1};
+    const lId = newRef.id + '_' + toDS();
+    const lg = {id:lId, habitId:newRef.id, date:toDS(), done:true, value:1};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',lId), lg);
     const exLg = habitLogs.find(l=>l.id===lId);
     if (exLg) Object.assign(exLg, lg); else habitLogs.push(lg);

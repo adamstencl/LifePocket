@@ -1117,12 +1117,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .hdc-type{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(76,217,100,.15);color:var(--green);border:1px solid rgba(76,217,100,.25)}
 .hdc-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 
-/* DASHBOARD TODAY CARD */
-
-
-
-.dash-today-pill b{color:var(--text);font-weight:700}
-
 .dash-habit-mini{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;transition:opacity .2s}
 .dash-habit-mini:last-child{border-bottom:none}
 .dash-habit-mini:hover{opacity:.8}
@@ -1260,7 +1254,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 [data-theme="sunshine"] .health-section,[data-theme="tangerine"] .health-section{background:#ffffff}
 [data-theme="sunshine"] .hm-btn,[data-theme="tangerine"] .hm-btn{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.12)}
 [data-theme="sunshine"] .hm-btn.sel{background:rgba(184,134,11,.1);border-color:var(--accent)}
-[data-theme="sunshine"] .dash-today{background:linear-gradient(135deg,rgba(184,134,11,.07),rgba(196,122,42,.05))}
 [data-theme="sunshine"] .avbanner:hover{background:linear-gradient(135deg,rgba(184,134,11,.12),rgba(196,122,42,.08))}
 [data-theme="sunshine"] .modtile,[data-theme="tangerine"] .modtile{background:#ffffff}
 [data-theme="sunshine"] .add-habit-wrap,[data-theme="tangerine"] .add-habit-wrap{background:#ffffff;border-color:rgba(0,0,0,.1)}
@@ -1273,7 +1266,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 [data-theme="tangerine"] .btn-p:hover{box-shadow:0 8px 28px rgba(201,72,0,.32)}
 [data-theme="tangerine"] .avbanner{background:linear-gradient(135deg,rgba(201,72,0,.08),rgba(176,58,10,.05))}
 [data-theme="tangerine"] .avbanner:hover{background:linear-gradient(135deg,rgba(201,72,0,.13),rgba(176,58,10,.08))}
-[data-theme="tangerine"] .dash-today{background:linear-gradient(135deg,rgba(201,72,0,.07),rgba(176,58,10,.04))}
 [data-theme="tangerine"] .avmsg{background:linear-gradient(135deg,rgba(201,72,0,.07),rgba(176,58,10,.05));border-color:rgba(201,72,0,.2)}
 [data-theme="tangerine"] .msg.bot{background:rgba(201,72,0,.05);border-color:rgba(201,72,0,.18);color:var(--text)}
 [data-theme="tangerine"] .msg.user{background:linear-gradient(135deg,#c94800,#b03a0a);color:#fff;border:none}

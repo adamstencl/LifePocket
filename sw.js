@@ -60,7 +60,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request).then(res => {
+    if (res) return res;
+    // Navigace bez cache zásahu — spadni na hlavní stránku appky
+    if (e.request.mode === 'navigate') return caches.match('/index.html');
+    return new Response('', {status: 503, statusText: 'Offline'});
+  })));
 });
 
 // ── Klik na tlačítko v notifikaci ──
@@ -68,11 +73,14 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const data = e.notification.data || {};
   if (e.action === 'done') {
+    // Lokální datum (ne UTC) — SW nemůže importovat toDS() z app.js
+    const now = new Date();
+    const localDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
     const msg = {
       type: 'HABIT_DONE_FROM_NOTIF',
       habitId: data.habitId,
       reminderId: data.reminderId,
-      date: new Date().toISOString().slice(0, 10)
+      date: localDate
     };
     e.waitUntil(
       self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
