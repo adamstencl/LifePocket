@@ -14,18 +14,21 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
 
-  // 2. Rate limiting — max 50 AI volání za den
+  // 2. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
+  // aby paralelní requesty nemohly limit obejít)
   const today = new Date().toISOString().slice(0, 10);
-  const rateRef = db.doc(`users/${uid}/rateLimits/aiCalls`);
-  const rateSnap = await rateRef.get();
-  const rateData = rateSnap.exists ? rateSnap.data() : {};
-  const todayCount = rateData.date === today ? (rateData.count || 0) : 0;
+  const rateRef = db.doc(`rateLimits/${uid}`);
   const DAILY_LIMIT = 50;
-  if (todayCount >= DAILY_LIMIT) {
-    throw new HttpsError('resource-exhausted', `Denní limit ${DAILY_LIMIT} AI dotazů byl dosažen. Limit se obnoví zítra.`);
-  }
-  // Inkrementuj počítadlo
-  await rateRef.set({date: today, count: todayCount + 1});
+  const todayCount = await db.runTransaction(async (tx) => {
+    const rateSnap = await tx.get(rateRef);
+    const rateData = rateSnap.exists ? rateSnap.data() : {};
+    const count = rateData.date === today ? (rateData.count || 0) : 0;
+    if (count >= DAILY_LIMIT) {
+      throw new HttpsError('resource-exhausted', `Denní limit ${DAILY_LIMIT} AI dotazů byl dosažen. Limit se obnoví zítra.`);
+    }
+    tx.set(rateRef, {date: today, count: count + 1});
+    return count;
+  });
 
   // 3. Načti Claude API klíč z Firestore (admin přístup, klient to nemůže číst)
   const secretsSnap = await db.doc('config/secrets').get();
