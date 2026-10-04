@@ -19,6 +19,7 @@ const CHANGELOG = [
   { v:'4.17', items:[
     '🎨 Barva lišty v prohlížeči se podle zvoleného vzhledu nastaví hned při startu',
     '🛡️ Opravené zobrazení jmen a textů s uvozovkami nebo speciálními znaky v návycích, deníku, jídelníčku, nákupech a zásobách',
+    '🔒 Vlastní typy událostí se zobrazují bezpečně (text se escapuje)',
     '🔧 Drobné opravy zabezpečení',
   ]},
   { v:'4.16', items:[
@@ -1060,7 +1061,7 @@ function renderHabitDetail(h) {
     else if (isDone) cls += ' done';
     else cls += ' miss';
     if (isToday) cls += ' today';
-    cells += `<div class="${cls}" title="${ds}">${isDone ? '✓' : (isFuture ? '' : day)}</div>`;
+    cells += `<div class="${cls}" title="${esc(ds)}">${isDone ? '✓' : (isFuture ? '' : day)}</div>`;
   }
 
   const monthsHtml = `
@@ -1538,7 +1539,7 @@ function renderCal(){
     const hasEv=dayEvs.length>0;
     html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
       ${day}
-      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?getEvIcon(dayEvs[0].type):''}</span>`:''}
+      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?esc(getEvIcon(dayEvs[0].type)):''}</span>`:''}
     </div>`;
   }
   // Next month
@@ -1596,7 +1597,7 @@ function renderEvList(){
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(getEvIcon(t))+' '+esc(getEvLabel(t))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       fb+='</div>';
       filterBar.innerHTML=fb;
@@ -1614,7 +1615,7 @@ function renderEvList(){
   container.innerHTML=filtered.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div class="ev-card">'
-      +'<div class="ev-icon">'+getEvIcon(ev.type)+'</div>'
+      +'<div class="ev-icon">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div class="ev-info">'
       +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
@@ -1758,10 +1759,10 @@ function showDayEventsModal(ds, dayEvs) {
   const evHtml = dayEvs.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
-      +'<div style="font-size:22px">'+getEvIcon(ev.type)+'</div>'
+      +'<div style="font-size:22px">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div style="flex:1">'
       +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+getEvLabel(ev.type)+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
       +'</div>'
       +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
       +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
@@ -1849,7 +1850,7 @@ function renderEvTypeButtons(){
   // Vlastní typy
   for(const ct of custom){
     html+='<button class="ev-type-btn'+(selEvType_val===ct.key?' sel':'')+'" data-t="'+esc(ct.key)+'" data-a0="'+esc(ct.key)+'" onclick="selEvType(this.dataset.a0,this)">'
-      +ct.emoji+' '+esc(ct.label)
+      +esc(ct.emoji)+' '+esc(ct.label)
       +' <span class="ev-ctype-del" data-a0="'+esc(ct.key)+'" onclick="event.stopPropagation();delCustomEvType(this.dataset.a0)">×</span>'
       +'</button>';
   }
@@ -1877,7 +1878,8 @@ window.confirmCustomEvType=async()=>{
   const labelInp=document.getElementById('ev-ctype-label');
   if(!emojiInp||!labelInp)return;
   const emoji=emojiInp.value.trim()||'📌';
-  const label=labelInp.value.trim();
+  // Odstraní znaky, které by mohly rozbít HTML (escape se provádí i při renderu)
+  const label=labelInp.value.trim().replace(/[<>"']/g,'');
   if(!label){toast('⚠️ Zadej název kategorie');return;}
   const key='c_'+Date.now().toString(36);
   const customEvTypes=[...(prof.customEvTypes||[]),{key,emoji,label}];
@@ -2633,7 +2635,7 @@ window.sendTestServerPush = async () => {
 window.refreshFcmToken = async () => {
   const log = (msg) => {
     const box = document.getElementById('fcm-debug-box');
-    if (box) box.innerHTML += `<div>${msg}</div>`;
+    if (box) box.innerHTML += `<div>${esc(msg)}</div>`;
     console.log('[FCM]', msg);
   };
 
@@ -3573,7 +3575,7 @@ function focusStatsHTML() {
     else if (d.set) cls += ' set';
     if (d.isToday) cls += ' today';
     const title = `${d.day}${d.set ? (d.done ? ' ✓' : ' ·') : ''}`;
-    return `<div class="focus-dot-wrap" title="${title}"><div class="${cls}"></div><div class="focus-dot-lbl">${d.day}</div></div>`;
+    return `<div class="focus-dot-wrap" title="${esc(title)}"><div class="${cls}"></div><div class="focus-dot-lbl">${d.day}</div></div>`;
   }).join('');
 
   return `<div class="focus-stats">
@@ -5485,7 +5487,7 @@ function rDash(){
         const diffLbl=diff===0?'Dnes 🔥':diff===1?'Zítra':'Za '+diff+' dní';
         const isSoon=diff<=2;
         return `<div class="dw-ev-row">
-          <div class="dw-ev-ico">${getEvIcon(ev.type)}</div>
+          <div class="dw-ev-ico">${esc(getEvIcon(ev.type))}</div>
           <div style="flex:1">
             <div class="dw-ev-name">${esc(ev.name)}</div>
             <div class="dw-ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'long'})}</div>
@@ -7569,7 +7571,7 @@ window.openPantryAdd = function(prefill = {}) {
           ${['ks','g','kg','ml','l'].map(u=>`<option value="${u}" ${(prefill.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
         </select>
       </div>
-      <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${prefill.minQty || ''}" style="width:100%;box-sizing:border-box">
+      <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${esc(prefill.minQty || '')}" style="width:100%;box-sizing:border-box">
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" onclick="savePantryItem(this.dataset.a0)">✓ Uložit</button>
@@ -8042,9 +8044,6 @@ function showHabitDetectBanner(completed, newHabits) {
       const existingHabit = habits.find(h =>
         item.matchesHabit && h.name.toLowerCase().includes(item.matchesHabit.toLowerCase())
       );
-      const label = existingHabit
-        ? `Zaznamenat do návyku "${existingHabit.name}"`
-        : `Vytvořit návyk "${item.activity}"`;
       const meta = item.type === 'count' && item.count
         ? `${esc(item.count)}× dnes · počitatelný`
         : 'splněno dnes · ano/ne';
@@ -8202,7 +8201,7 @@ function appendMsg(role,text,nm='',em=''){
   const bubble=document.createElement('div');
   bubble.className='msg '+role;
   if(role==='bot'){
-    const lbl=nm?`<div class="mlbl">${em||''} ${nm}</div>`:'';
+    const lbl=nm?`<div class="mlbl">${esc(em||'')} ${esc(nm)}</div>`:'';
     bubble.innerHTML=lbl+esc(text).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`;
   } else {
     bubble.innerHTML=esc(text).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`;
