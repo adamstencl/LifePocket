@@ -6318,7 +6318,7 @@ window.send=async()=>{
 
   // ── Kontext: Poslední zápisky (5) ──
   const recentEntries = entries.slice(0,5).map(e=>
-    `[${e.createdAt?.slice(0,10)||'?'}] ${e.mood||''} "${e.title}": ${(e.text||'').substring(0,150)}`
+    `[${entryDS(e)||'?'}] ${e.mood||''} "${e.title}": ${(e.text||'').substring(0,150)}`
   ).join('\n');
 
   // ── Kontext: Checklist ──
