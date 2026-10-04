@@ -385,7 +385,7 @@ function renderEntryList(filter=''){
   list.innerHTML=filtered.map(e=>{
     const d=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short',year:'numeric'}):'?';
     const preview=(e.text||'').slice(0,50);
-    return `<div class="j-item ${e.id===curEntryId?'active':''}" onclick="openEntry('${esc(e.id)}')">
+    return `<div class="j-item ${e.id===curEntryId?'active':''}" data-a0="${esc(e.id)}" onclick="openEntry(this.dataset.a0)">
       <div class="j-item-date">${d}</div>
       <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}${e.photo?` <span style="font-size:11px">📷</span>`:''}</div>
       ${preview?`<div class="j-item-preview">${preview}…</div>`:''}
@@ -775,7 +775,7 @@ function buildHabitCard(h){
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3);font-size:9px">${d.getDate()}.${d.getMonth()+1}</span></th>`;
-    tdHtml+=`<td><div class="${cls}" onclick="${h.type==='count'?`directInput('${esc(h.id)}','${ds}',${l?l.value:0},${goal})`:`toggleHabitDay('${esc(h.id)}','${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
+    tdHtml+=`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${l?l.value:0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
   }
 
   let controlHtml='';
@@ -783,19 +783,19 @@ function buildHabitCard(h){
     const pct=Math.min(Math.round(val/goal*100),100);
     controlHtml=`
       <div class="habit-counter">
-        <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
-        <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+        <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
           <div class="cnt-val cnt-clickable">${val}</div>
           <div class="cnt-goal">/ ${goal} ✎</div>
         </div>
-        <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
+        <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
       </div>
       <div class="habit-progress" style="margin-top:8px">
         <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
         <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
       </div>`;
   } else {
-    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
+    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
   }
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
@@ -811,11 +811,11 @@ function buildHabitCard(h){
   return `<div class="habit-card${cardDone?' done':''}">
     <div class="habit-card-top">
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
-        <button onclick="moveHabit('${esc(h.id)}',-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
-        <button onclick="moveHabit('${esc(h.id)}',1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
+        <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
+        <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
       </div>
-      <div class="habit-emoji" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
-      <div class="habit-info" onclick="openHabitDetail('${esc(h.id)}')" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
+      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
+      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
         <div class="habit-name">${h.name}</div>
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">⏸ Pauza do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>`:''}
@@ -826,16 +826,16 @@ function buildHabitCard(h){
         ? `<span style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
         : h.type==='count'
           ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',-1,${goal})">−</button>
-              <div onclick="directInput('${esc(h.id)}','${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+              <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+              <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
                 <div class="cnt-val cnt-clickable">${val}</div>
                 <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
               </div>
-              <button class="cnt-btn" onclick="adjustHabit('${esc(h.id)}','${habitDay}',1,${goal})">+</button>
+              <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
             </div>`
           : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" onclick="toggleHabit('${esc(h.id)}','${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
-              ${habitDay===todayDS?`<button onclick="skipHabitDay('${esc(h.id)}','${habitDay}')" title="${(log&&log.skipped)?'Zrušit přeskočení':'Přeskočit dnes'}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?'⏭ Přeskočeno':'⏭'}</button>`:''}
+              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
+              ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?'Zrušit přeskočení':'Přeskočit dnes'}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?'⏭ Přeskočeno':'⏭'}</button>`:''}
             </div>`
       }
     </div>
@@ -895,7 +895,7 @@ function renderHabits(){
     const isOpen=openGroups.has(g.id);
 
     html+=`<div class="habit-group" data-group="${g.id}">
-      <div class="habit-group-header" onclick="toggleHabitGroup('${esc(g.id)}')">
+      <div class="habit-group-header" data-a0="${esc(g.id)}" onclick="toggleHabitGroup(this.dataset.a0)">
         <div class="habit-group-left">
           <span class="habit-group-emoji">${g.emoji}</span>
           <span class="habit-group-title">${g.label}</span>
@@ -1060,9 +1060,9 @@ function renderHabitDetail(h) {
 
   const monthsHtml = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <button onclick="hdNavMonth('${esc(h.id)}',-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">‹</button>
+      <button data-a0="${esc(h.id)}" onclick="hdNavMonth(this.dataset.a0,-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">‹</button>
       <div style="font-family:'Playfair Display',serif;font-size:15px;color:var(--accent);font-weight:700">${mLabel}</div>
-      <button onclick="hdNavMonth('${esc(h.id)}',1)" ${isCurrentMonth?'disabled style="opacity:.3;cursor:default"':''} style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">›</button>
+      <button data-a0="${esc(h.id)}" onclick="hdNavMonth(this.dataset.a0,1)" ${isCurrentMonth?'disabled style="opacity:.3;cursor:default"':''} style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text);cursor:pointer;font-size:16px">›</button>
     </div>
     <div class="hd-month-grid">
       ${dayNamesRow}
@@ -1116,8 +1116,8 @@ function renderHabitDetail(h) {
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
-        ${h.reminderTime ? `<button class="btn-s" onclick="saveHabitReminder('${esc(h.id)}',null)">🔕 Vypnout</button>` : ''}
-        <button class="btn-p" onclick="saveHabitReminder('${esc(h.id)}',document.getElementById('hd-notif-time').value)">💾 Uložit</button>
+        ${h.reminderTime ? `<button class="btn-s" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,null)">🔕 Vypnout</button>` : ''}
+        <button class="btn-p" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,document.getElementById('hd-notif-time').value)">💾 Uložit</button>
       </div>
     </div>
 
@@ -1126,27 +1126,27 @@ function renderHabitDetail(h) {
       <div style="font-size:14px;color:var(--text2);margin-bottom:12px">Pozastav návyk na dobu nemoci nebo dovolené. Streak se nezlomí.</div>
       ${h.pausedUntil && h.pausedUntil >= toDS()
         ? `<div style="color:var(--accent);margin-bottom:10px;font-size:14px">⏸ Pauza aktivní do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})}</div>
-           <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',0)">▶️ Ukončit pauzu</button>`
+           <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,0)">▶️ Ukončit pauzu</button>`
         : `<div style="display:flex;gap:8px;flex-wrap:wrap">
-             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',3)">3 dny</button>
-             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',7)">1 týden</button>
-             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',14)">2 týdny</button>
-             <button class="btn-s" onclick="pauseHabit('${esc(h.id)}',30)">Měsíc</button>
+             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,3)">3 dny</button>
+             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,7)">1 týden</button>
+             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,14)">2 týdny</button>
+             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,30)">Měsíc</button>
            </div>`
       }
     </div>
 
     <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn-s" style="flex:1;min-width:120px" onclick="archiveHabit('${esc(h.id)}')">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
-      <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" onclick="showDeleteHabitConfirm('${esc(h.id)}',this)">🗑️ Smazat</button>
+      <button class="btn-s" style="flex:1;min-width:120px" data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
+      <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" data-a0="${esc(h.id)}" onclick="showDeleteHabitConfirm(this.dataset.a0,this)">🗑️ Smazat</button>
     </div>
     <div id="hd-delete-confirm" style="display:none;margin-top:12px;background:rgba(255,59,48,.08);border:1px solid var(--red);border-radius:14px;padding:16px">
       <div style="font-size:14px;color:var(--red);font-weight:600;margin-bottom:8px">⚠️ Opravdu smazat návyk?</div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Smažou se i všechny záznamy a statistiky. Tuto akci nelze vrátit.</div>
       <div style="display:flex;gap:8px">
         <button class="btn-s" style="flex:1" onclick="document.getElementById('hd-delete-confirm').style.display='none'">Zrušit</button>
-        <button class="btn-s" style="flex:1;color:var(--red);border-color:var(--red);font-weight:700" onclick="deleteHabit('${esc(h.id)}')">Ano, smazat</button>
+        <button class="btn-s" style="flex:1;color:var(--red);border-color:var(--red);font-weight:700" data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)">Ano, smazat</button>
       </div>
     </div>
   `;
@@ -1481,8 +1481,8 @@ function renderArchivedHabits() {
         <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${h.name}</div>
         <div style="font-size:12px;color:var(--text3)">${h.group||'den'} · ${h.freq||'každý den'}</div>
       </div>
-      <button onclick="archiveHabit('${esc(h.id)}')" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
-      <button onclick="deleteHabit('${esc(h.id)}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
+      <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
+      <button data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
     </div>`).join('');
 }
 
@@ -1591,7 +1591,7 @@ function renderEvList(){
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" onclick="setCalFilter(\''+esc(t)+'\')">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+getEvIcon(t)+' '+getEvLabel(t)+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       fb+='</div>';
       filterBar.innerHTML=fb;
@@ -1617,7 +1617,7 @@ function renderEvList(){
         :ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'}))+(ev.time?' · '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
-      +'<button class="ev-del" onclick="delEvent(\''+esc(ev.id)+'\')">🗑️</button>'
+      +'<button class="ev-del" data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
       +'</div>';
   }).join('');
 }
@@ -1758,8 +1758,8 @@ function showDayEventsModal(ds, dayEvs) {
       +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
       +'<div style="font-size:12px;color:var(--text3)">'+getEvLabel(ev.type)+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
       +'</div>'
-      +'<button onclick="openEditEvent('+JSON.stringify(ev).replace(/"/g,'&quot;')+');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
-      +'<button onclick="delEvent(\''+esc(ev.id)+'\');document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
+      +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
+      +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
       +'</div>';
   }).join('');
   const modal = document.createElement('div');
@@ -1843,9 +1843,9 @@ function renderEvTypeButtons(){
   html+='<button class="ev-type-btn'+(selEvType_val==='birthday'?' sel':'')+'" data-t="birthday" onclick="selEvType(\'birthday\',this)">🎂 Narozeniny</button>';
   // Vlastní typy
   for(const ct of custom){
-    html+='<button class="ev-type-btn'+(selEvType_val===ct.key?' sel':'')+'" data-t="'+esc(ct.key)+'" onclick="selEvType(\''+esc(ct.key)+'\',this)">'
+    html+='<button class="ev-type-btn'+(selEvType_val===ct.key?' sel':'')+'" data-t="'+esc(ct.key)+'" data-a0="'+esc(ct.key)+'" onclick="selEvType(this.dataset.a0,this)">'
       +ct.emoji+' '+esc(ct.label)
-      +' <span class="ev-ctype-del" onclick="event.stopPropagation();delCustomEvType(\''+esc(ct.key)+'\')">×</span>'
+      +' <span class="ev-ctype-del" data-a0="'+esc(ct.key)+'" onclick="event.stopPropagation();delCustomEvType(this.dataset.a0)">×</span>'
       +'</button>';
   }
   // Přidat typ
@@ -2094,7 +2094,7 @@ window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!(nick&&selG);};
 window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
-function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" onclick="${isC?'sTmpAv':'selAv2'}('${esc(a.id)}')"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
+function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{prof.avatarId=selAv;selMods=new Set(AVMODS[selAv]||[]);rMods();ss('s-step3');};
@@ -2104,7 +2104,7 @@ function rMods(){
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
 }
-function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" onclick="togMod('${esc(m.id)}')"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
+function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
 window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof,{merge:true});initApp();};
@@ -2254,7 +2254,7 @@ function rAvPage(){
   // av-msg already updated above
   if(el_cwem)el_cwem.textContent=av.emoji;
   if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
-  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" onclick="selMood('${esc(m.emoji)}')"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
+  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" data-a0="${esc(m.emoji)}" onclick="selMood(this.dataset.a0)"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
   // Rex Tamagotchi energy
   const energy = getRexEnergy();
   const rexState = getRexState(energy);
@@ -4477,7 +4477,7 @@ window.renderKcalToday = async () => {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
       ${l.name}
       <span style="font-size:11px;color:var(--accent);font-weight:600">${l.kcal} kcal</span>
-      <span onclick="deleteFoodLog('${esc(l.id)}')" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
+      <span data-a0="${esc(l.id)}" onclick="deleteFoodLog(this.dataset.a0)" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
     </div>`).join('');
 
   sec.innerHTML = `
@@ -4540,7 +4540,7 @@ window.openAddFoodLog = () => {
   const plannedBtns = planned.length ? `
     <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:monospace;letter-spacing:.5px;text-transform:uppercase">Z dnešního plánu</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-      ${planned.map(p=>`<button onclick="addFoodFromPlan(${JSON.stringify(p.name)},${JSON.stringify(p.key)})" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
+      ${planned.map(p=>`<button data-a0="${esc(p.name)}" data-a1="${esc(p.key)}" onclick="addFoodFromPlan(this.dataset.a0,this.dataset.a1)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
     </div>` : '';
 
   const modal = document.createElement('div');
@@ -4724,7 +4724,7 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
   const recipes = savedRecipes || [];
   const recipesHTML = recipes.length
     ? recipes.map(r => `
-        <div onclick="pickMeal('${esc(dayKey)}','${esc(mealKey)}','${esc(r.name)}',this)"
+        <div data-a0="${esc(dayKey)}" data-a1="${esc(mealKey)}" data-a2="${esc(r.name)}" onclick="pickMeal(this.dataset.a0,this.dataset.a1,this.dataset.a2,this)"
           style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:border-color .2s"
           onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
           <span style="font-size:20px">🍽️</span>
@@ -4930,16 +4930,16 @@ function renderChecklist() {
 
   el.innerHTML = `
     <div class="cl-tabs">
-      ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" onclick="switchChecklist('${esc(c.id)}')">${esc(c.name)}</button>`).join('')}
-      ${familyChecklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" onclick="switchChecklist('${esc(c.id)}')" style="border-color:var(--green);color:${c.id===activeChecklist?'#1a1a1a':'var(--green)'}">👨‍👩‍👧 ${esc(c.name)}</button>`).join('')}
+      ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)">${esc(c.name)}</button>`).join('')}
+      ${familyChecklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)" style="border-color:var(--green);color:${c.id===activeChecklist?'#1a1a1a':'var(--green)'}">👨‍👩‍👧 ${esc(c.name)}</button>`).join('')}
       <button class="cl-tab cl-tab-add" onclick="addChecklist()">+</button>
     </div>
     <div class="cl-header">
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
-        ${familyId && familyData?.shareChecklist!==false ? `<button onclick="toggleChecklistShare('${esc(list.id)}')" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
-        ${checklists.length > 1 ? `<button onclick="deleteChecklist('${esc(list.id)}')" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="Smazat tento seznam">🗑️</button>` : ''}
+        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
+        ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="Smazat tento seznam">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
     </div>
@@ -4956,26 +4956,26 @@ function renderChecklist() {
         const isExpanded = expandedCheckItemId === item.id;
         return `
         <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}">
-          <button class="cl-check" onclick="toggleCheckItem('${esc(item.id)}')">
+          <button class="cl-check" data-a0="${esc(item.id)}" onclick="toggleCheckItem(this.dataset.a0)">
             ${item.done ? '✓' : ''}
           </button>
           <div class="cl-item-body" style="flex:1;min-width:0">
             ${isExpanded ? `
-              <textarea id="cl-edit-${esc(item.id)}" class="cl-item-edit-inp" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveExpandedCheckItem('${esc(item.id)}')}">${esc(item.text)}</textarea>
+              <textarea id="cl-edit-${esc(item.id)}" class="cl-item-edit-inp" rows="2" data-a0="${esc(item.id)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveExpandedCheckItem(this.dataset.a0)}">${esc(item.text)}</textarea>
               <div class="cl-item-edit-actions">
-                <button class="cl-edit-save" onclick="saveExpandedCheckItem('${esc(item.id)}')">✓ Uložit</button>
+                <button class="cl-edit-save" data-a0="${esc(item.id)}" onclick="saveExpandedCheckItem(this.dataset.a0)">✓ Uložit</button>
                 <button class="cl-edit-cancel" onclick="expandedCheckItemId=null;renderChecklist()">Zrušit</button>
-                <button class="cl-edit-del" onclick="deleteCheckItem('${esc(item.id)}')">🗑 Smazat</button>
+                <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 Smazat</button>
               </div>
             ` : `
-              <span class="cl-item-text" onclick="expandCheckItem('${esc(item.id)}')">${esc(item.text)}</span>
+              <span class="cl-item-text" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)">${esc(item.text)}</span>
             `}
-            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${p}" class="cl-item-photo" onclick="showClItemPhoto('${esc(item.id)}',${i})"><button class="cl-item-photo-del" onclick="removeClItemPhoto('${esc(item.id)}',${i})">×</button></div>`).join('')}</div>`:''}
+            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${p}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
-          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" onclick="triggerClItemPhoto('${esc(item.id)}')" title="Přidat fotku">📷</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" onclick="moveCheckItem('${esc(item.id)}',-1)" title="Nahoru">↑</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" onclick="moveCheckItem('${esc(item.id)}',1)" title="Dolů">↓</button>` : ''}
-          ${!isExpanded ? `<button class="cl-item-del" onclick="deleteCheckItem('${esc(item.id)}')">×</button>` : ''}
+          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="Přidat fotku">📷</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="Nahoru">↑</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="Dolů">↓</button>` : ''}
+          ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
         </div>`;
       }).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
     </div>
@@ -5190,13 +5190,13 @@ function buildNav(){
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
   const all=[...fixed,...uMods,{id:'settings',emoji:'🔧',label:'Nastavení'}];
-  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" onclick="sp('${esc(p.id)}')"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
+  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" onclick="sp('${esc(p.id)}')"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
-  const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" onclick="sp('${esc(p.id)}');closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
+  const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
 }
 
 window.togBnMore=()=>{
@@ -5670,7 +5670,7 @@ function renderVisionModal(){
       +'<div class="vmodal-area-hdr">'
       +'<span class="vmodal-area-em">'+em+'</span>'
       +'<span class="vmodal-area-lbl">'+esc(lbl)+'</span>'
-      +'<button class="vmodal-area-rm" onclick="vmRemoveArea(\''+esc(key)+'\')" title="Odebrat">✕</button>'
+      +'<button class="vmodal-area-rm" data-a0="'+esc(key)+'" onclick="vmRemoveArea(this.dataset.a0)" title="Odebrat">✕</button>'
       +'</div>'
       +'<textarea class="finp" id="'+vDomId(key)+'" rows="2" style="resize:none" placeholder="'+esc(ph)+'">'+val+'</textarea>'
       +'</div>';
@@ -5680,7 +5680,7 @@ function renderVisionModal(){
   html+='<div class="vmodal-chips-lbl">+ Přidat oblast:</div>';
   html+='<div class="vmodal-add-chips">';
   for(const a of inactiveDefault){
-    html+='<button class="vmodal-chip" onclick="vmAddArea(\''+esc(a.id)+'\')">'+a.emoji+' '+a.label+'</button>';
+    html+='<button class="vmodal-chip" data-a0="'+esc(a.id)+'" onclick="vmAddArea(this.dataset.a0)">'+a.emoji+' '+a.label+'</button>';
   }
   html+='<button class="vmodal-chip" onclick="vmAddCustom()">✨ Vlastní…</button>';
   html+='</div>';
@@ -6020,29 +6020,29 @@ function buildGoalCard(g, openSet, doneToday) {
       const tasks = s.tasks || [];
       const taskRows = tasks.map(t =>
         '<div class="task-item">'
-        + '<div class="task-chk' + (t.done?' done':'') + '" onclick="togTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\',\'' + esc(t.id) + '\')">' + (t.done?'✓':'') + '</div>'
+        + '<div class="task-chk' + (t.done?' done':'') + '" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" data-a2="' + esc(t.id) + '" onclick="togTask(this.dataset.a0,this.dataset.a1,this.dataset.a2)">' + (t.done?'✓':'') + '</div>'
         + '<div class="task-nm' + (t.done?' done':'') + '">' + esc(t.name) + '</div>'
-        + '<button class="btn-xs2" onclick="delTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\',\'' + esc(t.id) + '\')">×</button>'
+        + '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" data-a2="' + esc(t.id) + '" onclick="delTask(this.dataset.a0,this.dataset.a1,this.dataset.a2)">×</button>'
         + '</div>'
       ).join('');
       const dlTag = s.deadline ? '<span class="sg-dl-tag">📅 ' + fd(s.deadline) + '</span>' : '';
       return '<div class="sg-item' + (s.done?' sg-done':'') + '">'
         + '<div class="sg-header">'
-        +   '<div class="sg-chk' + (s.done?' done':'') + '" onclick="togSubDone(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">' + (s.done?'✓':'') + '</div>'
+        +   '<div class="sg-chk' + (s.done?' done':'') + '" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="togSubDone(this.dataset.a0,this.dataset.a1)">' + (s.done?'✓':'') + '</div>'
         +   '<div class="sg-info">'
         +     '<div class="sg-name' + (s.done?' done':'') + '">' + esc(s.name) + '</div>'
         +     (s.description ? '<div class="sg-desc-sm">' + esc(s.description) + '</div>' : '')
         +     '<div class="sg-meta-row">' + dlTag + '</div>'
         +   '</div>'
         +   '<div class="sg-acts">'
-        +     '<button class="btn-xs2" onclick="openSubGM(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">✏️</button>'
-        +     '<button class="btn-xs2" onclick="delSubG(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">🗑️</button>'
+        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="openSubGM(this.dataset.a0,this.dataset.a1)">✏️</button>'
+        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="delSubG(this.dataset.a0,this.dataset.a1)">🗑️</button>'
         +   '</div>'
         + '</div>'
         + (taskRows ? '<div class="tasks-list">' + taskRows + '</div>' : '')
         + '<div class="task-add-row">'
-        +   '<input class="task-inp" id="ti-' + esc(s.id) + '" placeholder="Přidat úkol…" onkeydown="if(event.key===\'Enter\')addTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">'
-        +   '<button class="btn-xs2 btn-add-task" onclick="addTask(\'' + esc(g.id) + '\',\'' + esc(s.id) + '\')">+</button>'
+        +   '<input class="task-inp" id="ti-' + esc(s.id) + '" placeholder="Přidat úkol…" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onkeydown="if(event.key===\'Enter\')addTask(this.dataset.a0,this.dataset.a1)">'
+        +   '<button class="btn-xs2 btn-add-task" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="addTask(this.dataset.a0,this.dataset.a1)">+</button>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -6054,7 +6054,7 @@ function buildGoalCard(g, openSet, doneToday) {
                 : prio===3 ? '<span class="gtag gprio-low">🟢 Nízká</span>' : '';
   const completedTag = g.progress >= 100 ? '<span class="gtag gcompleted">🎉 Splněno!</span>' : '';
   const archiveBtn = g.progress >= 100
-    ? '<button class="btn-p gcomplete-btn" onclick="archiveGoal(\'' + esc(g.id) + '\')">🎉 Archivovat jako splněný</button>'
+    ? '<button class="btn-p gcomplete-btn" data-a0="' + esc(g.id) + '" onclick="archiveGoal(this.dataset.a0)">🎉 Archivovat jako splněný</button>'
     : '';
 
   const tagsRow = prioTag
@@ -6067,14 +6067,14 @@ function buildGoalCard(g, openSet, doneToday) {
     + '<span class="gchev">' + (io?'▲':'▼') + '</span>';
 
   return '<div class="gcard' + (io?' gcard-open':'') + '">'
-    + '<div class="ghdr" onclick="togSubs(\'' + esc(g.id) + '\')">'
+    + '<div class="ghdr" data-a0="' + esc(g.id) + '" onclick="togSubs(this.dataset.a0)">'
     +   '<div class="ghdr-r1">'
     +     '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +     '<div class="gem">' + (g.emoji||'🌟') + '</div>'
     +     '<div class="gnm">' + esc(g.name) + '</div>'
     +     '<div class="gacts" onclick="event.stopPropagation()">'
-    +       '<button class="btn-xs" onclick="openGM(\'' + esc(g.id) + '\')">✏️</button>'
-    +       '<button class="btn-xs" onclick="delG(\'' + esc(g.id) + '\')">🗑️</button>'
+    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="openGM(this.dataset.a0)">✏️</button>'
+    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="delG(this.dataset.a0)">🗑️</button>'
     +     '</div>'
     +   '</div>'
     +   '<div class="ghdr-r2">'
@@ -6085,7 +6085,7 @@ function buildGoalCard(g, openSet, doneToday) {
     + '</div>'
     + '<div class="gsubs' + (io?' open':'') + '" id="gs-' + g.id + '">'
     +   fullNameHtml + descHtml + linkedHtml + subsHtml
-    +   '<button class="btn-add-sg" onclick="openSubGM(\'' + esc(g.id) + '\')">+ Přidat podcíl</button>'
+    +   '<button class="btn-add-sg" data-a0="' + esc(g.id) + '" onclick="openSubGM(this.dataset.a0)">+ Přidat podcíl</button>'
     +   archiveBtn
     + '</div>'
     + '</div>';
@@ -6098,7 +6098,7 @@ function buildArchivedSection(archivedGoals) {
     +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
     +   '<div class="gnm" style="text-decoration:line-through">' + esc(g.name) + '</div>'
-    +   '<div class="gacts"><button class="btn-xs" onclick="unarchiveGoal(\'' + esc(g.id) + '\')">↩ Obnovit</button></div>'
+    +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ Obnovit</button></div>'
     + '</div>'
     + '</div>'
   ).join('');
@@ -6387,8 +6387,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
       const c=document.getElementById('chatmsgs');
       const btns=document.createElement('div');
       btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
-      const esc2=food.replace(/'/g,"\\'");
-      btns.innerHTML=`<button onclick="rexRecipe('${esc2}',this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
+      btns.innerHTML=`<button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
       c.appendChild(btns);scrollChat();
     }
   }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
@@ -6428,7 +6427,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
     confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
     confirm.innerHTML=`
       <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">✅ Použít — přidat suroviny do nákupu</button>
-      <button onclick="rexRecipe(${JSON.stringify(food)},this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
+      <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
     loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${e.message}`;
@@ -6562,13 +6561,13 @@ function renderShop(){
       ${hintHtml}
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
-          <div class="shop-check ${i.done?'done':''}" onclick="toggleShopItem('${esc(i.id)}',${i.done})">${i.done?'✓':''}</div>
+          <div class="shop-check ${i.done?'done':''}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${esc(i.name)}</span>
-          ${i.qty?`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','${esc(i.qty||'')}',this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" onclick="editShopQty('${esc(i.id)}','',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
-          <span class="shop-item-cat" data-id="${esc(i.id)}" onclick="editShopCat('${esc(i.id)}','${esc(i.category||'Ostatní')}')" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
+          ${i.qty?`<span class="shop-item-qty" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" title="Klikni pro úpravu množství" style="cursor:pointer" >${esc(i.qty)}</span>`:`<span class="shop-item-qty" data-a0="${esc(i.id)}" onclick="editShopQty(this.dataset.a0,'',this)" title="Přidat množství" style="cursor:pointer;opacity:.4">+qty</span>`}
+          <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${esc(i.fromRecipe)}</span>`:''}
-          <button class="shop-item-fav" onclick="toggleFavShopItem('${esc(i.name)}','${esc(i.category||'Ostatní')}')" title="Přidat k oblíbeným">${isFavShopItem(i.name)?'⭐':'☆'}</button>
-          <button class="shop-item-del" onclick="delShopItem('${esc(i.id)}')">×</button>
+          <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="Přidat k oblíbeným">${isFavShopItem(i.name)?'⭐':'☆'}</button>
+          <button class="shop-item-del" data-a0="${esc(i.id)}" onclick="delShopItem(this.dataset.a0)">×</button>
         </div>`).join('')}
     </div>`;
   }).join('');
@@ -6723,7 +6722,7 @@ function renderFavShop() {
   if(!wrap||!chips) return;
   if(!favs.length) { wrap.style.display='none'; return; }
   wrap.style.display='block';
-  chips.innerHTML = favs.map(f=>`<button onclick="addFavToShop('${esc(f.name)}','${esc(f.category||'Ostatní')}')" class="fav-shop-chip">${esc(f.name)}</button>`).join('');
+  chips.innerHTML = favs.map(f=>`<button data-a0="${esc(f.name)}" data-a1="${esc(f.category||'Ostatní')}" onclick="addFavToShop(this.dataset.a0,this.dataset.a1)" class="fav-shop-chip">${esc(f.name)}</button>`).join('');
 }
 
 // ── RECURRING SHOP ────────────────────────────────────────
@@ -6781,9 +6780,9 @@ function renderRecurringShop() {
   chips.innerHTML = recurringShopItems.map(item => {
     const dayLbl = item.freq !== 'monthly' ? ` · ${DAY[item.day]||''}` : '';
     return `<div class="recurring-chip">
-      <button onclick="addFromRecurring('${esc(item.id)}')" class="recurring-chip-name">${esc(item.name)}</button>
+      <button data-a0="${esc(item.id)}" onclick="addFromRecurring(this.dataset.a0)" class="recurring-chip-name">${esc(item.name)}</button>
       <span class="recurring-chip-info">${FREQ[item.freq]||''}${dayLbl}</span>
-      <button onclick="delRecurringShopItem('${esc(item.id)}')" class="recurring-chip-del">×</button>
+      <button data-a0="${esc(item.id)}" onclick="delRecurringShopItem(this.dataset.a0)" class="recurring-chip-del">×</button>
     </div>`;
   }).join('');
 }
@@ -6923,7 +6922,7 @@ async function offerPantryUpdate(name, shopQty) {
     // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${amount} ${unit})</span><button onclick="openPantryAdd({id:'${newId}',name:'${esc(name)}',qty:${amount},unit:'${unit}'});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${amount} ${unit})</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${amount},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 6000);
   }
@@ -7000,7 +6999,7 @@ window.openRecipePickerForShop = function() {
       <div style="font-size:13px;color:var(--text3);margin-bottom:12px">Klikni na recept — ingredience se přidají do nákupního seznamu.</div>
       <div style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
         ${recipes.map(r => `
-          <div onclick="addRecipeToShop('${esc(r.id)}',this)"
+          <div data-a0="${esc(r.id)}" onclick="addRecipeToShop(this.dataset.a0,this)"
             style="background:var(--card2);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .2s"
             onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
             <span style="font-size:22px">🍽️</span>
@@ -7429,17 +7428,17 @@ function renderSavedRecipes(){
     return;
   }
   list.innerHTML=filtered.map(r=>`
-    <div class="saved-recipe-card" onclick="openSavedRecipe('${esc(r.id)}')">
+    <div class="saved-recipe-card" data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)">
       <div class="saved-recipe-top">
         <div style="font-size:24px">🍽️</div>
         <div style="flex:1">
           <div class="saved-recipe-name">${esc(r.name)}</div>
           <div class="saved-recipe-meta">⏱ ${esc(r.time||'?')} · 🍽 ${esc(r.mealType||r.difficulty||'?')} · ${r.portions||2} porcí · Uloženo ${new Date(r.savedAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
         </div>
-        <button onclick="deleteSavedRecipe('${esc(r.id)}',event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
+        <button data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
       </div>
       <div class="saved-recipe-actions">
-        <button onclick="openSavedRecipe('${esc(r.id)}')" style="background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.25);border-radius:8px;padding:5px 12px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">📖 Otevřít recept</button>
+        <button data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)" style="background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.25);border-radius:8px;padding:5px 12px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">📖 Otevřít recept</button>
       </div>
     </div>`).join('');
 }
@@ -7501,10 +7500,10 @@ function buildPantryHtml(low, sorted) {
             ${isLow ? '<span class="pantry-low-badge">dochází</span>' : ''}
           </div>
           <div class="pantry-item-qty">
-            <button class="pantry-qty-btn" onclick="changePantryQty('${esc(item.id)}', -1)">−</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, -1)">−</button>
             <span class="pantry-qty-val">${item.qty} ${esc(item.unit || '')}</span>
-            <button class="pantry-qty-btn" onclick="changePantryQty('${esc(item.id)}', 1)">+</button>
-            <button class="pantry-item-del" onclick="deletePantryItem('${esc(item.id)}')">🗑</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, 1)">+</button>
+            <button class="pantry-item-del" data-a0="${esc(item.id)}" onclick="deletePantryItem(this.dataset.a0)">🗑</button>
           </div>
         </div>`;
       }).join('')}
@@ -7568,7 +7567,7 @@ window.openPantryAdd = function(prefill = {}) {
       <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${prefill.minQty || ''}" style="width:100%;box-sizing:border-box">
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-sv" style="flex:1" onclick="savePantryItem('${esc(prefill.id || '')}')">✓ Uložit</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" onclick="savePantryItem(this.dataset.a0)">✓ Uložit</button>
       <button class="btn-s" onclick="document.getElementById('pantry-add-modal').remove()">Zrušit</button>
     </div>
   </div>`;
@@ -7750,7 +7749,7 @@ function offerPantryDeduct(ingredients) {
       ${matches.slice(0,10).map(ing=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</div>`).join('')}
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-sv" style="flex:1" onclick="deductPantryIngredients(${JSON.stringify(normalized).replace(/"/g,'&quot;')});document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0));document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
       <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">Přeskočit</button>
     </div>
   </div>`;
@@ -7824,7 +7823,7 @@ function showFoodDetectBanner(foods) {
       ${foods.map(f => `<span class="food-tag">🍳 ${f}</span>`).join('')}
     </div>
     <div class="food-detect-btns">
-      <button onclick="addPlannedMeals(${JSON.stringify(foods)},this.closest('.food-detect-banner'))"
+      <button data-a0="${esc(JSON.stringify(foods))}" onclick="addPlannedMeals(JSON.parse(this.dataset.a0),this.closest('.food-detect-banner'))"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:8px 16px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer">
         ✅ Přidat do Vaření jako plánovaná
       </button>
@@ -7886,7 +7885,7 @@ function renderPlannedMeals() {
         <div class="planned-meal-source">📓 ${m.source}</div>
       </div>
       <div class="planned-meal-btns">
-        <button class="pm-btn pm-btn-recipe" onclick="cookPlanned('${m.name.replace(/'/g,"\'")}', ${i})">🍳 Vařit</button>
+        <button class="pm-btn pm-btn-recipe" data-a0="${esc(m.name)}" onclick="cookPlanned(this.dataset.a0, ${i})">🍳 Vařit</button>
         <button class="pm-btn pm-btn-del" onclick="removePlanned(${i})">×</button>
       </div>
     </div>`).join('');
@@ -7946,7 +7945,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
         <div style="font-size:13px;color:var(--text);font-weight:600">Rex navrhuje: ${result.mood}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:1px">${result.reason}</div>
       </div>
-      <button onclick="acceptMood('${esc(result.mood)}')"
+      <button data-a0="${esc(result.mood)}" onclick="acceptMood(this.dataset.a0)"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
         ✓ Použít
       </button>
@@ -8052,7 +8051,7 @@ function showHabitDetectBanner(completed, newHabits) {
         </div>
         <span class="hdc-type">${item.type==='count'?'počet':'ano/ne'}</span>
         <div class="hdc-btns">
-          <button onclick="logHabitFromEntry('${encodeURIComponent(JSON.stringify({item, existingHabitId: existingHabit?.id||null}))}')"
+          <button data-a0="${esc(encodeURIComponent(JSON.stringify({item, existingHabitId: existingHabit?.id||null})))}" onclick="logHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
             ✅ ${existingHabit ? 'Zaznamenat' : 'Vytvořit návyk'}
           </button>
@@ -8074,7 +8073,7 @@ function showHabitDetectBanner(completed, newHabits) {
         </div>
         <span class="hdc-type">${h.type==='count'?'počet':'ano/ne'}</span>
         <div class="hdc-btns">
-          <button onclick="createHabitFromEntry('${encodeURIComponent(JSON.stringify(h))}')"
+          <button data-a0="${esc(encodeURIComponent(JSON.stringify(h)))}" onclick="createHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
             + Vytvořit návyk
           </button>
