@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.16';
+const APP_VERSION = '4.17';
 const CHANGELOG = [
+  { v:'4.17', items:[
+    '🎨 Barva lišty v prohlížeči se podle zvoleného vzhledu nastaví hned při startu',
+    '🛡️ Opravené zobrazení jmen a textů s uvozovkami nebo speciálními znaky v návycích, deníku, jídelníčku, nákupech a zásobách',
+    '🔧 Drobné opravy zabezpečení',
+  ]},
   { v:'4.16', items:[
     '🍊 Nový oranžový vzhled — třetí barevné téma v Nastavení → Vzhled',
     '🎨 Uložený vzhled se aplikuje hned při startu — i přihlašovací obrazovka je ve tvém tématu',
@@ -374,7 +379,7 @@ function renderEntryList(filter=''){
   );
   if(!filtered.length){
     list.innerHTML=f
-      ? `<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px;font-style:italic">🔍 Žádné výsledky pro „${f}"</div>`
+      ? `<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px;font-style:italic">🔍 Žádné výsledky pro „${esc(f)}"</div>`
       : `<div style="text-align:center;padding:32px 16px">
           <div style="font-size:40px;margin-bottom:10px">✍️</div>
           <div style="color:var(--text2);font-size:15px;margin-bottom:14px;font-style:italic">Zatím žádné zápisky</div>
@@ -387,8 +392,8 @@ function renderEntryList(filter=''){
     const preview=(e.text||'').slice(0,50);
     return `<div class="j-item ${e.id===curEntryId?'active':''}" data-a0="${esc(e.id)}" onclick="openEntry(this.dataset.a0)">
       <div class="j-item-date">${d}</div>
-      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${e.mood}</span>`:''}${e.title||'Bez názvu'}${e.photo?` <span style="font-size:11px">📷</span>`:''}</div>
-      ${preview?`<div class="j-item-preview">${preview}…</div>`:''}
+      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${esc(e.mood)}</span>`:''}${esc(e.title||'Bez názvu')}${e.photo?` <span style="font-size:11px">📷</span>`:''}</div>
+      ${preview?`<div class="j-item-preview">${esc(preview)}…</div>`:''}
     </div>`;
   }).join('');
 }
@@ -680,8 +685,8 @@ function buildHabitCard(h){
   const done=log&&log.done;
   const failed=log&&log.failed;
   const hState=done?'done':failed?'failed':'empty';
-  const val=log?log.value:0;
-  const goal=h.goal||1;
+  const val=Number(log?.value)||0;
+  const goal=Number(h.goal)||1;
   const todayDS=toDS(new Date());
   const linkedGoal=h.goalId?goals.find(x=>x.id===h.goalId):null;
   const isPaused=h.pausedUntil&&h.pausedUntil>=habitDay;
@@ -710,7 +715,7 @@ function buildHabitCard(h){
       const l=habitLogs.find(l=>l.id===h.id+'_'+toDS(d));
       if(l&&l.done)weekDone++;
     }
-    weeklyStatus=`${weekDone}/${h.freq.times||3}× tento týden`;
+    weeklyStatus=`${weekDone}/${Number(h.freq.times)||3}× tento týden`;
   }
 
   const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
@@ -767,15 +772,15 @@ function buildHabitCard(h){
 
     let inner='';
     if(!active) inner='—';
-    else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${l.value}</span>`:'✓';
+    else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${Number(l.value)||0}</span>`:'✓';
     else if(isSkipped) inner='⏭';
     else if(isFailed) inner='✕';
     else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
-    else if(isPartial) inner=`<span style="font-size:10px">${l.value}</span>`;
+    else if(isPartial) inner=`<span style="font-size:10px">${Number(l.value)||0}</span>`;
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3);font-size:9px">${d.getDate()}.${d.getMonth()+1}</span></th>`;
-    tdHtml+=`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${l?l.value:0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
+    tdHtml+=`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
   }
 
   let controlHtml='';
@@ -814,12 +819,12 @@ function buildHabitCard(h){
         <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
         <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
       </div>
-      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="Zobrazit historii">${h.emoji||'🎯'}</div>
+      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="Zobrazit historii">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
-        <div class="habit-name">${h.name}</div>
+        <div class="habit-name">${esc(h.name)}</div>
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">⏸ Pauza do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>`:''}
-        <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${h.reminderTime}</span>` : ''}</div>
+        <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
       </div>
       ${badgeHtml}
       ${isPaused
@@ -1112,7 +1117,7 @@ function renderHabitDetail(h) {
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;color:var(--text2);margin-bottom:8px">Každý den tě upozorním v nastavenou hodinu, pokud návyk ještě nebude splněný.</div>
-        <input type="time" id="hd-notif-time" value="${h.reminderTime||''}"
+        <input type="time" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1476,9 +1481,9 @@ function renderArchivedHabits() {
   if (!archived.length) { list.innerHTML = '<div style="color:var(--text3);font-size:14px;padding:12px">Žádné archivované návyky.</div>'; return; }
   list.innerHTML = archived.map(h => `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;opacity:0.7">
-      <span style="font-size:22px">${h.emoji||'📌'}</span>
+      <span style="font-size:22px">${esc(h.emoji||'📌')}</span>
       <div style="flex:1">
-        <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${h.name}</div>
+        <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${esc(h.name)}</div>
         <div style="font-size:12px;color:var(--text3)">${h.group||'den'} · ${h.freq||'každý den'}</div>
       </div>
       <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
@@ -1679,7 +1684,7 @@ function renderHabitMonth() {
     ${stats.map(({h,done,total,pct})=>{
       const color = pct>=80?'var(--green)':pct>=50?'var(--accent)':'var(--red)';
       return `<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
-        <span style="font-size:22px">${h.emoji||'🎯'}</span>
+        <span style="font-size:22px">${esc(h.emoji||'🎯')}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${esc(h.name)}</div>
           <div style="background:var(--card2);border-radius:6px;height:6px;overflow:hidden">
@@ -2408,7 +2413,7 @@ function renderHealthWeek() {
     <div class="health-week-bar">
       ${days.map(day=>`
         <div class="hwb-col">
-          <div class="hwb-mood">${day.log?.mood||'·'}</div>
+          <div class="hwb-mood">${esc(day.log?.mood||'·')}</div>
           <div class="hwb-bar" style="height:${day.log?.energy?Math.round(day.log.energy/maxEnergy*50):2}px;background:${day.log?.energy?'var(--green)':'var(--border)'}"></div>
           <div class="hwb-lbl">${day.label}</div>
         </div>`).join('')}
@@ -3158,7 +3163,7 @@ function showRexDashboardMessage(msg) {
   const msgEl = document.createElement('div');
   msgEl.id = 'rex-dash-msg';
   msgEl.style.cssText = `margin-top:10px;padding:12px 14px;background:rgba(245,200,66,0.06);border:1px solid rgba(245,200,66,0.15);border-radius:12px;font-size:15px;color:var(--text2);line-height:1.6;font-style:italic;`;
-  msgEl.innerHTML = `<span style="color:var(--accent);font-style:normal;font-weight:600">${av.emoji} ${av.name}:</span> ${msg}`;
+  msgEl.innerHTML = `<span style="color:var(--accent);font-style:normal;font-weight:600">${av.emoji} ${av.name}:</span> ${esc(msg)}`;
   dashCard.appendChild(msgEl);
 }
 
@@ -3653,7 +3658,7 @@ function quickStartHTML() {
     const onclick = t.action ? t.action : `sp('${t.page}')`;
     return `<div class="qs-task ${isDone ? 'done' : ''}" onclick="${isDone ? '' : onclick}">
       <div class="qs-check">${isDone ? '✓' : ''}</div>
-      <span class="qs-task-text">${t.emoji} ${t.text}</span>
+      <span class="qs-task-text">${t.emoji} ${esc(t.text)}</span>
     </div>`;
   }).join('');
 
@@ -4398,7 +4403,7 @@ function renderMealPlan() {
           <div ${canEdit?`onclick="openMealPicker('${dayKey}','${mealKey}','${day}','${meal}')"`:``}
             style="flex:1;background:var(--card3,var(--bg));border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:${val?'var(--text)':'var(--text3)'};font-family:'Crimson Pro',serif;font-size:14px;cursor:${canEdit?'pointer':'default'};min-height:34px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s"
             ${canEdit?`onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"`:``}>
-            <span>${val || (canEdit ? 'Klikni pro výběr…' : '—')}</span>
+            <span>${esc(val) || (canEdit ? 'Klikni pro výběr…' : '—')}</span>
             ${val && canEdit ? `<span onclick="event.stopPropagation();saveMealPlanItem('${dayKey}','${mealKey}','')" style="color:var(--text3);font-size:12px;padding:2px 4px;border-radius:4px" title="Smazat">✕</span>` : (canEdit && !val ? '<span style="font-size:11px;color:var(--accent);opacity:.6">+</span>' : '')}
           </div>
         </div>`;
@@ -4475,7 +4480,7 @@ window.renderKcalToday = async () => {
 
   const chipsHtml = todayLogs.map(l=>`
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-      ${l.name}
+      ${esc(l.name)}
       <span style="font-size:11px;color:var(--accent);font-weight:600">${l.kcal} kcal</span>
       <span data-a0="${esc(l.id)}" onclick="deleteFoodLog(this.dataset.a0)" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
     </div>`).join('');
@@ -4706,7 +4711,7 @@ window.mealplanToShopping = async () => {
       <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px">
         <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--accent);margin-bottom:10px;font-weight:700">🍳 Chybí uložené recepty</div>
         <div style="font-size:14px;color:var(--text2);margin-bottom:14px">Tato jídla nemají uložené ingredience:</div>
-        ${withoutRecipe.map(m=>`<div style="padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text)">• ${m}</div>`).join('')}
+        ${withoutRecipe.map(m=>`<div style="padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text)">• ${esc(m)}</div>`).join('')}
         <div style="font-size:13px;color:var(--text3);margin:12px 0 16px">Jdi do Vaření, vygeneruj recept a ulož ho — pak se ingredience přidají automaticky.</div>
         <button onclick="this.closest('[style]').remove()" style="width:100%;background:var(--accent);border:none;border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer">Rozumím</button>
       </div>`;
@@ -4789,7 +4794,7 @@ window.openAddToMealplan = () => {
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto">
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--accent);margin-bottom:4px;font-weight:700">📅 Přidat do jídelníčku</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${lastRecipe.name}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${esc(lastRecipe.name)}</div>
       <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Vyber den:</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
         ${DAYS_CS.map((d,i)=>`<button onclick="selectMealplanDay(${i},this)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);cursor:pointer" data-day="${i}">${d}</button>`).join('')}
@@ -5398,7 +5403,7 @@ function rDash(){
       for(let i=0;i<30;i++){const ds=toDS(sd);if(habitLogs.some(l=>l.habitId===hb.id&&l.date===ds&&l.done))streak++;else break;sd.setDate(sd.getDate()-1);}
       return `<div class="dw-habit-row">
         <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
-        <div class="dw-hname">${hb.emoji} ${hb.name}</div>
+        <div class="dw-hname">${esc(hb.emoji)} ${esc(hb.name)}</div>
         ${val?`<div class="dw-hval">${val}</div>`:''}
         ${streak>=30?`<div class="dw-hfire" style="color:var(--accent);font-weight:700">👑${streak}</div>`
          :streak>=7?`<div class="dw-hfire" style="color:var(--green);font-weight:700">🔥${streak}</div>`
@@ -5430,8 +5435,8 @@ function rDash(){
           <div class="dw-title">📝 Poznámky</div>
           <div class="dw-arrow">→</div>
         </div>
-        <div class="dw-entry-title">${lastEntry.mood?`<span class="dw-entry-mood">${lastEntry.mood}</span>`:''}${lastEntry.title||'Bez názvu'}</div>
-        ${lastEntry.text?`<div class="dw-entry-preview">${lastEntry.text.substring(0,120)}</div>`:''}
+        <div class="dw-entry-title">${lastEntry.mood?`<span class="dw-entry-mood">${esc(lastEntry.mood)}</span>`:''}${esc(lastEntry.title||'Bez názvu')}</div>
+        ${lastEntry.text?`<div class="dw-entry-preview">${esc(lastEntry.text.substring(0,120))}</div>`:''}
         <div class="dw-row" style="margin-top:8px">
           ${todayEntries.length?`<div class="dw-pill">Dnes <b>${todayEntries.length} zápisků</b></div>`:''}
           ${!todayEntries.length?`<div class="dw-pill" style="color:var(--text3)">Dnes jsi ještě nepsal</div>`:''}
@@ -5453,10 +5458,10 @@ function rDash(){
     const goalRows=goals.slice(0,3).map(g=>`
       <div class="dw-goal-row">
         <div class="dw-goal-top">
-          <span style="font-size:14px;color:var(--text)">${g.emoji||'🌟'} ${g.name}</span>
-          <span class="dw-goal-pct" style="color:${g.color||'var(--accent)'}">${g.progress||0}%</span>
+          <span style="font-size:14px;color:var(--text)">${esc(g.emoji||'🌟')} ${esc(g.name)}</span>
+          <span class="dw-goal-pct" style="color:${esc(g.color||'var(--accent)')}">${g.progress||0}%</span>
         </div>
-        <div class="dw-pbar"><div class="dw-pbar-fill" style="width:${g.progress||0}%;background:${g.color||'var(--accent)'}"></div></div>
+        <div class="dw-pbar"><div class="dw-pbar-fill" style="width:${g.progress||0}%;background:${esc(g.color||'var(--accent)')}"></div></div>
       </div>`).join('');
     html+=`<div class="dw" onclick="sp('goals')">
       <div class="dw-head">
@@ -5482,7 +5487,7 @@ function rDash(){
         return `<div class="dw-ev-row">
           <div class="dw-ev-ico">${getEvIcon(ev.type)}</div>
           <div style="flex:1">
-            <div class="dw-ev-name">${ev.name}</div>
+            <div class="dw-ev-name">${esc(ev.name)}</div>
             <div class="dw-ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'long'})}</div>
           </div>
           ${isSoon?`<span class="dw-ev-badge">${diffLbl}</span>`:`<span style="font-size:12px;color:var(--text3)">${diffLbl}</span>`}
@@ -5542,10 +5547,10 @@ function rDash(){
         <div class="dw-arrow">→</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
-        <div style="font-size:40px">${todayMoodVal||'😶'}</div>
+        <div style="font-size:40px">${esc(todayMoodVal||'😶')}</div>
         <div>
           <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Posledních 7 dní</div>
-          <div style="display:flex;gap:4px">${weekMoods.map(m=>`<span style="font-size:18px">${m||'·'}</span>`).join('')}</div>
+          <div style="display:flex;gap:4px">${weekMoods.map(m=>`<span style="font-size:18px">${esc(m||'·')}</span>`).join('')}</div>
         </div>
       </div>
     </div>`;
@@ -5563,12 +5568,12 @@ function rDash(){
         const shortReport = wr.text.length > 120 ? wr.text.slice(0,120)+'…' : wr.text;
         html += `<div class="dw" style="cursor:default;background:linear-gradient(135deg,rgba(245,200,66,.07),rgba(224,149,74,.05));border-color:rgba(245,200,66,.25)">
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:20px">${wr.avatar||'⭐'}</span>
+            <span style="font-size:20px">${esc(wr.avatar||'⭐')}</span>
             <span style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--accent)">Týdenní report</span>
             <span style="font-size:12px;color:var(--text3);margin-left:auto">${dateLabel}</span>
           </div>
-          <div id="wr-preview" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px">${shortReport}</div>
-          <div id="wr-full" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px;display:none">${wr.text}</div>
+          <div id="wr-preview" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px">${esc(shortReport)}</div>
+          <div id="wr-full" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px;display:none">${esc(wr.text)}</div>
           <button onclick="const p=document.getElementById('wr-preview'),f=document.getElementById('wr-full'),b=this;if(f.style.display==='none'){f.style.display='block';p.style.display='none';b.textContent='Skrýt ↑'}else{f.style.display='none';p.style.display='block';b.textContent='Zobrazit celý report →'}" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif">${wr.text.length>120?'Zobrazit celý report →':'Otevřít chat →'}</button>
         </div>`;
       }
@@ -5596,9 +5601,9 @@ function rDash(){
         <div style="display:flex;flex-direction:column;gap:8px">
           ${streakHabits.map(h=>`
             <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-size:20px">${h.emoji||'⭐'}</span>
-              <span style="flex:1;font-size:15px;color:var(--text)">${h.name}</span>
-              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">🔥 ${h.streak} dní</span>
+              <span style="font-size:20px">${esc(h.emoji||'⭐')}</span>
+              <span style="flex:1;font-size:15px;color:var(--text)">${esc(h.name)}</span>
+              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">🔥 ${Number(h.streak)||0} dní</span>
             </div>`).join('')}
         </div>
       </div>`;
@@ -6430,7 +6435,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
       <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
-    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${e.message}`;
+    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${esc(e.message)}`;
   }
 };
 
@@ -6922,7 +6927,7 @@ async function offerPantryUpdate(name, shopQty) {
     // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${amount} ${unit})</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${amount},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${Number(amount)||0} ${esc(unit)})</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${Number(amount)||0},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 6000);
   }
@@ -7485,7 +7490,7 @@ function initPantry() {
 
 function buildPantryHtml(low, sorted) {
   return `
-    ${low.length ? `<div class="pantry-alert">⚠️ ${low.length} ${low.length === 1 ? 'položka dochází' : low.length < 5 ? 'položky dochází' : 'položek dochází'}: ${low.map(i => i.name).join(', ')}</div>` : ''}
+    ${low.length ? `<div class="pantry-alert">⚠️ ${low.length} ${low.length === 1 ? 'položka dochází' : low.length < 5 ? 'položky dochází' : 'položek dochází'}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
     <div class="pantry-actions-top">
       <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">+ Přidat zásobu</button>
       ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">🛒 Navrhnout nákup</button>` : ''}
@@ -7559,7 +7564,7 @@ window.openPantryAdd = function(prefill = {}) {
     <div style="display:flex;flex-direction:column;gap:10px">
       <input id="pi-name" class="finp" placeholder="Název (např. Mléko)" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
       <div style="display:flex;gap:8px">
-        <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="Množství" value="${prefill.qty || ''}" style="flex:1">
+        <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="Množství" value="${esc(prefill.qty || '')}" style="flex:1">
         <select id="pi-unit" class="finp" style="flex:1">
           ${['ks','g','kg','ml','l'].map(u=>`<option value="${u}" ${(prefill.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
         </select>
@@ -7820,7 +7825,7 @@ function showFoodDetectBanner(foods) {
   banner.innerHTML = `
     <div class="food-detect-title">🍽️ Rex našel plánovaná jídla v poznámkách</div>
     <div class="food-detect-items">
-      ${foods.map(f => `<span class="food-tag">🍳 ${f}</span>`).join('')}
+      ${foods.map(f => `<span class="food-tag">🍳 ${esc(f)}</span>`).join('')}
     </div>
     <div class="food-detect-btns">
       <button data-a0="${esc(JSON.stringify(foods))}" onclick="addPlannedMeals(JSON.parse(this.dataset.a0),this.closest('.food-detect-banner'))"
@@ -7881,8 +7886,8 @@ function renderPlannedMeals() {
     <div class="planned-meal-card">
       <span class="planned-meal-emoji">🍽️</span>
       <div style="flex:1">
-        <div class="planned-meal-name">${m.name}</div>
-        <div class="planned-meal-source">📓 ${m.source}</div>
+        <div class="planned-meal-name">${esc(m.name)}</div>
+        <div class="planned-meal-source">📓 ${esc(m.source)}</div>
       </div>
       <div class="planned-meal-btns">
         <button class="pm-btn pm-btn-recipe" data-a0="${esc(m.name)}" onclick="cookPlanned(this.dataset.a0, ${i})">🍳 Vařit</button>
@@ -7940,10 +7945,10 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
     const suggest = document.getElementById('mood-suggest');
     suggest.style.display = 'flex';
     suggest.innerHTML = `
-      <span style="font-size:22px">${result.mood}</span>
+      <span style="font-size:22px">${esc(result.mood)}</span>
       <div style="flex:1">
-        <div style="font-size:13px;color:var(--text);font-weight:600">Rex navrhuje: ${result.mood}</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:1px">${result.reason}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600">Rex navrhuje: ${esc(result.mood)}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:1px">${esc(result.reason)}</div>
       </div>
       <button data-a0="${esc(result.mood)}" onclick="acceptMood(this.dataset.a0)"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
@@ -8041,17 +8046,16 @@ function showHabitDetectBanner(completed, newHabits) {
         ? `Zaznamenat do návyku "${existingHabit.name}"`
         : `Vytvořit návyk "${item.activity}"`;
       const meta = item.type === 'count' && item.count
-        ? `${item.count}× dnes · počitatelný`
+        ? `${esc(item.count)}× dnes · počitatelný`
         : 'splněno dnes · ano/ne';
-      const btnData = JSON.stringify({item, existingHabitId: existingHabit?.id||null}).replace(/"/g,'&quot;');
       html += `<div class="habit-detect-card">
         <div class="hdc-info">
-          <div class="hdc-name">${item.emoji||'✅'} ${item.activity}${item.count?` — ${item.count}×`:''}</div>
+          <div class="hdc-name">${esc(item.emoji||'✅')} ${esc(item.activity)}${item.count?` — ${esc(item.count)}×`:''}</div>
           <div class="hdc-meta">${meta}</div>
         </div>
         <span class="hdc-type">${item.type==='count'?'počet':'ano/ne'}</span>
         <div class="hdc-btns">
-          <button data-a0="${esc(encodeURIComponent(JSON.stringify({item, existingHabitId: existingHabit?.id||null})))}" onclick="logHabitFromEntry(this.dataset.a0)"
+          <button data-a0="${esc(JSON.stringify({item, existingHabitId: existingHabit?.id||null}))}" onclick="logHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
             ✅ ${existingHabit ? 'Zaznamenat' : 'Vytvořit návyk'}
           </button>
@@ -8068,12 +8072,12 @@ function showHabitDetectBanner(completed, newHabits) {
       if (alreadyExists) return;
       html += `<div class="habit-detect-card">
         <div class="hdc-info">
-          <div class="hdc-name">${h.emoji||'🎯'} ${h.name}</div>
-          <div class="hdc-meta">${h.type==='count'?`počet · cíl ${h.goal||'?'}×`:'ano/ne'} · každý den</div>
+          <div class="hdc-name">${esc(h.emoji||'🎯')} ${esc(h.name)}</div>
+          <div class="hdc-meta">${h.type==='count'?`počet · cíl ${esc(h.goal||'?')}×`:'ano/ne'} · každý den</div>
         </div>
         <span class="hdc-type">${h.type==='count'?'počet':'ano/ne'}</span>
         <div class="hdc-btns">
-          <button data-a0="${esc(encodeURIComponent(JSON.stringify(h)))}" onclick="createHabitFromEntry(this.dataset.a0)"
+          <button data-a0="${esc(JSON.stringify(h))}" onclick="createHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
             + Vytvořit návyk
           </button>
@@ -8093,7 +8097,7 @@ function showHabitDetectBanner(completed, newHabits) {
 
 // Zaznamenat splněný návyk (existující nebo nový)
 window.logHabitFromEntry = async (dataEnc) => {
-  const {item, existingHabitId} = JSON.parse(decodeURIComponent(dataEnc));
+  const {item, existingHabitId} = JSON.parse(dataEnc);
   const today = toDS();
 
   if (existingHabitId) {
@@ -8101,7 +8105,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     const habit = habits.find(h => h.id === existingHabitId);
     if (!habit) return;
     const logId = existingHabitId + '_' + today;
-    const value = item.count || 1;
+    const value = Number(item.count) || 1;
     const goal = habit.goal || 1;
     const log = {id:logId, habitId:existingHabitId, date:today, done:value>=goal, value};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
@@ -8116,7 +8120,7 @@ window.logHabitFromEntry = async (dataEnc) => {
       name: item.activity,
       emoji: item.emoji || '✅',
       type: item.type || 'check',
-      goal: item.count || 1,
+      goal: Number(item.count) || 1,
       freq: {type: 'daily'},
       createdAt: new Date().toISOString()
     };
@@ -8124,7 +8128,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     newH.id = ref.id;
     // Zaznamenat dnešní splnění
     const logId = ref.id + '_' + today;
-    const log = {id:logId, habitId:ref.id, date:today, done:true, value:item.count||1};
+    const log = {id:logId, habitId:ref.id, date:today, done:true, value:Number(item.count)||1};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
     const exL = habitLogs.find(l=>l.id===logId);
     if (exL) Object.assign(exL, log); else habitLogs.push(log);
@@ -8135,12 +8139,12 @@ window.logHabitFromEntry = async (dataEnc) => {
 
 // Vytvořit nový návyk ze záměru
 window.createHabitFromEntry = async (dataEnc) => {
-  const h = JSON.parse(decodeURIComponent(dataEnc));
+  const h = JSON.parse(dataEnc);
   const newH = {
     name: h.name,
     emoji: h.emoji || '🎯',
     type: h.type || 'check',
-    goal: h.goal || 1,
+    goal: Number(h.goal) || 1,
     freq: {type: 'daily'},
     createdAt: new Date().toISOString()
   };
@@ -8263,7 +8267,7 @@ function startWelcomeTour() {
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:360px;text-align:center">
       <div style="font-size:52px;margin-bottom:12px">${av.emoji}</div>
-      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700;margin-bottom:8px">Vítej, ${name}!</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700;margin-bottom:8px">Vítej, ${esc(name)}!</div>
       <div style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px">
         Jsem <strong>${av.name}</strong>, tvůj osobní společník v LifePocket.
       </div>
@@ -8355,7 +8359,7 @@ function finishTour() {
     done.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:340px;text-align:center">
         <div style="font-size:48px;margin-bottom:12px">🎉</div>
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">To je vše, ${name}!</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">To je vše, ${esc(name)}!</div>
         <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px">Teď víš co LifePocket umí. Kdykoliv budeš chtít průvodce znovu, najdeš ho v ⚙️ Nastavení.</div>
         <button onclick="this.closest('div[style]').remove()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
           Jdeme na to! 💪
