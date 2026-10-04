@@ -14,8 +14,15 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.17';
+const APP_VERSION = '4.18';
 const CHANGELOG = [
+  { v:'4.18', items:[
+    '📏 Délky jmen, názvů skupin a kategorií jsou omezené – dlouhé texty se zkrátí',
+    '⏰ Neplatný čas události (např. 25:00) se nezobrazí ani nepoužije pro připomínku',
+    '🔒 Bezpečnější sdílení – kódy skupin se ověřují a jsou bezpečně zobrazené',
+    '✉️ Zpětná vazba se odesílá bez e-mailu z účtu – jen přezdívka, text a e-mail, který sám vyplníš',
+    '🔧 Drobné opravy zabezpečení a stability',
+  ]},
   { v:'4.17', items:[
     '🎨 Barva lišty v prohlížeči se podle zvoleného vzhledu nastaví hned při startu',
     '🛡️ Opravené zobrazení jmen a textů s uvozovkami nebo speciálními znaky v návycích, deníku, jídelníčku, nákupech a zásobách',
@@ -358,6 +365,20 @@ function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function cutName(v,max=40){let s=String(v??'').trim().slice(0,max);const c=s.charCodeAt(s.length-1);if(c>=0xD800&&c<=0xDBFF)s=s.slice(0,-1);return s;}
 // Fotka smí být jen data URL obrázku
 function safeImgSrc(v){const s=String(v??'');return s.startsWith('data:image/')?s:'';}
+// Bezpečný lookup v objektu/poli (bez dědění z Object.prototype)
+function lookupOr(o,k,fb){return Object.prototype.hasOwnProperty.call(o,k)?o[k]:fb;}
+// Čitelný popis frekvence návyku (objekt {type}, nebo starý string)
+function habitFreqLabel(f){
+  if(typeof f==='string') return f||'každý den';
+  if(!f||typeof f!=='object') return 'každý den';
+  if(f.type==='weekly') return (Number(f.times)||3)+'× týdně';
+  if(f.type==='days') return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(['Ne','Po','Út','St','Čt','Pá','So'],d,'')).filter(Boolean).join(' ')||'každý den';
+  return 'každý den';
+}
+// AI: cíl jako celé číslo >= 1 (text "3×" → 3)
+function aiGoal(v){return Math.max(1,parseInt(v,10)||1);}
+// AI: typ návyku jen count / check
+function aiHabitType(t){return t==='count'?'count':'check';}
 function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
 function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
 function genId(){return Math.random().toString(36).substr(2,9);}
@@ -1490,7 +1511,7 @@ function renderArchivedHabits() {
       <span style="font-size:22px">${esc(h.emoji||'📌')}</span>
       <div style="flex:1">
         <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${esc(h.name)}</div>
-        <div style="font-size:12px;color:var(--text3)">${h.group||'den'} · ${h.freq||'každý den'}</div>
+        <div style="font-size:12px;color:var(--text3)">${esc(lookupOr({morning:'Ráno',day:'Přes den',evening:'Večer'},h.group||'day','Přes den'))} · ${esc(habitFreqLabel(h.freq))}</div>
       </div>
       <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
       <button data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
@@ -3069,7 +3090,7 @@ function checkEventReminders() {
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
 
   events.forEach(ev => {
-    if (ev.type !== 'event' || !ev.time) return;
+    if (ev.type !== 'event' || !okEvTime(ev.time)) return;
     const evDate = (ev.repeat === 'yes') ? today.slice(0,5) + ev.date.slice(5) : ev.date;
     if (evDate !== today) return;
 
@@ -3910,9 +3931,12 @@ window.onEvShareGroupChange = () => {
   if (sel) selEvShareGroupId = sel.value || null;
 };
 
+// Slova kódu skupiny (WORD-NNNN) – seznam musí odpovídat firestore.rules (families create)
+const FAMILY_WORDS = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
+const FAMILY_CODE_RE = new RegExp('^(' + FAMILY_WORDS.join('|') + ')-[0-9]{4}$');
+function okFamilyCode(c) { return FAMILY_CODE_RE.test(String(c ?? '')); }
 function genFamilyCode() {
-  const words = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
-  const w = words[Math.floor(Math.random()*words.length)];
+  const w = FAMILY_WORDS[Math.floor(Math.random()*FAMILY_WORDS.length)];
   const n = String(Math.floor(1000+Math.random()*9000));
   return w+'-'+n;
 }
@@ -3945,7 +3969,7 @@ window.showJoinFamily = () => {
 
 window.joinFamily = async () => {
   const code = document.getElementById('family-code-inp').value.trim().toUpperCase();
-  if(!code || code.length < 4) { toast('⚠️ Zadej platný kód'); return; }
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-1234)'); return; }
   try {
     const fSnap = await getDoc(doc(db,'families',code));
     if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return; }
@@ -4068,7 +4092,7 @@ window.joinExtraGroup = async () => {
   if(!CU) return;
   const inp = document.getElementById('extra-group-join-code');
   const code = (inp?.value || '').trim().toUpperCase();
-  if(code.length < 4) { toast('⚠️ Zadej kód skupiny'); return; }
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-1234)'); return; }
   if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return; }
   const fSnap = await getDoc(doc(db,'families',code));
   if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return; }
@@ -4236,10 +4260,11 @@ function buildGroupCard(gid, gData, isPrimary) {
     {key:'shareMeal', emoji:'🥗', label:'Jídelníček', val: !!gData.shareMeal},
     {key:'shareChecklist', emoji:'📋', label:'Checklist', val: gData.shareChecklist !== false && !!gData.shareChecklist},
   ];
-  const gidParam = isPrimary ? 'null' : '\'' + gid + '\'';
+  // gid jde do HTML jen přes data-gid (esc), v JS se čte přes dataset
+  const gidAttr = isPrimary ? '' : esc(gid);
   const membersHtml = Object.entries(members).map(([uid,m])=>
     '<div class="family-member">'
-    +'<div class="family-member-av">'+(avs[m.avatar]||'👤')+'</div>'
+    +'<div class="family-member-av">'+lookupOr(avs,m.avatar,'👤')+'</div>'
     +'<div class="family-member-info">'
     +'<div class="family-member-name">'+esc(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
     +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
@@ -4248,7 +4273,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'</div>'
   ).join('');
   const modsHtml = shareModules.map(m=>
-    '<div class="fshare-mod-row" onclick="toggleFamilyModule(\''+m.key+'\','+gidParam+')" style="cursor:pointer">'
+    '<div class="fshare-mod-row" data-gid="'+gidAttr+'" onclick="toggleFamilyModule(\''+m.key+'\',this.dataset.gid)" style="cursor:pointer">'
     +'<span style="font-size:18px">'+m.emoji+'</span>'
     +'<span style="flex:1;font-size:14px;color:var(--text1)">'+m.label+'</span>'
     +'<div class="fshare-toggle '+(m.val?'on':'')+'"><div class="fshare-thumb"></div></div>'
@@ -4256,17 +4281,17 @@ function buildGroupCard(gid, gData, isPrimary) {
   ).join('');
   const leaveBtn = isPrimary
     ? '<button onclick="leaveFamily()" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>'
-    : '<button onclick="leaveExtraGroup(\''+gid+'\')" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>';
+    : '<button data-gid="'+gidAttr+'" onclick="leaveExtraGroup(this.dataset.gid)" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>';
   const nameLabel = esc(gData.groupName || 'Skupina') + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">⭐ hlavní</span>' : '');
   const renameBtn = isPrimary ? ' <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px">✏️</button>' : '';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
     +'<div class="family-code-box" style="margin-bottom:12px">'
-    +'<div class="family-code">'+gid+'</div>'
+    +'<div class="family-code">'+esc(gid)+'</div>'
     +'<div class="family-code-lbl">Pošli tento kód ostatním členům</div>'
     +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
-    +'<button onclick="navigator.clipboard.writeText(\''+gid+'\').then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
-    +'<button onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: '+gid+'\',url:\'https://adamstencl.github.io/LifePocket/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
+    +'<button data-gid="'+gidAttr+'" onclick="navigator.clipboard.writeText(this.dataset.gid).then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
+    +'<button data-gid="'+gidAttr+'" onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: \'+this.dataset.gid,url:\'https://adamstencl.github.io/LifePocket/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
     +'</div></div>'
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
     +membersHtml
@@ -4284,7 +4309,7 @@ function renderFamilySettings() {
   const noGroup = document.getElementById('family-no-group');
   const groupView = document.getElementById('family-group-view');
 
-  if(!familyId || !familyData) {
+  if(!familyId || !familyData || !okFamilyCode(familyId)) {
     if(noGroup) noGroup.style.display = 'block';
     if(groupView) groupView.style.display = 'none';
     // Hide extra groups section
@@ -4304,7 +4329,7 @@ function renderFamilySettings() {
   // Extra groups
   for(const gid of extraGroupIds) {
     const gData = extraGroupsData[gid];
-    if(gData) html += buildGroupCard(gid, gData, false);
+    if(gData && okFamilyCode(gid)) html += buildGroupCard(gid, gData, false);
   }
 
   // "Přidat skupinu" section
@@ -4493,7 +4518,7 @@ window.renderKcalToday = async () => {
   const chipsHtml = todayLogs.map(l=>`
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
       ${esc(l.name)}
-      <span style="font-size:11px;color:var(--accent);font-weight:600">${l.kcal} kcal</span>
+      <span style="font-size:11px;color:var(--accent);font-weight:600">${Number(l.kcal)||0} kcal</span>
       <span data-a0="${esc(l.id)}" onclick="deleteFoodLog(this.dataset.a0)" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
     </div>`).join('');
 
@@ -6805,10 +6830,10 @@ function renderRecurringShop() {
   const DAY = ['Ne','Po','Út','St','Čt','Pá','So'];
   const FREQ = {weekly:'týdně', biweekly:'2× měs.', monthly:'měsíčně'};
   chips.innerHTML = recurringShopItems.map(item => {
-    const dayLbl = item.freq !== 'monthly' ? ` · ${DAY[item.day]||''}` : '';
+    const dayLbl = item.freq !== 'monthly' ? ` · ${lookupOr(DAY,item.day,'')}` : '';
     return `<div class="recurring-chip">
       <button data-a0="${esc(item.id)}" onclick="addFromRecurring(this.dataset.a0)" class="recurring-chip-name">${esc(item.name)}</button>
-      <span class="recurring-chip-info">${FREQ[item.freq]||''}${dayLbl}</span>
+      <span class="recurring-chip-info">${lookupOr(FREQ,item.freq,'')}${dayLbl}</span>
       <button data-a0="${esc(item.id)}" onclick="delRecurringShopItem(this.dataset.a0)" class="recurring-chip-del">×</button>
     </div>`;
   }).join('');
@@ -7528,7 +7553,7 @@ function buildPantryHtml(low, sorted) {
           </div>
           <div class="pantry-item-qty">
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, -1)">−</button>
-            <span class="pantry-qty-val">${item.qty} ${esc(item.unit || '')}</span>
+            <span class="pantry-qty-val">${Number(item.qty)||0} ${esc(item.unit || '')}</span>
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, 1)">+</button>
             <button class="pantry-item-del" data-a0="${esc(item.id)}" onclick="deletePantryItem(this.dataset.a0)">🗑</button>
           </div>
@@ -8124,7 +8149,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     const habit = habits.find(h => h.id === existingHabitId);
     if (!habit) return;
     const logId = existingHabitId + '_' + today;
-    const value = Number(item.count) || 1;
+    const value = aiGoal(item.count);
     const goal = Math.max(1, Math.floor(Number(habit.goal))||1);
     const log = {id:logId, habitId:existingHabitId, date:today, done:value>=goal, value};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
@@ -8138,8 +8163,8 @@ window.logHabitFromEntry = async (dataEnc) => {
     const newH = {
       name: item.activity,
       emoji: item.emoji || '✅',
-      type: item.type || 'check',
-      goal: Number(item.count) || 1,
+      type: aiHabitType(item.type),
+      goal: aiGoal(item.count),
       freq: {type: 'daily'},
       createdAt: new Date().toISOString()
     };
@@ -8147,7 +8172,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     newH.id = ref.id;
     // Zaznamenat dnešní splnění
     const logId = ref.id + '_' + today;
-    const log = {id:logId, habitId:ref.id, date:today, done:true, value:Number(item.count)||1};
+    const log = {id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
     const exL = habitLogs.find(l=>l.id===logId);
     if (exL) Object.assign(exL, log); else habitLogs.push(log);
@@ -8162,8 +8187,8 @@ window.createHabitFromEntry = async (dataEnc) => {
   const newH = {
     name: h.name,
     emoji: h.emoji || '🎯',
-    type: h.type || 'check',
-    goal: Number(h.goal) || 1,
+    type: aiHabitType(h.type),
+    goal: aiGoal(h.goal),
     freq: {type: 'daily'},
     createdAt: new Date().toISOString()
   };
@@ -8453,7 +8478,8 @@ window.sp = id => {
 window.sendContactMsg = async () => {
   const msg = document.getElementById('contact-msg')?.value?.trim();
   const emailEl = document.getElementById('contact-email');
-  const replyEmail = emailEl?.value?.trim() || 'neuveden';
+  // E-mail se posílá jen pokud ho uživatel sám vyplnil (e-mail účtu se neposílá)
+  const replyEmail = emailEl?.value?.trim() || '';
   if(!msg) { toast('⚠️ Napiš zprávu'); return; }
   const btn = document.querySelector('[onclick="sendContactMsg()"]');
   if(btn) { btn.disabled = true; btn.textContent = '⏳ Odesílám…'; }
@@ -8461,7 +8487,7 @@ window.sendContactMsg = async () => {
     const res = await fetch('https://formspree.io/f/xlgpyjaa', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ email: replyEmail, message: msg, user: prof.nickname || CU?.email || 'anon' })
+      body: JSON.stringify({ ...(replyEmail ? { email: replyEmail } : {}), message: msg, user: prof.nickname || 'anon' })
     });
     if(res.ok) {
       document.getElementById('contact-msg').value = '';
