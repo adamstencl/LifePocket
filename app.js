@@ -353,6 +353,8 @@ function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remo
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
+// Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
+function cutName(v,max=40){return String(v??'').trim().slice(0,max);}
 function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
 function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
 function genId(){return Math.random().toString(36).substr(2,9);}
@@ -1501,13 +1503,15 @@ let calFilter='all';
 
 const EV_ICONS={birthday:'🎂',event:'📌'};
 const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
-// Vrátí ikonu i pro vlastní typy
-function getEvIcon(type){return EV_ICONS[type]||((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||'📌';}
+// Vrátí ikonu i pro vlastní typy (hasOwnProperty kvůli prototypovým vlastnostem jako 'constructor')
+function getEvIcon(type){return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||'📌';}
 // Vrátí popisek i pro vlastní typy
-function getEvLabel(type){return EV_LABELS[type]||((prof.customEvTypes||[]).find(t=>t.key===type)?.label)||type||'Událost';}
+function getEvLabel(type){return Object.prototype.hasOwnProperty.call(EV_LABELS,type)?EV_LABELS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.label)||type||'Událost';}
 // Typ narozenin nemá čas ani datum konce
 const evHasTime=t=>t!=='birthday';
 const evHasEnd =t=>t==='event';
+// Čas události smí být jen HH:MM
+const okEvTime=t=>/^\d{2}:\d{2}$/.test(t||'');
 
 function subEvents(){
   createFireSub('events',
@@ -1620,7 +1624,7 @@ function renderEvList(){
       +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
         ?ev._date.toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})+' – '+new Date(ev.dateEnd+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})
-        :ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'}))+(ev.time?' · '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
+        :ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'}))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
       +'<button class="ev-del" data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
@@ -1762,7 +1766,7 @@ function showDayEventsModal(ds, dayEvs) {
       +'<div style="font-size:22px">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div style="flex:1">'
       +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(ev.time?' · ⏰ '+ev.time:'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
       +'</div>'
       +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
       +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
@@ -1878,8 +1882,9 @@ window.confirmCustomEvType=async()=>{
   const labelInp=document.getElementById('ev-ctype-label');
   if(!emojiInp||!labelInp)return;
   const emoji=emojiInp.value.trim()||'📌';
-  // Odstraní znaky, které by mohly rozbít HTML (escape se provádí i při renderu)
-  const label=labelInp.value.trim().replace(/[<>"']/g,'');
+  if(emoji.length>2){toast('⚠️ Emoji smí mít max 2 znaky');return;}
+  // Ořez délky; escape se provádí při renderu
+  const label=cutName(labelInp.value,25);
   if(!label){toast('⚠️ Zadej název kategorie');return;}
   const key='c_'+Date.now().toString(36);
   const customEvTypes=[...(prof.customEvTypes||[]),{key,emoji,label}];
@@ -1896,7 +1901,8 @@ window.delCustomEvType=async(key)=>{
   await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
   if(selEvType_val===key){selEvType_val='event';}
   renderEvTypeButtons();
-  selEvType(selEvType_val,document.querySelector('.ev-type-btn[data-t="'+selEvType_val+'"]'));
+  const selBtn=[...document.querySelectorAll('.ev-type-btn')].find(b=>b.dataset.t===selEvType_val);
+  selEvType(selEvType_val,selBtn);
 };
 
 window.selEvType=(t,btn)=>{
@@ -1913,7 +1919,8 @@ window.saveEvent=async()=>{
   const name=document.getElementById('ev-name-inp').value.trim();
   const date=document.getElementById('ev-date-inp').value;
   const repeat=document.getElementById('ev-repeat-inp').value;
-  const time=evHasTime(selEvType_val)?(document.getElementById('ev-time-inp')?.value||null):null;
+  const timeRaw=evHasTime(selEvType_val)?(document.getElementById('ev-time-inp')?.value||''):'';
+  const time=okEvTime(timeRaw)?timeRaw:null;
   const dateEnd=evHasEnd(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
   if(!name){toast('⚠️ Zadej název');return;}
   if(!date){toast('⚠️ Vyber datum');return;}
@@ -2100,7 +2107,7 @@ let selAddr='jmeno';
 window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m');document.getElementById('gf').classList.toggle('sel',g==='f');v1();};
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!(nick&&selG);};
-window.gS2=()=>{prof.nickname=document.getElementById('u-nick').value.trim();prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
+window.gS2=()=>{prof.nickname=cutName(document.getElementById('u-nick').value,40);prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
 function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
@@ -3911,12 +3918,12 @@ window.createFamily = async () => {
   if(!CU) return;
   if(familyId) { toast('Už jsi ve skupině'); return; }
   const nameInp = document.getElementById('family-name-inp');
-  const groupName = (nameInp?.value||'').trim() || 'Moje skupina';
+  const groupName = cutName(nameInp?.value,40) || 'Moje skupina';
   const code = genFamilyCode();
   const fid = code; // kód = ID
   const data = {
     code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
-    members: { [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName, avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
+    members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
   await setDoc(doc(db,'families',fid), data);
@@ -3943,7 +3950,7 @@ window.joinFamily = async () => {
     if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return; }
     // Přidej sebe do skupiny
     await setDoc(doc(db,'families',code), {
-      members: { ...fData.members, [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName, avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
+      members: { ...fData.members, [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
     }, {merge:true});
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: code}, {merge:true});
     prof.familyId = code;
@@ -4037,11 +4044,11 @@ window.showExtraGroupForm = () => {
 window.createExtraGroup = async () => {
   if(!CU) return;
   const inp = document.getElementById('extra-group-name-inp');
-  const groupName = (inp?.value || '').trim() || 'Nová skupina';
+  const groupName = cutName(inp?.value,40) || 'Nová skupina';
   const code = genFamilyCode();
   const data = {
     code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
-    members: { [CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName||'Já', avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
+    members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: false, shareCal: true, shareMeal: false, shareChecklist: false
   };
   await setDoc(doc(db,'families',code), data);
@@ -4065,7 +4072,7 @@ window.joinExtraGroup = async () => {
   const fData = fSnap.data();
   if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return; }
   await updateDoc(doc(db,'families',code), {
-    ['members.' + CU.uid]: { name: prof.prezdivka||prof.nickname||CU.displayName||'Já', avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
+    ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
   });
   extraGroupIds = [...extraGroupIds, code];
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
@@ -4231,7 +4238,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     '<div class="family-member">'
     +'<div class="family-member-av">'+(avs[m.avatar]||'👤')+'</div>'
     +'<div class="family-member-info">'
-    +'<div class="family-member-name">'+(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
+    +'<div class="family-member-name">'+esc(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
     +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
     +'</div>'
     +(isAdmin&&uid!==CU?.uid?'<button onclick="removeFamilyMember(\''+uid+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
@@ -4247,7 +4254,7 @@ function buildGroupCard(gid, gData, isPrimary) {
   const leaveBtn = isPrimary
     ? '<button onclick="leaveFamily()" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>'
     : '<button onclick="leaveExtraGroup(\''+gid+'\')" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>';
-  const nameLabel = (gData.groupName || 'Skupina') + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">⭐ hlavní</span>' : '');
+  const nameLabel = esc(gData.groupName || 'Skupina') + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">⭐ hlavní</span>' : '');
   const renameBtn = isPrimary ? ' <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px">✏️</button>' : '';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
@@ -4314,9 +4321,9 @@ function renderFamilySettings() {
 window.renameFamilyGroup = async () => {
   if(!familyId) return;
   const cur = familyData?.groupName || 'Moje skupina';
-  const name = prompt('Nový název skupiny:', cur);
-  if(!name || name.trim() === cur) return;
-  await setDoc(doc(db,'families',familyId), {groupName: name.trim()}, {merge:true});
+  const name = cutName(prompt('Nový název skupiny:', cur),40);
+  if(!name || name === cur) return;
+  await setDoc(doc(db,'families',familyId), {groupName: name}, {merge:true});
   toast('✓ Název skupiny změněn');
 };
 
@@ -5280,9 +5287,18 @@ function rDash(){
   const gr=AVGREET[av.id]?.[g]?.(prof.prezdivka||prof.nickname)||`Vítej, ${prof.prezdivka||prof.nickname}!`;
   const h=new Date().getHours();
   const tg=h<12?'Dobré ráno':h<18?'Ahoj':'Dobrý večer';
-  const dg=document.getElementById('d-greet'); if(dg) dg.innerHTML=`${tg}, <span style="color:var(--accent)">${prof.prezdivka||prof.nickname}</span>!`;
+  const dg=document.getElementById('d-greet'); if(dg) dg.innerHTML=`${tg}, <span style="color:var(--accent)">${esc(prof.prezdivka||prof.nickname)}</span>!`;
   const ddl=document.getElementById('d-date-lbl'); if(ddl) ddl.textContent=new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const up=document.getElementById('upill');if(up){const uName=prof.prezdivka||prof.nickname||CU.displayName?.split(' ')[0]||CU.email?.split('@')[0]||'';const uPhoto=CU.photoURL;up.innerHTML=uPhoto?`<img src="${uPhoto}" style="width:24px;height:24px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=\\'width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--tc);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center\\'>${uName.charAt(0).toUpperCase()}</div>'">`:`<div style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--tc);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">${uName.charAt(0).toUpperCase()||'👤'}</div>`;up.innerHTML+=`<span style="font-size:13px;color:var(--text2)">${uName}</span>`;}
+  const up=document.getElementById('upill');if(up){
+    const uName=prof.prezdivka||prof.nickname||CU.displayName?.split(' ')[0]||CU.email?.split('@')[0]||'';
+    const uInit=uName.charAt(0).toUpperCase();
+    const uCircle='width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--tc);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center';
+    const uPhoto=CU.photoURL;
+    up.innerHTML=(uPhoto?`<img src="${esc(uPhoto)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">`:`<div style="${uCircle}">${esc(uInit||'👤')}</div>`)+`<span style="font-size:13px;color:var(--text2)">${esc(uName)}</span>`;
+    // Při chybě načtení fotky nahradí img iniciálou (bez inline JS)
+    const upImg=up.querySelector('img');
+    if(upImg) upImg.addEventListener('error',()=>{const d=document.createElement('div');d.style.cssText=uCircle;d.textContent=uInit;upImg.replaceWith(d);});
+  }
   const dem=document.getElementById('d-avem'); if(dem) dem.textContent=av.emoji;
   const dnm=document.getElementById('d-avnm'); if(dnm) dnm.textContent=av.name;
   // Dynamická Rex zpráva podle skutečného stavu
@@ -6065,7 +6081,7 @@ function buildGoalCard(g, openSet, doneToday) {
     : '';
 
   const tagsRow = prioTag
-    + '<span class="gtag">📂 ' + (g.category||'ostatní') + '</span>'
+    + '<span class="gtag">📂 ' + esc(g.category||'ostatní') + '</span>'
     + (g.deadline ? '<span class="gtag">🏁 ' + fd(g.deadline) + '</span>' : '')
     + (sb.length ? '<span class="gtag">📌 ' + doneSubs + '/' + sb.length + '</span>' : '')
     + (totalTasks ? '<span class="gtag">☑ ' + doneTasks + '/' + totalTasks + '</span>' : '')
@@ -6546,7 +6562,8 @@ function renderShop(){
   }
 
   // Group by category
-  const cats={};
+  // Object.create(null): kategorie jako 'constructor' by jinak rozbila render
+  const cats=Object.create(null);
   activeItems.forEach(i=>{
     const c=i.category||'Ostatní';
     if(!cats[c])cats[c]=[];
@@ -6564,7 +6581,7 @@ function renderShop(){
     const items=cats[cat].sort((a,b)=>a.done===b.done?0:a.done?1:-1);
     const hintHtml = catIdx === 0 ? `<div style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif;font-style:italic;margin-bottom:10px;padding:0 4px">✏️ Klikni na množství pro úpravu</div>` : '';
     return `<div class="shop-category">
-      <div class="shop-cat-label">${cat}</div>
+      <div class="shop-cat-label">${esc(cat)}</div>
       ${hintHtml}
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
@@ -8105,7 +8122,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     if (!habit) return;
     const logId = existingHabitId + '_' + today;
     const value = Number(item.count) || 1;
-    const goal = habit.goal || 1;
+    const goal = Number(habit.goal) || 1;
     const log = {id:logId, habitId:existingHabitId, date:today, done:value>=goal, value};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
     const ex = habitLogs.find(l=>l.id===logId);
