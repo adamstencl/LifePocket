@@ -441,7 +441,7 @@ window.handleEntryPhotoInput = async function(input) {
     curEntryPhoto = await compressImage(file);
     const p = document.getElementById('j-photo-preview');
     if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
-      <img src="${curEntryPhoto}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
+      <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
       <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
     </div>`;
     toast('📷 Fotka připravena');
@@ -479,7 +479,7 @@ window.openEntry=(id)=>{
   const p = document.getElementById('j-photo-preview');
   if (p) p.innerHTML = curEntryPhoto
     ? `<div style="position:relative;display:inline-block;margin-top:8px">
-        <img src="${curEntryPhoto}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
+        <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
         <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
       </div>`
     : '';
@@ -4911,7 +4911,7 @@ document.addEventListener('paste', async function(e) {
         const preview = document.getElementById('cl-new-photo-preview');
         if (preview) {
           preview.style.display = 'block';
-          preview.innerHTML = `<img src="${clNewPhoto}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
         }
         document.getElementById('cl-new-inp')?.focus();
       } catch(err) { toast('❌ Nepodařilo se načíst obrázek'); }
@@ -5014,7 +5014,7 @@ window.handleClNewPhotoInput = async function(input) {
     const preview = document.getElementById('cl-new-photo-preview');
     if (preview) {
       preview.style.display = 'block';
-      preview.innerHTML = `<img src="${clNewPhoto}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
     }
   } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
   input.value = '';
