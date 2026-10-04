@@ -4039,6 +4039,8 @@ window.saveFamilyPrefs = async () => {
 };
 
 window.toggleFamilyModule = async (key, gid = null) => {
+  // Hlavní skupina (gid = familyId) se bere jako null, jinak by se hledala v extraGroupsData
+  if(gid && gid === familyId) gid = null;
   const targetGid = gid || familyId;
   const targetData = gid ? extraGroupsData[gid] : familyData;
   if(!targetGid || !targetData) return;
@@ -4111,6 +4113,8 @@ window.joinExtraGroup = async () => {
   toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
 };
 window.leaveExtraGroup = async (gid) => {
+  // Hlavní skupinu opouští leaveFamily(), ne tahle funkce
+  if(!gid || gid === familyId) return;
   if(!confirm('Opustit skupinu?')) return;
   try {
     const fSnap = await getDoc(doc(db,'families',gid));
@@ -4261,7 +4265,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     {key:'shareChecklist', emoji:'📋', label:'Checklist', val: gData.shareChecklist !== false && !!gData.shareChecklist},
   ];
   // gid jde do HTML jen přes data-gid (esc), v JS se čte přes dataset
-  const gidAttr = isPrimary ? '' : esc(gid);
+  const gidAttr = esc(gid);
   const membersHtml = Object.entries(members).map(([uid,m])=>
     '<div class="family-member">'
     +'<div class="family-member-av">'+lookupOr(avs,m.avatar,'👤')+'</div>'
@@ -8471,35 +8475,6 @@ window.sp = id => {
   _origSp(id);
   if(id !== 'dashboard' && id !== 'settings') {
     setTimeout(() => showModuleHint(id), 500);
-  }
-};
-
-// Kontaktní formulář
-window.sendContactMsg = async () => {
-  const msg = document.getElementById('contact-msg')?.value?.trim();
-  const emailEl = document.getElementById('contact-email');
-  // E-mail se posílá jen pokud ho uživatel sám vyplnil (e-mail účtu se neposílá)
-  const replyEmail = emailEl?.value?.trim() || '';
-  if(!msg) { toast('⚠️ Napiš zprávu'); return; }
-  const btn = document.querySelector('[onclick="sendContactMsg()"]');
-  if(btn) { btn.disabled = true; btn.textContent = '⏳ Odesílám…'; }
-  try {
-    const res = await fetch('https://formspree.io/f/xlgpyjaa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ ...(replyEmail ? { email: replyEmail } : {}), message: msg, user: prof.nickname || 'anon' })
-    });
-    if(res.ok) {
-      document.getElementById('contact-msg').value = '';
-      if(emailEl) emailEl.value = '';
-      toast('✓ Zpráva odeslána, díky!');
-    } else {
-      toast('❌ Chyba při odesílání, zkus to znovu');
-    }
-  } catch(e) {
-    toast('❌ Chyba: ' + e.message);
-  } finally {
-    if(btn) { btn.disabled = false; btn.textContent = '📨 Odeslat zprávu'; }
   }
 };
 
