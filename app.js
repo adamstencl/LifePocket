@@ -354,7 +354,10 @@ function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
-function cutName(v,max=40){return String(v??'').trim().slice(0,max);}
+// Bez high surrogátu na konci (neřezat uprostřed páru)
+function cutName(v,max=40){let s=String(v??'').trim().slice(0,max);const c=s.charCodeAt(s.length-1);if(c>=0xD800&&c<=0xDBFF)s=s.slice(0,-1);return s;}
+// Fotka smí být jen data URL obrázku
+function safeImgSrc(v){const s=String(v??'');return s.startsWith('data:image/')?s:'';}
 function lsGet(key,fallback=null){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
 function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
 function genId(){return Math.random().toString(36).substr(2,9);}
@@ -1511,7 +1514,7 @@ function getEvLabel(type){return Object.prototype.hasOwnProperty.call(EV_LABELS,
 const evHasTime=t=>t!=='birthday';
 const evHasEnd =t=>t==='event';
 // Čas události smí být jen HH:MM
-const okEvTime=t=>/^\d{2}:\d{2}$/.test(t||'');
+const okEvTime=t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(t||'');
 
 function subEvents(){
   createFireSub('events',
@@ -4322,7 +4325,7 @@ window.renameFamilyGroup = async () => {
   if(!familyId) return;
   const cur = familyData?.groupName || 'Moje skupina';
   const name = cutName(prompt('Nový název skupiny:', cur),40);
-  if(!name || name === cur) return;
+  if(!name || name === cutName(cur,40)) return;
   await setDoc(doc(db,'families',familyId), {groupName: name}, {merge:true});
   toast('✓ Název skupiny změněn');
 };
@@ -4984,7 +4987,7 @@ function renderChecklist() {
             ` : `
               <span class="cl-item-text" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)">${esc(item.text)}</span>
             `}
-            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${p}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
+            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
           ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="Přidat fotku">📷</button>` : ''}
           ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="Nahoru">↑</button>` : ''}
@@ -5131,7 +5134,7 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div class="moverlay open" onclick="this.remove()" style="z-index:9999">
       <div class="modal" onclick="event.stopPropagation()" style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px">
-        <img src="${photo}" style="max-width:100%;max-height:70vh;border-radius:12px">
+        <img src="${esc(safeImgSrc(photo))}" style="max-width:100%;max-height:70vh;border-radius:12px">
         ${photos.length>1?`<div style="font-size:12px;color:var(--text3)">${photoIdx+1} / ${photos.length}</div>`:''}
         <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
       </div>
@@ -5396,7 +5399,7 @@ function rDash(){
   const quoteText = quoteToday?.date === quoteTodayStr ? quoteToday.text : null;
   html += `<div class="dw" id="dash-quote-widget">
     <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${av.name} říká</div>
-    <div id="dash-quote-text" style="font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;color:var(--text);line-height:1.5">${quoteText || '...'}</div>
+    <div id="dash-quote-text" style="font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;color:var(--text);line-height:1.5">${esc(quoteText || '...')}</div>
   </div>`;
   if (!quoteText) {
     loadDailyQuote().then(t => {
@@ -6988,7 +6991,7 @@ window.shareShoppingList=()=>{
   const remaining=activeItems.filter(i=>!i.done);
   if(!remaining.length){toast('Vše už nakoupeno! 🎉');return;}
   // Sestav text podle kategorií
-  const cats={};
+  const cats=Object.create(null);
   remaining.forEach(i=>{
     const c=i.category||'Ostatní';
     if(!cats[c])cats[c]=[];
@@ -8122,7 +8125,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     if (!habit) return;
     const logId = existingHabitId + '_' + today;
     const value = Number(item.count) || 1;
-    const goal = Number(habit.goal) || 1;
+    const goal = Math.max(1, Math.floor(Number(habit.goal))||1);
     const log = {id:logId, habitId:existingHabitId, date:today, done:value>=goal, value};
     await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
     const ex = habitLogs.find(l=>l.id===logId);
