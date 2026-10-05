@@ -14,8 +14,15 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.19';
+const APP_VERSION = '4.20';
 const CHANGELOG = [
+  { v:'4.20', items:[
+    '📤 Sdílení skupiny posílá správný odkaz na LifePocket',
+    '🔤 Aplikace se načítá se správnými písmy',
+    '🔒 Bezpečnější odebírání členů a připojování do skupin – už se nepřipojíš dvakrát do téže skupiny',
+    '⚠️ Když se vytvoření skupiny, připojení nebo změna sdílení nepovede (offline), dostaneš upozornění',
+    '🔧 Drobné opravy',
+  ]},
   { v:'4.19', items:[
     '📲 Opravena instalace aplikace na Androidu – ikona už nemá mizet z plochy',
     '🎨 Ikona aplikace má správný formát a lépe sedí v kulatých i hranatých tvarech launcheru',
@@ -25,7 +32,7 @@ const CHANGELOG = [
     '📏 Délky jmen, názvů skupin a kategorií jsou omezené – dlouhé texty se zkrátí',
     '⏰ Neplatný čas události (např. 25:00) se nezobrazí ani nepoužije pro připomínku',
     '🔒 Bezpečnější sdílení – kódy skupin se ověřují a jsou bezpečně zobrazené',
-    '✉️ Zpětná vazba se odesílá bez e-mailu z účtu – jen přezdívka, text a e-mail, který sám vyplníš',
+    '✉️ Zpětná vazba se odesílá bez údajů z účtu – jen text a e-mail, který sám vyplníš',
     '🔧 Drobné opravy zabezpečení a stability',
   ]},
   { v:'4.17', items:[
@@ -3958,13 +3965,18 @@ window.createFamily = async () => {
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
-  await setDoc(doc(db,'families',fid), data);
-  await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid}, {merge:true});
-  prof.familyId = fid;
-  familyId = fid;
-  subscribeFamily();
-  renderFamilySettings();
-  toast('✅ Skupina vytvořena! Sdílej kód s partnerem.');
+  try {
+    await setDoc(doc(db,'families',fid), data);
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid}, {merge:true});
+    prof.familyId = fid;
+    familyId = fid;
+    subscribeFamily();
+    renderFamilySettings();
+    toast('✅ Skupina vytvořena! Sdílej kód s partnerem.');
+  } catch(e) {
+    console.warn('createFamily selhalo', e?.code || e?.name);
+    toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
+  }
 };
 
 window.showJoinFamily = () => {
@@ -3975,6 +3987,8 @@ window.showJoinFamily = () => {
 window.joinFamily = async () => {
   const code = document.getElementById('family-code-inp').value.trim().toUpperCase();
   if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-1234)'); return; }
+  // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
+  if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return; }
   try {
     const fSnap = await getDoc(doc(db,'families',code));
     if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return; }
@@ -4026,7 +4040,7 @@ window.copyFamilyCode = () => {
 
 window.shareFamilyCode = async () => {
   if(!familyId) return;
-  const text = `Připoj se k naší rodině v LifePocket!\nKód skupiny: ${familyId}\nhttps://adamstencl.github.io/LifePocket/`;
+  const text = `Připoj se k naší rodině v LifePocket!\nKód skupiny: ${familyId}\nhttps://lifepocket.app/`;
   if(navigator.share) {
     try { await navigator.share({title:'LifePocket – rodinná skupina', text}); }
     catch(e) { if(e.name!=='AbortError') toast('❌ Sdílení selhalo'); }
@@ -4049,9 +4063,19 @@ window.toggleFamilyModule = async (key, gid = null) => {
   const targetGid = gid || familyId;
   const targetData = gid ? extraGroupsData[gid] : familyData;
   if(!targetGid || !targetData) return;
-  const newVal = !targetData[key];
+  const oldVal = targetData[key];
+  const newVal = !oldVal;
   targetData[key] = newVal;
-  await setDoc(doc(db,'families',targetGid), {[key]: newVal}, {merge:true});
+  try {
+    await setDoc(doc(db,'families',targetGid), {[key]: newVal}, {merge:true});
+  } catch(e) {
+    // zápis selhal (offline / oprávnění) – vrať lokální změnu
+    targetData[key] = oldVal;
+    console.warn('toggleFamilyModule selhalo', e?.code || e?.name);
+    toast('❌ Nepodařilo se změnit sdílení, zkus to znovu');
+    renderFamilySettings();
+    return;
+  }
   if(!gid) {
     if(key==='shareShop' && newVal) syncShopToFamily();
     if(key==='shareChecklist' && newVal) syncChecklistToFamily();
@@ -4085,15 +4109,22 @@ window.createExtraGroup = async () => {
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: false, shareCal: true, shareMeal: false, shareChecklist: false
   };
-  await setDoc(doc(db,'families',code), data);
-  extraGroupIds = [...extraGroupIds, code];
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
-  prof.extraGroupIds = extraGroupIds;
-  subscribeExtraGroup(code);
-  document.getElementById('extra-group-form').style.display = 'none';
-  if(inp) inp.value = '';
-  renderFamilySettings();
-  toast('✅ Skupina "' + groupName + '" vytvořena! Kód: ' + code);
+  const prevIds = extraGroupIds;
+  try {
+    await setDoc(doc(db,'families',code), data);
+    extraGroupIds = [...extraGroupIds, code];
+    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+    prof.extraGroupIds = extraGroupIds;
+    subscribeExtraGroup(code);
+    document.getElementById('extra-group-form').style.display = 'none';
+    if(inp) inp.value = '';
+    renderFamilySettings();
+    toast('✅ Skupina "' + groupName + '" vytvořena! Kód: ' + code);
+  } catch(e) {
+    extraGroupIds = prevIds;
+    console.warn('createExtraGroup selhalo', e?.code || e?.name);
+    toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
+  }
 };
 window.joinExtraGroup = async () => {
   if(!CU) return;
@@ -4101,25 +4132,33 @@ window.joinExtraGroup = async () => {
   const code = (inp?.value || '').trim().toUpperCase();
   if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-1234)'); return; }
   if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return; }
-  const fSnap = await getDoc(doc(db,'families',code));
-  if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return; }
-  const fData = fSnap.data();
-  if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return; }
-  await updateDoc(doc(db,'families',code), {
-    ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
-  });
-  extraGroupIds = [...extraGroupIds, code];
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
-  prof.extraGroupIds = extraGroupIds;
-  subscribeExtraGroup(code);
-  document.getElementById('extra-group-form').style.display = 'none';
-  if(inp) inp.value = '';
-  renderFamilySettings();
-  toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
+  const prevIds = extraGroupIds;
+  try {
+    const fSnap = await getDoc(doc(db,'families',code));
+    if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return; }
+    const fData = fSnap.data();
+    if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return; }
+    await updateDoc(doc(db,'families',code), {
+      ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
+    });
+    extraGroupIds = [...extraGroupIds, code];
+    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+    prof.extraGroupIds = extraGroupIds;
+    subscribeExtraGroup(code);
+    document.getElementById('extra-group-form').style.display = 'none';
+    if(inp) inp.value = '';
+    renderFamilySettings();
+    toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
+  } catch(e) {
+    extraGroupIds = prevIds;
+    console.warn('joinExtraGroup selhalo', e?.code || e?.name);
+    toast('❌ Nepodařilo se připojit ke skupině, zkus to znovu');
+  }
 };
 window.leaveExtraGroup = async (gid) => {
   // Hlavní skupinu opouští leaveFamily(), ne tahle funkce
-  if(!gid || gid === familyId) return;
+  if(!gid) return;
+  if(gid === familyId) { toast('Hlavní skupinu opustíš tlačítkem „Opustit skupinu“ v její kartě'); return; }
   if(!confirm('Opustit skupinu?')) return;
   try {
     const fSnap = await getDoc(doc(db,'families',gid));
@@ -4278,7 +4317,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div class="family-member-name">'+esc(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
     +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
     +'</div>'
-    +(isAdmin&&uid!==CU?.uid?'<button onclick="removeFamilyMember(\''+uid+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
+    +(isAdmin&&uid!==CU?.uid?'<button data-uid="'+esc(uid)+'" onclick="removeFamilyMember(this.dataset.uid)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
     +'</div>'
   ).join('');
   const modsHtml = shareModules.map(m=>
@@ -4300,7 +4339,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div class="family-code-lbl">Pošli tento kód ostatním členům</div>'
     +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
     +'<button data-gid="'+gidAttr+'" onclick="navigator.clipboard.writeText(this.dataset.gid).then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
-    +'<button data-gid="'+gidAttr+'" onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: \'+this.dataset.gid,url:\'https://adamstencl.github.io/LifePocket/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
+    +'<button data-gid="'+gidAttr+'" onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: \'+this.dataset.gid,url:\'https://lifepocket.app/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
     +'</div></div>'
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
     +membersHtml
