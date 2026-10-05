@@ -44,9 +44,14 @@ function hideInstallBanner() {
 
 window.installPWA = async () => {
   if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const result = await deferredPrompt.result;
+  const promptEvent = deferredPrompt;
   deferredPrompt = null;
+  try {
+    promptEvent.prompt();
+    await promptEvent.userChoice;
+  } catch (e) {
+    console.warn('Instalace PWA selhala', e?.name);
+  }
   hideInstallBanner();
 };
 
