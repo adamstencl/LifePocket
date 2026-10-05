@@ -1,7 +1,7 @@
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
-const {getFirestore, FieldValue} = require('firebase-admin/firestore');
+const {getFirestore, FieldValue, FieldPath} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
 
 initializeApp();
@@ -109,7 +109,75 @@ async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
     token,
     webpush: { notification: notif, fcmOptions: {link: 'https://lifepocket.app/'} }
   });
-  console.log(`[LP] Push odeslan: ${title}`);
+  // Titulek ani text se neloguje (obsahuje jména, názvy návyků apod.)
+  console.log('[LP] Push odeslan');
+}
+
+// Všechny tokeny uživatele: mapa fcmTokens (zařízení → {token, platform, updatedAt})
+// + legacy pole fcmToken (poslední registrované zařízení), bez duplicit
+function collectTokens(prof) {
+  const byToken = new Map();
+  const add = (token, mapKey) => {
+    if (typeof token !== 'string' || !token) return;
+    const e = byToken.get(token) || {token, mapKeys: [], legacy: false};
+    if (mapKey) e.mapKeys.push(mapKey); else e.legacy = true;
+    byToken.set(token, e);
+  };
+  const map = prof && prof.fcmTokens;
+  if (map && typeof map === 'object') {
+    for (const [k, v] of Object.entries(map)) add(v && v.token, k);
+  }
+  add(prof && prof.fcmToken, null);
+  return [...byToken.values()];
+}
+
+// Je chyba z FCM důkazem, že token je mrtvý? (invalid-argument jen když se týká tokenu —
+// stejný kód může znamenat i vadný payload a ten nesmí mazat platná zařízení)
+function isDeadTokenError(e) {
+  const code = e && e.code;
+  if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') return true;
+  return code === 'messaging/invalid-argument' && /token/i.test(e.message || '');
+}
+
+// Smaž neplatný token z profilu (mapa i legacy pole) — jen pokud tam ještě je, mezitím ho klient mohl obnovit
+async function removeDeadToken(uid, prof, entry) {
+  const ref = db.doc(`users/${uid}/profile/main`);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const d = snap.data();
+    const args = [];
+    for (const k of entry.mapKeys) {
+      if (d.fcmTokens && d.fcmTokens[k] && d.fcmTokens[k].token === entry.token) args.push(new FieldPath('fcmTokens', k), FieldValue.delete());
+    }
+    if (entry.legacy && d.fcmToken === entry.token) args.push('fcmToken', FieldValue.delete());
+    if (args.length) tx.update(ref, ...args);
+  });
+  // Ať další push ve stejném běhu mrtvý token nezkouší znovu
+  if (prof) {
+    for (const k of entry.mapKeys) if (prof.fcmTokens) delete prof.fcmTokens[k];
+    if (entry.legacy && prof.fcmToken === entry.token) delete prof.fcmToken;
+  }
+}
+
+// Pošli push na všechna zařízení uživatele. Vrací {sent, lastError}; sent = počet zařízení, kam push odešel.
+async function sendPushToUser(uid, prof, title, body, tag = 'lifepocket', options = {}) {
+  const entries = collectTokens(prof);
+  const results = await Promise.allSettled(entries.map(t => sendPush(t.token, title, body, tag, options)));
+  let sent = 0;
+  let lastError = null;
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === 'fulfilled') { sent++; continue; }
+    const e = results[i].reason;
+    lastError = e;
+    if (isDeadTokenError(e)) {
+      try { await removeDeadToken(uid, prof, entries[i]); console.log(`[LP] Smazán neplatný token uid=${uid} (${e.code})`); }
+      catch(delErr) { console.error(`[LP] Mazání tokenu selhalo uid=${uid}:`, delErr.message); }
+    } else {
+      console.error(`[LP] Push chyba uid=${uid}: ${e && e.code || ''} ${e && e.message || ''}`);
+    }
+  }
+  return {sent, lastError};
 }
 
 // ── Test Push — ověření že FCM funguje ───────────────────────────────────────
@@ -118,15 +186,13 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
   const uid = request.auth.uid;
   const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
   if (!profileSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
-  const fcmToken = profileSnap.data().fcmToken;
-  if (!fcmToken) throw new HttpsError('failed-precondition', 'FCM token není uložen. Znovu povol notifikace v nastavení.');
-  try {
-    await sendPush(fcmToken, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
-  } catch(e) {
-    console.error('[LP] testPush FCM chyba:', e.message, '| token:', fcmToken.slice(0,20));
-    throw new HttpsError('internal', 'FCM chyba: ' + e.message + ' — zkus kliknout "Obnovit token" a test opakovat.');
+  const prof = profileSnap.data();
+  if (!collectTokens(prof).length) throw new HttpsError('failed-precondition', 'FCM token není uložen. Znovu povol notifikace v nastavení.');
+  const {sent, lastError} = await sendPushToUser(uid, prof, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
+  if (sent === 0) {
+    throw new HttpsError('internal', 'FCM chyba: ' + (lastError && lastError.message || 'push se nepodařilo odeslat') + ' — zkus kliknout "Obnovit token" a test opakovat.');
   }
-  return {ok: true};
+  return {ok: true, sent};
 });
 
 // ── Notify Family ─────────────────────────────────────────────────────────────
@@ -152,19 +218,19 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   if (!familySnap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
   const members = familySnap.data().members || {};
 
-  // Pošli notifikaci všem členům kromě odesílatele
-  const promises = [];
+  // Pošli notifikaci všem zařízením všech členů kromě odesílatele
+  let sent = 0;
   for (const memberUid of Object.keys(members)) {
     if (memberUid === uid) continue;
     const memberSnap = await db.doc(`users/${memberUid}/profile/main`).get();
     if (!memberSnap.exists) continue;
-    const fcmToken = memberSnap.data().fcmToken;
-    if (!fcmToken) continue;
-    promises.push(sendPush(fcmToken, `📣 ${senderName}`, message, type || 'family-notify'));
+    const memberProf = memberSnap.data();
+    if (!collectTokens(memberProf).length) continue;
+    const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, type || 'family-notify');
+    sent += res.sent;
   }
 
-  await Promise.allSettled(promises);
-  return {sent: promises.length};
+  return {sent};
 });
 
 // ── Hlavní cron — každých 5 minut ────────────────────────
@@ -181,7 +247,7 @@ exports.sendScheduledNotifications = onSchedule(
     console.log(`[LP] Cron: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}, datum: ${today}`);
 
     const usersSnap = await db.collection('users').get();
-    const promises = [];
+    let sentTotal = 0; // počet skutečně odeslaných notifikací (zařízení)
 
     for (const userDoc of usersSnap.docs) {
       const uid = userDoc.id;
@@ -190,8 +256,11 @@ exports.sendScheduledNotifications = onSchedule(
         if (!profileSnap.exists) continue;
 
         const prof = profileSnap.data();
-        const fcmToken = prof.fcmToken;
-        if (!fcmToken) continue;
+        if (!collectTokens(prof).length) continue;
+        const push = async (title, body, tag, options) => {
+          const res = await sendPushToUser(uid, prof, title, body, tag, options);
+          sentTotal += res.sent;
+        };
 
         const ns = prof.notifSettings || {};
         const nickname = prof.prezdivka || prof.nickname || 'příteli';
@@ -205,7 +274,7 @@ exports.sendScheduledNotifications = onSchedule(
           const body = total > 0
             ? `Čeká tě ${total} návyk${total === 1 ? '' : total < 5 ? 'y' : 'ů'} na dnes. Pojď na to! ☀️`
             : 'Nový den, nová šance. Otevři LifePocket a nastav si cíle! ☀️';
-          try { await sendPush(fcmToken, `☀️ Dobré ráno, ${nickname}!`, body, 'morning'); }
+          try { await push(`☀️ Dobré ráno, ${nickname}!`, body, 'morning'); }
           catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
         }
 
@@ -223,7 +292,7 @@ exports.sendScheduledNotifications = onSchedule(
             else if (done === total) body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
             else if (done === 0) body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
             else body = `Splnil${a} jsi ${done} z ${total} návyků. Ještě ${total - done} zbývají!`;
-            try { await sendPush(fcmToken, '🌙 Večerní shrnutí', body, 'evening'); }
+            try { await push('🌙 Večerní shrnutí', body, 'evening'); }
             catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
           }
         }
@@ -239,8 +308,7 @@ exports.sendScheduledNotifications = onSchedule(
             const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
             if (logSnap.exists && logSnap.data().done) continue;
             try {
-              await sendPush(
-                fcmToken,
+              await push(
                 `${habit.emoji || '🔔'} ${habit.name}`,
                 `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
                 `habit-${habitDoc.id}`,
@@ -272,10 +340,10 @@ exports.sendScheduledNotifications = onSchedule(
           if (ev.type === 'birthday' && isTimeMatch(h, m, morningTime)) {
             const bday = ev.date.slice(5);
             if (bday === todayMD) {
-              try { await sendPush(fcmToken, '🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
+              try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
               catch(e) { console.error(`[LP] bday push:`, e.message); }
             } else if (bday === tmrwMD) {
-              try { await sendPush(fcmToken, '🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
+              try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
               catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
             }
           }
@@ -287,7 +355,7 @@ exports.sendScheduledNotifications = onSchedule(
             const evTime = new Date(`${today}T${ev.time}:00`);
             const diffMin = Math.round((evTime - prague) / 60000);
             if (diffMin >= 55 && diffMin <= 65) {
-              try { await sendPush(fcmToken, `📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
+              try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
               catch(e) { console.error(`[LP] event push:`, e.message); }
             }
           }
@@ -297,7 +365,6 @@ exports.sendScheduledNotifications = onSchedule(
       }
     }
 
-    await Promise.allSettled(promises);
-    console.log(`[LP] Cron hotovo, odesláno ${promises.length} notifikací`);
+    console.log(`[LP] Cron hotovo, odesláno ${sentTotal} notifikací`);
   }
 );
