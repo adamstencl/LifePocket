@@ -1,12 +1,19 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import{getMessaging,getToken}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+import{getMessaging,getToken,isSupported}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
-let messaging=null;try{messaging=getMessaging(fb);}catch(e){}
+// Push: messaging se vytvoří jen když to prohlížeč podporuje; důvod nepodpory se ukáže v nastavení notifikací
+let messaging=null,msgUnsupportedReason='';
+const msgReady=(async()=>{
+  try{
+    if(await isSupported()){messaging=getMessaging(fb);}
+    else msgUnsupportedReason='Prohlížeč nepodporuje push (chybí Push API, Service Worker nebo IndexedDB).';
+  }catch(e){msgUnsupportedReason='Inicializace push selhala ('+(e&&e.code||'chyba')+').';}
+})();
 const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
 const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
@@ -14,8 +21,15 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.20';
+const APP_VERSION = '4.21';
 const CHANGELOG = [
+  { v:'4.21', items:[
+    '🔔 Notifikace fungují na víc zařízeních najednou – telefon, tablet i počítač',
+    '📲 Návod pro iPhone: notifikace fungují v aplikaci přidané na plochu (Sdílet → Přidat na plochu)',
+    '🔍 Nastavení notifikací ukazuje přesný stav i důvod, proč se push nepodařilo zapnout',
+    '🧹 Neplatná zařízení se z odesílání notifikací sama odstraní',
+    '🔧 Drobné opravy',
+  ]},
   { v:'4.20', items:[
     '📤 Sdílení skupiny posílá správný odkaz na LifePocket',
     '🔤 Aplikace se načítá se správnými písmy',
@@ -1202,7 +1216,8 @@ window.saveHabitReminder = async (hid, time) => {
   if (time === '') time = null; // prázdné pole = vypnout
   if (time && !/^\d{2}:\d{2}$/.test(time)) { toast('⚠️ Zadej platný čas'); return; }
   // Zkontroluj oprávnění
-  if (time && Notification.permission !== 'granted') {
+  if (time && !notifGranted()) {
+    if (typeof Notification === 'undefined') { toast('❌ Notifikace tady nejsou dostupné (na iPhonu otevři appku z plochy)'); return; }
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { toast('❌ Notifikace nejsou povoleny'); return; }
   }
@@ -2520,10 +2535,77 @@ let notifSettings = {
 };
 let notifTimers = [];
 
+// ── Prostředí zařízení (push) ──
+function notifGranted() { return typeof Notification !== 'undefined' && Notification.permission === 'granted'; }
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  // iPadOS 13+ se hlásí jako Macintosh, ale má dotykový displej
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function isStandaloneApp() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+function getPlatform() {
+  if (isIOSDevice()) return 'ios';
+  return /Android/i.test(navigator.userAgent || '') ? 'android' : 'desktop';
+}
+// Stabilní ID zařízení — klíč v mapě fcmTokens (token se může měnit, zařízení ne)
+let memDeviceId = null;
+function getDeviceId() {
+  try {
+    let id = localStorage.getItem('lp_device_id');
+    if (!id) {
+      id = genDeviceId();
+      localStorage.setItem('lp_device_id', id);
+    }
+    return id;
+  } catch(e) {
+    // localStorage nedostupný — ID platí jen pro tuto relaci
+    return memDeviceId || (memDeviceId = genDeviceId());
+  }
+}
+function genDeviceId() {
+  const b = new Uint8Array(12);
+  crypto.getRandomValues(b);
+  return Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+}
+
 // ── FCM token — získej a ulož do Firestore ──
-async function registerFcmToken() {
-  if (!messaging || !CU) return;
-  if (Notification.permission !== 'granted') return;
+// Stav poslední registrace (bez osobních dat) — zobrazuje se v nastavení notifikací
+let fcmState = 'idle'; // idle | working | ok | error
+let fcmLastError = '';
+function fcmFail(msg, e) {
+  const detail = e ? (e.code || e.message || '') : '';
+  fcmLastError = (msg + (detail ? ' (' + detail + ')' : '')).slice(0, 200);
+  fcmState = 'error';
+  console.warn('[LP] FCM:', fcmLastError);
+}
+function updateNotifTokenLine() {
+  const el = document.getElementById('notif-token-line');
+  if (!el) return;
+  if (fcmState === 'ok') { el.style.color = 'var(--green)'; el.textContent = '✅ Token uložen pro toto zařízení'; }
+  else if (fcmState === 'error') { el.style.color = 'var(--red)'; el.innerHTML = '⚠️ ' + esc(fcmLastError) + ' — zkus „Obnovit token“.'; }
+  else { el.style.color = 'var(--text2)'; el.textContent = '⏳ Registruji toto zařízení…'; }
+}
+
+// Uloží token zařízení do mapy fcmTokens + legacy pole fcmToken (poslední zařízení); jen tato pole, ne celý profil
+async function saveFcmToken(token, extra = {}) {
+  const entry = {token, platform: getPlatform(), updatedAt: new Date().toISOString()};
+  const id = getDeviceId();
+  if (prof) { prof.fcmToken = token; prof.fcmTokens = {...(prof.fcmTokens || {}), [id]: entry}; }
+  await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token, fcmTokens: {[id]: entry}, ...extra}, {merge:true});
+}
+
+let fcmRegPromise = null;
+function registerFcmToken() {
+  // Souběžná volání (init + otevření nastavení) sdílí jednu registraci
+  if (!fcmRegPromise) fcmRegPromise = doRegisterFcmToken().finally(() => { fcmRegPromise = null; });
+  return fcmRegPromise;
+}
+async function doRegisterFcmToken() {
+  await msgReady;
+  if (!CU || !notifGranted()) return;
+  if (!messaging) { fcmFail(msgUnsupportedReason || 'Push není na tomto zařízení dostupný'); updateNotifTokenLine(); return; }
+  fcmState = 'working'; fcmLastError = '';
+  updateNotifTokenLine();
   try {
     // Odstraň staré SW registrace (např. /LifePocket/sw.js) které by blokovaly nový token
     if ('serviceWorker' in navigator) {
@@ -2534,25 +2616,30 @@ async function registerFcmToken() {
           console.log('[LP] Odregistrován starý SW:', reg.active.scriptURL);
         }
       }
+    } else {
+      fcmFail('Service Worker není dostupný'); updateNotifTokenLine(); return;
     }
 
     const swReg = await navigator.serviceWorker.ready;
-    const token = await getToken(messaging, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: swReg
-    });
-    if (token && prof) {
-      prof.fcmToken = token;
+    let token;
+    try {
+      token = await getToken(messaging, {
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: swReg
+      });
+    } catch(e) { fcmFail('Získání tokenu selhalo', e); updateNotifTokenLine(); return; }
+    if (!token) { fcmFail('Prohlížeč nevrátil push token'); }
+    else if (!prof) { fcmFail('Profil ještě není načtený'); }
+    else {
       prof.notifSettings = notifSettings;
       // Zapiš jen změněná pole — ne celý profil (jiné zařízení mohlo mezitím uložit něco jiného)
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token, notifSettings}, {merge:true});
-      console.log('[LP] FCM token uložen:', token.slice(0,20) + '...');
-    } else {
-      console.warn('[LP] FCM getToken vrátil prázdný token');
+      try { await saveFcmToken(token, {notifSettings}); fcmState = 'ok'; console.log('[LP] FCM token uložen:', token.slice(0,20) + '...'); }
+      catch(e) { fcmFail('Uložení tokenu selhalo', e); }
     }
   } catch(e) {
-    console.warn('[LP] FCM token chyba:', e.message);
+    fcmFail('Registrace push selhala', e);
   }
+  updateNotifTokenLine();
 }
 
 // ── Inicializace ──
@@ -2614,31 +2701,42 @@ async function checkNotifStatus() {
   const testServerBtn = document.getElementById('notif-test-server-btn');
   const refreshTokenBtn = document.getElementById('notif-refresh-token-btn');
   if (!box) return;
+  await msgReady;
 
-  if (!('Notification' in window)) {
-    box.innerHTML = '❌ Tento prohlížeč nepodporuje notifikace. Zkus Chrome nebo Edge.';
+  if (typeof Notification === 'undefined') {
+    [enableBtn, testBtn, testServerBtn, refreshTokenBtn].forEach(b => { if (b) b.style.display = 'none'; });
     box.style.borderColor = 'rgba(255,107,107,0.3)';
+    if (isIOSDevice() && !isStandaloneApp()) {
+      box.innerHTML = '📲 Na iPhonu fungují notifikace jen v aplikaci přidané na plochu: otevři lifepocket.app v Safari → Sdílet → Přidat na plochu → otevři LifePocket z plochy a zapni notifikace tady.';
+    } else if (isIOSDevice()) {
+      box.innerHTML = 'Tvoje verze iOS nepodporuje notifikace (potřebuješ iOS 16.4 nebo novější).';
+    } else {
+      box.innerHTML = '❌ Tento prohlížeč nepodporuje notifikace. Zkus Chrome nebo Edge.';
+    }
     return;
   }
 
+  // Push na pozadí nemusí být dostupný, i když existuje Notification — ukaž důvod
+  const pushNote = messaging ? '' : '<div style="font-size:12px;margin-top:4px;color:var(--text2)">⚠️ ' + esc(msgUnsupportedReason) + '</div>';
   const perm = Notification.permission;
   if (perm === 'granted') {
-    box.innerHTML = '✅ Notifikace jsou povoleny a aktivní';
+    box.innerHTML = '✅ Notifikace jsou povoleny a aktivní' + pushNote + '<div id="notif-token-line" style="font-size:12px;margin-top:4px"></div>';
     box.style.borderColor = 'rgba(76,217,100,0.3)';
     box.style.color = 'var(--green)';
     if (enableBtn) enableBtn.style.display = 'none';
     if (testBtn) testBtn.style.display = 'block';
     if (testServerBtn) testServerBtn.style.display = 'block';
     if (refreshTokenBtn) refreshTokenBtn.style.display = 'block';
-    // Vždy obnov FCM token při otevření nastavení
+    updateNotifTokenLine();
+    // Vždy obnov FCM token při otevření nastavení (stav se doplní do řádku výše)
     registerFcmToken();
   } else if (perm === 'denied') {
-    box.innerHTML = '🚫 Notifikace jsou <b>zakázány</b> v nastavení prohlížeče. Klikni na 🔒 v adresním řádku a povol notifikace.';
+    box.innerHTML = '🚫 Notifikace jsou <b>zakázány</b> v nastavení prohlížeče. Klikni na 🔒 v adresním řádku a povol notifikace.' + pushNote;
     box.style.borderColor = 'rgba(255,107,107,0.3)';
     box.style.color = 'var(--red)';
     if (enableBtn) enableBtn.style.display = 'none';
   } else {
-    box.innerHTML = '⚪ Notifikace nejsou povoleny. Klikni na tlačítko níže.';
+    box.innerHTML = '⚪ Notifikace nejsou povoleny. Klikni na tlačítko níže.' + pushNote;
     if (enableBtn) enableBtn.style.display = 'block';
     if (testBtn) testBtn.style.display = 'none';
   }
@@ -2646,7 +2744,10 @@ async function checkNotifStatus() {
 
 // ── Povolení notifikací ──
 window.enableNotifications = async () => {
-  if (!('Notification' in window)) { toast('❌ Prohlížeč nepodporuje notifikace'); return; }
+  if (typeof Notification === 'undefined') {
+    toast(isIOSDevice() ? '📲 Na iPhonu otevři LifePocket z plochy (Sdílet → Přidat na plochu)' : '❌ Prohlížeč nepodporuje notifikace');
+    return;
+  }
   const perm = await Notification.requestPermission();
   await checkNotifStatus();
   if (perm === 'granted') {
@@ -2663,8 +2764,9 @@ window.enableNotifications = async () => {
 window.sendTestServerPush = async () => {
   try {
     toast('📡 Odesílám test přes server...');
-    await testPushFn();
-    toast('✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
+    const res = await testPushFn();
+    const n = res?.data?.sent;
+    toast(n > 1 ? `✅ Server push odeslán na ${n} zařízení! Zavři appku a zkontroluj notifikaci.` : '✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
   } catch(e) {
     const msg = e.message || '';
     if (msg.includes('FCM token')) {
@@ -2693,37 +2795,43 @@ window.refreshFcmToken = async () => {
   box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 FCM Debug:</div>';
   box.scrollIntoView({behavior:'smooth', block:'center'});
 
-  log('1. messaging: ' + (messaging ? '✅' : '❌ NULL - Firebase messaging se neinicializoval'));
+  await msgReady;
+  log('1. messaging: ' + (messaging ? '✅' : '❌ ' + (msgUnsupportedReason || 'NULL - Firebase messaging se neinicializoval')));
   log('2. CU (přihlášen): ' + (CU ? '✅ ' + CU.uid.slice(0,8) : '❌ NULL'));
-  log('3. Notif permission: ' + Notification.permission);
+  log('3. Notif permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'API Notification chybí'));
   log('4. SW support: ' + ('serviceWorker' in navigator ? '✅' : '❌'));
+  log('5. Platforma: ' + getPlatform() + (isStandaloneApp() ? ' (aplikace z plochy)' : ' (prohlížeč)'));
 
   try {
+    if (!messaging || !CU || !('serviceWorker' in navigator)) throw new Error('Chybí předpoklady (viz výše)');
     const regs = await navigator.serviceWorker.getRegistrations();
-    log('5. SW registrace: ' + regs.length);
+    log('6. SW registrace: ' + regs.length);
     regs.forEach((r, i) => log(`   SW[${i}]: ${r.active?.scriptURL || r.installing?.scriptURL || 'pending'}`));
 
     const swReg = await navigator.serviceWorker.ready;
-    log('6. SW ready: ✅ ' + swReg.active?.scriptURL);
+    log('7. SW ready: ✅ ' + swReg.active?.scriptURL);
 
-    log('7. Získávám FCM token...');
+    log('8. Získávám FCM token...');
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg
     });
 
     if (token) {
-      log('8. Token: ✅ ' + token.slice(0, 30) + '...');
-      prof.fcmToken = token;
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token}, {merge:true});
-      log('9. Uloženo do Firestore: ✅');
+      log('9. Token: ✅ ' + token.slice(0, 30) + '...');
+      await saveFcmToken(token);
+      log('10. Uloženo do Firestore: ✅');
+      fcmState = 'ok'; fcmLastError = '';
       toast('✅ FCM token uložen!');
     } else {
-      log('8. Token: ❌ prázdný');
+      log('9. Token: ❌ prázdný');
+      fcmFail('Prohlížeč nevrátil push token');
     }
   } catch(e) {
     log('❌ CHYBA: ' + e.message);
+    fcmFail('Obnovení tokenu selhalo', e);
   }
+  updateNotifTokenLine();
 };
 
 window.sendTestNotif = () => {
@@ -2747,7 +2855,7 @@ function renderCustomRemindersList() {
   if (el) el.innerHTML = '';
 }
 function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
   try {
     const opts = {
       body,
@@ -2810,7 +2918,7 @@ function scheduleAllNotifications() {
   // Zruš staré timery
   notifTimers.forEach(t => clearTimeout(t));
   notifTimers = [];
-  if (Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
 
   const now = new Date();
 
@@ -2883,7 +2991,7 @@ function scheduleDaily(hour, minute, callback) {
 
 // Zkontroluj při návratu do appky jestli jsme promeškali nějaké notifikace
 function checkMissedNotifications() {
-  if (Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
   const now = new Date();
   const h = now.getHours(), m = now.getMinutes();
 
@@ -2942,7 +3050,7 @@ function scheduleHabitReminders() {
 }
 
 function checkPerHabitReminders() {
-  if (Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
   const now = new Date();
   const today = toDS(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -3060,7 +3168,7 @@ function checkAndRemindHabits() {
 }
 
 function checkBirthdayNotifs() {
-  if (Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
   if (!Array.isArray(events) || events.length === 0) return;
   const now = new Date();
   const todayMMDD = `${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
@@ -3096,7 +3204,7 @@ function checkBirthdayNotifs() {
 
 // Notifikace pro události s časem — hodinu předem
 function checkEventReminders() {
-  if (Notification.permission !== 'granted') return;
+  if (!notifGranted()) return;
   const now = new Date();
   const today = toDS(now);
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
@@ -3292,7 +3400,7 @@ async function generateWeeklyReportSilent() {
     if (!rep) return;
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString(), avatar: av.emoji||'⭐', avatarName: av.name}));
     rDash();
-    if(Notification.permission === 'granted') {
+    if(notifGranted()) {
       sendNotif(`${av.emoji||'⭐'} Tvůj týdenní report je ready!`, `${av.name} připravil souhrn tohoto týdne — otevři LifePocket a podívej se.`, av.emoji||'⭐');
     }
   } catch(e) { console.warn('[LP] generateWeeklyReportSilent selhalo:', e.message); }
