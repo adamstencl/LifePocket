@@ -14,8 +14,13 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.18';
+const APP_VERSION = '4.19';
 const CHANGELOG = [
+  { v:'4.19', items:[
+    '📲 Opravena instalace aplikace na Androidu – ikona už nemá mizet z plochy',
+    '🎨 Ikona aplikace má správný formát a lépe sedí v kulatých i hranatých tvarech launcheru',
+    '♻️ Pokud ti ikona zmizela, odinstaluj ji a nainstaluj znovu přes prohlížeč',
+  ]},
   { v:'4.18', items:[
     '📏 Délky jmen, názvů skupin a kategorií jsou omezené – dlouhé texty se zkrátí',
     '⏰ Neplatný čas události (např. 25:00) se nezobrazí ani nepoužije pro připomínku',
