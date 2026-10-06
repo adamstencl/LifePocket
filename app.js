@@ -25,8 +25,9 @@ const APP_VERSION = '4.21';
 const CHANGELOG = [
   { v:'4.21', items:[
     '🔔 Notifikace fungují na víc zařízeních najednou – telefon, tablet i počítač',
-    '📲 Návod pro iPhone: notifikace fungují v aplikaci přidané na plochu (Sdílet → Přidat na plochu)',
-    '📲 Na iPhonu se ukáže návod, jak přidat aplikaci na plochu',
+    '📲 Na iPhonu se ukáže návod, jak přidat aplikaci na plochu – notifikace fungují v aplikaci přidané na plochu',
+    '🔔 Opravena dvojitá notifikace u jednoho upozornění',
+    '🚪 Při odhlášení se zařízení odebere z notifikací účtu',
     '🔍 Nastavení notifikací ukazuje přesný stav i důvod, proč se push nepodařilo zapnout',
     '🧹 Neplatná zařízení se z odesílání notifikací sama odstraní',
     '🔧 Drobné opravy',
@@ -711,17 +712,23 @@ function entryDS(e){return e && e.createdAt ? toDS(new Date(e.createdAt)) : '';}
 
 let habits=[], habitLogs=[], unsubHabits=null, unsubLogs=null;
 
+// Splní se po prvním snapshotu návyků i záznamů (akce "Splněno" z notifikace na nich závisí)
+let habitsReady=Promise.resolve();
 function subHabits(){
   if(!CU)return;
   if(unsubHabits)unsubHabits();
   if(unsubLogs)unsubLogs();
+  let hOk=false,lOk=false,markReady;
+  habitsReady=new Promise(r=>{markReady=r;});
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),snap=>{
     habits=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderHabits();
+    hOk=true;if(lOk)markReady();
   });
   unsubLogs=onSnapshot(collection(db,'users',CU.uid,'habitLogs'),snap=>{
     habitLogs=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderHabits();
+    lOk=true;if(hOk)markReady();
   });
 }
 
@@ -2600,19 +2607,23 @@ async function saveFcmToken(token, extra = {}) {
 // Při odhlášení odeber toto zařízení z push (jinak by dál dostávalo notifikace odhlášeného účtu).
 // Nesmí zablokovat ani shodit odhlášení — offline se po 3 s pokračuje, chyba se jen zaloguje.
 async function unregisterFcmDevice() {
-  const limit = (p) => Promise.race([p, new Promise(r => setTimeout(r, 3000))]);
-  try {
-    if (CU) {
+  const steps = [];
+  // Dva nezávislé kroky souběžně — selhání jednoho nezastaví druhý
+  if (CU) steps.push((async () => {
+    try {
       const id = getDeviceId();
       const cur = prof?.fcmTokens?.[id]?.token;
       const patch = {fcmTokens: {[id]: deleteField()}};
       if (cur && prof.fcmToken === cur) patch.fcmToken = deleteField();
-      await limit(setDoc(doc(db,'users',CU.uid,'profile','main'), patch, {merge:true}));
-    }
-    if (messaging) await limit(deleteToken(messaging));
-  } catch(e) {
-    console.warn('[LP] Odregistrace push zařízení selhala:', e && e.code || '');
-  }
+      await setDoc(doc(db,'users',CU.uid,'profile','main'), patch, {merge:true});
+    } catch(e) { console.warn('[LP] Odebrání zařízení z profilu selhalo:', e && e.code || ''); }
+  })());
+  // deleteToken jen když se token v této relaci získal (SDK zná SW registraci) — jinak zbytečný 404 na /firebase-messaging-sw.js
+  if (messaging && notifGranted() && fcmState === 'ok') steps.push((async () => {
+    try { await deleteToken(messaging); }
+    catch(e) { console.warn('[LP] deleteToken selhal:', e && e.code || ''); }
+  })());
+  await Promise.race([Promise.allSettled(steps), new Promise(r => setTimeout(r, 3000))]);
 }
 
 let fcmRegPromise = null;
@@ -2904,14 +2915,18 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
 }
 
 // Uzivatel klikl "Splneno" v notifikaci — zaznamenej navyk
+// Vrací false, když se návyky do 8 s nenačetly (akce se pak nemá zahodit)
 async function handleNotifHabitDone(data) {
+  if (!CU) return false;
+  const loaded = await Promise.race([habitsReady.then(() => true), new Promise(r => setTimeout(() => r(false), 8000))]);
+  if (!loaded) return false;
   const today = toDS();
   const date = data.date || today;
 
   // Splneni navyku
   if (data.habitId) {
     const habit = habits.find(h => h.id === data.habitId);
-    if (!habit) return;
+    if (!habit) return true;
     const logId = `${data.habitId}_${date}`;
     const existing = habitLogs.find(l => l.id === logId);
     if (!existing) {
@@ -2932,7 +2947,10 @@ async function handleNotifHabitDone(data) {
     const reminder = customReminders.find(r => r.id === data.reminderId);
     if (reminder) toast(`✅ ${reminder.emoji} ${reminder.name} — hotovo!`);
   }
+  return true;
 }
+// pwa.js (klasický skript) hledá handler přes window
+window.handleNotifHabitDone = handleNotifHabitDone;
 
 // ── Plánování notifikací ──
 function scheduleAllNotifications() {
@@ -5385,11 +5403,11 @@ async function initApp(){
   if ('serviceWorker' in navigator && 'caches' in window) {
     caches.open('lp-pending').then(c => c.match('pending-action')).then(r => {
       if (!r) return;
-      r.json().then(msg => {
-        if (msg?.type === 'HABIT_DONE_FROM_NOTIF' && typeof handleNotifHabitDone === 'function') {
-          handleNotifHabitDone(msg);
-        }
-        caches.open('lp-pending').then(c => c.delete('pending-action'));
+      r.json().then(async msg => {
+        // Akci smaž až po zpracování (handler počká na načtení návyků); při neúspěchu zůstane na příště
+        let handled = true;
+        if (msg?.type === 'HABIT_DONE_FROM_NOTIF') handled = await handleNotifHabitDone(msg);
+        if (handled !== false) caches.open('lp-pending').then(c => c.delete('pending-action'));
       }).catch(() => {});
     }).catch(() => {});
   }
