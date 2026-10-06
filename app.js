@@ -8666,15 +8666,7 @@ window.restartTour = () => {
   startWelcomeTour();
 };
 
-// iOS PWA Banner
-{
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  const iosDismissed = localStorage.getItem('ios-dismissed');
-  if (isIOS && !isStandalone && !iosDismissed) {
-    setTimeout(() => { document.getElementById('ios-banner').style.display = 'block'; }, 3000);
-  }
-}
+// iOS PWA banner řeší pwa.js (showIosBanner)
 
 // Keyboard offset — posun modálů nahoru při otevření klávesnice na mobilu
 if(window.visualViewport) {

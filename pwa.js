@@ -57,5 +57,29 @@ window.installPWA = async () => {
 
 window.dismissInstall = () => {
   hideInstallBanner();
-  localStorage.setItem('pwa-dismissed', Date.now());
+  try { localStorage.setItem('pwa-dismissed', Date.now()); } catch (e) { /* bez úložiště — banner se může ukázat znovu */ }
 };
+
+// ── PWA: iOS návod (Safari nevyvolává beforeinstallprompt) ──
+// Notifikace fungují na iPhonu jen v aplikaci přidané na plochu, proto se návod ukáže jednorázově.
+function lpIsIOS() {
+  const ua = navigator.userAgent || '';
+  // iPadOS 13+ se hlásí jako Macintosh, ale má dotykový displej
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function showIosBanner() {
+  if (!lpIsIOS()) return;
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
+  try { if (localStorage.getItem('ios-dismissed')) return; } catch (e) { /* bez úložiště — ukaž */ }
+  const banner = document.getElementById('ios-banner');
+  if (banner) banner.style.display = 'block';
+}
+
+window.dismissIosBanner = () => {
+  const banner = document.getElementById('ios-banner');
+  if (banner) banner.style.display = 'none';
+  try { localStorage.setItem('ios-dismissed', '1'); } catch (e) { /* bez úložiště — ukáže se znovu */ }
+};
+
+window.addEventListener('load', () => setTimeout(showIosBanner, 3000));
