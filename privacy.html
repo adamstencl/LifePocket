@@ -63,7 +63,7 @@
     </ul>
     <p><strong>Technické údaje:</strong></p>
     <ul>
-      <li>Tokeny zařízení pro doručení push notifikací (jedno na každé zařízení s povolenými notifikacemi) a jejich platforma a datum aktualizace; mažou se při odhlášení, pokud je zařízení online, a po 60 dnech neaktivity</li>
+      <li>Tokeny zařízení pro doručení push notifikací (jedno na každé zařízení s povolenými notifikacemi) a jejich platforma a datum aktualizace; mažou se při odhlášení, pokud je zařízení online, a při nejbližším odesílání notifikací, pokud jsou starší než 60 dní</li>
       <li>Nastavení notifikací</li>
       <li>Počet AI dotazů (pro rate limiting — ochrana před zneužitím)</li>
     </ul>
@@ -98,7 +98,7 @@
     <p>Pro uplatnění práv nebo dotazy piš na <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>. Odpovíme do 30 dní.</p>
 
     <h2>7. Soubory cookie</h2>
-    <p>LifePocket nepoužívá sledovací cookies. Využívá výhradně <strong>localStorage</strong> v prohlížeči pro uložení lokálních nastavení (téma, nastavení notifikací, náhodné ID zařízení pro push notifikace <code>lp_device_id</code> a zavření návodů k instalaci <code>ios-dismissed</code>, <code>pwa-dismissed</code>) a Firebase Auth session cookie nezbytnou pro přihlášení.</p>
+    <p>LifePocket nepoužívá sledovací cookies. Využívá <strong>localStorage</strong> v prohlížeči pro uložení lokálních nastavení a pomocných dat jen v tomto zařízení (např. téma a nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení pro push notifikace <code>lp_device_id</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, text AI týdenního reportu <code>lp_weekly_report</code>, oblíbené nákupy <code>lp_fav_shop</code>, datum posledního pozdravu Rexe <code>lp_rex_greet</code> a dokončení úvodní prohlídky <code>lp_tour_done</code>) a Firebase Auth session cookie nezbytnou pro přihlášení.</p>
 
     <h2>8. Bezpečnost</h2>
     <p>Přístup k datům je chráněn Firebase Authentication. Každý uživatel vidí pouze svá vlastní data — sdílená data jsou přístupná jen členům dané skupiny. API klíče jsou uloženy na serveru a nikdy nejsou odesílány do prohlížeče.</p>
