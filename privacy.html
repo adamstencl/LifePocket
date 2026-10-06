@@ -72,13 +72,13 @@
     <ul>
       <li><strong>Poskytnutí služby</strong> — zobrazení tvých dat v aplikaci, synchronizace mezi zařízeními</li>
       <li><strong>Push notifikace</strong> — ranní/večerní připomínky, upozornění na narozeniny</li>
-      <li><strong>AI asistent</strong> — kontext konverzace se odesílá ke zpracování Anthropic API (viz níže)</li>
+      <li><strong>AI asistent</strong> — AI chat (Rex a další avataři) při každém dotazu využívá data z tvých modulů (cíle, návyky, zápisky, checklisty, nákupy, kalendář, zásoby, jídelníček, zdraví, rodina) a spolu s konverzací je přes náš server odesílá ke zpracování Anthropic API (viz níže); fotografie se neodesílají</li>
       <li><strong>Sdílení v rodině</strong> — data sdílená se skupinou jsou uložena ve společném Firestore dokumentu přístupném členům skupiny</li>
     </ul>
 
     <h2>4. Kde jsou data uložena</h2>
     <p>Data jsou uložena ve službě <strong>Firebase Firestore</strong> (Google LLC, servery v EU — region europe-west). Přihlášení zajišťuje <strong>Firebase Authentication</strong>.</p>
-    <p>Konverzace s AI asistentem jsou zpracovávány přes <strong>Anthropic API</strong> (Anthropic PBC, USA). Data se odesílají pouze pro zpracování odpovědi a Anthropic je neukládá déle než 30 dní dle jejich zásad.</p>
+    <p>Konverzace s AI asistentem jsou zpracovávány přes <strong>Anthropic API</strong> (Anthropic PBC, USA). Dotaz se odesílá z aplikace na náš server (Firebase Functions, region europe-west1), který jej pouze předá Anthropic API; tato serverová funkce obsah dotazu ani odpovědi neukládá ani nelogí, uchovává jen počet dotazů za den (samotnou konverzaci si ukládá aplikace do tvého účtu, viz výše). Data z modulů (v rozsahu popsaném výše, bez e-mailů, přístupových tokenů a fotografií) se odesílají pouze pro zpracování konkrétního dotazu a Anthropic je neukládá déle než 30 dní dle jejich zásad. Data sdílená ve skupině se do dotazu dostanou jen tak, jak je ve skupině vidíš ty.</p>
 
     <h2>5. Jak dlouho data uchováváme</h2>
     <ul>
