@@ -1,7 +1,7 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import{getMessaging,getToken,isSupported}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+import{getMessaging,getToken,deleteToken,isSupported}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
@@ -26,6 +26,7 @@ const CHANGELOG = [
   { v:'4.21', items:[
     '🔔 Notifikace fungují na víc zařízeních najednou – telefon, tablet i počítač',
     '📲 Návod pro iPhone: notifikace fungují v aplikaci přidané na plochu (Sdílet → Přidat na plochu)',
+    '📲 Na iPhonu se ukáže návod, jak přidat aplikaci na plochu',
     '🔍 Nastavení notifikací ukazuje přesný stav i důvod, proč se push nepodařilo zapnout',
     '🧹 Neplatná zařízení se z odesílání notifikací sama odstraní',
     '🔧 Drobné opravy',
@@ -360,7 +361,7 @@ onAuthStateChanged(auth,async u=>{
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
     if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
-    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),prof,{merge:true});
+    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true});
     selMods=new Set(prof.modules||[]);initApp();
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
@@ -385,6 +386,8 @@ onAuthStateChanged(auth,async u=>{
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
+// Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -2078,7 +2081,7 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Přihlásit se přes Google';
 }
-window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await signOut(auth);};
+window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await unregisterFcmDevice();await signOut(auth);};
 
 // ── EMAIL / HESLO PŘIHLÁŠENÍ ──────────────────────────
 window.doEmailLogin=async()=>{
@@ -2172,7 +2175,7 @@ function rMods(){
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),prof,{merge:true});initApp();};
+window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),profNoTokens(prof),{merge:true});initApp();};
 
 
 function rEmptyStates(){
@@ -2594,6 +2597,24 @@ async function saveFcmToken(token, extra = {}) {
   await setDoc(doc(db,'users',CU.uid,'profile','main'), {fcmToken: token, fcmTokens: {[id]: entry}, ...extra}, {merge:true});
 }
 
+// Při odhlášení odeber toto zařízení z push (jinak by dál dostávalo notifikace odhlášeného účtu).
+// Nesmí zablokovat ani shodit odhlášení — offline se po 3 s pokračuje, chyba se jen zaloguje.
+async function unregisterFcmDevice() {
+  const limit = (p) => Promise.race([p, new Promise(r => setTimeout(r, 3000))]);
+  try {
+    if (CU) {
+      const id = getDeviceId();
+      const cur = prof?.fcmTokens?.[id]?.token;
+      const patch = {fcmTokens: {[id]: deleteField()}};
+      if (cur && prof.fcmToken === cur) patch.fcmToken = deleteField();
+      await limit(setDoc(doc(db,'users',CU.uid,'profile','main'), patch, {merge:true}));
+    }
+    if (messaging) await limit(deleteToken(messaging));
+  } catch(e) {
+    console.warn('[LP] Odregistrace push zařízení selhala:', e && e.code || '');
+  }
+}
+
 let fcmRegPromise = null;
 function registerFcmToken() {
   // Souběžná volání (init + otevření nastavení) sdílí jednu registraci
@@ -2633,7 +2654,7 @@ async function doRegisterFcmToken() {
     else {
       prof.notifSettings = notifSettings;
       // Zapiš jen změněná pole — ne celý profil (jiné zařízení mohlo mezitím uložit něco jiného)
-      try { await saveFcmToken(token, {notifSettings}); fcmState = 'ok'; console.log('[LP] FCM token uložen:', token.slice(0,20) + '...'); }
+      try { await saveFcmToken(token, {notifSettings}); fcmState = 'ok'; console.log('[LP] FCM token uložen (…' + token.slice(-6) + ')'); }
       catch(e) { fcmFail('Uložení tokenu selhalo', e); }
     }
   } catch(e) {
@@ -2818,7 +2839,7 @@ window.refreshFcmToken = async () => {
     });
 
     if (token) {
-      log('9. Token: ✅ ' + token.slice(0, 30) + '...');
+      log('9. Token: ✅ (…' + token.slice(-6) + ')');
       await saveFcmToken(token);
       log('10. Uloženo do Firestore: ✅');
       fcmState = 'ok'; fcmLastError = '';
@@ -4075,7 +4096,7 @@ window.createFamily = async () => {
   };
   try {
     await setDoc(doc(db,'families',fid), data);
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: fid}, {merge:true});
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: fid}, {merge:true});
     prof.familyId = fid;
     familyId = fid;
     subscribeFamily();
@@ -4106,7 +4127,7 @@ window.joinFamily = async () => {
     await setDoc(doc(db,'families',code), {
       members: { ...fData.members, [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
     }, {merge:true});
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...prof, familyId: code}, {merge:true});
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: code}, {merge:true});
     prof.familyId = code;
     familyId = code;
     document.getElementById('family-join-form').style.display='none';
