@@ -8,11 +8,24 @@ if ('serviceWorker' in navigator) {
   // Zprava ze SW — uzivatel klikl "Splneno" v notifikaci
   navigator.serviceWorker.addEventListener('message', async ev => {
     if (ev.data && ev.data.type === 'HABIT_DONE_FROM_NOTIF') {
-      if (typeof handleNotifHabitDone === 'function') {
-        await handleNotifHabitDone(ev.data);
-      }
+      let handled = false;
+      try {
+        if (typeof window.handleNotifHabitDone === 'function') handled = await window.handleNotifHabitDone(ev.data);
+      } catch (e) { /* handler selhal — akce se odloží */ }
+      // Handler ji nezpracoval (appka se ještě nenačetla / nikdo přihlášený) — ulož stejně jako SW, zpracuje se při startu
+      if (handled === false) savePendingAction(ev.data);
     }
   });
+}
+
+// Odloží akci "Splněno" do cache lp-pending (jen známá pole); klient ji zpracuje při příštím startu
+function savePendingAction(d) {
+  if (!('caches' in window)) return;
+  const msg = {type: d.type, habitId: d.habitId, reminderId: d.reminderId, date: d.date,
+    uid: typeof window.lpUid === 'function' ? window.lpUid() || undefined : undefined};
+  caches.open('lp-pending')
+    .then(c => c.put('pending-action', new Response(JSON.stringify(msg))))
+    .catch(() => {});
 }
 
 // ── PWA: Install prompt ────────────────────────────────

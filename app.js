@@ -27,6 +27,7 @@ const CHANGELOG = [
     '🔔 Notifikace fungují na víc zařízeních najednou – telefon, tablet i počítač',
     '📲 Na iPhonu se ukáže návod, jak přidat aplikaci na plochu – notifikace fungují v aplikaci přidané na plochu',
     '🔔 Opravena dvojitá notifikace u jednoho upozornění',
+    '✅ Tlačítko Splněno v notifikaci návyků funguje i při otevřené aplikaci',
     '🚪 Při odhlášení se zařízení odebere z notifikací účtu',
     '🔍 Nastavení notifikací ukazuje přesný stav i důvod, proč se push nepodařilo zapnout',
     '🧹 Neplatná zařízení se z odesílání notifikací sama odstraní',
@@ -370,6 +371,7 @@ onAuthStateChanged(auth,async u=>{
   }else ss('s-step1');}
   else{
     CU=null;
+    fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
@@ -2915,35 +2917,57 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
 }
 
 // Uzivatel klikl "Splneno" v notifikaci — zaznamenej navyk
-// Vrací false, když se návyky do 8 s nenačetly (akce se pak nemá zahodit)
+// Vstup pochází z cache/zprávy SW — před zápisem se validuje.
+// Vrací true = akce vyřízena nebo zahozena (smazat z lp-pending), false = dočasně nejde (nechat na příště).
+const NOTIF_DONE_MAX_AGE_DAYS = 14;
+function validNotifDate(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [y, m, d] = date.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return false; // neexistující datum
+  const oldest = toDS(new Date(Date.now() - NOTIF_DONE_MAX_AGE_DAYS * 86400000));
+  return date <= toDS() && date >= oldest; // ISO řetězce lze porovnávat; ne budoucnost, ne starší než 14 dní
+}
 async function handleNotifHabitDone(data) {
+  if (!data || typeof data !== 'object') return true;
+  const hasHabit = typeof data.habitId === 'string' && data.habitId.length > 0 && data.habitId.length <= 128 && !data.habitId.includes('/');
+  const hasReminder = typeof data.reminderId === 'string' && data.reminderId.length > 0;
+  if (!hasHabit && !hasReminder) return true;
+  const date = data.date === undefined ? toDS() : data.date;
+  if (hasHabit && !validNotifDate(date)) return true;
   if (!CU) return false;
+  // Akce patří jinému účtu (uid, pokud ho zpráva nese) — zahodit
+  if (data.uid && data.uid !== CU.uid) return true;
   const loaded = await Promise.race([habitsReady.then(() => true), new Promise(r => setTimeout(() => r(false), 8000))]);
   if (!loaded) return false;
-  const today = toDS();
-  const date = data.date || today;
 
   // Splneni navyku
-  if (data.habitId) {
+  if (hasHabit) {
     const habit = habits.find(h => h.id === data.habitId);
-    if (!habit) return true;
+    if (!habit) return true; // neznámý návyk (smazaný / cizí účet)
     const logId = `${data.habitId}_${date}`;
     const existing = habitLogs.find(l => l.id === logId);
-    if (!existing) {
+    if (existing && existing.done) {
+      toast(`ℹ️ ${habit.emoji} ${habit.name} — už bylo splněno`);
+    } else {
       const log = {id: logId, habitId: data.habitId, date, done: true, value: 1};
-      const exLog = habitLogs.find(l => l.id === logId);
-      if (exLog) Object.assign(exLog, log); else habitLogs.push(log);
-      await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
+      try {
+        await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log, {merge:true});
+      } catch(e) {
+        // Trvalá chyba (oprávnění, neplatná data) → zahodit, ať nevzniká "poison pill"; dočasná (offline) → nechat na příště
+        const perm = ['permission-denied','invalid-argument','failed-precondition','not-found','out-of-range'].includes(e && e.code);
+        console.warn('[LP] Splnění návyku z notifikace selhalo:', e && e.code || '');
+        return perm;
+      }
+      if (existing) Object.assign(existing, log); else habitLogs.push(log);
       renderHabits();
       rDash();
       toast(`✅ ${habit.emoji} ${habit.name} — splněno!`);
-    } else {
-      toast(`ℹ️ ${habit.emoji} ${habit.name} — už bylo splněno`);
     }
   }
 
   // Vlastni pripominka — oznac jako splnenou (dnes)
-  if (data.reminderId) {
+  if (hasReminder) {
     const reminder = customReminders.find(r => r.id === data.reminderId);
     if (reminder) toast(`✅ ${reminder.emoji} ${reminder.name} — hotovo!`);
   }
@@ -2951,6 +2975,7 @@ async function handleNotifHabitDone(data) {
 }
 // pwa.js (klasický skript) hledá handler přes window
 window.handleNotifHabitDone = handleNotifHabitDone;
+window.lpUid = () => CU ? CU.uid : null; // pwa.js přidá uid k odložené akci
 
 // ── Plánování notifikací ──
 function scheduleAllNotifications() {
@@ -6887,7 +6912,8 @@ window.notifyShopFamily=async()=>{
     :`${senderName} aktualizoval${prof?.gender==='f'?'a':''} nákupní seznam`;
   try {
     const res=await notifyFamilyFn({message:msg,type:'shop-update'});
-    toast(res.data.sent>0?`📣 Upozornění odesláno (${res.data.sent} členů)`:'📣 Nikdo jiný nemá zapnuté notifikace');
+    const n=res.data.members??res.data.sent; // starší server vrací jen počet zařízení
+    toast(n>0?`📣 Upozornění odesláno (${n} členům)`:'📣 Nikdo jiný nemá zapnuté notifikace');
   } catch(e) {
     toast('❌ Nepodařilo se odeslat upozornění');
     console.warn('notifyShopFamily error:',e);
