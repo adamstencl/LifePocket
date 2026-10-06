@@ -259,6 +259,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
 
   // Pošli notifikaci všem zařízením všech členů kromě odesílatele
   let sent = 0;
+  let membersReached = 0;
   for (const memberUid of Object.keys(members)) {
     if (memberUid === uid) continue;
     try {
@@ -268,12 +269,14 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
       if (!collectTokens(memberProf).length) continue;
       const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, `fam-${type}`);
       sent += res.sent;
+      if (res.sent > 0) membersReached++;
     } catch(e) {
       console.error(`[LP] notifyFamily člen uid=${memberUid}:`, e.message);
     }
   }
 
-  return {sent};
+  // sent = počet zařízení (kompatibilita se starým klientem), members = počet členů, kterým něco odešlo
+  return {sent, members: membersReached};
 });
 
 // ── Hlavní cron — každých 5 minut ────────────────────────
