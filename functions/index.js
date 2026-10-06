@@ -141,8 +141,9 @@ function collectTokens(prof) {
 // stejný kód může znamenat i vadný payload a ten nesmí mazat platná zařízení)
 function isDeadTokenError(e) {
   const code = e && e.code;
-  if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token'
-    || code === 'messaging/mismatched-credential' || code === 'messaging/sender-id-mismatch') return true;
+  // mismatched-credential / sender-id-mismatch tu NEJSOU: Admin SDK je mapuje i na 403 PERMISSION_DENIED
+  // (vypnuté FCM API, IAM) — to je chyba konfigurace serveru, ne mrtvý token
+  if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') return true;
   return code === 'messaging/invalid-argument' && /token/i.test(e.message || '');
 }
 
@@ -193,11 +194,17 @@ async function sendPushToUser(uid, prof, title, body, tag = 'lifepocket', option
   const results = await Promise.allSettled(entries.map(t => sendPush(t.token, title, body, tag, options)));
   let sent = 0;
   let lastError = null;
+  // Pojistka: selžou-li VŠECHNY tokeny stejným kódem jiným než not-registered, jde nejspíš o chybu
+  // serveru/konfigurace (ne o mrtvé tokeny) — nic nemažeme, jen logujeme kód
+  const failed = results.filter(r => r.status === 'rejected');
+  const failCodes = new Set(failed.map(r => r.reason && r.reason.code));
+  const allFailedSameCode = entries.length > 0 && failed.length === entries.length && failCodes.size === 1
+    && !failCodes.has('messaging/registration-token-not-registered');
   for (let i = 0; i < results.length; i++) {
     if (results[i].status === 'fulfilled') { sent++; continue; }
     const e = results[i].reason;
     lastError = e;
-    if (isDeadTokenError(e)) {
+    if (isDeadTokenError(e) && !allFailedSameCode) {
       try { await removeDeadToken(uid, prof, entries[i]); console.log(`[LP] Smazán neplatný token uid=${uid} (${e.code})`); }
       catch(delErr) { console.error(`[LP] Mazání tokenu selhalo uid=${uid}:`, delErr.message); }
     } else {
@@ -231,7 +238,8 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   const {message: rawMessage, type: rawType} = request.data || {};
   if (!rawMessage || typeof rawMessage !== 'string') throw new HttpsError('invalid-argument', 'Chybí zpráva.');
   const message = rawMessage.slice(0, 200);
-  const type = typeof rawType === 'string' ? rawType.slice(0, 40) : '';
+  // Typ z klienta jen z whitelistu a tag vždy s prefixem fam-, ať nejde přepsat cizí notifikaci (morning, habit-<id>…)
+  const type = ['shop-update', 'family-notify'].includes(rawType) ? rawType : 'family-notify';
 
   // Načti profil odesílatele — potřebujeme familyId a jméno
   const senderSnap = await db.doc(`users/${uid}/profile/main`).get();
@@ -258,7 +266,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
       if (!memberSnap.exists) continue;
       const memberProf = memberSnap.data();
       if (!collectTokens(memberProf).length) continue;
-      const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, type || 'family-notify');
+      const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, `fam-${type}`);
       sent += res.sent;
     } catch(e) {
       console.error(`[LP] notifyFamily člen uid=${memberUid}:`, e.message);
