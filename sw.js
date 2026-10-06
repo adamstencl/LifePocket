@@ -19,21 +19,30 @@ try {
 }
 
 // Zpracování push notifikací na pozadí (appka zavřená)
+// Firebase SDK při payloadu s "notification" zobrazí notifikaci samo (tag/akce/data z webpush.notification),
+// ale do tohoto handleru předá jen title/body/icon. Tag, akce a data proto server posílá i v top-level "data"
+// a tady z nich notifikaci složíme znovu se stejným tagem — nahradí tu od SDK (žádný duplikát).
+// Handler vždy vrací showNotification (iOS ruší subscription u "tichých" pushů).
 if (fmsg) fmsg.onBackgroundMessage(payload => {
   const n = payload.notification || {};
+  const d = payload.data || {};
+  let actions = [];
+  try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { /* neplatné akce — bez tlačítek */ }
+  const {tag, actions: _a, ...clickData} = d;
   const opts = {
-    body: n.body || '',
+    body: n.body || d.body || '',
     icon: n.icon || '/icon-192.png',
     badge: '/icon-192.png',
-    tag: n.tag || payload.data?.tag || 'lifepocket',
-    renotify: true,
-    data: n.data || payload.data || {},
+    tag: tag || 'lifepocket',
+    // Když už notifikaci ukázalo SDK, náhrada nesmí zapípat podruhé
+    renotify: !payload.notification,
+    data: clickData,
   };
-  if (n.actions?.length) { opts.actions = n.actions; opts.requireInteraction = true; }
-  self.registration.showNotification(n.title || 'LifePocket', opts);
+  if (Array.isArray(actions) && actions.length) { opts.actions = actions; opts.requireInteraction = true; }
+  return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v14';
+const CACHE = 'lifepocket-v15';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
