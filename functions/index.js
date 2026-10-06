@@ -105,8 +105,14 @@ async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
   };
   if (options.data)    notif.data = options.data;
   if (options.actions?.length) { notif.actions = options.actions; notif.requireInteraction = true; }
+  // Top-level data (jen řetězce): SW z nich skládá tag, akce a data kliknutí, protože
+  // Firebase SDK je z webpush.notification do onBackgroundMessage nepředá
+  const data = {tag: String(tag)};
+  for (const [k, v] of Object.entries(options.data || {})) data[k] = String(v);
+  if (options.actions?.length) data.actions = JSON.stringify(options.actions);
   await getMessaging().send({
     token,
+    data,
     webpush: { notification: notif, fcmOptions: {link: 'https://lifepocket.app/'} }
   });
   // Titulek ani text se neloguje (obsahuje jména, názvy návyků apod.)
@@ -135,12 +141,13 @@ function collectTokens(prof) {
 // stejný kód může znamenat i vadný payload a ten nesmí mazat platná zařízení)
 function isDeadTokenError(e) {
   const code = e && e.code;
-  if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') return true;
+  if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token'
+    || code === 'messaging/mismatched-credential' || code === 'messaging/sender-id-mismatch') return true;
   return code === 'messaging/invalid-argument' && /token/i.test(e.message || '');
 }
 
 // Smaž neplatný token z profilu (mapa i legacy pole) — jen pokud tam ještě je, mezitím ho klient mohl obnovit
-async function removeDeadToken(uid, prof, entry) {
+async function removeDeadToken(uid, prof, entry, expectedUpdatedAt) {
   const ref = db.doc(`users/${uid}/profile/main`);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -148,7 +155,8 @@ async function removeDeadToken(uid, prof, entry) {
     const d = snap.data();
     const args = [];
     for (const k of entry.mapKeys) {
-      if (d.fcmTokens && d.fcmTokens[k] && d.fcmTokens[k].token === entry.token) args.push(new FieldPath('fcmTokens', k), FieldValue.delete());
+      if (d.fcmTokens && d.fcmTokens[k] && d.fcmTokens[k].token === entry.token
+        && (expectedUpdatedAt === undefined || d.fcmTokens[k].updatedAt === expectedUpdatedAt)) args.push(new FieldPath('fcmTokens', k), FieldValue.delete());
     }
     if (entry.legacy && d.fcmToken === entry.token) args.push('fcmToken', FieldValue.delete());
     if (args.length) tx.update(ref, ...args);
@@ -160,8 +168,27 @@ async function removeDeadToken(uid, prof, entry) {
   }
 }
 
+// Čištění mapy fcmTokens: záznamy starší než 60 dní pryč a nejvýše 10 nejnovějších (podle updatedAt)
+const TOKEN_MAX_AGE_MS = 60 * 24 * 3600 * 1000;
+const TOKEN_MAX_COUNT = 10;
+async function pruneTokens(uid, prof) {
+  const map = prof && prof.fcmTokens;
+  if (!map || typeof map !== 'object') return;
+  const ts = (v) => { const t = Date.parse(v && v.updatedAt); return isNaN(t) ? 0 : t; };
+  const sorted = Object.entries(map).sort((a, b) => ts(b[1]) - ts(a[1]));
+  const now = Date.now();
+  const drop = sorted.filter(([, v], i) => i >= TOKEN_MAX_COUNT || now - ts(v) > TOKEN_MAX_AGE_MS);
+  for (const [k, v] of drop) {
+    const token = v && v.token;
+    const entry = {token, mapKeys: [k], legacy: !!token && prof.fcmToken === token};
+    try { await removeDeadToken(uid, prof, entry, v && v.updatedAt); }
+    catch(e) { console.error(`[LP] Čištění tokenů selhalo uid=${uid}:`, e.message); }
+  }
+}
+
 // Pošli push na všechna zařízení uživatele. Vrací {sent, lastError}; sent = počet zařízení, kam push odešel.
 async function sendPushToUser(uid, prof, title, body, tag = 'lifepocket', options = {}) {
+  await pruneTokens(uid, prof);
   const entries = collectTokens(prof);
   const results = await Promise.allSettled(entries.map(t => sendPush(t.token, title, body, tag, options)));
   let sent = 0;
@@ -201,8 +228,10 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
 
-  const {message, type} = request.data || {};
-  if (!message) throw new HttpsError('invalid-argument', 'Chybí zpráva.');
+  const {message: rawMessage, type: rawType} = request.data || {};
+  if (!rawMessage || typeof rawMessage !== 'string') throw new HttpsError('invalid-argument', 'Chybí zpráva.');
+  const message = rawMessage.slice(0, 200);
+  const type = typeof rawType === 'string' ? rawType.slice(0, 40) : '';
 
   // Načti profil odesílatele — potřebujeme familyId a jméno
   const senderSnap = await db.doc(`users/${uid}/profile/main`).get();
@@ -211,23 +240,29 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   const familyId = senderProf.familyId;
   if (!familyId) throw new HttpsError('failed-precondition', 'Nejsi v rodinné skupině.');
 
-  const senderName = senderProf.prezdivka || senderProf.nickname || 'Člen rodiny';
+  const senderName = String(senderProf.prezdivka || senderProf.nickname || 'Člen rodiny').slice(0, 40);
 
   // Načti členy skupiny
   const familySnap = await db.doc(`families/${familyId}`).get();
   if (!familySnap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
   const members = familySnap.data().members || {};
+  // Odesílatel musí být členem skupiny (familyId v profilu si může nastavit sám)
+  if (!Object.prototype.hasOwnProperty.call(members, uid)) throw new HttpsError('permission-denied', 'Nejsi členem této skupiny.');
 
   // Pošli notifikaci všem zařízením všech členů kromě odesílatele
   let sent = 0;
   for (const memberUid of Object.keys(members)) {
     if (memberUid === uid) continue;
-    const memberSnap = await db.doc(`users/${memberUid}/profile/main`).get();
-    if (!memberSnap.exists) continue;
-    const memberProf = memberSnap.data();
-    if (!collectTokens(memberProf).length) continue;
-    const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, type || 'family-notify');
-    sent += res.sent;
+    try {
+      const memberSnap = await db.doc(`users/${memberUid}/profile/main`).get();
+      if (!memberSnap.exists) continue;
+      const memberProf = memberSnap.data();
+      if (!collectTokens(memberProf).length) continue;
+      const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, type || 'family-notify');
+      sent += res.sent;
+    } catch(e) {
+      console.error(`[LP] notifyFamily člen uid=${memberUid}:`, e.message);
+    }
   }
 
   return {sent};
