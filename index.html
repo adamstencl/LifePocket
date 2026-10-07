@@ -363,7 +363,7 @@
           <div class="fg">
             <label class="flbl">🔔 Připomenout v čas <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="habit-notif-time" style="max-width:100%">
+              <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="habit-notif-time" style="max-width:100%">
               <span style="font-size:13px;color:var(--text3)">Každý den tě upozorním, pokud návyk ještě nesplníš</span>
             </div>
           </div>
@@ -484,6 +484,7 @@
           <!-- Editor -->
           <div class="j-edit-area" id="j-edit-area" style="display:none">
             <div class="j-edit-top">
+              <button type="button" class="j-back-btn" onclick="journalBack()" aria-label="Zpět na seznam zápisků">← Zpět</button>
               <input class="j-title-inp" type="text" id="j-title" placeholder="Název zápisku…" oninput="markDirty()">
               <div class="j-edit-actions">
                 <button class="j-mic-btn" id="j-mic-btn" onclick="toggleJournalMic()" title="Hlasový záznam">🎤</button>
@@ -899,11 +900,11 @@
           <div class="setrow" style="flex-wrap:wrap;gap:12px;align-items:flex-start">
             <div class="fg">
               <label class="flbl">🌅 Ranní přehled dne</label>
-              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-morning" value="08:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
+              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-morning" value="08:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
             <div class="fg">
               <label class="flbl">🌙 Večerní shrnutí</label>
-              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
+              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
           </div>
           <div style="margin-top:12px">
@@ -1125,7 +1126,7 @@
       </div>
       <div class="fg" id="ev-time-row" style="display:none">
         <label class="flbl">⏰ Čas <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
-        <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="ev-time-inp">
+        <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="ev-time-inp">
       </div>
       <div class="fg">
         <label class="flbl">Opakovat každý rok</label>

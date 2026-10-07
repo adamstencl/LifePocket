@@ -21,8 +21,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.30';
+const APP_VERSION = '4.31';
 const CHANGELOG = [
+  { v:'4.31', items:[
+    '✋ Návyky a položky checklistu přesuneš podržením prstu a tažením',
+    '📒 Poznámky na mobilu: seznam zápisků přes celou obrazovku, uvítání nepřekáží',
+    '← Otevřený zápisek má tlačítko Zpět a vrátí tě na seznam i systémové Zpět',
+    '🕒 Výběr času jde zavřít klávesou Esc a čas připomínek se vždy ukáže správně'
+  ]},
   { v:'4.30', items:[
     '🕒 Nový výběr času přímo v aplikaci – tlačítko Nastavit už nebude mimo obrazovku'
   ]},
@@ -742,6 +748,35 @@ window.handleEntryPhotoInput = async function(input) {
 };
 // ─────────────────────────────────────────────────────────
 
+// Mobil (≤640 px): otevřený zápisek = editor přes celou plochu, seznam schovaný (třída j-open na #p-journal).
+// Otevření přidá záznam do historie, aby systémové Zpět vrátilo na seznam (viz popstate).
+const jMobileMQ=window.matchMedia?.('(max-width:640px)');
+function setJournalOpen(on){
+  const pg=document.getElementById('p-journal');
+  if(!pg)return;
+  const was=pg.classList.contains('j-open');
+  pg.classList.toggle('j-open',on);
+  if(on&&!was&&jMobileMQ?.matches) history.pushState({type:'screen',id:'j-entry'},'');
+  if(!on&&was) document.getElementById('abody')?.scrollTo?.(0,0);
+}
+function journalEntryOpen(){ return !!document.getElementById('p-journal')?.classList.contains('j-open'); }
+
+// Zpět na seznam (tlačítko ← Zpět na mobilu nebo systémové Zpět). Neuložené změny tiše uloží.
+window.closeEntry=()=>{
+  const title=document.getElementById('j-title')?.value.trim()||'';
+  const text=document.getElementById('j-text')?.value.trim()||'';
+  if(jRecOn) stopJournalMic();
+  if(entryDirty&&(curEntryId||title||text)) saveEntry({auto:true});
+  curEntryId=null; entryMood=''; entryDirty=false; curEntryCreatedAt=null; curEntryPhoto=null;
+  const ea=document.getElementById('j-edit-area'); if(ea) ea.style.display='none';
+  const je=document.getElementById('j-empty'); if(je) je.style.display='flex';
+  setJournalOpen(false);
+  renderEntryList(document.getElementById('j-search')?.value||'');
+};
+
+// Tlačítko ← Zpět: přes historii (popstate zavře zápisek), jinak rovnou
+window.journalBack=()=>{ if(history.state?.id==='j-entry') history.back(); else window.closeEntry(); };
+
 window.newEntry=()=>{
   curEntryId=null; entryMood=''; entryDirty=false; curEntryCreatedAt=null;
   curEntryPhoto = null;
@@ -754,6 +789,7 @@ window.newEntry=()=>{
   document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.remove('sel'));
   document.getElementById('j-empty')?.style && (document.getElementById('j-empty').style.display='none');
   document.getElementById('j-edit-area')?.style && (document.getElementById('j-edit-area').style.display='flex');
+  setJournalOpen(true);
   renderEntryList();
   setTimeout(()=>document.getElementById('j-title')?.focus(),100);
 };
@@ -777,6 +813,7 @@ window.openEntry=(id)=>{
     : '';
   document.getElementById('j-empty')?.style && (document.getElementById('j-empty').style.display='none');
   document.getElementById('j-edit-area')?.style && (document.getElementById('j-edit-area').style.display='flex');
+  setJournalOpen(true);
   renderEntryList();
 };
 
@@ -837,6 +874,7 @@ window.deleteEntry=async()=>{
     curEntryId=null; entryMood='';
     document.getElementById('j-edit-area').style.display='none';
     document.getElementById('j-empty').style.display='flex';
+    setJournalOpen(false);
     renderEntryList();
     toast('Zápisek smazán');
   }catch(e){toast('❌ Mazání se nepovedlo: '+userErr(e,'zápisek'));}
@@ -940,7 +978,8 @@ window.toggleJournalMic=()=>{
 
 window.stopJournalMic=()=>{
   jRecOn=false;
-  if(jRec)jRec.stop();
+  if(jRec){ jRec.onresult=null; jRec.stop(); } // doznívající výsledek nesmí zapsat do jiného zápisku
+  jMicBase='';
   const btn=document.getElementById('j-mic-btn');
   if(btn){btn.classList.remove('rec');btn.textContent='🎤';}
   const bar=document.getElementById('j-voice-bar');
@@ -1134,7 +1173,7 @@ function buildHabitCard(h){
   const hIdx=groupHabits.findIndex(x=>x.id===h.id);
   const canUp=hIdx>0, canDown=hIdx<groupHabits.length-1;
 
-  return `<div class="habit-card${cardDone?' done':''}">
+  return `<div class="habit-card${cardDone?' done':''}" data-drag-id="${esc(h.id)}">
     <div class="habit-card-top">
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
         <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
@@ -1239,6 +1278,7 @@ function renderHabits(){
   });
 
   list.innerHTML=html;
+  list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
   requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
 }
 
@@ -1438,7 +1478,7 @@ function renderHabitDetail(h) {
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;color:var(--text2);margin-bottom:8px">Každý den tě upozorním v nastavenou hodinu, pokud návyk ještě nebude splněný.</div>
-        <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
+        <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2038,6 +2078,174 @@ window.moveHabit = async function(id, dir) {
   ]);
 };
 
+// ── Přesouvání řádků dlouhým stiskem (návyky, checklist) ──────────────
+// enableDragReorder(container, itemSelector, onDrop[, opts]): řádky = potomci containeru dle itemSelector
+// s data-drag-id. Podržení ~350 ms (mimo tlačítka a pole) řádek zvedne, tažení přesouvá, puštění
+// zavolá onDrop(ids v novém pořadí). Volat po každém renderu; listenery se nezdvojí (příznak na elementu).
+const DRAG_HOLD_MS = 350, DRAG_SLOP = 8;
+const DRAG_SKIP = 'button,input,textarea,select,label,a,img,[contenteditable],.no-drag';
+let _dragSuppressClick = 0; // čas, do kdy se spolkne klik po puštění řádku
+window.addEventListener('click', e => {
+  if (Date.now() < _dragSuppressClick) { e.preventDefault(); e.stopPropagation(); _dragSuppressClick = 0; }
+}, true);
+
+function dragScrollParent(el){
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+function enableDragReorder(container, itemSelector, onDrop, opts = {}){
+  if (!container || container._dragReorder) return;
+  container._dragReorder = true;
+  const skip = opts.skip ? DRAG_SKIP + ',' + opts.skip : DRAG_SKIP;
+  let st = null; // stav aktuálního stisku/tahu
+
+  const rows = () => [...container.querySelectorAll(itemSelector)].filter(r => r.dataset.dragId);
+
+  function cleanup(){
+    if (!st) return;
+    clearTimeout(st.timer);
+    cancelAnimationFrame(st.raf);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+    if (st.active) {
+      st.items.forEach(r => { r.style.transform = ''; r.style.transition = ''; r.classList.remove('lp-drag-lift', 'lp-drag-shift'); });
+      container.classList.remove('lp-drag-on');
+    }
+    st = null;
+  }
+
+  function lift(){
+    if (!st || !container.isConnected || !st.row.isConnected) { cleanup(); return; }
+    const items = rows();
+    const from = items.indexOf(st.row);
+    if (from < 0 || items.length < 2) { cleanup(); return; }
+    const cTop = container.getBoundingClientRect().top;
+    const rects = items.map(r => r.getBoundingClientRect());
+    st.items = items; st.from = st.to = from;
+    st.tops = rects.map(r => r.top - cTop);
+    st.hs = rects.map(r => r.height);
+    const gap = items.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 0;
+    st.shift = st.hs[from] + gap;
+    st.startY = st.lastY - cTop; // pozice prstu vůči containeru v okamžiku zvednutí
+    st.active = true;
+    st.scroller = dragScrollParent(container);
+    container.classList.add('lp-drag-on');
+    try { window.getSelection()?.removeAllRanges(); } catch(e) {} // myš: výběr textu vzniklý před zvednutím
+    st.row.classList.add('lp-drag-lift');
+    items.forEach((r, i) => { if (i !== from) r.classList.add('lp-drag-shift'); });
+    try { navigator.vibrate?.(10); } catch(e) {}
+    autoScroll();
+  }
+
+  function update(){
+    if (!st?.active) return;
+    if (!container.isConnected) { cleanup(); return; } // seznam se mezitím překreslil (snapshot)
+    const cTop = container.getBoundingClientRect().top;
+    const dy = (st.lastY - cTop) - st.startY;
+    const { items, from, tops, hs } = st;
+    st.row.style.transform = `translateY(${dy}px) scale(1.03)`;
+    const center = tops[from] + dy + hs[from] / 2;
+    let to = 0;
+    items.forEach((r, i) => { if (i !== from && tops[i] + hs[i] / 2 < center) to++; });
+    st.to = to;
+    items.forEach((r, i) => {
+      if (i === from) return;
+      let off = 0;
+      if (from < to && i > from && i <= to) off = -st.shift;
+      else if (to < from && i >= to && i < from) off = st.shift;
+      r.style.transform = off ? `translateY(${off}px)` : '';
+    });
+  }
+
+  // u horního/dolního okraje obrazovky posouvá stránku
+  function autoScroll(){
+    if (!st?.active) return;
+    const sc = st.scroller;
+    const isDoc = sc === document.scrollingElement || sc === document.documentElement;
+    const r = isDoc ? {top: 0, bottom: window.innerHeight} : sc.getBoundingClientRect();
+    const topEdge = Math.max(r.top, 56) + 50;          // pod hlavičkou
+    const botEdge = Math.min(r.bottom, window.innerHeight) - 90; // nad spodní lištou
+    let v = 0;
+    if (st.lastY < topEdge) v = -Math.min(14, (topEdge - st.lastY) / 4 + 2);
+    else if (st.lastY > botEdge) v = Math.min(14, (st.lastY - botEdge) / 4 + 2);
+    if (!container.isConnected) { cleanup(); return; }
+    if (v) { sc.scrollTop += v; update(); }
+    if (st) st.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function onMove(e){
+    if (!st || e.pointerId !== st.pid) return;
+    st.lastY = e.clientY;
+    if (!st.active) {
+      // dotyk: pohyb před uplynutím času = scroll, ne tah; myš: tah začne až pohybem
+      if (Math.abs(e.clientX - st.x0) > DRAG_SLOP || Math.abs(e.clientY - st.y0) > DRAG_SLOP) {
+        if (st.mouse) { lift(); if (!st?.active) return; } else { cleanup(); return; }
+      } else return;
+    }
+    e.preventDefault();
+    update();
+  }
+
+  function onUp(e){
+    if (!st || e.pointerId !== st.pid) return;
+    if (!st.active || !container.isConnected) { cleanup(); return; } // seznam se překreslil → jen uklidit
+    _dragSuppressClick = Date.now() + 400; // puštění nesmí otevřít detail ani editaci
+    const { items, from, to } = st;
+    const ids = items.map(r => r.dataset.dragId);
+    cleanup();
+    if (to === from) return;
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    try { onDrop(ids); } catch(err) { console.warn('[LP] přesun:', err?.name); }
+  }
+
+  function onCancel(e){ if (st && e.pointerId === st.pid) cleanup(); }
+
+  container.addEventListener('pointerdown', e => {
+    _dragSuppressClick = 0;
+    if (st || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const row = e.target.closest(itemSelector);
+    if (!row || !container.contains(row) || !row.dataset.dragId) return;
+    if (e.target.closest(skip)) return;
+    st = { pid: e.pointerId, row, x0: e.clientX, y0: e.clientY, lastY: e.clientY, active: false, raf: 0, mouse: e.pointerType === 'mouse' };
+    // myš: bez časovače (dlouhý klik otevře detail), zvedne se až pohybem nad DRAG_SLOP
+    if (!st.mouse) st.timer = setTimeout(lift, DRAG_HOLD_MS);
+    window.addEventListener('pointermove', onMove, {passive: false});
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  });
+  // během tahu se stránka nescrolluje (jen v aktivním tahu, jinak normální scroll)
+  container.addEventListener('touchmove', e => { if (st?.active) e.preventDefault(); }, {passive: false});
+  // dlouhý stisk nesmí otevřít kontextové menu (Kopírovat / Vybrat vše)
+  container.addEventListener('contextmenu', e => { if (st) e.preventDefault(); });
+}
+
+// Pořadí návyků po přetažení: zapíše jen změněné `order` jednou dávkou (jako šipky – v rámci skupiny)
+function saveHabitOrder(ids){
+  if (!CU || !ids.length) return;
+  const first = habits.find(x => x.id === ids[0]);
+  if (!first) return;
+  const group = first.group || 'day';
+  const groupHabits = habits.filter(x => (x.group || 'day') === group && !x.archived);
+  if (groupHabits.length !== ids.length || !ids.every(id => groupHabits.some(h => h.id === id))) return; // seznam se mezitím změnil
+  const batch = writeBatch(db);
+  let n = 0;
+  ids.forEach((id, i) => {
+    const h = habits.find(x => x.id === id);
+    if (h.order === i) return;
+    h.order = i; n++;
+    batch.update(doc(db, 'users', CU.uid, 'habits', id), {order: i});
+  });
+  if (!n) return;
+  renderHabits(); // hned nové pořadí, snapshot ho potvrdí
+  batch.commit().catch(e => toast('❌ Pořadí se neuložilo: ' + userErr(e, 'návyk')));
+}
+
 window.migrateCalEvents = async function() {
   if(!isCalShared()||!events.length) return;
   if(!confirm(`Přesunout ${events.length} osobních událostí do sdíleného kalendáře?`)) return;
@@ -2290,8 +2498,10 @@ window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
 // Na mobilu scrollni datum/čas input do středu modalu hned po focusu
 // — předejde situaci, kdy nativní picker vyskočí mimo viditelnou plochu
+let tpReturning = false; // fokus se vrací z výběru času → neposouvat
 document.addEventListener('focusin', e => {
   if (!e.target.matches('input[type="date"],input[type="time"],input[type="datetime-local"],input[data-time-picker]')) return;
+  if (tpReturning) return;
   // platí v modalech i na stránkách (např. Nastavení → Push notifikace)
   setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'center'}), 150);
 }, true);
@@ -2346,8 +2556,7 @@ function buildTimePicker(){
     renderTimePicker();
   });
   el.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTimePicker(); return; }
-    if (e.key !== 'Tab') return;
+    if (e.key !== 'Tab') return; // Esc řeší listener na document
     // fokus zůstává uvnitř dialogu
     const f = [...el.querySelectorAll('button:not([disabled])')].filter(x => x.offsetParent !== null);
     if (!f.length) return;
@@ -2368,7 +2577,7 @@ function renderTimePicker(){
 }
 
 function openTimePicker(inp){
-  if (!inp || inp.disabled) return;
+  if (!inp || inp.disabled || timePickerOpen()) return; // už otevřený → žádný další pushState
   if (!tpEl) tpEl = buildTimePicker();
   tpInput = inp;
   const m = TP_RE.exec(inp.value || '');
@@ -2389,7 +2598,10 @@ function closeTimePicker(){
   if (!tpEl) return;
   tpEl.classList.remove('open');
   const inp = tpInput; tpInput = null;
-  if (inp && document.contains(inp)) inp.focus({preventScroll:true});
+  if (inp && document.contains(inp)) {
+    tpReturning = true;
+    try { inp.focus({preventScroll:true}); } finally { tpReturning = false; }
+  }
 }
 
 function applyTimePicker(val){
@@ -2407,6 +2619,10 @@ document.addEventListener('click', e => {
   if (inp) { e.preventDefault(); openTimePicker(inp); }
 });
 document.addEventListener('keydown', e => {
+  // Esc zavře výběr času, ať je fokus kdekoli (capture – před ostatními Esc handlery)
+  if (e.key === 'Escape' && timePickerOpen()) { e.preventDefault(); e.stopPropagation(); closeTimePicker(); }
+}, true);
+document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('input[data-time-picker]')) {
     e.preventDefault(); openTimePicker(e.target);
   }
@@ -2419,6 +2635,10 @@ window.addEventListener('popstate', () => {
   // 1. Zavři otevřený modal
   const openModal = document.querySelector('.moverlay.open, .modal-wrap.open');
   if(openModal) { cm(openModal.id); return; }
+  // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
+  if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
+    window.closeEntry(); return;
+  }
   // 2. Zavři habit detail
   if(document.getElementById('p-habit-detail')?.classList.contains('active')) {
     window.closeHabitDetail(); return;
@@ -3134,8 +3354,9 @@ function loadNotifSettings() {
   // Naplň UI
   const m = document.getElementById('notif-morning');
   const ev = document.getElementById('notif-evening');
-  if (m) m.value = notifSettings.morning;
-  if (ev) ev.value = notifSettings.evening;
+  // jen platné HH:MM, jinak výchozí čas
+  if (m) m.value = TP_RE.test(notifSettings.morning || '') ? notifSettings.morning : NOTIF_DEFAULTS.morning;
+  if (ev) ev.value = TP_RE.test(notifSettings.evening || '') ? notifSettings.evening : NOTIF_DEFAULTS.evening;
   const ids = ['nt-habits','nt-morning','nt-evening'];
   const keys = ['habits','morningDigest','eveningDigest'];
   ids.forEach((id,i) => {
@@ -6030,7 +6251,7 @@ function renderChecklist() {
       ${sortedItems.length ? sortedItems.map(item => {
         const isExpanded = expandedCheckItemId === item.id;
         return `
-        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}">
+        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}"${!item.done && !expandedCheckItemId ? ` data-drag-id="${esc(item.id)}"` : ''}>
           <button class="cl-check" data-a0="${esc(item.id)}" onclick="toggleCheckItem(this.dataset.a0)">
             ${item.done ? '✓' : ''}
           </button>
@@ -6055,6 +6276,20 @@ function renderChecklist() {
       }).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
     </div>
   `;
+  enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
+}
+
+// Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
+function reorderCheckItems(listId, ids) {
+  const list = [...checklists,...familyChecklists].find(c => c.id === listId);
+  if (!list) return;
+  const undone = list.items.filter(i => !i.done);
+  if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
+  const slots = list.items.map((it, i) => it.done ? -1 : i).filter(i => i >= 0);
+  const byId = Object.fromEntries(undone.map(i => [i.id, i]));
+  ids.forEach((id, k) => { list.items[slots[k]] = byId[id]; });
+  saveChecklistDoc(list).catch(e => toast('❌ Pořadí se neuložilo: ' + userErr(e, 'seznam')));
+  renderChecklist();
 }
 
 window.switchChecklist = function(id) {

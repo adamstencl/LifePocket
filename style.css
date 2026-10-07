@@ -629,8 +629,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .hd-stat-grid{grid-template-columns:repeat(3,1fr);gap:6px}
   .hd-stat-grid .stat-val{font-size:18px}
   .hd-stat-grid .stat-lbl{font-size:11px}
-  .journal-sidebar{width:100%;height:210px;border-right:none;border-bottom:1px solid var(--border)}
-  .journal-wrap{flex-direction:column}
 
   /* ── NASTAVENÍ ── */
   .setrow{flex-direction:column;align-items:stretch;gap:8px}
@@ -710,9 +708,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   /* ── RODINA — members/info řádky ── */
   .fam-info-row{flex-direction:column;gap:6px}
 
-  /* ── ZÁPISNÍK sidebar ── */
-  .journal-sidebar{height:220px!important}
-  .journal-wrap .j-sidebar{flex:1;height:auto!important}
 
   /* ── CHAT — header kompaktní ── */
   .av-chat-header{padding:10px 14px!important}
@@ -1042,9 +1037,24 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .j-photo-btn{background:none;border:1px dashed rgba(245,200,66,.3);border-radius:8px;color:var(--text2);font-size:13px;padding:4px 12px;cursor:pointer;transition:all .2s}
 .j-photo-btn:hover{border-color:var(--accent);color:var(--accent)}
 #j-photo-preview{padding:0 20px}
+.j-back-btn{display:none;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:7px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;flex-shrink:0;min-height:38px}
 @media(max-width:640px){
-  .journal-sidebar{width:100%;height:220px;border-right:none;border-bottom:1px solid var(--border)}
   .journal-wrap{flex-direction:column}
+  /* Seznam: přes celou výšku, scrolluje stránka (ne malé okénko); uvítání skryté, prázdný seznam má vlastní výzvu */
+  #p-journal:not(.j-open){height:auto!important}
+  #p-journal:not(.j-open) .journal-wrap{height:auto;overflow:visible}
+  #p-journal:not(.j-open) .journal-sidebar{width:100%;height:auto!important;flex:none;border-right:none;border-bottom:none}
+  #p-journal:not(.j-open) .j-list{overflow:visible;flex:none}
+  #p-journal:not(.j-open) .journal-editor{display:none}
+  /* Otevřený zápisek: editor přes celou plochu nad spodní lištou, seznam schovaný */
+  #p-journal.j-open{height:calc(100vh - 56px - 68px - env(safe-area-inset-bottom))!important}
+  #p-journal.j-open{height:calc(100dvh - 56px - 68px - env(safe-area-inset-bottom))!important}
+  #p-journal.j-open .journal-sidebar{display:none}
+  #p-journal.j-open .j-back-btn{display:inline-flex;align-items:center}
+  #p-journal.j-open .j-edit-top{padding:10px 14px}
+  #p-journal.j-open .j-title-inp{flex:1 1 140px;min-width:0;font-size:18px}
+  #p-journal.j-open .j-meta{padding:8px 14px}
+  #p-journal.j-open .j-textarea{padding:14px}
 }
 
 /* COOKING */
@@ -1496,3 +1506,9 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cl-add-btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:14px;white-space:nowrap}
 .cl-item-move{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 4px;line-height:1;opacity:.7}
 .cl-item-move:active{opacity:1}
+@media(pointer:coarse){.cl-item-move{font-size:12px;padding:2px 3px;opacity:.5}}
+/* Přesouvání dlouhým stiskem (enableDragReorder) – dlouhý stisk nevybírá text ani neotevře menu */
+@media(hover:none){[data-drag-id]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}}
+.lp-drag-on,.lp-drag-on [data-drag-id]{cursor:grabbing;-webkit-user-select:none;user-select:none}
+.lp-drag-shift{transition:transform .18s ease!important}
+.lp-drag-lift{position:relative;z-index:20;transition:none!important;box-shadow:0 10px 28px rgba(0,0,0,.35);will-change:transform}
