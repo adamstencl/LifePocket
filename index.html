@@ -363,7 +363,7 @@
           <div class="fg">
             <label class="flbl">🔔 Připomenout v čas <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <input class="finp" type="time" id="habit-notif-time" style="max-width:100%" placeholder="—">
+              <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="habit-notif-time" style="max-width:100%">
               <span style="font-size:13px;color:var(--text3)">Každý den tě upozorním, pokud návyk ještě nesplníš</span>
             </div>
           </div>
@@ -899,11 +899,11 @@
           <div class="setrow" style="flex-wrap:wrap;gap:12px;align-items:flex-start">
             <div class="fg">
               <label class="flbl">🌅 Ranní přehled dne</label>
-              <input type="time" id="notif-morning" value="08:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none" onchange="saveNotifSettings()">
+              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-morning" value="08:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
             <div class="fg">
               <label class="flbl">🌙 Večerní shrnutí</label>
-              <input type="time" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none" onchange="saveNotifSettings()">
+              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
           </div>
           <div style="margin-top:12px">
@@ -947,7 +947,7 @@
             </div>
           </div>
           <div id="family-join-form" style="display:none;margin-bottom:12px">
-            <input class="family-join-inp" id="family-code-inp" placeholder="XXXX-1234" maxlength="9" oninput="this.value=this.value.toUpperCase()">
+            <input class="family-join-inp" id="family-code-inp" placeholder="ADAM-K7M2QX" maxlength="16" oninput="this.value=this.value.toUpperCase()">
             <div style="display:flex;gap:8px;margin-top:10px">
               <button class="btn-s" onclick="document.getElementById(&#39;family-join-form&#39;).style.display=&#39;none&#39;">Zrušit</button>
               <button class="btn-sv" onclick="joinFamily()" style="flex:1">Připojit se →</button>
@@ -1125,7 +1125,7 @@
       </div>
       <div class="fg" id="ev-time-row" style="display:none">
         <label class="flbl">⏰ Čas <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
-        <input class="finp" type="time" id="ev-time-inp">
+        <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="ev-time-inp">
       </div>
       <div class="fg">
         <label class="flbl">Opakovat každý rok</label>

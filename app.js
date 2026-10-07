@@ -21,8 +21,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.28';
+const APP_VERSION = '4.30';
 const CHANGELOG = [
+  { v:'4.30', items:[
+    '🕒 Nový výběr času přímo v aplikaci – tlačítko Nastavit už nebude mimo obrazovku'
+  ]},
+  { v:'4.29', items:[
+    '🔐 Nové skupiny dostanou delší kód, který nejde uhodnout'
+  ]},
   { v:'4.28', items:[
     '👋 Nová úvodní obrazovka pro nové návštěvníky – co v appce najdeš a tlačítka „Začít zdarma“ a „Mám účet“',
     '📤 V Nastavení můžeš doporučit LifePocket kamarádům jedním klepnutím',
@@ -1432,7 +1438,7 @@ function renderHabitDetail(h) {
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;color:var(--text2);margin-bottom:8px">Každý den tě upozorním v nastavenou hodinu, pokud návyk ještě nebude splněný.</div>
-        <input type="time" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
+        <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker placeholder="--:--" autocomplete="off" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2285,13 +2291,131 @@ window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 // Na mobilu scrollni datum/čas input do středu modalu hned po focusu
 // — předejde situaci, kdy nativní picker vyskočí mimo viditelnou plochu
 document.addEventListener('focusin', e => {
-  if (!e.target.matches('input[type="date"],input[type="time"],input[type="datetime-local"]')) return;
+  if (!e.target.matches('input[type="date"],input[type="time"],input[type="datetime-local"],input[data-time-picker]')) return;
   // platí v modalech i na stránkách (např. Nastavení → Push notifikace)
   setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'center'}), 150);
 }, true);
 
+// ── Vlastní výběr času (místo nativního pickeru, který na Samsungu přetéká obrazovku) ──
+// Pole: <input type="text" readonly inputmode="none" data-time-picker>, hodnota HH:MM nebo ''.
+// data-time-clear="0" = pole nejde vymazat (stejně tak u required).
+const TP_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+let tpInput = null, tpH = null, tpM = null, tpEl = null;
+const tpPad = n => String(n).padStart(2, '0');
+function timePickerOpen(){ return !!tpEl && tpEl.classList.contains('open'); }
+
+function buildTimePicker(){
+  const el = document.createElement('div');
+  el.className = 'tp-overlay';
+  el.id = 'm-time-picker';
+  let hrs = '', mins = '';
+  for (let h = 0; h < 24; h++) hrs += `<button type="button" class="tp-cell" data-h="${h}">${tpPad(h)}</button>`;
+  for (let m = 0; m < 60; m += 5) mins += `<button type="button" class="tp-cell" data-m="${m}">${tpPad(m)}</button>`;
+  el.innerHTML = `<div class="tp-sheet" role="dialog" aria-modal="true" aria-labelledby="tp-title">
+    <div class="tp-head">
+      <div class="tp-title" id="tp-title">Vyber čas</div>
+      <div class="tp-preview-row">
+        <button type="button" class="tp-step" data-step="-1" aria-label="O minutu méně">−1</button>
+        <div class="tp-preview" id="tp-preview" aria-live="polite">--:--</div>
+        <button type="button" class="tp-step" data-step="1" aria-label="O minutu více">+1</button>
+      </div>
+    </div>
+    <div class="tp-cols">
+      <div class="tp-col tp-col-h"><div class="tp-lbl">Hodiny</div><div class="tp-grid tp-grid-h" role="group" aria-label="Hodiny">${hrs}</div></div>
+      <div class="tp-col tp-col-m"><div class="tp-lbl">Minuty</div><div class="tp-grid tp-grid-m" role="group" aria-label="Minuty">${mins}</div></div>
+    </div>
+    <div class="tp-actions">
+      <button type="button" class="btn-s" data-tp="cancel">Zrušit</button>
+      <button type="button" class="btn-s" data-tp="clear">Vymazat</button>
+      <button type="button" class="btn-p" data-tp="ok">Nastavit</button>
+    </div>
+  </div>`;
+  el.addEventListener('click', e => {
+    if (e.target === el) { closeTimePicker(); return; }
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.h !== undefined) { tpH = +b.dataset.h; if (tpM === null) tpM = 0; }
+    else if (b.dataset.m !== undefined) { tpM = +b.dataset.m; if (tpH === null) tpH = new Date().getHours(); }
+    else if (b.dataset.step) {
+      if (tpH === null) { tpH = new Date().getHours(); tpM = 0; }
+      const t = (tpH * 60 + tpM + Number(b.dataset.step) + 1440) % 1440;
+      tpH = Math.floor(t / 60); tpM = t % 60;
+    }
+    else if (b.dataset.tp === 'cancel') { closeTimePicker(); return; }
+    else if (b.dataset.tp === 'clear') { applyTimePicker(''); return; }
+    else if (b.dataset.tp === 'ok') { if (tpH !== null) applyTimePicker(tpPad(tpH) + ':' + tpPad(tpM)); return; }
+    renderTimePicker();
+  });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTimePicker(); return; }
+    if (e.key !== 'Tab') return;
+    // fokus zůstává uvnitř dialogu
+    const f = [...el.querySelectorAll('button:not([disabled])')].filter(x => x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  document.body.appendChild(el);
+  return el;
+}
+
+function renderTimePicker(){
+  const has = tpH !== null;
+  tpEl.querySelector('#tp-preview').textContent = has ? tpPad(tpH) + ':' + tpPad(tpM) : '--:--';
+  tpEl.querySelectorAll('[data-h]').forEach(b => { const on = has && +b.dataset.h === tpH; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  tpEl.querySelectorAll('[data-m]').forEach(b => { const on = has && +b.dataset.m === tpM; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  tpEl.querySelector('[data-tp="ok"]').disabled = !has;
+}
+
+function openTimePicker(inp){
+  if (!inp || inp.disabled) return;
+  if (!tpEl) tpEl = buildTimePicker();
+  tpInput = inp;
+  const m = TP_RE.exec(inp.value || '');
+  tpH = m ? +m[1] : null; tpM = m ? +m[2] : null;
+  // název dialogu podle popisku pole (textContent, ne HTML)
+  const lbl = inp.closest('.fg')?.querySelector('.flbl')?.textContent?.trim();
+  tpEl.querySelector('#tp-title').textContent = lbl || 'Vyber čas';
+  const clearable = !inp.required && inp.dataset.timeClear !== '0';
+  tpEl.querySelector('[data-tp="clear"]').style.display = clearable ? '' : 'none';
+  renderTimePicker();
+  tpEl.classList.add('open');
+  history.pushState({type:'modal', id:'m-time-picker'}, '');
+  const first = tpEl.querySelector('.tp-cell.on') || tpEl.querySelector('.tp-cell');
+  setTimeout(() => { first.focus({preventScroll:true}); first.scrollIntoView({block:'nearest'}); }, 30);
+}
+
+function closeTimePicker(){
+  if (!tpEl) return;
+  tpEl.classList.remove('open');
+  const inp = tpInput; tpInput = null;
+  if (inp && document.contains(inp)) inp.focus({preventScroll:true});
+}
+
+function applyTimePicker(val){
+  const inp = tpInput;
+  closeTimePicker();
+  if (!inp) return;
+  inp.value = val;
+  // stávající oninput/onchange handlery (např. saveNotifSettings) se spustí jako u nativního pole
+  inp.dispatchEvent(new Event('input', {bubbles:true}));
+  inp.dispatchEvent(new Event('change', {bubbles:true}));
+}
+
+document.addEventListener('click', e => {
+  const inp = e.target.closest?.('input[data-time-picker]');
+  if (inp) { e.preventDefault(); openTimePicker(inp); }
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('input[data-time-picker]')) {
+    e.preventDefault(); openTimePicker(e.target);
+  }
+});
+
 // ── Android back button (popstate) ──────────────────────────────────────
 window.addEventListener('popstate', () => {
+  // 0. Výběr času leží nad ostatními modaly, zavírá se první
+  if (timePickerOpen()) { closeTimePicker(); return; }
   // 1. Zavři otevřený modal
   const openModal = document.querySelector('.moverlay.open, .modal-wrap.open');
   if(openModal) { cm(openModal.id); return; }
@@ -4465,14 +4589,46 @@ window.onEvShareGroupChange = () => {
   if (sel) selEvShareGroupId = sel.value || null;
 };
 
-// Slova kódu skupiny (WORD-NNNN) – seznam musí odpovídat firestore.rules (families create)
+// Slova kódu skupiny – seznam musí odpovídat firestore.rules (families create)
 const FAMILY_WORDS = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
-const FAMILY_CODE_RE = new RegExp('^(' + FAMILY_WORDS.join('|') + ')-[0-9]{4}$');
-function okFamilyCode(c) { return FAMILY_CODE_RE.test(String(c ?? '')); }
+// Nový kód WORD-XXXXXX: 6 znaků bez záměnných I, L, O, 0, 1 (přípona musí odpovídat firestore.rules)
+const FAMILY_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const FAMILY_CODE_RE = new RegExp('^(' + FAMILY_WORDS.join('|') + ')-[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$');
+// Starý kód WORD-NNNN – existující skupiny, jen pro připojení (vytvořit ho pravidla už nedovolí)
+const FAMILY_CODE_LEGACY_RE = new RegExp('^(' + FAMILY_WORDS.join('|') + ')-[0-9]{4}$');
+function okFamilyCode(c) { const s = String(c ?? ''); return FAMILY_CODE_RE.test(s) || FAMILY_CODE_LEGACY_RE.test(s); }
+// Náhodný index 0..n-1 z crypto.getRandomValues (bez zkreslení modulem)
+function rndIdx(n) {
+  const lim = 256 - (256 % n), b = new Uint8Array(1);
+  do { crypto.getRandomValues(b); } while (b[0] >= lim);
+  return b[0] % n;
+}
 function genFamilyCode() {
+  let s = '';
+  for (let i = 0; i < 6; i++) s += FAMILY_CODE_ALPHABET[rndIdx(FAMILY_CODE_ALPHABET.length)];
+  return FAMILY_WORDS[rndIdx(FAMILY_WORDS.length)] + '-' + s;
+}
+function genLegacyFamilyCode() {
   const w = FAMILY_WORDS[Math.floor(Math.random()*FAMILY_WORDS.length)];
   const n = String(Math.floor(1000+Math.random()*9000));
   return w+'-'+n;
+}
+// Založí dokument skupiny s novým kódem a vrátí kód (= ID dokumentu).
+// Přechod: dokud platí stará pravidla (jen WORD-NNNN), vrátí create permission-denied
+// a jednou se zkusí starý formát.
+// TODO: po nasazení nových firestore.rules fallback i genLegacyFamilyCode odstranit.
+async function createFamilyDoc(data) {
+  const code = genFamilyCode();
+  try {
+    await setDoc(doc(db,'families',code), {...data, code});
+    return code;
+  } catch(e) {
+    if(e?.code !== 'permission-denied') throw e;
+    console.warn('Nový kód skupiny odmítnut pravidly, zkouším starý formát');
+    const legacy = genLegacyFamilyCode();
+    await setDoc(doc(db,'families',legacy), {...data, code: legacy});
+    return legacy;
+  }
 }
 
 // presetName: pevný název (karta „Pozvat rodinu“); z inline onclick může přijít událost, proto typeof
@@ -4481,15 +4637,13 @@ window.createFamily = async (presetName) => {
   if(familyId) { toast('Už jsi ve skupině'); return; }
   const nameInp = document.getElementById('family-name-inp');
   const groupName = cutName(typeof presetName==='string' ? presetName : nameInp?.value, 40) || 'Moje skupina';
-  const code = genFamilyCode();
-  const fid = code; // kód = ID
   const data = {
-    code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
+    groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
   try {
-    await setDoc(doc(db,'families',fid), data);
+    const fid = await createFamilyDoc(data); // kód = ID
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: fid}, {merge:true});
     prof.familyId = fid;
     familyId = fid;
@@ -4513,7 +4667,7 @@ window.joinFamily = async (codeArg) => {
   if(!CU) return false;
   const raw = typeof codeArg === 'string' ? codeArg : document.getElementById('family-code-inp')?.value;
   const code = String(raw ?? '').trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-1234)'); return false; }
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-K7M2QX)'); return false; }
   // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
   if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return false; }
   try {
@@ -4676,7 +4830,7 @@ window.shareFamilyCode = async () => {
   return window.shareGroupInvite(familyId);
 };
 
-// ── Pozvánka do skupiny odkazem (?join=WORD-NNNN) ─────────
+// ── Pozvánka do skupiny odkazem (?join=WORD-XXXXXX, starší WORD-NNNN) ─────────
 // Při startu (i před přihlášením) se kód z URL ověří, uloží i s časem a z adresy se smaže.
 // Po přihlášení se appka zeptá; připojení se děje jen po kliknutí na „Připojit se“.
 const PENDING_JOIN_KEY = 'lp_pending_join';
@@ -4826,15 +4980,14 @@ window.createExtraGroup = async () => {
   if(!CU) return;
   const inp = document.getElementById('extra-group-name-inp');
   const groupName = cutName(inp?.value,40) || 'Nová skupina';
-  const code = genFamilyCode();
   const data = {
-    code, groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
+    groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
     shareShop: false, shareCal: true, shareMeal: false, shareChecklist: false
   };
   const prevIds = extraGroupIds;
   try {
-    await setDoc(doc(db,'families',code), data);
+    const code = await createFamilyDoc(data);
     extraGroupIds = [...extraGroupIds, code];
     await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
     prof.extraGroupIds = extraGroupIds;
@@ -4856,7 +5009,7 @@ window.joinExtraGroup = async (codeArg) => {
   const inp = document.getElementById('extra-group-join-code');
   const raw = typeof codeArg === 'string' ? codeArg : inp?.value;
   const code = String(raw ?? '').trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-1234)'); return false; }
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-K7M2QX)'); return false; }
   if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return false; }
   const prevIds = extraGroupIds;
   try {
@@ -5179,7 +5332,7 @@ function renderFamilySettings() {
     +'<input class="finp" id="extra-group-name-inp" placeholder="Název skupiny (Kamarádi, Spolubydlící…)" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
     +'<button class="btn-p" onclick="createExtraGroup()" style="width:100%;margin-bottom:10px">Vytvořit skupinu</button>'
     +'<div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">— nebo připojit se kódem —</div>'
-    +'<input class="finp" id="extra-group-join-code" placeholder="XXXX-1234" maxlength="9" oninput="this.value=this.value.toUpperCase()" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
+    +'<input class="finp" id="extra-group-join-code" placeholder="ADAM-K7M2QX" maxlength="16" oninput="this.value=this.value.toUpperCase()" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
     +'<button class="btn-sv" onclick="joinExtraGroup()" style="width:100%">Připojit se →</button>'
     +'</div>'
     +'<button onclick="showExtraGroupForm()" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:\'Crimson Pro\',serif;font-size:14px;cursor:pointer">➕ Přidat skupinu</button>';

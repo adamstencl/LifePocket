@@ -111,6 +111,18 @@ try {
   if (!codeRe) fail('FAMILY_CODE_RE v app.js má neočekávaný tvar, nelze porovnat příponu');
   else if (codeRe[1] !== rm[2]) fail('přípona kódu se liší; app.js: ' + codeRe[1] + ', pravidla: ' + rm[2]);
   else ok('přípona kódu rodiny shodná (' + rm[2] + ')');
+  // Generátor (FAMILY_CODE_ALPHABET) musí používat přesně znaky z třídy v pravidlech
+  const alpha = appSrc.match(/const\s+FAMILY_CODE_ALPHABET\s*=\s*'([^']+)'/);
+  const cls = rm[2].match(/\[([^\]]+)\]/);
+  if (!alpha || !cls) fail('FAMILY_CODE_ALPHABET nebo znaková třída v pravidle nenalezena');
+  else {
+    const set = [];
+    cls[1].replace(/(.)-(.)|(.)/g, (m, a, b, c) => {
+      if (c) set.push(c); else for (let i = a.charCodeAt(0); i <= b.charCodeAt(0); i++) set.push(String.fromCharCode(i));
+    });
+    if ([...alpha[1]].sort().join('') !== set.sort().join('')) fail('FAMILY_CODE_ALPHABET (' + alpha[1] + ') neodpovídá třídě v pravidle [' + cls[1] + ']');
+    else ok('abeceda kódu shodná s pravidlem (' + alpha[1].length + ' znaků)');
+  }
 } catch (e) { fail('FAMILY_WORDS: ' + e.message); }
 
 console.log('CACHE v sw.js vs. změněné soubory');

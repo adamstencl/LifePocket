@@ -554,6 +554,29 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .modal{background:var(--card);border:1px solid var(--border2);border-radius:20px;padding:22px;width:480px;max-width:96vw;max-height:calc(100dvh - 32px);overflow-y:auto;box-shadow:0 30px 60px rgba(0,0,0,.6);animation:mIn2 .3s cubic-bezier(.16,1,.3,1);margin:auto 0}
 @keyframes mIn2{from{opacity:0;transform:scale(.94) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+/* ── Vlastní výběr času (data-time-picker) – bottom sheet nad .bottom-nav i nad modaly ── */
+.time-picker-inp{cursor:pointer;caret-color:transparent;-webkit-user-select:none;user-select:none;font-variant-numeric:tabular-nums}
+.time-picker-inp::placeholder{color:var(--text3);opacity:1}
+.tp-overlay{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center;padding-top:env(safe-area-inset-top)}
+.tp-overlay.open{display:flex;animation:fadeIn .15s ease}
+.tp-sheet{width:100%;max-width:420px;max-height:calc(100dvh - env(safe-area-inset-top) - 8px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border2);border-bottom:none;border-radius:20px 20px 0 0;padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));box-shadow:0 -12px 40px rgba(0,0,0,.45)}
+.tp-head{flex:none;text-align:center}
+.tp-title{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp-preview-row{display:flex;align-items:center;justify-content:center;gap:16px;margin:4px 0 8px}
+.tp-preview{font-size:40px;line-height:44px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.2em}
+.tp-step{min-width:52px;min-height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--border2);color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer}
+.tp-cols{flex:1 1 auto;min-height:0;overflow-y:auto;display:grid;grid-template-columns:3fr 2fr;gap:12px}
+.tp-lbl{font-size:12px;color:var(--text3);margin-bottom:4px;text-align:center}
+.tp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tp-grid-m{grid-template-columns:repeat(2,1fr)}
+.tp-cell{min-height:44px;padding:0;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'Crimson Pro',serif;font-size:17px;font-variant-numeric:tabular-nums;cursor:pointer}
+.tp-cell.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.tp-cell:focus-visible,.tp-step:focus-visible,.tp-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tp-actions{flex:none;display:flex;gap:8px;margin-top:10px}
+.tp-actions button{flex:1;min-height:44px;padding:8px 10px;font-size:16px;box-shadow:none}
+.tp-actions .btn-p:disabled{opacity:.45;cursor:default}
+@media(min-width:600px){.tp-overlay{align-items:center}.tp-sheet{border-bottom:1px solid var(--border2);border-radius:20px}}
+[data-theme="sunshine"] .tp-overlay,[data-theme="tangerine"] .tp-overlay{background:rgba(0,0,0,.4)}
 .mtitle{font-family:'Playfair Display',serif;font-style:italic;font-size:21px;font-weight:700;color:var(--text);margin-bottom:18px}
 .fg{margin-bottom:14px}
 .flbl{font-size:13px;color:var(--text2);font-weight:600;margin-bottom:5px;display:block;letter-spacing:.04em}
@@ -746,9 +769,9 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   #meal-toggle-shared,#meal-toggle-personal{padding:3px 8px;font-size:11px}
 
   /* ── DOTYKOVÁ ZÓNA — datum/čas inputy ── */
-  input[type="date"].finp,input[type="time"].finp{min-height:44px}
+  input[type="date"].finp,input[type="time"].finp,.finp[data-time-picker]{min-height:44px}
   /* rezerva pro spodní navigaci, aby políčko nebylo pod ní */
-  input[type="date"],input[type="time"],input[type="datetime-local"]{scroll-margin-bottom:calc(90px + env(safe-area-inset-bottom))}
+  input[type="date"],input[type="time"],input[type="datetime-local"],input[data-time-picker]{scroll-margin-bottom:calc(90px + env(safe-area-inset-bottom))}
 
   /* ── DOTYKOVÁ ZÓNA — malá tlačítka v kartách ── */
   .btn-xs{min-height:36px;min-width:32px;padding:6px 8px;font-size:16px}

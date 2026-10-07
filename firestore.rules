@@ -29,13 +29,21 @@ service cloud.firestore {
       // List celé kolekce: nikdo — jinak by šla vypsat jména členů všech rodin
       allow list: if false;
       // Vytvoření: přihlášený uživatel, který je v members,
-      // a ID skupiny má formát WORD-NNNN (slova = genFamilyCode v app.js)
+      // a ID skupiny má nový formát WORD-XXXXXX (slova = FAMILY_WORDS v app.js,
+      // 6 znaků z abecedy ABCDEFGHJKMNPQRSTUVWXYZ23456789 = bez I, L, O, 0, 1;
+      // ~887 mil. kombinací na slovo, kód nejde uhodnout). Starý formát WORD-NNNN
+      // už vytvořit nejde; existující skupiny s ním dál fungují (get/update).
+      // Limit členů: max 8 (hlavní skupina 6, vedlejší 8 – typ v dokumentu není, proto maximum).
       allow create: if request.auth != null
         && request.auth.uid in request.resource.data.members
-        && familyId.matches('^(ADAM|ANNA|BARA|DOMA|ELAN|FARA|HANA|JANA|KARA|LARA|MARA|NORA|PATA|RANA|SARA|TARA)-[0-9]{4}$');
+        && request.resource.data.members.size() <= 8
+        && familyId.matches('^(ADAM|ANNA|BARA|DOMA|ELAN|FARA|HANA|JANA|KARA|LARA|MARA|NORA|PATA|RANA|SARA|TARA)-[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$');
       // Aktualizace: stávající člen NEBO ne-člen, který POUZE přidává sám sebe
-      // do members (join přes kód) — nic jiného měnit nesmí
-      allow update: if request.auth != null && (
+      // do members (join přes kód) — nic jiného měnit nesmí.
+      // Max 8 členů (viz create); zmenšování skupiny (odchod/odebrání) projde vždy.
+      allow update: if request.auth != null
+        && (request.resource.data.members.size() <= 8 || request.resource.data.members.size() < resource.data.members.size())
+        && (
         request.auth.uid in resource.data.members
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
