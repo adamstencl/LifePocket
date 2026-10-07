@@ -4185,16 +4185,19 @@ window.showJoinFamily = () => {
   document.getElementById('family-code-inp').focus();
 };
 
-window.joinFamily = async () => {
-  const code = document.getElementById('family-code-inp').value.trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-1234)'); return; }
+// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři. Vrací true při úspěchu.
+window.joinFamily = async (codeArg) => {
+  if(!CU) return false;
+  const raw = typeof codeArg === 'string' ? codeArg : document.getElementById('family-code-inp')?.value;
+  const code = String(raw ?? '').trim().toUpperCase();
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-1234)'); return false; }
   // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
-  if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return; }
+  if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return false; }
   try {
     const fSnap = await getDoc(doc(db,'families',code));
-    if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return; }
+    if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return false; }
     const fData = fSnap.data();
-    if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return; }
+    if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return false; }
     // Přidej sebe do skupiny
     await setDoc(doc(db,'families',code), {
       members: { ...fData.members, [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
@@ -4202,11 +4205,12 @@ window.joinFamily = async () => {
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: code}, {merge:true});
     prof.familyId = code;
     familyId = code;
-    document.getElementById('family-join-form').style.display='none';
+    const jf = document.getElementById('family-join-form'); if(jf) jf.style.display='none';
     subscribeFamily();
     renderFamilySettings();
     toast('✅ Připojen k rodinné skupině!');
-  } catch(e) { toast('❌ Chyba: '+e.message); }
+    return true;
+  } catch(e) { toast('❌ Chyba: '+e.message); return false; }
 };
 
 window.leaveFamily = async () => {
@@ -4239,15 +4243,91 @@ window.copyFamilyCode = () => {
   navigator.clipboard.writeText(familyId).then(()=>toast('📋 Kód zkopírován!'));
 };
 
-window.shareFamilyCode = async () => {
-  if(!familyId) return;
-  const text = `Připoj se k naší rodině v LifePocket!\nKód skupiny: ${familyId}\nhttps://lifepocket.app/`;
+// Pozvánka do skupiny: odkaz ?join=KÓD (po přihlášení se appka zeptá, zda se připojit)
+window.shareGroupInvite = async (gid) => {
+  if(!okFamilyCode(gid)) return;
+  const url = 'https://lifepocket.app/?join=' + encodeURIComponent(gid);
+  const text = 'Připoj se k naší skupině v LifePocket! Kód skupiny: ' + gid;
   if(navigator.share) {
-    try { await navigator.share({title:'LifePocket – rodinná skupina', text}); }
+    try { await navigator.share({title:'LifePocket – pozvánka do skupiny', text, url}); }
     catch(e) { if(e.name!=='AbortError') toast('❌ Sdílení selhalo'); }
   } else {
-    navigator.clipboard.writeText(familyId).then(()=>toast('📋 Kód zkopírován do schránky'));
+    try { await navigator.clipboard.writeText(text + '\n' + url); toast('📋 Odkaz na pozvánku zkopírován'); }
+    catch(e) { toast('❌ Odkaz se nepodařilo zkopírovat'); }
   }
+};
+window.shareFamilyCode = async () => {
+  if(!familyId) return;
+  return window.shareGroupInvite(familyId);
+};
+
+// ── Pozvánka do skupiny odkazem (?join=WORD-NNNN) ─────────
+// Při startu (i před přihlášením) se kód z URL ověří, uloží i s časem a z adresy se smaže.
+// Po přihlášení se appka zeptá; připojení se děje jen po kliknutí na „Připojit se“.
+const PENDING_JOIN_KEY = 'lp_pending_join';
+const PENDING_JOIN_TTL = 7*24*3600*1000; // starší pozvánka se zahodí
+function capturePendingJoin() {
+  try {
+    const u = new URL(location.href);
+    if(!u.searchParams.has('join')) return;
+    const code = String(u.searchParams.get('join') ?? '').trim().slice(0,20).toUpperCase();
+    u.searchParams.delete('join');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({code, ts: Date.now()}));
+  } catch(e) {}
+}
+capturePendingJoin();
+function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} }
+// Vrátí platnou nevypršelou pozvánku {code, ts}, jinak ji smaže a vrátí null
+function readPendingJoin() {
+  try {
+    const raw = localStorage.getItem(PENDING_JOIN_KEY);
+    if(!raw) return null;
+    const p = JSON.parse(raw);
+    const age = Date.now() - Number(p?.ts);
+    if(p && okFamilyCode(p.code) && age >= -60000 && age < PENDING_JOIN_TTL) return {code: p.code, ts: p.ts};
+  } catch(e) {}
+  clearPendingJoin();
+  return null;
+}
+function closeJoinInviteModal() { document.getElementById('join-invite-modal')?.remove(); }
+function showJoinInviteModal(name) {
+  closeJoinInviteModal();
+  const body = name === null
+    ? '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">Skupina nenalezena. Požádej odesílatele o nový odkaz.</div>'
+      +'<button class="btn-p" onclick="cancelPendingJoin()">Zavřít</button>'
+    : '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">Chceš se připojit do skupiny <b>'+esc(name)+'</b>?</div>'
+      +'<div style="display:flex;gap:10px"><button class="btn-p" style="flex:1" onclick="confirmPendingJoin()">Připojit se</button>'
+      +'<button class="btn-p" style="flex:1;background:var(--card2);color:var(--text2)" onclick="cancelPendingJoin()">Zrušit</button></div>';
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    '<div class="moverlay open" id="join-invite-modal" onclick="if(event.target===this)cancelPendingJoin()">'
+    +'<div class="modal" style="max-width:380px;gap:0"><div style="font-size:36px;text-align:center;margin-bottom:8px">🔗</div>'
+    +'<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:14px">Pozvánka do skupiny</div>'
+    +body+'</div></div>');
+}
+// Po přihlášení a načtení profilu (volá initApp): zjistí název skupiny a zeptá se
+async function checkPendingJoin() {
+  try {
+    if(!CU || !prof || document.getElementById('join-invite-modal')) return;
+    const p = readPendingJoin();
+    if(!p) return;
+    if(p.code === familyId || p.code === prof.familyId || (prof.extraGroupIds||[]).includes(p.code) || extraGroupIds.includes(p.code)) {
+      clearPendingJoin(); toast('Už jsi v této skupině'); return;
+    }
+    const snap = await getDoc(doc(db,'families',p.code));
+    if(!CU || !readPendingJoin()) return;
+    if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); return; }
+    showJoinInviteModal(cutName(snap.data().groupName,40) || 'Skupina');
+  } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště
+}
+window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); };
+window.confirmPendingJoin = async () => {
+  const p = readPendingJoin();
+  closeJoinInviteModal();
+  clearPendingJoin();
+  if(!p) return;
+  // Hlavní skupinu ještě nemám → hlavní, jinak přidaná
+  if(familyId) await window.joinExtraGroup(p.code); else await window.joinFamily(p.code);
 };
 
 window.saveFamilyPrefs = async () => {
@@ -4327,18 +4407,20 @@ window.createExtraGroup = async () => {
     toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
   }
 };
-window.joinExtraGroup = async () => {
-  if(!CU) return;
+// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři. Vrací true při úspěchu.
+window.joinExtraGroup = async (codeArg) => {
+  if(!CU) return false;
   const inp = document.getElementById('extra-group-join-code');
-  const code = (inp?.value || '').trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-1234)'); return; }
-  if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return; }
+  const raw = typeof codeArg === 'string' ? codeArg : inp?.value;
+  const code = String(raw ?? '').trim().toUpperCase();
+  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-1234)'); return false; }
+  if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return false; }
   const prevIds = extraGroupIds;
   try {
     const fSnap = await getDoc(doc(db,'families',code));
-    if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return; }
+    if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return false; }
     const fData = fSnap.data();
-    if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return; }
+    if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return false; }
     await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
@@ -4346,14 +4428,16 @@ window.joinExtraGroup = async () => {
     await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
     prof.extraGroupIds = extraGroupIds;
     subscribeExtraGroup(code);
-    document.getElementById('extra-group-form').style.display = 'none';
+    const gf = document.getElementById('extra-group-form'); if(gf) gf.style.display = 'none';
     if(inp) inp.value = '';
     renderFamilySettings();
     toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
+    return true;
   } catch(e) {
     extraGroupIds = prevIds;
     console.warn('joinExtraGroup selhalo', e?.code || e?.name);
     toast('❌ Nepodařilo se připojit ke skupině, zkus to znovu');
+    return false;
   }
 };
 window.leaveExtraGroup = async (gid) => {
@@ -4551,10 +4635,10 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
     +'<div class="family-code-box" style="margin-bottom:12px">'
     +'<div class="family-code">'+esc(gid)+'</div>'
-    +'<div class="family-code-lbl">Pošli tento kód ostatním členům</div>'
+    +'<div class="family-code-lbl">Pošli tento kód nebo odkaz ostatním členům</div>'
     +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
     +'<button data-gid="'+gidAttr+'" onclick="navigator.clipboard.writeText(this.dataset.gid).then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
-    +'<button data-gid="'+gidAttr+'" onclick="navigator.share&&navigator.share({title:\'LifePocket\',text:\'Připoj se ke skupině: \'+this.dataset.gid,url:\'https://lifepocket.app/\'})" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
+    +'<button data-gid="'+gidAttr+'" onclick="shareGroupInvite(this.dataset.gid)" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
     +'</div></div>'
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
     +membersHtml
@@ -5485,6 +5569,8 @@ async function initApp(){
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
   else if(prof.extraGroupIds?.length){extraGroupIds=prof.extraGroupIds;for(const gid of extraGroupIds)subscribeExtraGroup(gid);}
+  // Pozvánka do skupiny odkazem (?join=) – po changelogu, jen dotaz, nikdy automaticky
+  setTimeout(checkPendingJoin,2200);
 }
 
 function buildNav(){
