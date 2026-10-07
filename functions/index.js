@@ -449,3 +449,124 @@ exports.sendScheduledNotifications = onSchedule(
     console.log(`[LP] Cron hotovo, odesláno ${sentTotal} notifikací`);
   }
 );
+
+// ── Denní anonymní statistiky pro správce ────────────────────────────────────
+// Běží v 03:10 (Europe/Prague) a zapisuje jen souhrnná čísla do config/stats_daily/days/{den}.
+// {den} = pražské datum VČEREJŠKA (poslední celý den). Okna active1d/7d/30d, newUsers a
+// errorLogs24h se počítají od okamžiku běhu dozadu (24 h, 7 dní, 30 dní).
+// aiCallsToday = součet rateLimits.count s date == {den}; kdo použil AI už po půlnoci, má
+// v rateLimits nový den, takže jeho včerejší volání chybí (malé podhodnocení, přijatelné).
+// Nikam se nezapisují ani nelogují uid, e-maily, jména ani texty. config/** je pro klienty zavřené.
+const STATS_BATCH = 20;
+
+// Čas v ms z ISO řetězce, Firestore Timestamp, Date nebo čísla; jinak null
+function toMillis(v) {
+  if (!v) return null;
+  if (typeof v === 'string') { const t = Date.parse(v); return isNaN(t) ? null : t; }
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v.getTime();
+  if (typeof v.toMillis === 'function') { try { return v.toMillis(); } catch(e) { return null; } }
+  return null;
+}
+
+// Pražské datum YYYY-MM-DD pro daný okamžik
+function pragueDS(date) {
+  return new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(date);
+}
+
+exports.dailyStats = onSchedule(
+  {schedule: '10 3 * * *', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 540},
+  async () => {
+    const now = Date.now();
+    const DAY = 86400000;
+    const statDay = pragueDS(new Date(now - DAY)); // včerejšek v Praze (03:10 − 24 h je vždy včera i přes změnu času)
+    const s = {
+      usersTotal: 0, active1d: 0, active7d: 0, active30d: 0,
+      newUsers1d: 0, newUsers7d: 0, withPushToken: 0,
+      familiesTotal: 0, familyMembersAvg: 0, aiCallsToday: 0,
+      errorLogs24h: null, errorLogsTotal: null, profileErrors: 0,
+    };
+
+    // 1) Uživatelé a profily (paralelně po dávkách; chyba u jednoho neshodí běh)
+    const userRefs = await db.collection('users').listDocuments();
+    s.usersTotal = userRefs.length;
+    const missingCreated = new Set(); // uid jen v paměti, pro dohledání v Auth; nikam se neukládá
+    for (let i = 0; i < userRefs.length; i += STATS_BATCH) {
+      const chunk = userRefs.slice(i, i + STATS_BATCH);
+      const res = await Promise.allSettled(chunk.map(r => db.doc(`users/${r.id}/profile/main`).get()));
+      res.forEach((r, j) => {
+        if (r.status !== 'fulfilled') { s.profileErrors++; return; }
+        if (!r.value.exists) { missingCreated.add(chunk[j].id); return; }
+        const p = r.value.data() || {};
+        const seen = toMillis(p.lastSeen);
+        if (seen !== null) {
+          const age = now - seen;
+          if (age <= DAY) s.active1d++;
+          if (age <= 7 * DAY) s.active7d++;
+          if (age <= 30 * DAY) s.active30d++;
+        }
+        const created = toMillis(p.createdAt);
+        if (created === null) missingCreated.add(chunk[j].id);
+        else {
+          if (now - created <= DAY) s.newUsers1d++;
+          if (now - created <= 7 * DAY) s.newUsers7d++;
+        }
+        if (collectTokens(p).length) s.withPushToken++;
+      });
+    }
+
+    // 2) Profil bez createdAt (starší účty, nedokončený onboarding) → datum vytvoření z Firebase Auth
+    if (missingCreated.size) {
+      try {
+        const {getAuth} = require('firebase-admin/auth');
+        let pageToken;
+        do {
+          const page = await getAuth().listUsers(1000, pageToken);
+          for (const u of page.users) {
+            if (!missingCreated.has(u.uid)) continue;
+            const created = toMillis(u.metadata && u.metadata.creationTime);
+            if (created === null) continue;
+            if (now - created <= DAY) s.newUsers1d++;
+            if (now - created <= 7 * DAY) s.newUsers7d++;
+          }
+          pageToken = page.pageToken;
+        } while (pageToken);
+      } catch(e) { console.error('[LP] dailyStats Auth:', e.code || e.message); }
+    }
+    missingCreated.clear();
+
+    // 3) Rodinné skupiny
+    try {
+      const famSnap = await db.collection('families').get();
+      s.familiesTotal = famSnap.size;
+      let members = 0;
+      famSnap.forEach(d => { const m = d.data().members; if (m && typeof m === 'object') members += Object.keys(m).length; });
+      s.familyMembersAvg = famSnap.size ? Math.round(members / famSnap.size * 10) / 10 : 0;
+    } catch(e) { console.error('[LP] dailyStats families:', e.code || e.message); }
+
+    // 4) AI volání za den statistiky
+    try {
+      const rl = await db.collection('rateLimits').where('date', '==', statDay).get();
+      rl.forEach(d => { const c = Number(d.data().count); if (c > 0) s.aiCallsToday += c; });
+    } catch(e) { console.error('[LP] dailyStats rateLimits:', e.code || e.message); }
+
+    // 5) Chyby: errorLogs.ts je ISO řetězec (UTC). Filtr na collection group potřebuje index
+    // (single-field index pro rozsah collection group); bez něj spadneme na celkový počet.
+    try {
+      const since = new Date(now - DAY).toISOString();
+      const agg = await db.collectionGroup('errorLogs').where('ts', '>=', since).count().get();
+      s.errorLogs24h = agg.data().count;
+    } catch(e) {
+      console.error('[LP] dailyStats errorLogs24h bez indexu:', e.code || e.message);
+      try { s.errorLogsTotal = (await db.collectionGroup('errorLogs').count().get()).data().count; }
+      catch(e2) { console.error('[LP] dailyStats errorLogs:', e2.code || e2.message); }
+    }
+
+    await db.doc(`config/stats_daily/days/${statDay}`).set({
+      ...s, date: statDay, generatedAt: new Date().toISOString(), version: 1,
+    });
+    console.log(`[LP] dailyStats ${statDay}: users=${s.usersTotal} a1=${s.active1d} a7=${s.active7d} a30=${s.active30d} `
+      + `new1=${s.newUsers1d} new7=${s.newUsers7d} push=${s.withPushToken} fam=${s.familiesTotal} famAvg=${s.familyMembersAvg} `
+      + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors}`);
+  }
+);
