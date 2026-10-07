@@ -21,8 +21,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.22';
+const APP_VERSION = '4.23';
 const CHANGELOG = [
+  { v:'4.23', items:[
+    '🔗 Pozvánku do skupiny pošleš odkazem – kdo na něj klikne, po přihlášení jen potvrdí připojení',
+    '⚡ Rychlejší první načtení – QR kód pro podporu projektu se načte až ve chvíli, kdy ho otevřeš',
+    '🗓️ Rex teď vidí události v kalendáři 90 dní dopředu',
+    '🛠️ Appka sama zaznamenává technické chyby, ať je opravíme rychleji (bez tvých dat)',
+  ]},
   { v:'4.22', items:[
     '🤖 Rex teď zná všechny moduly: kalendář, nákupy, zásoby, jídelníček, zdraví i rodinu – zeptej se ho na cokoliv z appky',
     '🔒 Rex bere obsah tvých položek jen jako data, ne jako pokyny',
@@ -361,6 +367,64 @@ function destroyAllFireSubs() {
   Object.keys(_fireSubs).forEach(k => { if (_fireSubs[k]) _fireSubs[k](); delete _fireSubs[k]; });
 }
 // ──────────────────────────────────────────────────────────
+
+// ── Zapisovač technických chyb (bez osobních dat) ─────────
+// Do users/{uid}/errorLogs jde jen očištěná zpráva, místo v kódu, začátek stacku, verze a zkrácený UA.
+// Nikdy se nezapisuje obsah zápisků, jména, e-maily ani ID z Firestore. Max 15 záznamů za relaci, bez duplicit.
+const ERRLOG_MAX = 15;
+let _errLogCount = 0;
+const _errLogSeen = new Set();
+function errClean(v, max) {
+  let t = String(v ?? '');
+  t = t.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]');                       // e-maily
+  t = t.replace(/(https?:\/\/[^\s/'")]+)([^\s?#'")]*)[?#][^\s'")]*/g, '$1$2');   // parametry a #hash v URL
+  t = t.replace(/https?:\/\/(?:www\.)?lifepocket\.app/g, '');                   // vlastní origin zkracuje
+  t = t.replace(/\b(users|families)\/[^\s/'")]+/g, '$1/[id]'); // cesty v Firestore
+  t = t.replace(/\b[A-Z]{4}-\d{4}\b/g, '[kod]');                                // kódy skupin
+  t = t.replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[id]');                              // dlouhé identifikátory
+  if (/JSON/i.test(t)) t = t.replace(/"[^"]*"/g, '"…"');                         // chyby JSON.parse citují text
+  t = t.replace(/(['"`])[^'"`]{31,}\1/g, '$1…$1');                              // dlouhé citované řetězce
+  t = t.replace(/\s+/g, ' ').trim();
+  return t.slice(0, max);
+}
+function logClientError(msg, src, stack) {
+  try {
+    if (!CU || _errLogCount >= ERRLOG_MAX || navigator.onLine === false) return;
+    const m = errClean(msg, 300);
+    if (!m) return;
+    const sr = errClean(src, 80);
+    const key = m + '|' + sr;
+    if (_errLogSeen.has(key)) return;
+    _errLogSeen.add(key);
+    _errLogCount++;
+    const rec = { msg: m, src: sr, stack: errClean(stack, 500), ts: new Date().toISOString(), v: APP_VERSION, ua: String(navigator.userAgent || '').slice(0, 120) };
+    // Neblokuje UI; selhání zápisu se tiše zahodí (bez rekurze – chyba zápisu se do logu nezapisuje)
+    const uid = CU.uid;
+    Promise.resolve().then(() => addDoc(collection(db, 'users', uid, 'errorLogs'), rec)).catch(() => {});
+  } catch (e) {}
+}
+window.addEventListener('error', ev => {
+  try {
+    const m = String(ev.message || '');
+    const f = String(ev.filename || '');
+    if (!m || m === 'Script error.' || /ResizeObserver loop/i.test(m)) return;  // bez detailu / neškodné
+    if (!f.startsWith(location.origin)) return;                                  // rozšíření prohlížeče a cizí skripty
+    logClientError(m, f.replace(location.origin, '').replace(/[?#].*$/, '') + ':' + (ev.lineno || 0), ev.error && ev.error.stack);
+  } catch (e) {}
+});
+window.addEventListener('unhandledrejection', ev => {
+  try {
+    const r = ev.reason;
+    const stack = r && typeof r === 'object' ? String(r.stack || '') : '';
+    if (/-extension:\/\//i.test(stack)) return;                                   // rozšíření prohlížeče
+    let m;
+    if (r instanceof Error) m = (r.name || 'Error') + ': ' + (r.code && /^[\w/-]{1,60}$/.test(r.code) ? r.code + ' ' : '') + (r.message || '');
+    else m = 'Neošetřené odmítnutí (' + (r === null ? 'null' : typeof r) + ')'; // text nečteme, může být z dat uživatele
+    if (/ResizeObserver loop|AbortError/i.test(m)) return;
+    const first = (stack.match(/(?:https?:\/\/[^\s)]+)/) || [''])[0];
+    logClientError(m, first.replace(location.origin, '').replace(/[?#][^:]*/, ''), stack);
+  } catch (e) {}
+});
 
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;claimLocalDataOwner(u.uid);const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
