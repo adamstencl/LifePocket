@@ -70,3 +70,7 @@ node_modules/
 
 # Firebase service account key — NIKDY do gitu!
 *firebase-adminsdk*.json
+
+# Pracovní kopie agentů a lokální nastavení Claude Code
+.claude/worktrees/
+.claude/settings.local.json

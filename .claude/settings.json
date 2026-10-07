@@ -1,5 +1,35 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits"
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(node --check app.js)",
+      "Bash(node --check sw.js)",
+      "Bash(node --check pwa.js)",
+      "Bash(node --check functions/index.js)",
+      "Bash(firebase functions:list)",
+      "Bash(firebase functions:log *)",
+      "Bash(firebase --version)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push origin main)",
+      "Bash(git merge --ff-only *)",
+      "Bash(git worktree list)",
+      "Bash(firebase deploy --only functions)",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__Claude_Browser__read_network_requests",
+      "mcp__Claude_Browser__tabs_context",
+      "mcp__Claude_Browser__preview_list",
+      "mcp__Claude_Browser__preview_logs",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_list",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__find",
+      "mcp__Claude_in_Chrome__list_connected_browsers"
+    ]
   }
 }
