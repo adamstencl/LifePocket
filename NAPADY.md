@@ -484,3 +484,20 @@ Zvážit realističtější vizuální styl místo hodně kresleného.
 
 ### 🎯 Cíl dne — plánovat dopředu
 Cíl dne (MIT) by se měl dát nastavit dopředu na celý týden — co mám udělat každý den.
+
+---
+
+## 🐞 Backlog z auditu 2026-10-07 (k opravě v dalších kolech)
+- AI autosave zápisku: detekce jídel, návyků a nálady běží při každém autosave (30 s) a vyčerpá limit 50. Spouštět jen při ručním uložení a změně textu.
+- Klientské notifikace se zdvojují se serverovými (ranní, návyky, události). Při `fcmState==='ok'` lokální plánování vypnout nebo sjednotit tagy.
+- `notifSettings` se čtou jen z localStorage, druhé zařízení přepíše server. `lp_notif` chybí v `LOCAL_PERSONAL_KEYS`.
+- Offline start: `getDoc(profile)` bez try/catch → nekonečný spinner.
+- `closest('div[style]')` zavírá jen část okna (přidat jídlo, jídlo z plánu → dvojí zápis, konec průvodce nechá overlay).
+- Zdvojené položky po `addDoc` + ručním `push` (foodLogs, entries).
+- Technické a anglické hlášky v toastech a chatu → jedna funkce `userErr(e)`.
+- Jídelníček ve skupině: člen bez práv vidí „Navrhnout AI“ a přepíše celý plán.
+- Rex pozdrav běží po 4 s i bez načtených návyků.
+- pwa.js: instalační banner ignoruje `pwa-dismissed`.
+- Panel „Více“ a chat: pevných 68 px místo safe-area.
+- Přesun nákupu do skupiny bez try/catch, výchozí checklist „Úkoly“ se může vytvořit dvakrát.
+- Kód skupiny jde uhodnout (144 000 kombinací), limit členů hlídá jen klient. Vyžaduje změnu pravidel (ANO).
