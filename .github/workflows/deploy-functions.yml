@@ -1,0 +1,88 @@
+name: Deploy functions
+
+# Nasazení Cloud Functions po změně functions/** nebo firebase.json (jen z main) a ručně.
+# Tajemství FIREBASE_SERVICE_ACCOUNT se použije jen v jobu deploy; PR z forků tento workflow nespouštějí.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Jedno nasazení naráz; rozběhnuté se nepřerušuje (přerušený deploy může nechat funkce v půlce)
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Nasazení funkcí
+    needs: ci
+    # Jen z main v původním repu (ruční spuštění z jiné větve se zamítne)
+    if: github.ref == 'refs/heads/main' && github.repository == 'adamstencl/LifePocket'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Závislosti funkcí
+        run: npm ci
+        working-directory: functions
+
+      - name: Firebase CLI
+        run: npm install -g firebase-tools@15
+
+      # Klíč servisního účtu jde do dočasného souboru mimo repo (jen pro vlastníka), po běhu se maže
+      - name: Přihlášení servisním účtem
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Chybí secret FIREBASE_SERVICE_ACCOUNT (postup je v docs/GITHUB-ACTIONS.md)"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-sa.json" >> "$GITHUB_ENV"
+
+      # Bez --force: --force by v CI bez ptaní SMAZALO funkce, které zmizí z index.js.
+      # Po úspěšném nasazení CLI někdy skončí kódem 1 kvůli cleanup policy v Artifact Registry
+      # ("Functions successfully deployed but could not set up cleanup policy"). Jen tuhle konkrétní
+      # chybu bereme jako úspěch (s varováním); každá jiná chyba shodí běh.
+      - name: Nasazení funkcí
+        run: |
+          set +e
+          firebase deploy --only functions --project lifepocket-d8f0e --non-interactive 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -qi "successfully deployed but could not set up cleanup policy" "$RUNNER_TEMP/deploy.log" \
+            && ! grep -qi "deploy had errors" "$RUNNER_TEMP/deploy.log" \
+            && ! grep -qE "functions\[[^]]*\].*Error" "$RUNNER_TEMP/deploy.log"; then
+            echo "::warning::Funkce nasazeny, jen se nenastavila cleanup policy v Artifact Registry (jednorázově: firebase functions:artifacts:setpolicy --location europe-west1)"
+            exit 0
+          fi
+          echo "::error::Nasazení funkcí selhalo (kód $code)"
+          exit "$code"
+
+      - name: Smazání klíče
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-sa.json" "$RUNNER_TEMP/deploy.log"

@@ -1,0 +1,31 @@
+name: CI
+
+# Statické kontroly bez tajemství. Běží na každý push a PR do main
+# a jde je volat i z jiných workflow (deploy-functions, deploy-rules).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Kontroly (syntaxe, JSON, cache, verze, pravidla)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Syntaxe JS (app.js jako ES modul), JSON, OFFLINE_URLS, APP_VERSION vs. CHANGELOG, FAMILY_WORDS vs. firestore.rules
+      - name: Statické kontroly
+        run: node .github/scripts/ci-check.js
