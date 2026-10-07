@@ -26,7 +26,7 @@ const CHANGELOG = [
   { v:'4.22', items:[
     '🤖 Rex teď zná všechny moduly: kalendář, nákupy, zásoby, jídelníček, zdraví i rodinu – zeptej se ho na cokoliv z appky',
     '🔒 Rex bere obsah tvých položek jen jako data, ne jako pokyny',
-    '🔒 Při odhlášení se vyčistí data z tohoto zařízení',
+    '🔒 Při přihlášení jiného účtu na stejném zařízení se nepřenesou data předchozího účtu',
   ]},
   { v:'4.21', items:[
     '🔔 Notifikace fungují na víc zařízeních najednou – telefon, tablet i počítač',
@@ -363,7 +363,7 @@ function destroyAllFireSubs() {
 // ──────────────────────────────────────────────────────────
 
 onAuthStateChanged(auth,async u=>{
-  if(u){CU=u;const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
+  if(u){CU=u;claimLocalDataOwner(u.uid);const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
     // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
@@ -392,7 +392,19 @@ onAuthStateChanged(auth,async u=>{
   }
 });
 
-// Při odhlášení vyčistí osobní a rodinná data v paměti i v localStorage tohoto zařízení
+// Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
+const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists'];
+// Při přihlášení: lp_owner_uid chybí → jen ho nastaví (stávající data patří tomuto uživateli);
+// je jiný → smaže osobní lokální klíče předchozího uživatele. Nikdy nezablokuje přihlášení.
+function claimLocalDataOwner(uid){
+  try{
+    const owner=localStorage.getItem('lp_owner_uid');
+    if(owner&&owner!==uid) LOCAL_PERSONAL_KEYS.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+    if(owner!==uid) localStorage.setItem('lp_owner_uid',uid);
+  }catch(e){}
+}
+
+// Při odhlášení vyčistí osobní a rodinná data v paměti (localStorage zůstává, patří tomuto zařízení)
 function clearUserSessionState(){
   try{
     if(pantryUnsub){pantryUnsub();pantryUnsub=null;}
@@ -401,7 +413,6 @@ function clearUserSessionState(){
     chatH=[]; chatMemorySummary='';
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
-  ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
 }
 
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
@@ -6596,7 +6607,7 @@ const CTX_DOW_FULL = ['neděle','pondělí','úterý','středa','čtvrtek','pát
 // Odstraní sekvence, kterými by cizí text mohl podvrhnout ohraničení dat nebo akci chatu ([FOOD:, <data>, </data>)
 function ctxStrip(v){
   let s=String(v==null?'':v),prev;
-  do{prev=s;s=s.replace(/\[FOOD:|<\/?data\s*>/gi,'');}while(s!==prev);
+  do{prev=s;s=s.replace(/\[FOOD:|<\s*\/?\s*data[^>]*>/gi,'');}while(s!==prev);
   return s;
 }
 function ctxT(v,n){
@@ -6756,8 +6767,9 @@ function buildChatContext(){
       }
       return (s>=t0&&s<=t1)?s:null;
     };
-    const list=[];
+    const list=[],seenId=new Set();
     [...events.map(ev=>({ev,own:true})),...fam.map(ev=>({ev,own:false}))].forEach(({ev,own})=>{
+      if(ev&&ev.id){ if(seenId.has(ev.id)) return; seenId.add(ev.id); } // osobní + rodinná kopie téže události
       const o=first(ev);if(o) list.push({ev,own,o,ds:toDS(o)});
     });
     list.sort((a,b)=>a.ds.localeCompare(b.ds)||(okEvTime(a.ev.time)?a.ev.time:'').localeCompare(okEvTime(b.ev.time)?b.ev.time:''));
