@@ -6605,9 +6605,11 @@ const CTX_DOW = ['Ne','Po','Út','St','Čt','Pá','So'];
 const CTX_DOW_FULL = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
 // Jednořádkový ořez textu na max n znaků (bez řídicích znaků, base64 a data URL)
 // Odstraní sekvence, kterými by cizí text mohl podvrhnout ohraničení dat nebo akci chatu ([FOOD:, <data>, </data>)
-function ctxStrip(v){
-  let s=String(v==null?'':v),prev;
-  do{prev=s;s=s.replace(/\[FOOD:|<\s*\/?\s*data[^>]*>/gi,'');}while(s!==prev);
+// Vstup se nejdřív ořízne na cap znaků (regex pak běží v lineárním čase), kvantifikátory jsou omezené
+function ctxStrip(v,cap=2000){
+  let s=String(v==null?'':v).slice(0,cap),prev,i=0;
+  do{prev=s;s=s.replace(/\[FOOD:|<\s{0,10}\/?\s{0,10}data[^>]{0,100}>/gi,'');}while(s!==prev&&++i<6);
+  if(s!==prev) s=s.replace(/</g,''); // po 6 průchodech nic nepodvrhne: odstraň všechna '<'
   return s;
 }
 function ctxT(v,n){
@@ -6921,7 +6923,7 @@ window.send=async()=>{
   let chatCtx='';
   try{chatCtx=buildChatContext();}catch(e){chatCtx='';}
 
-  const memorySec = chatMemorySummary ? `\nPAMĚŤ (souhrn předchozích konverzací):\n${ctxStrip(chatMemorySummary)}\n` : '';
+  const memorySec = chatMemorySummary ? `\nPAMĚŤ (souhrn předchozích konverzací):\n${ctxStrip(chatMemorySummary,6000)}\n` : '';
   const sys=`Jsi ${av.name}, osobní AI společník uživatele ${prof.prezdivka||prof.nickname} v aplikaci LifePocket.
 Mluvíš česky, přátelsky a stručně (max 4-5 vět).
 Znáš všechny moduly uživatele (cíle, návyky, zápisky, checklisty, nákupy, kalendář, zásoby, jídelníček, recepty, zdraví, fokus, rodina). Pokud něco v datech není, řekni to, nevymýšlej.
