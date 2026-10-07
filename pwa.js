@@ -46,6 +46,8 @@ function showInstallBanner() {
   if (window.matchMedia('(display-mode: standalone)').matches) return;
   // Nezobrazuj na desktopu — banner je určen jen pro mobil
   if (!navigator.maxTouchPoints && window.innerWidth > 768) return;
+  // Uživatel banner už zavřel — znovu ho nenabízet
+  try { if (localStorage.getItem('pwa-dismissed')) return; } catch (e) { /* bez úložiště — ukaž */ }
   const banner = document.getElementById('pwa-banner');
   if (banner) banner.style.display = 'flex';
 }

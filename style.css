@@ -1,5 +1,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  /* výška spodní lišty: border 1 + padding 6 + tlačítko 44 + spodní padding se safe-area (viz .bottom-nav) */
+  --bn-h:calc(51px + max(8px, env(safe-area-inset-bottom)));
   --bg:#0c0c10;--card:#16161c;--card2:#1e1e26;--card3:#262630;
   --border:#252532;--border2:#32323f;
   --accent:#f5c842;--accent2:#e0954a;
@@ -368,7 +370,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 
 /* ASSISTANT */
 .asswrap{display:flex;flex-direction:column;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
-@media(max-width:640px){.asswrap{height:calc(100dvh - 56px - 68px)}.cinput-bar{padding-bottom:max(16px,env(safe-area-inset-bottom))}}
+@media(max-width:640px){.asswrap{height:calc(100dvh - 56px - var(--bn-h))}}
 .asstop{padding:10px 16px 0;flex-shrink:0}
 .dsum-bar{background:linear-gradient(135deg,rgba(91,156,246,.08),rgba(191,90,242,.06));border:1px solid rgba(91,156,246,.2);border-radius:12px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
 .dsum-bar span{flex:1;font-size:14px;color:var(--text2);min-width:140px;font-style:italic}
@@ -521,7 +523,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .bnbtn .bn-lbl{font-size:9px;font-family:'Crimson Pro',serif;font-weight:600;letter-spacing:0.03em}
 .bnbtn.active{color:var(--accent)}
 .bnbtn.active .bn-em{transform:scale(1.15)}
-.bn-more-panel{display:none;position:fixed;bottom:68px;left:0;right:0;background:rgba(20,20,24,.98);border-top:1px solid var(--border);padding:16px;backdrop-filter:blur(10px);z-index:199;flex-wrap:wrap;gap:10px;justify-content:center}
+.bn-more-panel{display:none;position:fixed;bottom:var(--bn-h);left:0;right:0;background:rgba(20,20,24,.98);border-top:1px solid var(--border);padding:16px;backdrop-filter:blur(10px);z-index:199;flex-wrap:wrap;gap:10px;justify-content:center}
 .bn-more-panel.open{display:flex}
 .bn-more-item{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;min-width:70px;text-align:center}
 .bn-more-item.active,.bn-more-item:hover{border-color:var(--accent);color:var(--accent)}

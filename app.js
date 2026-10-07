@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayRemove,runTransaction,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -21,8 +21,23 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.26';
+const APP_VERSION = '4.27';
 const CHANGELOG = [
+  { v:'4.27', items:[
+    '✍️ Psaní zápisků už neubírá AI dotazy – analýza proběhne jen při ručním uložení a jen když se text změnil',
+    '💾 Automatické ukládání zápisků je tiché, bez hlášky každých 30 sekund',
+    '📶 Bez signálu appka při spuštění ukáže hlášku s tlačítkem Zkusit znovu místo nekonečného načítání',
+    '🍽️ Okna pro přidání jídla se zavírají celá a jídlo se nezapíše dvakrát',
+    '🎉 Závěrečné okno průvodce se tlačítkem „Jdeme na to!“ zavře celé',
+    '💬 Srozumitelnější chybové hlášky (bez připojení, denní limit AI, přetížená AI, mikrofon)',
+    '🥗 Člen skupiny bez práv správce už nevidí „Navrhnout AI“ u sdíleného jídelníčku',
+    '🤖 Ranní pozdrav počká na načtení návyků',
+    '📲 Zavřená nabídka instalace aplikace se už znovu neukazuje',
+    '🛒 Přesun nákupu do skupiny proběhne naráz a při chybě se nic neztratí',
+    '📱 Panel „Více“ a chat sedí přesně nad spodní lištou i na iPhonu',
+    '🔔 Nastavení notifikací se načítá z účtu – platí stejně na všech zařízeních',
+    '👥 Odchod ze skupiny se v aplikaci projeví i při slabém signálu',
+  ]},
   { v:'4.26', items:[
     '👥 Odchod ze skupiny tě teď opravdu odebere ze seznamu členů',
     '👥 Když tě někdo ze skupiny odebere, aplikace ti ji sama přestane zobrazovat',
@@ -365,11 +380,9 @@ async function callClaude(messages, maxTokens = 500) {
     const result = await claudeProxyFn({messages, maxTokens});
     return result.data.text;
   } catch(e) {
-    const msg = e?.message || 'AI není k dispozici';
-    if (msg.includes('resource-exhausted') || msg.includes('limit')) {
-      toast('⚠️ Denní limit AI dotazů byl dosažen. Obnoví se zítra.');
-    }
-    throw new Error(msg);
+    // Denní limit aplikace (claudeProxy vrací resource-exhausted); rate limit Anthropicu přijde jako internal
+    if (e?.code === 'functions/resource-exhausted') toast('⚠️ ' + userErr(e));
+    throw (e instanceof Error) ? e : new Error(String(e?.message || 'AI není k dispozici'));
   }
 }
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
@@ -423,6 +436,44 @@ function logClientError(msg, src, stack) {
     Promise.resolve().then(() => addDoc(collection(db, 'users', uid, 'errorLogs'), rec)).catch(() => {});
   } catch (e) {}
 }
+// Česká věta pro uživatele podle kódu/obsahu chyby; technický detail jen do konzole a zapisovače chyb
+// e může být Error, chyba Firebase (e.code) nebo událost SpeechRecognition (e.error)
+function userErr(e, ctx = '') {
+  const full = String(e?.code || '');
+  const code = full.replace(/^[a-z-]+\//, '');
+  const msg = String(e?.message || '');
+  const sp = typeof e?.error === 'string' ? e.error : ''; // SpeechRecognition
+  let txt = '', expected = true;
+  const AUTH_MSGS = {
+    'auth/popup-blocked': 'Povol vyskakovací okna pro lifepocket.app a zkus to znovu.',
+    'auth/too-many-requests': 'Příliš mnoho pokusů, zkus to za chvíli.',
+    'auth/unauthorized-domain': 'Přihlášení z této adresy není povolené – otevři appku na lifepocket.app.',
+    'auth/user-disabled': 'Tento účet je zablokovaný.'
+  };
+  if (Object.prototype.hasOwnProperty.call(AUTH_MSGS, full)) txt = AUTH_MSGS[full];
+  else if (sp === 'no-speech') txt = 'Nic jsem neslyšel – zkus mluvit blíž k mikrofonu.';
+  else if (sp === 'not-allowed' || sp === 'service-not-allowed' || e?.name === 'NotAllowedError') txt = 'Povol mikrofon v nastavení prohlížeče.';
+  else if (sp === 'audio-capture') txt = 'Mikrofon není dostupný – zkontroluj, jestli ho nepoužívá jiná aplikace.';
+  else if (sp === 'network') txt = 'Rozpoznávání řeči potřebuje internet – zkontroluj připojení.';
+  else if (sp) { txt = 'Mikrofon teď nefunguje, zkus to znovu.'; expected = false; }
+  else if (navigator.onLine === false || ['unavailable', 'network-request-failed', 'deadline-exceeded'].includes(code) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
+    txt = 'Nejsi připojený k internetu – zkus to znovu, až budeš online.';
+  else if (full === 'functions/resource-exhausted') txt = 'Dnešní limit AI dotazů je vyčerpaný. Obnoví se o půlnoci.';
+  else if (full.startsWith('functions/') && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
+    txt = 'AI je teď přetížená, zkus to za minutku.';
+  else if (code === 'resource-exhausted') txt = 'Služba je přetížená, zkus to za chvíli.';
+  else if (code === 'permission-denied') txt = 'Na tuhle akci nemáš oprávnění (třeba už nejsi ve skupině).';
+  else if (code === 'unauthenticated') txt = 'Přihlášení vypršelo – přihlas se prosím znovu.';
+  else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = 'AI vrátila nečekanou odpověď, zkus to znovu.'; expected = false; }
+  else if (/\bAI\b|Claude/.test(msg) || (full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
+    { txt = 'AI je teď nedostupná, zkus to prosím později.'; expected = false; }
+  else { txt = 'Něco se nepovedlo, zkus to prosím znovu.'; expected = false; }
+  try {
+    console.warn('[LP] chyba' + (ctx ? ' (' + ctx + ')' : '') + ':', full || sp || e?.name || '', msg);
+    if (!expected) logClientError((e?.name || 'Error') + ': ' + (full ? full + ' ' : '') + (sp || msg), 'userErr' + (ctx ? ':' + ctx : ''), e?.stack);
+  } catch (_) {}
+  return txt;
+}
 window.addEventListener('error', ev => {
   try {
     const m = String(ev.message || '');
@@ -446,18 +497,42 @@ window.addEventListener('unhandledrejection', ev => {
   } catch (e) {}
 });
 
-onAuthStateChanged(auth,async u=>{
-  if(u){CU=u;claimLocalDataOwner(u.uid);const s=await getDoc(doc(db,'users',u.uid,'profile','main'));if(s.exists()){prof=s.data();
+// Načte profil a spustí appku; bez připojení ukáže hlášku s tlačítkem Zkusit znovu (místo nekonečného spinneru)
+let _profLoading=null; // uid, pro který právě běží načítání (dvojklik na Zkusit znovu)
+async function startSession(u){
+  if(_profLoading===u.uid)return;
+  _profLoading=u.uid;
+  showLoadError(false);
+  let s;
+  try{ s=await getDoc(doc(db,'users',u.uid,'profile','main')); }
+  catch(e){ if(CU?.uid===u.uid){ userErr(e,'načtení profilu'); showLoadError(true); } return; }
+  finally{ if(_profLoading===u.uid) _profLoading=null; }
+  if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
+  if(s.exists()){prof=s.data();
     // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
     if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
-    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true});
+    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true}).catch(e=>console.warn('[LP] migrace modulů:',e?.code||e?.name));
     selMods=new Set(prof.modules||[]);initApp();
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
     }
-  }else ss('s-step1');}
+  }else ss('s-step1');
+}
+// Úvodní obrazovka: spinner, nebo hláška o chybě načtení s tlačítkem
+function showLoadError(on){
+  const spin=document.getElementById('load-spin'), box=document.getElementById('load-err');
+  if(spin) spin.style.display=on?'none':'';
+  if(box) box.style.display=on?'flex':'none';
+  if(on) ss('s-loading');
+}
+window.retryLoad=()=>{ if(CU) startSession(CU); else location.reload(); };
+// Po návratu signálu zkus načíst automaticky (jen když visí hláška o chybě)
+window.addEventListener('online',()=>{ if(CU&&document.getElementById('load-err')?.style.display==='flex') startSession(CU); });
+
+onAuthStateChanged(auth,async u=>{
+  if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
   else{
     CU=null;
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
@@ -477,7 +552,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists'];
+const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif'];
 // Při přihlášení: lp_owner_uid chybí → jen ho nastaví (stávající data patří tomuto uživateli);
 // je jiný → smaže osobní lokální klíče předchozího uživatele. Nikdy nezablokuje přihlášení.
 function claimLocalDataOwner(uid){
@@ -533,7 +608,7 @@ function getItemPhotos(item){if(item?.photos?.length)return item.photos;if(item?
 
 
 // ── JOURNAL ───────────────────────────────────────────
-let curEntryId=null, entryMood='', entryDirty=false;
+let curEntryId=null, entryMood='', entryDirty=false, curEntryCreatedAt=null;
 let jRec=null, jRecOn=false;
 
 function subEntries(){
@@ -618,7 +693,7 @@ window.handleEntryPhotoInput = async function(input) {
 // ─────────────────────────────────────────────────────────
 
 window.newEntry=()=>{
-  curEntryId=null; entryMood=''; entryDirty=false;
+  curEntryId=null; entryMood=''; entryDirty=false; curEntryCreatedAt=null;
   curEntryPhoto = null;
   const p = document.getElementById('j-photo-preview');
   if (p) p.innerHTML = '';
@@ -636,7 +711,7 @@ window.newEntry=()=>{
 window.openEntry=(id)=>{
   const e=entries.find(x=>x.id===id);
   if(!e)return;
-  curEntryId=id; entryMood=e.mood||''; entryDirty=false;
+  curEntryId=id; entryMood=e.mood||''; entryDirty=false; curEntryCreatedAt=e.createdAt||null;
   const jt=document.getElementById('j-title'); if(jt) jt.value=e.title||'';
   const jx=document.getElementById('j-text'); if(jx) jx.value=e.text||'';
   const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Neznámé datum';
@@ -655,30 +730,48 @@ window.openEntry=(id)=>{
   renderEntryList();
 };
 
-window.saveEntry=async()=>{
+// Krátký otisk textu – AI analýza zápisku proběhne jen při změně textu
+function textHash(t){let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return (h>>>0).toString(36)+'.'+t.length;}
+
+// Ruční uložení: toast + AI detekce (jen když se text od poslední analýzy změnil).
+// Autosave ({auto:true}): tiché uložení bez AI (jinak by každých 30 s ubíral AI dotazy).
+// Bez zámku: offline se setDoc nevrátí a zámek by blokoval další ukládání. Duplikátu brání ID přidělené před await.
+const _aiHashPending={}; // id zápisku → otisk textu, jehož analýza už byla spuštěna (synchronně, proti dvojí AI)
+window.saveEntry=async(opts)=>{
   if(!CU)return;
+  const auto=opts?.auto===true;
   const title=document.getElementById('j-title').value.trim()||'Bez názvu';
   const text=document.getElementById('j-text').value;
   const now=new Date().toISOString();
+  let createdId=null;
+  if(!curEntryId){
+    // ID hned (ne až po potvrzení serveru) – druhé uložení nevytvoří duplikát; seznam doplní onSnapshot
+    curEntryId=createdId=doc(collection(db,'users',CU.uid,'entries')).id;
+    curEntryCreatedAt=now;
+  }
+  const id=curEntryId;
+  const prev=createdId?null:entries.find(e=>e.id===id);
+  const h=textHash(text);
+  const runAI=!auto&&text.length>20&&h!==prev?.aiHash&&h!==_aiHashPending[id];
+  const fields={title,text,mood:entryMood,updatedAt:now,photo:curEntryPhoto||null};
+  if(runAI){ fields.aiHash=h; _aiHashPending[id]=h; }
+  // Zápisek nemusí být v seznamu (listener spadl, první zápis selhal) – zapsat stejně, createdAt zachovat kvůli orderBy
+  const data={...(prev||{createdAt:curEntryCreatedAt||now}),...fields};
+  delete data.id;
+  entryDirty=false; // změny během ukládání znovu nastaví markDirty
   try{
-    if(curEntryId){
-      const idx=entries.findIndex(e=>e.id===curEntryId);
-      if(idx>=0){
-        entries[idx]={...entries[idx],title,text,mood:entryMood,updatedAt:now,photo:curEntryPhoto||null};
-        await setDoc(doc(db,'users',CU.uid,'entries',curEntryId),entries[idx]);
-      }
-    } else {
-      const e={title,text,mood:entryMood,createdAt:now,updatedAt:now,photo:curEntryPhoto||null};
-      const ref=await addDoc(collection(db,'users',CU.uid,'entries'),e);
-      curEntryId=ref.id;
-      entries.unshift({...e,id:ref.id});
-    }
-    entryDirty=false;
+    await setDoc(doc(db,'users',CU.uid,'entries',id),data);
     renderEntryList();
-    toast('✓ Uloženo');
-  }catch(e){toast('❌ Chyba ukládání: '+e.message);}
+    if(!auto) toast('✓ Uloženo');
+  }catch(e){
+    entryDirty=true;
+    if(runAI&&_aiHashPending[id]===h) delete _aiHashPending[id];
+    if(createdId&&curEntryId===createdId){ curEntryId=null; curEntryCreatedAt=null; }
+    toast('❌ Uložení se nepovedlo: '+userErr(e,'zápisek'));
+    return;
+  }
   // Detekuj jídla, návyky i náladu — postupně s prodlevou (ne najednou)
-  if(text && text.length > 20){
+  if(runAI){
     detectFoodsInEntry(text);
     setTimeout(()=>detectHabitsInEntry(text), 800);
     // Automaticky navrhni náladu pokud není vybraná
@@ -696,7 +789,7 @@ window.deleteEntry=async()=>{
     document.getElementById('j-empty').style.display='flex';
     renderEntryList();
     toast('Zápisek smazán');
-  }catch(e){toast('❌ Chyba mazání: '+e.message);}
+  }catch(e){toast('❌ Mazání se nepovedlo: '+userErr(e,'zápisek'));}
 };
 
 window.setEntryMood=(m,btn)=>{
@@ -708,7 +801,7 @@ window.setEntryMood=(m,btn)=>{
 window.markDirty=()=>{ entryDirty=true; };
 
 // Auto-save every 30s when dirty
-setInterval(()=>{ if(entryDirty&&curEntryId)saveEntry(); },30000);
+setInterval(()=>{ if(entryDirty&&curEntryId)saveEntry({auto:true}); },30000);
 
 // ── JOURNAL VOICE ──────────────────────────────────────
 const jIsMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -773,14 +866,13 @@ function startJRec(){
       if(jRecOn) setTimeout(()=>{ if(jRecOn) startJRec(); },150);
       return;
     }
-    if(e.error==='not-allowed') toast('❌ Povol mikrofon v nastavení Chrome');
-    else if(e.error==='aborted') return; // normální při stopJournalMic
-    else toast('❌ Mikrofon: '+e.error);
+    if(e.error==='aborted') return; // normální při stopJournalMic
+    toast('❌ '+userErr(e,'mikrofon'));
     stopJournalMic();
   };
 
   try{ jRec.start(); }
-  catch(err){ toast('❌ Nelze spustit mikrofon: '+err.message); }
+  catch(err){ toast('❌ '+userErr(err,'mikrofon')); }
 }
 
 window.toggleJournalMic=()=>{
@@ -2118,7 +2210,7 @@ window.saveEvent=async()=>{
       } else {
         await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
       }
-    } catch(e) { toast('⚠️ Chyba: '+e.message); return; }
+    } catch(e) { toast('⚠️ '+userErr(e,'událost')); return; }
     editingEventId = null;
     toast('✓ Událost upravena');
   } else {
@@ -2196,7 +2288,7 @@ window.doLogin=async()=>{
     b.disabled=false;
     resetLoginBtn();
     if(ex.code!=='auth/popup-closed-by-user'){
-      e.textContent='Chyba: '+ex.message;
+      e.textContent=userErr(ex,'login');
       e.classList.add('show');
     }
   }
@@ -2221,7 +2313,7 @@ window.doEmailLogin=async()=>{
   }catch(ex){
     b.disabled=false;b.textContent='Přihlásit se';
     const msgs={'auth/invalid-credential':'Špatný email nebo heslo','auth/user-not-found':'Účet neexistuje','auth/wrong-password':'Špatné heslo','auth/invalid-email':'Neplatný email'};
-    e.textContent=msgs[ex.code]||'Chyba: '+ex.message;
+    e.textContent=msgs[ex.code]||userErr(ex,'login');
     e.classList.add('show');
   }
 };
@@ -2241,7 +2333,7 @@ window.doEmailRegister=async()=>{
   }catch(ex){
     b.disabled=false;b.textContent='Registrovat';
     const msgs={'auth/email-already-in-use':'Email je už registrovaný','auth/invalid-email':'Neplatný email','auth/weak-password':'Heslo je příliš slabé'};
-    e.textContent=msgs[ex.code]||'Chyba: '+ex.message;
+    e.textContent=msgs[ex.code]||userErr(ex,'login');
     e.classList.add('show');
   }
 };
@@ -2257,7 +2349,7 @@ window.doPasswordReset=async()=>{
     e.classList.add('show');
     setTimeout(()=>{e.classList.remove('show');e.style.color='';},4000);
   }catch(ex){
-    e.textContent='Chyba: '+ex.message;e.classList.add('show');
+    e.textContent=userErr(ex,'login');e.classList.add('show');
   }
 };
 
@@ -2652,7 +2744,7 @@ loadTheme();
 // 🔔  PUSH NOTIFIKACE SYSTÉM
 // ════════════════════════════════════════════════════════════
 
-let notifSettings = {
+const NOTIF_DEFAULTS = {
   morning: '08:00',
   evening: '21:00',
   habits: true,
@@ -2660,6 +2752,7 @@ let notifSettings = {
   eveningDigest: true,
   birthday: true
 };
+let notifSettings = {...NOTIF_DEFAULTS};
 let notifTimers = [];
 
 // ── Prostředí zařízení (push) ──
@@ -2780,9 +2873,13 @@ async function doRegisterFcmToken() {
     if (!token) { fcmFail('Prohlížeč nevrátil push token'); }
     else if (!prof) { fcmFail('Profil ještě není načtený'); }
     else {
-      prof.notifSettings = notifSettings;
+      // Nastavení notifikací posílat jen když ho server ještě nemá – jinak by výchozí/lokální hodnoty přepsaly serverové
+      const hasServer = !!prof.notifSettings && typeof prof.notifSettings === 'object' && !Array.isArray(prof.notifSettings);
+      if (!hasServer) loadNotifSettings(); // registrace mohla předběhnout initNotifications
+      const extra = hasServer ? {} : {notifSettings};
+      if (!hasServer) prof.notifSettings = notifSettings;
       // Zapiš jen změněná pole — ne celý profil (jiné zařízení mohlo mezitím uložit něco jiného)
-      try { await saveFcmToken(token, {notifSettings}); fcmState = 'ok'; console.log('[LP] FCM token uložen (…' + token.slice(-6) + ')'); }
+      try { await saveFcmToken(token, extra); fcmState = 'ok'; console.log('[LP] FCM token uložen (…' + token.slice(-6) + ')'); }
       catch(e) { fcmFail('Uložení tokenu selhalo', e); }
     }
   } catch(e) {
@@ -2805,11 +2902,17 @@ async function initNotifications() {
   });
 }
 
+// Zdroj pravdy je profil na serveru (prof.notifSettings); localStorage je jen záloha (např. starší verze bez serverového nastavení)
 function loadNotifSettings() {
+  let local = null;
   try {
     const saved = localStorage.getItem('lp_notif');
-    if (saved) notifSettings = {...notifSettings, ...JSON.parse(saved)};
-  } catch(e) { console.warn('loadNotifSettings: chyba při načítání nastavení', e); }
+    if (saved) local = JSON.parse(saved);
+  } catch(e) { console.warn('loadNotifSettings: chyba při načítání nastavení', e?.name); }
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+  const server = isObj(prof?.notifSettings) ? prof.notifSettings : null;
+  notifSettings = {...NOTIF_DEFAULTS, ...(server || (isObj(local) ? local : {}))};
+  if (server) lsSave('lp_notif', notifSettings);
   // Naplň UI
   const m = document.getElementById('notif-morning');
   const ev = document.getElementById('notif-evening');
@@ -2917,11 +3020,14 @@ window.sendTestServerPush = async () => {
     const n = res?.data?.sent;
     toast(n > 1 ? `✅ Server push odeslán na ${n} zařízení! Zavři appku a zkontroluj notifikaci.` : '✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
   } catch(e) {
-    const msg = e.message || '';
-    if (msg.includes('FCM token')) {
-      toast('⚠️ FCM token chybí — klikni "Obnovit token"');
+    const msg = e?.message || '';
+    if (e?.code === 'functions/failed-precondition' || msg.includes('FCM token')) {
+      toast('⚠️ Toto zařízení ještě nemá povolené notifikace — klikni „Obnovit token“', 4000);
+    } else if (e?.code === 'functions/internal' && msg.includes('FCM')) {
+      console.warn('[LP] test push:', msg);
+      toast('❌ Server notifikaci nedoručil. Klikni „Obnovit token“ a zkus test znovu.', 4000);
     } else {
-      toast('❌ ' + msg);
+      toast('❌ ' + userErr(e, 'test push'), 4000);
     }
   }
 };
@@ -3572,7 +3678,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
     appendMsg('bot', rep, av.name, av.emoji || '⭐');
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString()}));
     rDash();
-  } catch(e) { appendMsg('bot','❌ '+e.message,'Chyba','⚠️'); }
+  } catch(e) { appendMsg('bot','❌ '+userErr(e,'report'),'Chyba','⚠️'); }
   document.getElementById('typing')?.classList.remove('active');
   scrollChat();
 };
@@ -4334,7 +4440,7 @@ window.joinFamily = async (codeArg) => {
     renderFamilySettings();
     toast('✅ Připojen k rodinné skupině!');
     return true;
-  } catch(e) { toast('❌ Chyba: '+e.message); return null; }
+  } catch(e) { toast('❌ '+userErr(e,'skupina')); return null; }
 };
 
 // Skupiny, které uživatel právě sám opouští (aby se snapshot nesnažil o úklid souběžně)
@@ -4366,13 +4472,17 @@ window.leaveFamily = async () => {
     if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
       await updateDoc(doc(db,'families',fid), {[`members.${CU.uid}`]: deleteField()});
     }
+    // Ze skupiny už jsem venku – lokální stav uklidit i když úklid profilu selže
+    // (familyId v profilu pak při příštím startu uklidí samoúklid isRemovedFromGroup)
+    let profOk = true;
     // Smaže jen familyId a jen když v profilu pořád je tahle skupina (jiné zařízení mohlo změnit)
-    await clearProfileFamilyIdIf(fid);
+    try { await clearProfileFamilyIdIf(fid); }
+    catch(e) { profOk = false; console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); }
     if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
     resetFamilyLocal();
     renderAfterFamilyChange();
-    toast('Opustil jsi skupinu');
-  } catch(e) { toast('❌ '+e.message); }
+    toast(profOk ? 'Opustil jsi skupinu' : 'Opustil jsi skupinu (profil se dorovná po připojení)');
+  } catch(e) { toast('❌ '+userErr(e,'odchod ze skupiny')); }
   finally { _leavingGids.delete(fid); }
 };
 
@@ -4920,6 +5030,11 @@ async function deleteFamilyShopItem(id) {
 const DAYS_CS = ['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'];
 const MEALS_CS = ['Snídaně','Oběd','Večeře'];
 
+// Zobrazený jídelníček je sdílený rodinný (ne osobní)?
+function isMealShared() { return !!(familyId && familyData?.shareMeal) && mealViewMode === 'shared'; }
+// Sdílený jídelníček smí měnit jen admin skupiny, osobní vždy vlastník
+function canEditMealPlan() { return !isMealShared() || familyData?.members?.[CU?.uid]?.role === 'admin'; }
+
 function renderMealPlan() {
   renderKcalToday();
   const kg = document.getElementById('set-kcalgoal');
@@ -4950,13 +5065,13 @@ function renderMealPlan() {
   const isShared = canShareMeal && mealViewMode === 'shared';
   const plan = isShared ? familyMealPlan : (prof.mealPlan || {});
 
-  const canEdit = !isShared || (familyData?.members?.[CU.uid]?.role==='admin');
+  const canEdit = canEditMealPlan();
 
   // Zjisti jestli je plán úplně prázdný
   const hasAnyMeal = Object.values(plan).some(day =>
     typeof day === 'object' && Object.values(day).some(v => v && v.trim())
   );
-  const welcomeBanner = !hasAnyMeal ? `
+  const welcomeBanner = !hasAnyMeal && canEdit ? `
     <div style="background:linear-gradient(135deg,rgba(245,200,66,.08),rgba(224,149,74,.06));border:1px solid rgba(245,200,66,.2);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center">
       <div style="font-size:36px;margin-bottom:8px">🗓️</div>
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:var(--accent);margin-bottom:6px">Jídelníček je prázdný</div>
@@ -4984,7 +5099,7 @@ function renderMealPlan() {
         </div>`;
       }).join('')}
     </div>`;
-  }).join('') + (!hasAnyMeal ? '' : `<button class="btn-p" style="margin-top:6px" onclick="generateMealPlanAI()">✨ Navrhnout jídelníček pomocí AI</button>`);
+  }).join('') + (!hasAnyMeal || !canEdit ? '' : `<button class="btn-p" style="margin-top:6px" onclick="generateMealPlanAI()">✨ Navrhnout jídelníček pomocí AI</button>`);
 }
 
 window.saveMealPlanItem = async (dayKey, mealKey, val) => {
@@ -5003,7 +5118,15 @@ window.saveMealPlanItem = async (dayKey, mealKey, val) => {
   }
 };
 
+let _mealAiBusy = false;
 window.generateMealPlanAI = async () => {
+  // Člen bez práv nesmí přepsat rodinný jídelníček
+  if(!canEditMealPlan()) { toast('⚠️ Sdílený jídelníček může měnit jen správce skupiny'); return; }
+  if(_mealAiBusy) return;
+  _mealAiBusy = true;
+  // Cíl se určí předem – přepnutí pohledu během generování nesmí změnit, kam se plán zapíše
+  const shared = isMealShared();
+  const fid = familyId;
   toast('✨ Generuji jídelníček…');
   try {
     const raw = await callClaude([
@@ -5014,8 +5137,9 @@ window.generateMealPlanAI = async () => {
     const text = raw.replace(/```json|```/g,'').trim();
     const plan = JSON.parse(text);
     // Uložit
-    if(familyId && familyData?.shareMeal && mealViewMode === 'shared') {
-      await setDoc(doc(db,'families',familyId,'mealplan','week'), plan);
+    if(shared) {
+      if(!fid || fid !== familyId) { toast('⚠️ Skupina se mezitím změnila, jídelníček se neuložil'); return; }
+      await setDoc(doc(db,'families',fid,'mealplan','week'), plan);
       renderMealPlan();
     } else {
       prof.mealPlan = plan;
@@ -5023,7 +5147,8 @@ window.generateMealPlanAI = async () => {
       renderMealPlan();
     }
     toast('✅ Jídelníček vygenerován!');
-  } catch(e) { toast('❌ Chyba: '+e.message); }
+  } catch(e) { toast('❌ '+userErr(e,'jídelníček')); }
+  finally { _mealAiBusy = false; }
 };
 
 // ════════════════════════════════════════
@@ -5036,7 +5161,7 @@ function subFoodLogs() {
   if(_fireSubs['foodLogs']) return;
   createFireSub('foodLogs',
     collection(db,'users',CU.uid,'foodLogs'),
-    snap => { foodLogs = snap.docs.map(d=>({id:d.id,...d.data()})); }
+    snap => { foodLogs = snap.docs.map(d=>({id:d.id,...d.data()})); renderKcalToday(); }
   );
 }
 
@@ -5121,10 +5246,12 @@ window.openAddFoodLog = () => {
   const plannedBtns = planned.length ? `
     <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:monospace;letter-spacing:.5px;text-transform:uppercase">Z dnešního plánu</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-      ${planned.map(p=>`<button data-a0="${esc(p.name)}" data-a1="${esc(p.key)}" onclick="addFoodFromPlan(this.dataset.a0,this.dataset.a1)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
+      ${planned.map(p=>`<button data-a0="${esc(p.name)}" data-a1="${esc(p.key)}" onclick="addFoodFromPlan(this.dataset.a0,this.dataset.a1,this)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
     </div>` : '';
 
+  document.getElementById('foodlog-modal')?.remove();
   const modal = document.createElement('div');
+  modal.id = 'foodlog-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:16px';
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px 20px 16px 16px;padding:24px;width:100%;max-width:420px;box-shadow:0 -8px 40px rgba(0,0,0,.3)">
@@ -5140,13 +5267,14 @@ window.openAddFoodLog = () => {
       </div>
       <button onclick="aiEstimateFoodLog()" style="width:100%;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--accent);cursor:pointer;margin-bottom:8px">✨ AI odhadne kalorie z názvu</button>
       <div style="display:flex;gap:8px">
-        <button onclick="this.closest('div[style]').remove()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer">Zrušit</button>
-        <button onclick="saveFoodLog(this.closest('div[style]'))" style="flex:2;background:var(--accent);border:none;border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer">Přidat</button>
+        <button onclick="closeFoodLogModal()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer">Zrušit</button>
+        <button onclick="saveFoodLog(this)" style="flex:2;background:var(--accent);border:none;border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer">Přidat</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
+window.closeFoodLogModal = () => document.getElementById('foodlog-modal')?.remove();
 
 window.aiEstimateFoodLog = async () => {
   const name = document.getElementById('fl-name').value.trim();
@@ -5165,10 +5293,16 @@ window.aiEstimateFoodLog = async () => {
     document.getElementById('fl-c').value = est.carbs||'';
     document.getElementById('fl-f').value = est.fat||'';
     toast('✅ Kalorie odhadnuty!');
-  } catch(e) { toast('❌ Nepodařilo se odhadnout: '+e.message); }
+  } catch(e) { toast('❌ Nepodařilo se odhadnout: '+userErr(e,'kalorie')); }
 };
 
-window.addFoodFromPlan = async (name, mealKey) => {
+let _foodPlanBusy = false;
+window.addFoodFromPlan = async (name, mealKey, btn) => {
+  if(_foodPlanBusy) return; // dvojklik nesmí zapsat jídlo dvakrát
+  _foodPlanBusy = true;
+  const btns = [...document.querySelectorAll('#foodlog-modal button[data-a1]')];
+  btns.forEach(b => b.disabled = true);
+  if(btn) btn.style.opacity = '.6';
   toast('✨ AI odhaduje kalorie pro "'+name+'"…');
   try {
     const raw = await callClaude([
@@ -5181,17 +5315,22 @@ window.addFoodFromPlan = async (name, mealKey) => {
     const today = toDS();
     const now = new Date().toTimeString().slice(0,5);
     const log = {name, kcal:est.kcal||0, protein:est.protein||0, carbs:est.carbs||0, fat:est.fat||0, date:today, time:now};
-    const ref = await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
-    foodLogs.push({id:ref.id,...log});
-    document.querySelector('[style*="flex-end"]')?.remove();
-    renderKcalToday();
-    toast('✅ '+name+' přidáno ('+est.kcal+' kcal)');
-  } catch(e) { toast('❌ Chyba: '+e.message); }
+    // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned)
+    await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
+    closeFoodLogModal();
+    toast('✅ '+name+' přidáno ('+(Number(est.kcal)||0)+' kcal)');
+  } catch(e) {
+    toast('❌ '+userErr(e,'jídlo z plánu'));
+    btns.forEach(b => b.disabled = false);
+    if(btn) btn.style.opacity = '';
+  } finally { _foodPlanBusy = false; }
 };
 
-window.saveFoodLog = async (modalEl) => {
+window.saveFoodLog = async (btn) => {
   const name = document.getElementById('fl-name').value.trim();
   if(!name) { toast('⚠️ Zadej název jídla'); return; }
+  if(btn?.disabled) return;
+  if(btn) btn.disabled = true;
   const today = toDS();
   const now = new Date().toTimeString().slice(0,5);
   const log = {
@@ -5202,18 +5341,22 @@ window.saveFoodLog = async (modalEl) => {
     fat: parseInt(document.getElementById('fl-f').value)||0,
     date: today, time: now
   };
-  const ref = await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
-  foodLogs.push({id:ref.id,...log});
-  modalEl.remove();
-  renderKcalToday();
-  toast('✅ Jídlo přidáno');
+  try {
+    // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned)
+    await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
+    closeFoodLogModal();
+    toast('✅ Jídlo přidáno');
+  } catch(e) {
+    if(btn) btn.disabled = false;
+    toast('❌ '+userErr(e,'jídlo'));
+  }
 };
 
 window.deleteFoodLog = async (id) => {
-  await deleteDoc(doc(db,'users',CU.uid,'foodLogs',id));
-  foodLogs = foodLogs.filter(l=>l.id!==id);
-  renderKcalToday();
-  toast('🗑️ Odebráno');
+  try {
+    await deleteDoc(doc(db,'users',CU.uid,'foodLogs',id));
+    toast('🗑️ Odebráno');
+  } catch(e) { toast('❌ '+userErr(e,'jídlo')); }
 };
 
 
@@ -5436,6 +5579,7 @@ let activeChecklist = null;
 let expandedCheckItemId = null;
 window.cancelCheckEdit = () => { expandedCheckItemId = null; renderChecklist(); };
 
+let _defChecklistUid = null; // pro tento účet už byl výchozí checklist založen
 function subChecklist() {
   if (!CU) return;
   // Migrate localStorage data to Firestore if exists
@@ -5449,8 +5593,12 @@ function subChecklist() {
     snap => {
       checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
       if (!checklists.length) {
-        const def = {id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()};
-        setDoc(doc(db,'users',CU.uid,'checklists',def.id), def);
+        // Výchozí seznam jen podle odpovědi serveru (prázdná cache ≠ prázdný účet) a jen jednou za relaci
+        if (!snap.metadata.fromCache && _defChecklistUid !== CU.uid) {
+          _defChecklistUid = CU.uid;
+          const def = {id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()};
+          setDoc(doc(db,'users',CU.uid,'checklists',def.id), def).catch(e => console.warn('[LP] výchozí checklist:', e?.code || e?.name));
+        } else renderChecklist(); // bez založení výchozího zobraz aspoň aktuální stav (např. sdílené seznamy)
         return;
       }
       const allCl = [...checklists, ...familyChecklists];
@@ -5744,7 +5892,10 @@ async function initApp(){
   history.replaceState({type:'root'}, '');
   initWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subHealthLogs();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   setTimeout(checkChangelog,1500);
-  setTimeout(initNotifications,2000);setTimeout(rexProactiveGreeting,4000);setTimeout(checkInactivity,8000);
+  setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
+  // Ranní pozdrav až po prvním snapshotu návyků (nejdéle 15 s), jinak by Rex hlásil 0 návyků
+  {const uid=CU?.uid;Promise.race([habitsReady,new Promise(r=>setTimeout(r,15000))])
+    .then(()=>setTimeout(()=>{if(CU&&CU.uid===uid)rexProactiveGreeting();},1500));}
   // Zpracuj "Splněno" akce uložené SW když byla appka zavřená
   if ('serviceWorker' in navigator && 'caches' in window) {
     caches.open('lp-pending').then(c => c.match('pending-action')).then(r => {
@@ -6771,7 +6922,7 @@ window.togModSet=async(id,on)=>{
     buildNav();rDash();rSetMods();
     const modName=MODS.find(m=>m.id===id)?.name||id;
     toast(on?`✓ ${modName} zapnut`:`${modName} vypnut`);
-  }catch(e){toast('❌ Nepodařilo se uložit: '+e.message);}
+  }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e,'moduly'));}
 };
 window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast('✓ Jméno uloženo');};
 window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{kcalGoal:v},{merge:true});toast('✓ Kalorický cíl uložen');renderMealPlan();};
@@ -6819,10 +6970,9 @@ window.togMic=()=>{
     micOn=false;
     const b=document.getElementById('mic-btn');
     if(b){b.classList.remove('rec');b.textContent='🎤';}
-    if(e.error==='not-allowed')toast('❌ Povol mikrofon v nastavení prohlížeče');
-    else if(e.error!=='no-speech')toast('❌ Mikrofon: '+e.error);
+    if(e.error!=='no-speech'&&e.error!=='aborted')toast('❌ '+userErr(e,'mikrofon'));
   };
-  try{micRec.start();}catch(err){toast('❌ Nelze spustit mikrofon: '+err.message);}
+  try{micRec.start();}catch(err){toast('❌ '+userErr(err,'mikrofon'));}
 };
 
 // DAY SUMMARY
@@ -6835,7 +6985,7 @@ window.togDS=()=>{
       dsRec.onresult=e=>{let int='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';else int=e.results[i][0].transcript;}document.getElementById('vrec-txt').textContent='Poslouchám… '+(fin+int).slice(-60);}
       dsRec.onstart=()=>{dsOn=true;document.getElementById('dsBtn').classList.add('rec');document.getElementById('dsBtn').textContent='⏹ Nahrávám…';document.getElementById('vrec-banner').classList.add('active');};
       dsRec.onend=()=>{if(dsOn&&fin.trim()&&!finished){finished=true;dsOn=false;finishDS(fin.trim());}else if(dsOn&&!fin.trim()){dsRec.start();}};
-      dsRec.onerror=e=>{toast('❌ Chyba mikrofonu: '+e.error);stopDS();};
+      dsRec.onerror=e=>{if(e.error!=='aborted')toast('❌ '+userErr(e,'mikrofon'));stopDS();};
       dsRec.start();
 };
 window.stopDS=()=>{dsOn=false;dsRec?.stop();document.getElementById('dsBtn').classList.remove('rec');document.getElementById('dsBtn').textContent='🎤 Nahrát přehled dne';document.getElementById('vrec-banner').classList.remove('active');};
@@ -6871,7 +7021,7 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
     saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
     appendMsg('sys','📝 Aktivita zaznamenaná. Chceš ji přidat do cílů?');
-  }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
+  }catch(e){appendMsg('bot','❌ '+userErr(e,'chat'),'Chyba','⚠️');}
   document.getElementById('typing').classList.remove('active');scrollChat();
 }
 
@@ -7233,7 +7383,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
       btns.innerHTML=`<button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
       c.appendChild(btns);scrollChat();
     }
-  }catch(e){appendMsg('bot','❌ '+e.message,'Chyba','⚠️');}
+  }catch(e){appendMsg('bot','❌ '+userErr(e,'chat'),'Chyba','⚠️');}
   document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
 };
 window.rexRecipe=async(food,btnEl)=>{
@@ -7273,7 +7423,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
       <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
-    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${esc(e.message)}`;
+    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${esc(userErr(e,'recept'))}`;
   }
 };
 
@@ -7491,20 +7641,39 @@ window.notifyShopFamily=async()=>{
   }
 };
 
-window.moveShopToFamily=async()=>{
+let _shopMoveBusy=false;
+window.moveShopToFamily=async(btn)=>{
   if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
   if(!shopItems.length){toast('Osobní seznam je prázdný');return;}
-  const count=shopItems.length;
-  for(const i of shopItems){
-    await addDoc(collection(db,'families',familyId,'shopItems'),{
-      name:i.name, category:i.category||'Ostatní', done:false, qty:i.qty||'',
-      addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
-      createdAt:new Date().toISOString()
-    });
-    await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
+  if(_shopMoveBusy)return;
+  if(navigator.onLine===false){toast('❌ '+userErr({code:'unavailable'}));return;}
+  _shopMoveBusy=true;
+  const label=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent='⏳ Přesouvám…';}
+  const fid=familyId, items=[...shopItems];
+  try{
+    // Po dávkách (limit 500 operací; 2 na položku) – položka se přidá do skupiny i smaže z osobních naráz
+    for(let i=0;i<items.length;i+=200){
+      const batch=writeBatch(db);
+      for(const it of items.slice(i,i+200)){
+        batch.set(doc(collection(db,'families',fid,'shopItems')),{
+          name:it.name, category:it.category||'Ostatní', done:false, qty:it.qty||'',
+          addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
+          createdAt:new Date().toISOString()
+        });
+        batch.delete(doc(db,'users',CU.uid,'shopItems',it.id));
+      }
+      await batch.commit();
+    }
+    shopViewMode='shared';
+    renderShop();
+    toast(`✓ ${items.length} položek přesunuto do rodinného seznamu 👨‍👩‍👧`);
+  }catch(e){
+    toast('❌ Přesun se nepovedl: '+userErr(e,'přesun nákupu'));
+  }finally{
+    _shopMoveBusy=false;
+    if(btn){btn.disabled=false;btn.textContent=label;}
   }
-  shopViewMode='shared';
-  toast(`✓ ${count} položek přesunuto do rodinného seznamu 👨‍👩‍👧`);
 };
 
 window.addShopItem=async()=>{
@@ -7972,7 +8141,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
     if(pantryItems.length) offerPantryDeduct(recipe.ingredients);
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
-    toast('❌ Chyba: '+e.message);
+    toast('❌ '+userErr(e,'recept'));
   }
 };
 
@@ -8236,7 +8405,7 @@ window.saveRecipe=async()=>{
     await addDoc(collection(db,'users',CU.uid,'savedRecipes'),data);
     toast('🔖 Recept uložen do oblíbených!');
     if(btn){btn.textContent='✅ Uloženo';btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
-  }catch(e){toast('❌ Nepodařilo se uložit: '+e.message);}
+  }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e));}
 };
 
 window.deleteSavedRecipe=async(id,e)=>{
@@ -8245,7 +8414,7 @@ window.deleteSavedRecipe=async(id,e)=>{
   try{
     await deleteDoc(doc(db,'users',CU.uid,'savedRecipes',id));
     toast('Recept smazán');
-  }catch(err){toast('❌ Chyba mazání: '+err.message);}
+  }catch(err){toast('❌ Mazání se nepovedlo: '+userErr(err));}
 };
 
 window.openSavedRecipe=(id)=>{
@@ -8799,7 +8968,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
         ✕
       </button>`;
   } catch(e) {
-    toast('❌ ' + e.message);
+    toast('❌ ' + userErr(e,'nálada'));
   }
 
   btn.textContent = '✨ Auto';
@@ -9191,14 +9360,16 @@ function finishTour() {
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
   setTimeout(() => {
+    document.getElementById('tour-done')?.remove();
     const done = document.createElement('div');
+    done.id = 'tour-done';
     done.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
     done.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:340px;text-align:center">
         <div style="font-size:48px;margin-bottom:12px">🎉</div>
         <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">To je vše, ${esc(name)}!</div>
         <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px">Teď víš co LifePocket umí. Kdykoliv budeš chtít průvodce znovu, najdeš ho v ⚙️ Nastavení.</div>
-        <button onclick="this.closest('div[style]').remove()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
+        <button onclick="document.getElementById('tour-done')?.remove()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
           Jdeme na to! 💪
         </button>
       </div>`;
@@ -9225,7 +9396,9 @@ function showModuleHint(moduleId) {
 
   localStorage.setItem(key, '1');
 
+  document.getElementById('module-hint')?.remove();
   const hint = document.createElement('div');
+  hint.id = 'module-hint';
   hint.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:9999;width:calc(100% - 32px);max-width:400px;animation:fadeIn .3s ease';
   hint.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--accent);border-radius:16px;padding:16px 18px;box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;gap:12px;align-items:flex-start">
@@ -9234,7 +9407,7 @@ function showModuleHint(moduleId) {
         <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:15px;color:var(--accent);font-weight:700;margin-bottom:4px">${info.title}</div>
         <div style="font-size:13px;color:var(--text2);line-height:1.5">${info.text}</div>
       </div>
-      <button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;flex-shrink:0;line-height:1;padding:0 0 0 4px">×</button>
+      <button onclick="document.getElementById('module-hint')?.remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;flex-shrink:0;line-height:1;padding:0 0 0 4px">×</button>
     </div>`;
   document.body.appendChild(hint);
   setTimeout(() => hint.remove(), 8000); // zmizí po 8s
