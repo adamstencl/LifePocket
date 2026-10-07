@@ -53,7 +53,7 @@
     <h2>3. Jaké údaje ukládáme</h2>
     <p>Vše, co v aplikaci zadáš, se ukládá do databáze <strong>Firebase Firestore</strong> (Google) pod tvůj účet:</p>
     <ul>
-      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly, denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, členství ve skupinách</li>
+      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly a úvodní šablona (Rodina, Student nebo Zdraví), datum posledního otevření aplikace (viz bod 7), denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, členství ve skupinách</li>
       <li>Cíle a podcíle</li>
       <li>Návyky a záznamy o jejich plnění</li>
       <li>Zápisky (deník) včetně nálady a fotografií</li>
@@ -105,6 +105,7 @@
       <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Den se počítá podle českého času, limit se tedy nuluje o půlnoci. Prvním dotazem dalšího dne se záznam přepíše.</li>
       <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb.</li>
       <li><strong>Provozní logy serveru</strong>: serverové funkce zapisují do logů Google Cloud jen technické údaje (např. ID účtu, kód chyby, počet odeslaných notifikací), ne obsah tvých dat ani text notifikací.</li>
+      <li><strong>Datum posledního otevření</strong>: Při otevření aplikace ukládáme do tvého profilu datum posledního otevření (nejvýš jednou denně). Server z toho jednou denně spočítá jen souhrnná anonymní čísla (např. kolik lidí appku použilo za poslední týden, počet skupin a AI dotazů) bez jmen, e-mailů a obsahu tvých záznamů.</li>
       <li><strong>Hosting</strong>: web běží na <strong>GitHub Pages</strong> (GitHub, Inc., USA). Při načtení stránky vidí GitHub v serverových záznamech tvou IP adresu a údaje o prohlížeči.</li>
     </ul>
 
@@ -115,6 +116,7 @@
       <li><strong>GitHub</strong>: hosting webu (bod 7).</li>
       <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy a doručí nám je.</li>
       <li><strong>Hlasové zadávání</strong>: diktování používá rozpoznávání řeči vestavěné v prohlížeči. Některé prohlížeče (např. Chrome) posílají zvuk ke zpracování na servery svého výrobce.</li>
+      <li><strong>Sdílení odkazu</strong>: tlačítka „Sdílet LifePocket“ a „Poslat pozvánku“ otevřou sdílení přímo v tvém zařízení (nebo text zkopírují do schránky). Komu a čím odkaz pošleš, vybíráš ty, nám ani nikomu dalšímu se nic neposílá.</li>
       <li><strong>Podpora projektu</strong>: odkaz a QR kód Buy Me a Coffee a QR kód BTC Lightning vedou mimo aplikaci. Platbu zpracuje daná služba podle svých podmínek, aplikace o ní nic neví a nic jí nepředává.</li>
     </ul>
     <p>Anthropic, Google, GitHub a Formspree jsou firmy z USA, takže se data mohou předávat mimo EU. Takové předání je zajištěno standardními smluvními doložkami schválenými Evropskou komisí nebo rámcem EU-US Data Privacy Framework podle toho, co daný poskytovatel používá.</p>
@@ -154,13 +156,13 @@
       <li><strong>Mezipaměť (service worker)</strong>: soubory aplikace pro práci offline a čekající akce „Splněno“ z notifikace.</li>
       <li><strong>localStorage</strong>:
         <ul>
-          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní) a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code></li>
+          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, skryté karty „Pozvat rodinu“ v Nákupech a Kalendáři <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní) a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code> (podle něj appka také pozná, že ses tu už přihlásil, a místo úvodní stránky ukáže rovnou přihlášení)</li>
           <li>osobní údaje jen v tomto zařízení: zásoby mimo skupinu <code>lp_pantry</code>, oblíbené nákupy <code>lp_fav_shop</code>, dnešní nálada <code>lp_daily_mood</code>, denní fokus a jeho historie <code>lp_focus</code>, <code>lp_focus_next</code>, <code>lp_focus_history</code>, počítadlo vody <code>lp_water</code>, text týdenního reportu <code>lp_weekly_report</code>, citát dne <code>lp_daily_quote</code></li>
           <li>značky, aby se připomínky a pozdravy neopakovaly: <code>lp_rex_greet</code>, <code>lp_last_remind</code>, <code>lp_sched_…</code>, <code>lp_hrnotif_…</code>, <code>lp_notif_…</code>, <code>lp_inactivity_shown_…</code></li>
         </ul>
       </li>
     </ul>
-    <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, počítadlo vody, týdenní report, citát dne a stav úvodních tipů na hlavní obrazovce) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají.</p>
+    <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, počítadlo vody, týdenní report, citát dne, stav úvodních tipů na hlavní obrazovce a skryté karty „Pozvat rodinu“) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají.</p>
 
     <h2>13. Bezpečnost</h2>
     <ul>

@@ -21,8 +21,16 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.27';
+const APP_VERSION = '4.28';
 const CHANGELOG = [
+  { v:'4.28', items:[
+    '👋 Nová úvodní obrazovka pro nové návštěvníky – co v appce najdeš a tlačítka „Začít zdarma“ a „Mám účet“',
+    '📤 V Nastavení můžeš doporučit LifePocket kamarádům jedním klepnutím',
+    '👨‍👩‍👧 V Nákupech a Kalendáři pozveš rodinu přímo z karty, skupina „Rodina“ se založí sama',
+    '🧩 Při prvním spuštění si můžeš vybrat šablonu Rodina, Student nebo Zdraví i s ukázkovými návyky',
+    '🔗 Pokud se sdílení pozvánky nepovede, odkaz se zkopíruje do schránky',
+    '🔑 Přihlášení je přehlednější a správce hesel nabídne silné heslo při registraci',
+  ]},
   { v:'4.27', items:[
     '✍️ Psaní zápisků už neubírá AI dotazy – analýza proběhne jen při ručním uložení a jen když se text změnil',
     '💾 Automatické ukládání zápisků je tiché, bez hlášky každých 30 sekund',
@@ -365,6 +373,25 @@ const MODS=[
   {id:'checklist',emoji:'✅',name:'Checklist',desc:'Sdílené seznamy úkolů pro celou skupinu — cestování, přípravy, projekty.'},
 ];
 const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
+// Šablony onboardingu (krok 3): předvybrané moduly + ukázkové návyky (pole jako v saveHabit; days: 0 = neděle)
+const ONB_TPLS = {
+  family: { mods:['shopping','mealplan','cooking','calendar','habits'], habits:[
+    {name:'Společná večeře',   emoji:'🍽️', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
+    {name:'Čas venku spolu',   emoji:'🌳', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'day'},
+    {name:'Hodina bez mobilu', emoji:'📵', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
+  ]},
+  student: { mods:['habits','calendar','goals','journal'], habits:[
+    {name:'Učení 30 minut',    emoji:'📚', type:'yesno', goal:1,  freq:{type:'days',days:[1,2,3,4,5]}, group:'day'},
+    {name:'Přečtené stránky',  emoji:'📖', type:'count', goal:10, freq:{type:'daily'},                 group:'evening'},
+    {name:'Spát do 23:00',     emoji:'😴', type:'yesno', goal:1,  freq:{type:'daily'},                 group:'evening'},
+  ]},
+  health: { mods:['habits','goals','mealplan','cooking','journal'], habits:[
+    {name:'Procházka 30 minut',emoji:'🚶', type:'yesno', goal:1, freq:{type:'daily'},          group:'day'},
+    {name:'Porce zeleniny',    emoji:'🥗', type:'count', goal:3, freq:{type:'daily'},          group:'day'},
+    {name:'Protažení',         emoji:'🧘', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'morning'},
+  ]},
+};
+let selTpl = null;
 const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
 const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
@@ -515,10 +542,26 @@ async function startSession(u){
     if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
     if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true}).catch(e=>console.warn('[LP] migrace modulů:',e?.code||e?.name));
     selMods=new Set(prof.modules||[]);initApp();
+    touchLastSeen(u.uid);
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
     }
   }else ss('s-step1');
+}
+// Datum v pražském čase (YYYY-MM-DD), bez Intl jen lokální den
+function pragueDS(d=new Date()){
+  try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague'}).format(d); }catch(e){ return toDS(d); }
+}
+// Poslední otevření appky do profilu (pro anonymní souhrn „aktivní za 1/7/30 dní“), nejvýš jednou za pražský den
+function touchLastSeen(uid){
+  try{
+    const last=prof.lastSeen?new Date(prof.lastSeen):null;
+    if(last&&!isNaN(last)&&pragueDS(last)===pragueDS()) return;
+    const now=new Date().toISOString();
+    prof.lastSeen=now;
+    setDoc(doc(db,'users',uid,'profile','main'),{lastSeen:now},{merge:true})
+      .catch(e=>console.warn('[LP] lastSeen:',e?.code||e?.name));
+  }catch(e){}
 }
 // Úvodní obrazovka: spinner, nebo hláška o chybě načtení s tlačítkem
 function showLoadError(on){
@@ -552,7 +595,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif'];
+const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal'];
 // Při přihlášení: lp_owner_uid chybí → jen ho nastaví (stávající data patří tomuto uživateli);
 // je jiný → smaže osobní lokální klíče předchozího uživatele. Nikdy nezablokuje přihlášení.
 function claimLocalDataOwner(uid){
@@ -579,7 +622,8 @@ function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;return c;}
+// Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -1861,6 +1905,7 @@ function renderEvList(){
   const container=document.getElementById('cal-events-list');
   const filterBar=document.getElementById('cal-filter-bar');
   if(!container)return;
+  renderInviteHint('cal');
 
   // ── Filter chips ──
   if(filterBar){
@@ -2295,7 +2340,7 @@ window.doLogin=async()=>{
 };
 function resetLoginBtn(){
   const b=document.getElementById('login-btn');
-  if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Přihlásit se přes Google';
+  if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Pokračovat přes Google';
 }
 window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();location.reload();};
 
@@ -2331,7 +2376,7 @@ window.doEmailRegister=async()=>{
     await createUserWithEmailAndPassword(auth,email,pass);
     await sendEmailVerification(auth.currentUser);
   }catch(ex){
-    b.disabled=false;b.textContent='Registrovat';
+    b.disabled=false;b.textContent='Vytvořit účet';
     const msgs={'auth/email-already-in-use':'Email je už registrovaný','auth/invalid-email':'Neplatný email','auth/weak-password':'Heslo je příliš slabé'};
     e.textContent=msgs[ex.code]||userErr(ex,'login');
     e.classList.add('show');
@@ -2358,7 +2403,7 @@ window.togglePassVis=()=>{
   const btn=document.getElementById('pass-eye-btn');
   if(!inp)return;
   inp.type=inp.type==='password'?'text':'password';
-  if(btn)btn.textContent=inp.type==='password'?'👁️':'🙈';
+  if(btn){btn.textContent=inp.type==='password'?'👁️':'🙈';btn.setAttribute('aria-label',inp.type==='password'?'Zobrazit heslo':'Skrýt heslo');}
 };
 
 window.toggleLoginMode=(mode)=>{
@@ -2368,6 +2413,8 @@ window.toggleLoginMode=(mode)=>{
   document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
   document.getElementById('login-toggle-login').style.display=isReg?'block':'none';
   document.getElementById('login-forgot').style.display=isReg?'none':'block';
+  const pi=document.getElementById('pass-inp');
+  if(pi)pi.autocomplete=isReg?'new-password':'current-password'; // správce hesel nabídne nové heslo
   const lbl=document.getElementById('auth-mode-lbl');
   if(lbl)lbl.textContent=isReg?'✨ Nový účet':'🔑 Přihlásit se';
   document.getElementById('login-err').classList.remove('show');
@@ -2381,17 +2428,64 @@ window.gS2=()=>{prof.nickname=cutName(document.getElementById('u-nick').value,40
 function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
-window.gS3=()=>{prof.avatarId=selAv;selMods=new Set(AVMODS[selAv]||[]);rMods();ss('s-step3');};
+window.gS3=()=>{prof.avatarId=selAv;window.pickTpl(null);ss('s-step3');}; // pickTpl(null) = moduly podle avatara, bez šablony
 function rMods(){
   const s3t=document.getElementById('s3-title'); if(s3t) s3t.textContent=`Co chceš sledovat, ${prof.nickname}?`;
-  const p=AVMODS[prof.avatarId]||[];
+  const p=selTpl?ONB_TPLS[selTpl].mods:(AVMODS[prof.avatarId]||[]);
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
 }
 function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
-window.finishOnboard=async()=>{if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return;}selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();await setDoc(doc(db,'users',CU.uid,'profile','main'),profNoTokens(prof),{merge:true});initApp();};
+// Šablona: přepíše předvybrané moduly a nabídne ukázkové návyky (id null = bez šablony)
+window.pickTpl=id=>{
+  selTpl=ONB_TPLS[id]?id:null;
+  selMods=new Set(selTpl?ONB_TPLS[selTpl].mods:(AVMODS[selAv]||[]));
+  rMods();
+  document.querySelectorAll('.tpl-card').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.a0===selTpl)));
+  const s=document.getElementById('tpl-samples'), c=document.getElementById('tpl-clear');
+  if(s) s.hidden=!selTpl; if(c) c.hidden=!selTpl;
+  const chk=document.getElementById('tpl-samples-chk'); if(chk) chk.checked=true;
+  const l=document.getElementById('tpl-samples-list');
+  if(l) l.textContent=selTpl?ONB_TPLS[selTpl].habits.map(h=>h.emoji+' '+h.name).join(', '):'';
+};
+// Vrací true po úspěšném dokončení (obal níže podle toho spustí průvodce)
+let _onbBusy=false;
+window.finishOnboard=async()=>{
+  if(_onbBusy) return false; // dvojklik nesmí založit návyky dvakrát
+  if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return false;}
+  _onbBusy=true;
+  const fb=document.getElementById('onb-finish-btn'); if(fb) fb.disabled=true;
+  try{
+  selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();
+  prof.lastSeen=prof.createdAt;
+  const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
+  if(selTpl) prof.template=selTpl;
+  await setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
+  // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start
+  if(addSamples){
+    try{
+      const now=new Date().toISOString(), ord={};
+      await Promise.all(ONB_TPLS[selTpl].habits.map(t=>{
+        ord[t.group]=(ord[t.group]||0)+1;
+        const freq={type:t.freq.type};
+        if(t.freq.type==='weekly')freq.times=t.freq.times;
+        if(t.freq.type==='days')freq.days=[...t.freq.days];
+        const h={name:t.name,emoji:t.emoji,type:t.type,goal:t.goal,freq,group:t.group,reminderTime:null,goalId:null,order:ord[t.group],createdAt:now};
+        return addDoc(collection(db,'users',CU.uid,'habits'),h);
+      }));
+    }catch(e){console.warn('[LP] ukázkové návyky:',e?.code||e?.name);}
+  }
+  initApp();
+  return true;
+  }catch(e){
+    // Zámek se uvolní jen při chybě; po úspěchu už je appka spuštěná
+    _onbBusy=false; if(fb) fb.disabled=false;
+    toast('⚠️ '+userErr(e,'profil'));
+    return false;
+  }
+};
 
 
 function rEmptyStates(){
@@ -4381,11 +4475,12 @@ function genFamilyCode() {
   return w+'-'+n;
 }
 
-window.createFamily = async () => {
+// presetName: pevný název (karta „Pozvat rodinu“); z inline onclick může přijít událost, proto typeof
+window.createFamily = async (presetName) => {
   if(!CU) return;
   if(familyId) { toast('Už jsi ve skupině'); return; }
   const nameInp = document.getElementById('family-name-inp');
-  const groupName = cutName(nameInp?.value,40) || 'Moje skupina';
+  const groupName = cutName(typeof presetName==='string' ? presetName : nameInp?.value, 40) || 'Moje skupina';
   const code = genFamilyCode();
   const fid = code; // kód = ID
   const data = {
@@ -4461,6 +4556,66 @@ function renderAfterFamilyChange() {
   renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist();
 }
 
+// ── Karta „Pozvat rodinu“ v Nákupech a Kalendáři ──
+// Stav: nogroup (bez skupiny), pending (skupina se zakládá), alone (sdílený modul, jen 1 člen), null = nic.
+// Zavření se pamatuje pro stav (lp_ih_shop / lp_ih_cal), po změně stavu se karta ukáže znovu.
+let _ihCreating = false;
+const INVITE_HINT_TXT = {
+  shop: { nogroup:['Nakupujete ve více lidech?','Pozvi rodinu a budete mít jeden společný seznam. Co jeden koupí, druhému se hned odškrtne.'],
+          alone:'Pošli pozvánku a nákup uvidíte společně.' },
+  cal:  { nogroup:['Plánujete ve více lidech?','Pozvi rodinu a narozeniny, kroužky i návštěvy uvidíte všichni v jednom kalendáři.'],
+          alone:'Pošli pozvánku a události uvidíte společně.' },
+};
+function inviteHintState(where){
+  if(!familyId){
+    if(_ihCreating) return 'pending';
+    return extraGroupIds.length ? null : 'nogroup'; // ve skupině už je (jen přidané), nenabízet
+  }
+  if(!familyData) return _ihCreating ? 'pending' : null; // skupina se teprve načítá → nic neblikat
+  const shared = where==='shop' ? familyData.shareShop : familyData.shareCal;
+  if(!shared) return null;
+  return Object.keys(familyData.members||{}).length <= 1 ? 'alone' : null;
+}
+function renderInviteHints(){ ['shop','cal'].forEach(renderInviteHint); }
+function renderInviteHint(where){
+  const slot=document.getElementById(where+'-invite-slot'); if(!slot) return;
+  const st=inviteHintState(where);
+  if(!st || (st!=='pending' && lsGet('lp_ih_'+where)===st)){ slot.innerHTML=''; return; }
+  const T=INVITE_HINT_TXT[where];
+  let title, desc, btn;
+  if(st==='alone'){
+    title='Ve skupině „'+esc(cutName(familyData?.groupName,40)||'Skupina')+'“ jsi zatím jen ty';
+    desc=T.alone; btn='📤 Poslat pozvánku';
+  } else {
+    [title,desc]=T.nogroup; btn=st==='pending'?'⏳ Chystám skupinu…':'👨‍👩‍👧 Pozvat rodinu';
+  }
+  slot.innerHTML=`<div class="invite-hint" role="region" aria-label="Pozvánka pro rodinu">
+    <span class="invite-hint-em" aria-hidden="true">👨‍👩‍👧</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${title}</div>
+      <div class="invite-hint-d">${desc}</div>
+      <button type="button" class="invite-hint-btn"${st==='pending'?' disabled':''} onclick="inviteHintAction()">${btn}</button>
+    </div>
+    <button type="button" class="invite-hint-x" aria-label="Skrýt nabídku" data-a0="${where}" onclick="dismissInviteHint(this.dataset.a0)">×</button>
+  </div>`;
+}
+window.dismissInviteHint = where => {
+  if(where!=='shop' && where!=='cal') return;
+  const st=inviteHintState(where); if(st && st!=='pending') lsSave('lp_ih_'+where, st);
+  renderInviteHint(where);
+};
+// 1. klepnutí založí skupinu „Rodina“, sdílení až dalším klepnutím (navigator.share potřebuje čerstvé gesto)
+window.inviteHintAction = async () => {
+  if(!familyId){
+    if(_ihCreating) return;
+    _ihCreating=true; renderInviteHints();
+    try { await window.createFamily('Rodina'); }
+    finally { _ihCreating=false; renderInviteHints(); }
+    return;
+  }
+  if(familyData) window.shareGroupInvite(familyId);
+};
+
 window.leaveFamily = async () => {
   if(!familyId || !confirm('Opustit rodinnou skupinu?')) return;
   const fid = familyId;
@@ -4499,12 +4654,22 @@ window.shareGroupInvite = async (gid) => {
   const url = 'https://lifepocket.app/?join=' + encodeURIComponent(gid);
   const text = 'Připoj se k naší skupině v LifePocket! Kód skupiny: ' + gid;
   if(navigator.share) {
-    try { await navigator.share({title:'LifePocket – pozvánka do skupiny', text, url}); }
-    catch(e) { if(e.name!=='AbortError') toast('❌ Sdílení selhalo'); }
-  } else {
-    try { await navigator.clipboard.writeText(text + '\n' + url); toast('📋 Odkaz na pozvánku zkopírován'); }
-    catch(e) { toast('❌ Odkaz se nepodařilo zkopírovat'); }
+    try { await navigator.share({title:'LifePocket – pozvánka do skupiny', text, url}); return; }
+    catch(e) { if(e.name==='AbortError') return; } // jiná chyba (např. NotAllowedError) → zkopírovat
   }
+  try { await navigator.clipboard.writeText(text + '\n' + url); toast('📋 Odkaz na pozvánku zkopírován'); }
+  catch(e) { toast('❌ Odkaz se nepodařilo zkopírovat'); }
+};
+// Doporučení appky (Nastavení); URL zvlášť, ne v textu (jinak ji WhatsApp ukáže dvakrát)
+window.shareApp = async () => {
+  const url = 'https://lifepocket.app/';
+  const text = 'Používám LifePocket: návyky, kalendář, poznámky a společný nákupní seznam pro celou rodinu v jedné appce. Česky, zdarma a bez reklam.';
+  if(navigator.share) {
+    try { await navigator.share({title:'LifePocket', text, url}); return; }
+    catch(e) { if(e.name==='AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(text + '\n' + url); toast('📋 Zkopírováno, vlož to kamarádům'); }
+  catch(e) { prompt('Zkopíruj si odkaz:', url); }
 };
 window.shareFamilyCode = async () => {
   if(!familyId) return;
@@ -4527,6 +4692,32 @@ function capturePendingJoin() {
   } catch(e) {}
 }
 capturePendingJoin();
+
+// ── Landing / přihlášení (#s-login) ──
+function showAuthPanel(mode){
+  const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
+  if(!l||!a) return;
+  l.hidden=true; a.hidden=false;
+  window.toggleLoginMode(mode==='register'?'register':'login');
+  window.scrollTo(0,0);
+  document.getElementById('auth-mode-lbl')?.focus({preventScroll:true}); // čtečka ohlásí režim
+}
+window.showAuthPanel=showAuthPanel;
+window.showLanding=()=>{
+  const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
+  if(!l||!a) return;
+  a.hidden=true; l.hidden=false;
+  document.getElementById('login-err')?.classList.remove('show');
+  document.getElementById('lp-start-btn')?.focus({preventScroll:true});
+};
+// Kdo se tu už přihlásil nebo má appku na ploše, landing nevidí
+function initLoginScreen(){
+  let known=false; try{ known=!!localStorage.getItem('lp_owner_uid'); }catch(e){}
+  if(known || isStandaloneApp()) showAuthPanel('login');
+  const hasInv=!!readPendingJoin();
+  ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
+}
+initLoginScreen();
 function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} }
 // Vrátí platnou nevypršelou pozvánku {code, ts}, jinak ji smaže a vrátí null
 function readPendingJoin() {
@@ -4799,6 +4990,7 @@ function subscribeFamily() {
     }
     familyData = snap.data();
     renderFamilySettings();
+    renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
     // Přihlásit se k sdíleným datům
     if(familyData.shareShop) subscribeSharedShop();
     if(familyData.shareCal) subscribeSharedCal();
@@ -7502,6 +7694,7 @@ function renderShop(){
   }
   const isShared = isShopShared();
   const activeItems = isShared ? familyShopItems : shopItems;
+  renderInviteHint('shop'); // i u prázdného seznamu
 
   // Tlačítko "Přesunout do rodiny" — jen v osobním módu s aktivní rodinnou skupinou
   const moveBtn = document.getElementById('shop-move-to-family');
@@ -9416,9 +9609,11 @@ function showModuleHint(moduleId) {
 // Spustit tour po dokončení onboardingu nebo při initApp pro nové uživatele
 const _origFinishOnboard = window.finishOnboard;
 window.finishOnboard = async () => {
-  localStorage.setItem('lp_tour_pending', '1');
-  await _origFinishOnboard();
-  setTimeout(startWelcomeTour, 1000);
+  if(_onbBusy) return; // dvojklik
+  try { localStorage.setItem('lp_tour_pending', '1'); } catch(e) {}
+  const ok = await _origFinishOnboard();
+  if(ok) setTimeout(startWelcomeTour, 1000);
+  else { try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} }
 };
 
 // Pro existující uživatele kteří tour ještě neviděli (ne nové registrace)
