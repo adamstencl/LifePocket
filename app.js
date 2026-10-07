@@ -21,8 +21,14 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.23';
+const APP_VERSION = '4.24';
 const CHANGELOG = [
+  { v:'4.24', items:[
+    '🛠️ Oprava: informační hlášky se už nezobrazují mimo obrazovku',
+    '🕒 Políčka pro čas a datum se při nastavování posunou do viditelné části nad spodní lištu',
+    '🔕 Obnovení tokenu notifikací už neukazuje technický výpis, jen při chybě',
+    '🛒 Nákupy a jídelníček se ve skupině otevírají rovnou na sdíleném seznamu Rodina',
+  ]},
   { v:'4.23', items:[
     '🔗 Pozvánku do skupiny pošleš odkazem – kdo na něj klikne, po přihlášení jen potvrdí připojení',
     '⚡ Rychlejší první načtení – QR kód pro podporu projektu se načte až ve chvíli, kdy ho otevřeš',
@@ -2127,7 +2133,7 @@ function cm(id){document.getElementById(id).classList.remove('open');}
 // — předejde situaci, kdy nativní picker vyskočí mimo viditelnou plochu
 document.addEventListener('focusin', e => {
   if (!e.target.matches('input[type="date"],input[type="time"],input[type="datetime-local"]')) return;
-  if (!e.target.closest('.modal')) return;
+  // platí v modalech i na stránkách (např. Nastavení → Push notifikace)
   setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'center'}), 150);
 }, true);
 
@@ -2911,7 +2917,7 @@ window.refreshFcmToken = async () => {
     console.log('[FCM]', msg);
   };
 
-  // Zobraz debug box
+  // Debug box – skrytý, zobrazí se jen při chybě
   let box = document.getElementById('fcm-debug-box');
   if (!box) {
     box = document.createElement('div');
@@ -2919,8 +2925,9 @@ window.refreshFcmToken = async () => {
     box.style.cssText = 'background:#111;border:1px solid #f5c842;border-radius:10px;padding:12px;margin-top:12px;font-size:12px;color:#ccc;font-family:monospace;line-height:1.8';
     document.getElementById('notif-refresh-token-btn')?.insertAdjacentElement('afterend', box);
   }
-  box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 FCM Debug:</div>';
-  box.scrollIntoView({behavior:'smooth', block:'center'});
+  box.style.display = 'none';
+  box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 Technické detaily (pošli při hlášení chyby):</div>';
+  const showBox = () => { box.style.display = 'block'; box.scrollIntoView({behavior:'smooth', block:'center'}); };
 
   await msgReady;
   log('1. messaging: ' + (messaging ? '✅' : '❌ ' + (msgUnsupportedReason || 'NULL - Firebase messaging se neinicializoval')));
@@ -2953,10 +2960,12 @@ window.refreshFcmToken = async () => {
     } else {
       log('9. Token: ❌ prázdný');
       fcmFail('Prohlížeč nevrátil push token');
+      showBox();
     }
   } catch(e) {
     log('❌ CHYBA: ' + e.message);
     fcmFail('Obnovení tokenu selhalo', e);
+    showBox();
   }
   updateNotifTokenLine();
 };
@@ -4820,7 +4829,6 @@ function renderMealPlan() {
   } else {
     if(badge) badge.style.display = 'none';
     if(toggle) toggle.style.display = 'none';
-    mealViewMode = 'personal';
   }
 
   const isShared = canShareMeal && mealViewMode === 'shared';
@@ -7223,7 +7231,6 @@ function renderShop(){
   } else {
     if(badge) badge.style.display = 'none';
     if(shopToggle) shopToggle.style.display = 'none';
-    shopViewMode = 'personal';
   }
   const isShared = isShopShared();
   const activeItems = isShared ? familyShopItems : shopItems;
