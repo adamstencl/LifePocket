@@ -16,7 +16,8 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
 
   // 2. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
   // aby paralelní requesty nemohly limit obejít)
-  const today = new Date().toISOString().slice(0, 10);
+  // Den počítáme v čase Europe/Prague (limit se nuluje o naší půlnoci, ne v UTC)
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(new Date());
   const rateRef = db.doc(`rateLimits/${uid}`);
   const DAILY_LIMIT = 50;
   const todayCount = await db.runTransaction(async (tx) => {
@@ -279,6 +280,16 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   return {sent, members: membersReached};
 });
 
+// Je návyk dnes na řadě? Shodně s klientem (app.js): archivovaný a pozastavený ne,
+// frekvence „konkrétní dny“ jen ve vybrané dny (dow = den v týdnu v Europe/Prague, 0 = neděle)
+function isHabitDueToday(habit, today, dow) {
+  if (habit.archived) return false;
+  if (habit.pausedUntil && habit.pausedUntil >= today) return false;
+  const freq = (typeof habit.freq === 'object' && habit.freq) ? habit.freq : {type: 'daily'};
+  if (freq.type === 'days') return (Array.isArray(freq.days) ? freq.days : []).includes(dow);
+  return true;
+}
+
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
   {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1'},
@@ -286,17 +297,22 @@ exports.sendScheduledNotifications = onSchedule(
     const now = new Date();
     const pragueStr = now.toLocaleString('en-US', {timeZone: 'Europe/Prague'});
     const prague = new Date(pragueStr);
+    // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
+    prague.setSeconds(0, 0);
     const h = prague.getHours();
     const m = prague.getMinutes();
     const today = `${prague.getFullYear()}-${String(prague.getMonth()+1).padStart(2,'0')}-${String(prague.getDate()).padStart(2,'0')}`;
+    const dow = prague.getDay(); // den v týdnu v Europe/Prague
 
     console.log(`[LP] Cron: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}, datum: ${today}`);
 
-    const usersSnap = await db.collection('users').get();
+    // Klient zapisuje jen podkolekce (users/{uid}/profile/main …), kořenový dokument
+    // neexistuje → get() by nic nevrátil. listDocuments() vrací i „chybějící“ rodiče.
+    const userRefs = await db.collection('users').listDocuments();
     let sentTotal = 0; // počet skutečně odeslaných notifikací (zařízení)
 
-    for (const userDoc of usersSnap.docs) {
-      const uid = userDoc.id;
+    for (const userRef of userRefs) {
+      const uid = userRef.id;
       try {
         const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
         if (!profileSnap.exists) continue;
@@ -312,11 +328,19 @@ exports.sendScheduledNotifications = onSchedule(
         const nickname = prof.prezdivka || prof.nickname || 'příteli';
         const a = prof.gender === 'f' ? 'a' : '';
         const morningTime = ns.morning || '08:00';
+        // Dnešní návyky načteme nejvýš jednou na uživatele (sdílí ranní, večerní i připomínky)
+        let dueCache = null;
+        const getDueHabits = async () => {
+          if (!dueCache) {
+            const habitsSnap = await db.collection(`users/${uid}/habits`).get();
+            dueCache = habitsSnap.docs.filter(d => isHabitDueToday(d.data(), today, dow));
+          }
+          return dueCache;
+        };
 
         // ── Ranní notifikace ──
         if (ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
-          const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-          const total = habitsSnap.size;
+          const total = (await getDueHabits()).length;
           const body = total > 0
             ? `Čeká tě ${total} návyk${total === 1 ? '' : total < 5 ? 'y' : 'ů'} na dnes. Pojď na to! ☀️`
             : 'Nový den, nová šance. Otevři LifePocket a nastav si cíle! ☀️';
@@ -328,11 +352,16 @@ exports.sendScheduledNotifications = onSchedule(
         if (ns.eveningDigest !== false) {
           const eveningTime = ns.evening || '21:00';
           if (isTimeMatch(h, m, eveningTime)) {
-            const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-            const total = habitsSnap.size;
+            const dueDocs = await getDueHabits();
+            const total = dueDocs.length;
+            const dueIds = new Set(dueDocs.map(d => d.id));
             const logsSnap = await db.collection(`users/${uid}/habitLogs`)
               .where('date', '==', today).where('done', '==', true).get();
-            const done = logsSnap.size;
+            // Počítej jen splnění dnešních návyků (ne archivovaných / pozastavených)
+            const done = logsSnap.docs.filter(l => {
+              const hid = l.data().habitId || l.id.slice(0, -(today.length + 1));
+              return dueIds.has(hid);
+            }).length;
             let body;
             if (total === 0) body = 'Přidej si první návyk a začni budovat lepší rutinu!';
             else if (done === total) body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
@@ -345,12 +374,12 @@ exports.sendScheduledNotifications = onSchedule(
 
         // ── Připomínky návyků ──
         if (ns.habits !== false) {
-          const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-          for (const habitDoc of habitsSnap.docs) {
+          for (const habitDoc of await getDueHabits()) {
             const habit = habitDoc.data();
             if (!habit.reminderTime) continue;
             if (!isTimeMatch(h, m, habit.reminderTime)) continue;
-            const logId = `${habit.id}_${today}`;
+            // ID logu = ID dokumentu návyku (pole habit.id v datech není)
+            const logId = `${habitDoc.id}_${today}`;
             const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
             if (logSnap.exists && logSnap.data().done) continue;
             try {
@@ -373,8 +402,13 @@ exports.sendScheduledNotifications = onSchedule(
         // Sbírej události z osobního i rodinného kalendáře
         const evSnaps = [await db.collection(`users/${uid}/events`).get()];
         if (prof.familyId) {
-          try { evSnaps.push(await db.collection(`families/${prof.familyId}/events`).get()); }
-          catch(e) { /* rodina nemusí existovat */ }
+          try {
+            // Události skupiny jen skutečnému členovi (odebraný člen může mít v profilu staré familyId)
+            const famSnap = await db.doc(`families/${prof.familyId}`).get();
+            if (famSnap.exists && famSnap.data().members?.[uid]) {
+              evSnaps.push(await db.collection(`families/${prof.familyId}/events`).get());
+            }
+          } catch(e) { /* rodina nemusí existovat */ }
         }
         const allEvDocs = evSnaps.flatMap(s => s.docs);
 
@@ -400,7 +434,8 @@ exports.sendScheduledNotifications = onSchedule(
             if (evDate !== today) continue;
             const evTime = new Date(`${today}T${ev.time}:00`);
             const diffMin = Math.round((evTime - prague) / 60000);
-            if (diffMin >= 55 && diffMin <= 65) {
+            // Okno 5 minut = jeden běh cronu → upozornění jen jednou
+            if (diffMin >= 58 && diffMin < 63) {
               try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
               catch(e) { console.error(`[LP] event push:`, e.message); }
             }

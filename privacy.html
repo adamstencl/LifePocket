@@ -88,7 +88,7 @@
     </ul>
     <p>Tvoje osobní data (zápisky, návyky, cíle, zdraví, chat s AI a další) členové skupiny nevidí.</p>
     <p><strong>Pozvánka:</strong> každá skupina má kód ve tvaru <code>SLOVO-1234</code>. Kdo kód zná, nebo dostane odkaz s pozvánkou (<code>lifepocket.app/?join=KÓD</code>), může si po přihlášení zobrazit název a seznam členů skupiny a připojit se. U odkazu se aplikace před připojením vždy zeptá. Kód je jediná ochrana skupiny, sdílej ho proto jen s lidmi, kterým věříš. Kterýkoli člen může měnit nastavení sdílení skupiny.</p>
-    <p><strong>Odchod ze skupiny:</strong> po odchodu ti aplikace přestane skupinu a její data zobrazovat. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Samotnou skupinu nelze v aplikaci smazat. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem.</p>
+    <p><strong>Odchod ze skupiny:</strong> po odchodu se tvé jméno, avatar a role odstraní ze seznamu členů a aplikace ti přestane skupinu a její data zobrazovat. Stejně to platí, když tě ze skupiny odebere jiný člen: tvoje aplikace si skupinu při nejbližším načtení sama odebere. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Samotnou skupinu nelze v aplikaci smazat. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem.</p>
 
     <h2>6. Push notifikace</h2>
     <p>Notifikace dostáváš jen tehdy, když je v prohlížeči nebo telefonu povolíš. Doručuje je <strong>Firebase Cloud Messaging</strong> (Google) přes push službu tvého prohlížeče nebo systému (např. Google, Apple, Mozilla).</p>
@@ -102,7 +102,7 @@
 
     <h2>7. Technické záznamy</h2>
     <ul>
-      <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Prvním dotazem dalšího dne se záznam přepíše.</li>
+      <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Den se počítá podle českého času, limit se tedy nuluje o půlnoci. Prvním dotazem dalšího dne se záznam přepíše.</li>
       <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb.</li>
       <li><strong>Provozní logy serveru</strong>: serverové funkce zapisují do logů Google Cloud jen technické údaje (např. ID účtu, kód chyby, počet odeslaných notifikací), ne obsah tvých dat ani text notifikací.</li>
       <li><strong>Hosting</strong>: web běží na <strong>GitHub Pages</strong> (GitHub, Inc., USA). Při načtení stránky vidí GitHub v serverových záznamech tvou IP adresu a údaje o prohlížeči.</li>

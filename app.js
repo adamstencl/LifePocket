@@ -1,7 +1,7 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import{getMessaging,getToken,deleteToken,isSupported}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayRemove,runTransaction,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
@@ -10,7 +10,7 @@ const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAut
 let messaging=null,msgUnsupportedReason='';
 const msgReady=(async()=>{
   try{
-    if(await isSupported()){messaging=getMessaging(fb);}
+    if(await isSupported()){messaging=getMessaging(fb);onMessage(messaging,showForegroundPush);}
     else msgUnsupportedReason='Prohlížeč nepodporuje push (chybí Push API, Service Worker nebo IndexedDB).';
   }catch(e){msgUnsupportedReason='Inicializace push selhala ('+(e&&e.code||'chyba')+').';}
 })();
@@ -21,8 +21,19 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.25';
+const APP_VERSION = '4.26';
 const CHANGELOG = [
+  { v:'4.26', items:[
+    '👥 Odchod ze skupiny tě teď opravdu odebere ze seznamu členů',
+    '👥 Když tě někdo ze skupiny odebere, aplikace ti ji sama přestane zobrazovat',
+    '🔔 Oprava plánovaných připomínek a ranních a večerních notifikací',
+    '🤖 Denní limit AI se nuluje o půlnoci našeho času',
+    '↩️ Tlačítka Zrušit a Zpět (cíle, avatar, registrace, checklist) opět fungují',
+    '🔔 Připomínka návyku už nechodí, když je splněný, pozastavený, archivovaný nebo má dnes volno',
+    '📌 Upozornění na událost hodinu předem chodí jen jednou',
+    '🔕 Souhrny a připomínky už nechodí dvakrát – s povolenými push notifikacemi je posílá jen server',
+    '✅ „Splněno“ z notifikace se zapíše ke správnému dni i po půlnoci',
+  ]},
   { v:'4.25', items:[
     '📄 Aktualizované zásady ochrany osobních údajů a podmínky použití',
   ]},
@@ -490,6 +501,7 @@ function clearUserSessionState(){
 
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
 function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;return c;}
@@ -2131,6 +2143,7 @@ window.delEvent=async(id)=>{
 
 function om(id){document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')}
 function cm(id){document.getElementById(id).classList.remove('open');}
+window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
 // Na mobilu scrollni datum/čas input do středu modalu hned po focusu
 // — předejde situaci, kdy nativní picker vyskočí mimo viditelnou plochu
@@ -2993,14 +3006,15 @@ function renderCustomRemindersList() {
   const el = document.getElementById('custom-reminders-list');
   if (el) el.innerHTML = '';
 }
-function sendNotif(title, body, icon = '✨', data = {}, actions = []) {
+// tag: shodný se serverem (morning, evening, habit-<id>, ev-<id>-<datum>, bday-<id>), aby se notifikace nahradily
+function sendNotif(title, body, icon = '✨', data = {}, actions = [], tag = '') {
   if (!notifGranted()) return;
   try {
     const opts = {
       body,
       icon: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${icon}</text></svg>`,
       badge: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>`,
-      tag: data.habitId || data.reminderId || 'lifepocket',
+      tag: tag || data.habitId || data.reminderId || 'lifepocket',
       renotify: true,
       silent: false,
       data
@@ -3081,6 +3095,32 @@ async function handleNotifHabitDone(data) {
 // pwa.js (klasický skript) hledá handler přes window
 window.handleNotifHabitDone = handleNotifHabitDone;
 window.lpUid = () => CU ? CU.uid : null; // pwa.js přidá uid k odložené akci
+
+// Zařízení má push token → ranní/večerní souhrn, připomínky návyků, události a narozeniny
+// posílá server (cron). Lokální plánování těchto typů je jen záloha pro zařízení bez push.
+function hasPushToken() {
+  if (fcmState === 'ok') return true;
+  try { return !!prof?.fcmTokens?.[getDeviceId()]?.token; } catch(e) { return false; }
+}
+// Je návyk dnes na řadě? Shodně se serverem (functions/index.js isHabitDueToday)
+function isHabitDueToday(h, today, dow) {
+  if (h.archived) return false;
+  if (h.pausedUntil && h.pausedUntil >= today) return false;
+  const freq = (typeof h.freq === 'object' && h.freq) ? h.freq : {type:'daily'};
+  if (freq.type === 'days') return (Array.isArray(freq.days) ? freq.days : []).includes(dow);
+  return true;
+}
+
+// Push ze serveru, když je appka otevřená v popředí: SDK ho samo nezobrazí, ukážeme ho se
+// stejným tagem a akcemi jako SW (lokální plánování těchto typů je s push tokenem vypnuté)
+function showForegroundPush(payload) {
+  const n = payload?.notification || {};
+  const d = payload?.data || {};
+  let actions = [];
+  try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { actions = []; }
+  const {tag, actions: _a, title, body, ...clickData} = d;
+  sendNotif(n.title || title || 'LifePocket', n.body || body || '', '🔔', clickData, Array.isArray(actions) ? actions : [], tag || '');
+}
 
 // ── Plánování notifikací ──
 function scheduleAllNotifications() {
@@ -3219,14 +3259,15 @@ function scheduleHabitReminders() {
 }
 
 function checkPerHabitReminders() {
-  if (!notifGranted()) return;
+  if (!notifGranted() || hasPushToken()) return; // s push tokenem posílá server
   const now = new Date();
   const today = toDS(now);
+  const dow = now.getDay();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const av = AVS.find(a => a.id === prof?.avatarId);
 
   habits.forEach(h => {
-    if (!h.reminderTime) return;
+    if (!h.reminderTime || !isHabitDueToday(h, today, dow)) return;
     const [rh, rm] = h.reminderTime.split(':').map(Number);
     if (isNaN(rh) || isNaN(rm)) return;
     const targetMin = rh * 60 + rm;
@@ -3247,36 +3288,38 @@ function checkPerHabitReminders() {
     sendNotif(
       `${h.emoji} Připomínka: ${h.name}`,
       `${name}, ještě jsi dnes nesplnil${prof?.gender === 'f' ? 'a' : ''} "${h.name}". Teď je správný čas! 💪`,
-      av?.emoji || h.emoji
+      av?.emoji || h.emoji,
+      {habitId: h.id, date: today},
+      [{action: 'done', title: '✅ Splněno'}],
+      `habit-${h.id}`
     );
   });
 }
 
 // ── Obsah notifikací ──
 function sendMorningNotif() {
+  if (hasPushToken()) return; // s push tokenem posílá server
   const today = toDS();
   const todayEvents = events.filter(ev => {
     if (ev.repeat === 'yes') return ev.date.slice(5) === today.slice(5);
     return ev.date === today;
   });
   const todayDow = new Date().getDay();
-  const habitCount = habits.filter(h => {
-    const freq = h.freq || {type:'daily'};
-    if (freq.type === 'days') return (freq.days||[]).includes(todayDow);
-    return true;
-  }).length;
+  const habitCount = habits.filter(h => isHabitDueToday(h, today, todayDow)).length;
   let body = `Čeká tě ${habitCount} návyk${habitCount===1?'':'ů'} na dnes.`;
   if (todayEvents.length > 0) {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Dobré ráno, ${prof?.prezdivka||prof?.nickname || 'příteli'}!`, body, av?.emoji || '🌅');
+  sendNotif(`${av?.emoji || '⭐'} Dobré ráno, ${prof?.prezdivka||prof?.nickname || 'příteli'}!`, body, av?.emoji || '🌅', {}, [], 'morning');
 }
 
 function sendEveningNotif() {
+  if (hasPushToken()) return; // s push tokenem posílá server
   const today = toDS();
-  const done = habits.filter(h => habitLogs.some(l => l.id === `${h.id}_${today}` && l.done)).length;
-  const total = habits.length;
+  const due = habits.filter(h => isHabitDueToday(h, today, new Date().getDay()));
+  const done = due.filter(h => habitLogs.some(l => l.id === `${h.id}_${today}` && l.done)).length;
+  const total = due.length;
   const a = prof?.gender === 'f' ? 'a' : '';
   let body = '';
   if (total === 0) {
@@ -3289,18 +3332,19 @@ function sendEveningNotif() {
     body = `Splnil${a} jsi ${done} z ${total} návyků. ${total - done} zbývají — ještě je čas!`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙');
+  sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙', {}, [], 'evening');
 }
 
 function checkAndRemindHabits() {
   const today = toDS();
+  const push = hasPushToken();
   const undone = habits.filter(h => {
     const freq = (typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
     const dow = new Date().getDay();
-    // Konkrétní dny — zkontroluj jestli dnes patří
-    if (freq.type === 'days') {
-      if (!(freq.days||[]).includes(dow)) return false;
-    }
+    // Archivovaný, pozastavený nebo dnes volný den — nepřipomínat
+    if (!isHabitDueToday(h, today, dow)) return false;
+    // Návyky s vlastním časem připomíná server (s push tokenem) — tady by vznikl duplikát
+    if (push && h.reminderTime) return false;
     // Týdenní — pokud už má splněno dost dní tento týden, nepřipomínej
     if (freq.type === 'weekly') {
       const hd = new Date(); const weekStart = new Date(hd);
@@ -3329,8 +3373,9 @@ function checkAndRemindHabits() {
         `${h.emoji} ${h.name}`,
         'Dnes ještě nesplněno — klikni Splněno!',
         h.emoji,
-        {habitId: h.id},
-        [{action: 'done', title: '✅ Splněno'}]
+        {habitId: h.id, date: today},
+        [{action: 'done', title: '✅ Splněno'}],
+        `habit-${h.id}`
       );
     }, i * 2000); // rozestup 2s aby se neprekryvaly
   });
@@ -3352,11 +3397,11 @@ function checkBirthdayNotifs() {
 
     if (ev.type === 'birthday') {
       // Ráno V DEN narozenin
-      if (mmdd === todayMMDD) {
+      if (mmdd === todayMMDD && !hasPushToken()) { // s push tokenem posílá server
         const key = `lp_notif_bday_today_${ev.id}_${today}`;
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, '1');
-          sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂');
+          sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂', {}, [], `bday-${ev.id}`);
         }
       }
       // 7 dní předem — porovnání MM-DD funguje i přes roční hranici
@@ -3373,7 +3418,7 @@ function checkBirthdayNotifs() {
 
 // Notifikace pro události s časem — hodinu předem
 function checkEventReminders() {
-  if (!notifGranted()) return;
+  if (!notifGranted() || hasPushToken()) return; // s push tokenem posílá server
   const now = new Date();
   const today = toDS(now);
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
@@ -3390,7 +3435,7 @@ function checkEventReminders() {
       const key = `lp_notif_ev_${ev.id}_${today}`;
       if (!localStorage.getItem(key)) {
         localStorage.setItem(key, '1');
-        sendNotif(`📌 Za hodinu: ${ev.name}`, `${name}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, '📌');
+        sendNotif(`📌 Za hodinu: ${ev.name}`, `${name}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, '📌', {}, [], `ev-${ev.id}-${today}`);
       }
     }
   });
@@ -4280,6 +4325,8 @@ window.joinFamily = async (codeArg) => {
       members: { ...fData.members, [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
     }, {merge:true});
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: code}, {merge:true});
+    // Změna hlavní skupiny: odhlásit listenery a data té předchozí
+    if(familyId && familyId !== code) { resetFamilyLocal(); renderAfterFamilyChange(); }
     prof.familyId = code;
     familyId = code;
     const jf = document.getElementById('family-join-form'); if(jf) jf.style.display='none';
@@ -4290,34 +4337,50 @@ window.joinFamily = async (codeArg) => {
   } catch(e) { toast('❌ Chyba: '+e.message); return null; }
 };
 
+// Skupiny, které uživatel právě sám opouští (aby se snapshot nesnažil o úklid souběžně)
+const _leavingGids = new Set();
+
+// Vynuluje stav hlavní skupiny v paměti a zruší odběry (po odchodu nebo odebrání)
+function resetFamilyLocal() {
+  familyId = null; familyData = null;
+  familyEvents = []; familyShopItems = []; familyMealPlan = {};
+  if(unsubFamily) { unsubFamily(); unsubFamily=null; }
+  if(unsubFamilyShop) { unsubFamilyShop(); unsubFamilyShop=null; }
+  if(unsubFamilyCal) { unsubFamilyCal(); unsubFamilyCal=null; }
+  if(unsubFamilyMeal) { unsubFamilyMeal(); unsubFamilyMeal=null; }
+  if(unsubFamilyChecklist) { unsubFamilyChecklist(); unsubFamilyChecklist=null; familyChecklists=[]; }
+}
+// Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
+function renderAfterFamilyChange() {
+  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist();
+}
+
 window.leaveFamily = async () => {
   if(!familyId || !confirm('Opustit rodinnou skupinu?')) return;
+  const fid = familyId;
+  _leavingGids.add(fid);
   try {
-    const fSnap = await getDoc(doc(db,'families',familyId));
-    if(fSnap.exists()) {
-      const d = fSnap.data();
-      const members = {...(d.members||{})};
-      delete members[CU.uid];
-      await setDoc(doc(db,'families',familyId), {members}, {merge:true});
+    // Nejdřív odebrat ze skupiny (ještě jako člen má právo zápisu), pak uklidit profil.
+    // setDoc s merge vnořenou mapu jen slučuje, klíč je nutné smazat přes deleteField()
+    const fSnap = await getDoc(doc(db,'families',fid));
+    if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
+      await updateDoc(doc(db,'families',fid), {[`members.${CU.uid}`]: deleteField()});
     }
-    const newProf = {...prof}; delete newProf.familyId;
-    prof = newProf;
-    // deleteField() smaže jen familyId, ostatní pole necháme netknutá
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: deleteField()}, {merge:true});
-    familyId = null; familyData = null;
-    if(unsubFamily) { unsubFamily(); unsubFamily=null; }
-    if(unsubFamilyShop) { unsubFamilyShop(); unsubFamilyShop=null; }
-    if(unsubFamilyCal) { unsubFamilyCal(); unsubFamilyCal=null; }
-    if(unsubFamilyMeal) { unsubFamilyMeal(); unsubFamilyMeal=null; }
-    if(unsubFamilyChecklist) { unsubFamilyChecklist(); unsubFamilyChecklist=null; familyChecklists=[]; }
-    renderFamilySettings();
+    // Smaže jen familyId a jen když v profilu pořád je tahle skupina (jiné zařízení mohlo změnit)
+    await clearProfileFamilyIdIf(fid);
+    if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
+    resetFamilyLocal();
+    renderAfterFamilyChange();
     toast('Opustil jsi skupinu');
   } catch(e) { toast('❌ '+e.message); }
+  finally { _leavingGids.delete(fid); }
 };
 
-window.copyFamilyCode = () => {
-  if(!familyId) return;
-  navigator.clipboard.writeText(familyId).then(()=>toast('📋 Kód zkopírován!'));
+// Bez parametru kopíruje kód hlavní skupiny, s parametrem kód zadané skupiny
+window.copyFamilyCode = (gid) => {
+  const code = gid || familyId;
+  if(!code) return;
+  navigator.clipboard.writeText(code).then(()=>toast('📋 Kód zkopírován!'));
 };
 
 // Pozvánka do skupiny: odkaz ?join=KÓD (po přihlášení se appka zeptá, zda se připojit)
@@ -4524,39 +4587,72 @@ window.leaveExtraGroup = async (gid) => {
   if(!gid) return;
   if(gid === familyId) { toast('Hlavní skupinu opustíš tlačítkem „Opustit skupinu“ v její kartě'); return; }
   if(!confirm('Opustit skupinu?')) return;
+  _leavingGids.add(gid);
   try {
+    // Nejdřív odebrat ze skupiny (deleteField – merge by klíč nesmazal), pak profil
     const fSnap = await getDoc(doc(db,'families',gid));
-    if(fSnap.exists()) {
-      const members = {...(fSnap.data().members||{})};
-      delete members[CU.uid];
-      await setDoc(doc(db,'families',gid), {members}, {merge:true});
+    if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
+      await updateDoc(doc(db,'families',gid), {[`members.${CU.uid}`]: deleteField()});
     }
-  } catch(e){}
+  } catch(e){ _leavingGids.delete(gid); toast('❌ Nepodařilo se opustit skupinu, zkus to znovu'); return; }
+  try {
+    await dropExtraGroupLocal(gid);
+    toast('Skupina opuštěna');
+  } finally { _leavingGids.delete(gid); }
+};
+
+// Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
+async function dropExtraGroupLocal(gid) {
   extraGroupIds = extraGroupIds.filter(id => id !== gid);
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
   renderFamilySettings(); renderCal();
-  toast('Skupinu opuštěna');
-};
+  // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
+  await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
+}
+
+// Smaže familyId z profilu jen tehdy, když na serveru pořád ukazuje na fid
+// (jiné zařízení se mezitím mohlo přidat k jiné skupině – to nepřepisovat)
+async function clearProfileFamilyIdIf(fid) {
+  const ref = doc(db,'users',CU.uid,'profile','main');
+  return runTransaction(db, async tx => {
+    const ps = await tx.get(ref);
+    if(!ps.exists() || ps.data().familyId !== fid) return false;
+    tx.update(ref, {familyId: deleteField()});
+    return true;
+  });
+}
+
+// Snapshot ze serveru (ne z cache, bez čekajících zápisů) potvrzuje, že v members chybím
+function isRemovedFromGroup(snap, gid) {
+  if(!CU || !snap.exists() || _leavingGids.has(gid)) return false;
+  if(snap.metadata.fromCache || snap.metadata.hasPendingWrites) return false;
+  const m = snap.data().members;
+  return !!(m && typeof m === 'object' && !m[CU.uid]);
+}
 
 window.removeFamilyMember = async (uid) => {
   if(!familyId || !familyData) return;
   if(!confirm('Odebrat tohoto člena ze skupiny?')) return;
-  const members = {...(familyData.members||{})};
-  delete members[uid];
-  await setDoc(doc(db,'families',familyId), {members}, {merge:true});
-  // Smaž familyId z profilu člena
-  try { await setDoc(doc(db,'users',uid,'profile','main'), {familyId: null}, {merge:true}); } catch(e){}
-  toast('✓ Člen odebrán');
+  try {
+    // deleteField – merge vnořené mapy by klíč nesmazal. Profil odebraného si uklidí jeho klient sám.
+    await updateDoc(doc(db,'families',familyId), {[`members.${uid}`]: deleteField()});
+    toast('✓ Člen odebrán');
+  } catch(e) { toast('❌ Člena se nepodařilo odebrat'); }
 };
 
 function subscribeExtraGroup(gid) {
   if (unsubExtraGroupDocs[gid]) return;
-  unsubExtraGroupDocs[gid] = onSnapshot(doc(db,'families',gid), snap => {
+  unsubExtraGroupDocs[gid] = onSnapshot(doc(db,'families',gid), {includeMetadataChanges:true}, snap => {
     if (!snap.exists()) return;
+    // Byl jsem ze skupiny odebrán → uklidit profil i zobrazení
+    if (isRemovedFromGroup(snap, gid)) {
+      dropExtraGroupLocal(gid).catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
+      toast('Byl jsi odebrán ze skupiny');
+      return;
+    }
     extraGroupsData[gid] = snap.data();
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
@@ -4576,8 +4672,21 @@ function subscribeFamily() {
   for (const gid of extraGroupIds) subscribeExtraGroup(gid);
 
   // Sleduj data skupiny (členové)
-  unsubFamily = onSnapshot(doc(db,'families',familyId), snap => {
+  const fid = familyId;
+  unsubFamily = onSnapshot(doc(db,'families',fid), {includeMetadataChanges:true}, snap => {
     if(!snap.exists()) return;
+    // Byl jsem ze skupiny odebrán → smazat familyId z vlastního profilu a nezobrazovat ji
+    if(isRemovedFromGroup(snap, fid)) {
+      // Starý listener (lokálně už jiná skupina) nesmí sahat na nový stav ani profil
+      if(familyId !== fid) return;
+      resetFamilyLocal();
+      if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
+      clearProfileFamilyIdIf(fid)
+        .catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
+      renderAfterFamilyChange();
+      toast('Byl jsi odebrán ze skupiny');
+      return;
+    }
     familyData = snap.data();
     renderFamilySettings();
     // Přihlásit se k sdíleným datům
@@ -4588,12 +4697,15 @@ function subscribeFamily() {
   });
 }
 
+// Chyba listeneru sdílených dat (typicky po odebrání ze skupiny) – jen tichý log, bez toastu a bez dat
+function familyListenErr(e) { console.warn('[LP] listener skupiny:', e?.code || e?.name); }
+
 function subscribeSharedShop() {
   if(unsubFamilyShop) return;
   unsubFamilyShop = onSnapshot(collection(db,'families',familyId,'shopItems'), snap => {
     familyShopItems = snap.docs.map(d=>({id:d.id,...d.data()}));
     renderShop(); // přerenderuj nákupy
-  });
+  }, familyListenErr);
 }
 
 function subscribeSharedCal() {
@@ -4602,7 +4714,7 @@ function subscribeSharedCal() {
     familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true}));
     // Sloučit s osobními eventi
     renderCal();
-  });
+  }, familyListenErr);
 }
 
 // Starší zápisy rodinného jídelníčku mají literální klíče "d0.m0"; převede je na vnořený tvar {d0:{m0}} (vnořená hodnota má přednost)
@@ -4624,7 +4736,7 @@ function subscribeSharedMeal() {
   unsubFamilyMeal = onSnapshot(doc(db,'families',familyId,'mealplan','week'), snap => {
     familyMealPlan = snap.exists() ? normMealPlan(snap.data()) : {};
     renderMealPlan();
-  });
+  }, familyListenErr);
 }
 
 // Sync nákupní seznam do rodinného prostoru
@@ -4644,7 +4756,8 @@ function subscribeSharedChecklist() {
     snap => {
       familyChecklists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true}));
       renderChecklist();
-    }
+    },
+    familyListenErr
   );
 }
 
@@ -4716,7 +4829,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div class="family-code">'+esc(gid)+'</div>'
     +'<div class="family-code-lbl">Pošli tento kód nebo odkaz ostatním členům</div>'
     +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
-    +'<button data-gid="'+gidAttr+'" onclick="navigator.clipboard.writeText(this.dataset.gid).then(()=>toast(\'📋 Zkopírováno!\'))" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
+    +'<button data-gid="'+gidAttr+'" onclick="copyFamilyCode(this.dataset.gid)" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
     +'<button data-gid="'+gidAttr+'" onclick="shareGroupInvite(this.dataset.gid)" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
     +'</div></div>'
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
@@ -5321,6 +5434,7 @@ window.hdNavMonth = (hid, dir) => {
 let checklists = [];
 let activeChecklist = null;
 let expandedCheckItemId = null;
+window.cancelCheckEdit = () => { expandedCheckItemId = null; renderChecklist(); };
 
 function subChecklist() {
   if (!CU) return;
@@ -5362,7 +5476,7 @@ document.addEventListener('paste', async function(e) {
         const preview = document.getElementById('cl-new-photo-preview');
         if (preview) {
           preview.style.display = 'block';
-          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
         }
         document.getElementById('cl-new-inp')?.focus();
       } catch(err) { toast('❌ Nepodařilo se načíst obrázek'); }
@@ -5432,7 +5546,7 @@ function renderChecklist() {
               <textarea id="cl-edit-${esc(item.id)}" class="cl-item-edit-inp" rows="2" data-a0="${esc(item.id)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveExpandedCheckItem(this.dataset.a0)}">${esc(item.text)}</textarea>
               <div class="cl-item-edit-actions">
                 <button class="cl-edit-save" data-a0="${esc(item.id)}" onclick="saveExpandedCheckItem(this.dataset.a0)">✓ Uložit</button>
-                <button class="cl-edit-cancel" onclick="expandedCheckItemId=null;renderChecklist()">Zrušit</button>
+                <button class="cl-edit-cancel" onclick="cancelCheckEdit()">Zrušit</button>
                 <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 Smazat</button>
               </div>
             ` : `
@@ -5456,6 +5570,7 @@ window.switchChecklist = function(id) {
 };
 
 let clNewPhoto = null;
+window.clearClNewPhoto = () => { clNewPhoto = null; };
 
 window.handleClNewPhotoInput = async function(input) {
   const file = input.files[0]; if (!file) return;
@@ -5465,7 +5580,7 @@ window.handleClNewPhotoInput = async function(input) {
     const preview = document.getElementById('cl-new-photo-preview');
     if (preview) {
       preview.style.display = 'block';
-      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clNewPhoto=null;this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
     }
   } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
   input.value = '';
@@ -9197,3 +9312,4 @@ if(window.visualViewport) {
     document.documentElement.style.setProperty('--keyboard-offset', offset + 'px');
   });
 }
+//z

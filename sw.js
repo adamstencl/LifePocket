@@ -42,7 +42,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v19';
+const CACHE = 'lifepocket-v20';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -85,9 +85,12 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const data = e.notification.data || {};
   if (e.action === 'done') {
-    // Lokální datum (ne UTC) — SW nemůže importovat toDS() z app.js
+    // Datum z notifikace (den, pro který připomínka platí); jinak lokální dnešek (ne UTC).
+    // Tady jen kontrola tvaru, rozsah (ne budoucnost, max. 14 dní) ověří app.js přes validNotifDate().
     const now = new Date();
-    const localDate = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    const localDate = (typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date))
+      ? data.date
+      : now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
     const msg = {
       type: 'HABIT_DONE_FROM_NOTIF',
       habitId: data.habitId,
