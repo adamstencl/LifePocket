@@ -43,4 +43,5 @@ Soubor `app.js` je velký a sdílený: jen jeden koder naráz, nebo oddělený `
 - Android PWA: stabilní `/manifest.json` s `id:"/"`, skutečné PNG ikony včetně maskable. iOS: notifikace jen z aplikace přidané na plochu (iOS 16.4+).
 - Kód: uživatelský text do HTML vždy přes `esc()`, do inline handlerů přes `data-aN` a `this.dataset.aN` (nikdy `onclick="fn('${x}')"`). Datum „dnes" přes `toDS()` (lokální čas), nikdy `toISOString().slice(0,10)`.
 - AI chat: `buildChatContext()` skládá přehled všech modulů, limit ~7000 znaků, data uživatele jsou v promptu označená jako data (instrukce z nich se neplní).
+- Při ručním smazání uživatele smazat rekurzivně i podkolekce (errorLogs, events, habits …).
 - Tajemství: `*firebase-adminsdk*.json` je v `.gitignore` a nesmí do gitu ani do URL remote. Adresa `origin` je čistá `https://github.com/adamstencl/LifePocket.git`, přihlášení přes Git Credential Manager.

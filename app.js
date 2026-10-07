@@ -375,14 +375,14 @@ const ERRLOG_MAX = 15;
 let _errLogCount = 0;
 const _errLogSeen = new Set();
 function errClean(v, max) {
-  let t = String(v ?? '');
+  let t = String(v ?? '').slice(0, 2000); // předořez: omezí práci regexů na dlouhém vstupu
   t = t.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]');                       // e-maily
   t = t.replace(/(https?:\/\/[^\s/'")]+)([^\s?#'")]*)[?#][^\s'")]*/g, '$1$2');   // parametry a #hash v URL
   t = t.replace(/https?:\/\/(?:www\.)?lifepocket\.app/g, '');                   // vlastní origin zkracuje
   t = t.replace(/\b(users|families)\/[^\s/'")]+/g, '$1/[id]'); // cesty v Firestore
   t = t.replace(/\b[A-Z]{4}-\d{4}\b/g, '[kod]');                                // kódy skupin
   t = t.replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[id]');                              // dlouhé identifikátory
-  if (/JSON/i.test(t)) t = t.replace(/"[^"]*"/g, '"…"');                         // chyby JSON.parse citují text
+  if (/JSON/i.test(t)) t = t.replace(/"[\s\S]*"/, '"…"');                        // chyby JSON.parse citují text (od první po poslední uvozovku)
   t = t.replace(/(['"`])[^'"`]{31,}\1/g, '$1…$1');                              // dlouhé citované řetězce
   t = t.replace(/\s+/g, ' ').trim();
   return t.slice(0, max);
@@ -4249,7 +4249,8 @@ window.showJoinFamily = () => {
   document.getElementById('family-code-inp').focus();
 };
 
-// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři. Vrací true při úspěchu.
+// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři.
+// Vrací true = připojeno, false = trvalé selhání (neplatný kód, plná, nenalezena), null = dočasná chyba (offline).
 window.joinFamily = async (codeArg) => {
   if(!CU) return false;
   const raw = typeof codeArg === 'string' ? codeArg : document.getElementById('family-code-inp')?.value;
@@ -4274,7 +4275,7 @@ window.joinFamily = async (codeArg) => {
     renderFamilySettings();
     toast('✅ Připojen k rodinné skupině!');
     return true;
-  } catch(e) { toast('❌ Chyba: '+e.message); return false; }
+  } catch(e) { toast('❌ Chyba: '+e.message); return null; }
 };
 
 window.leaveFamily = async () => {
@@ -4388,10 +4389,11 @@ window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); }
 window.confirmPendingJoin = async () => {
   const p = readPendingJoin();
   closeJoinInviteModal();
-  clearPendingJoin();
   if(!p) return;
   // Hlavní skupinu ještě nemám → hlavní, jinak přidaná
-  if(familyId) await window.joinExtraGroup(p.code); else await window.joinFamily(p.code);
+  const res = familyId ? await window.joinExtraGroup(p.code) : await window.joinFamily(p.code);
+  // Pozvánku smaž po úspěchu i trvalém selhání; při dočasné chybě (null) zůstane na příště
+  if(res !== null) clearPendingJoin();
 };
 
 window.saveFamilyPrefs = async () => {
@@ -4471,7 +4473,8 @@ window.createExtraGroup = async () => {
     toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
   }
 };
-// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři. Vrací true při úspěchu.
+// codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři.
+// Vrací true = připojeno, false = trvalé selhání (neplatný kód, plná, nenalezena), null = dočasná chyba (offline).
 window.joinExtraGroup = async (codeArg) => {
   if(!CU) return false;
   const inp = document.getElementById('extra-group-join-code');
@@ -4501,7 +4504,7 @@ window.joinExtraGroup = async (codeArg) => {
     extraGroupIds = prevIds;
     console.warn('joinExtraGroup selhalo', e?.code || e?.name);
     toast('❌ Nepodařilo se připojit ke skupině, zkus to znovu');
-    return false;
+    return null;
   }
 };
 window.leaveExtraGroup = async (gid) => {
