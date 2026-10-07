@@ -21,8 +21,11 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.24';
+const APP_VERSION = '4.25';
 const CHANGELOG = [
+  { v:'4.25', items:[
+    '📄 Aktualizované zásady ochrany osobních údajů a podmínky použití',
+  ]},
   { v:'4.24', items:[
     '🛠️ Oprava: informační hlášky se už nezobrazují mimo obrazovku',
     '🕒 Políčka pro čas a datum se při nastavování posunou do viditelné části nad spodní lištu',

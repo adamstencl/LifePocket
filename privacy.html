@@ -18,6 +18,7 @@
     ul { color: var(--text2); margin: 8px 0 12px 20px; font-size: 15px; }
     ul li { margin-bottom: 6px; }
     a { color: var(--accent); }
+    code { overflow-wrap: anywhere; }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 16px 0; }
     .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text3); text-decoration: none; font-size: 14px; margin-bottom: 24px; }
     .back:hover { color: var(--accent); }
@@ -31,9 +32,9 @@
     </div>
 
     <h1>Ochrana osobních údajů</h1>
-    <p class="date">Platnost od: 7. října 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
+    <p class="date">Platnost od: 8. října 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
 
-    <p>Tato stránka vysvětluje, jaké osobní údaje LifePocket zpracovává, proč a jak dlouho. Aplikace je zdarma, bez reklam a tvá data nejsou nikdy prodávána třetím stranám.</p>
+    <p>Tato stránka vysvětluje, jaké osobní údaje LifePocket zpracovává, proč, kdo k nim má přístup a jak dlouho je uchováváme. Aplikace je zdarma, bez reklam a bez sledovacích nástrojů. Tvá data neprodáváme.</p>
 
     <h2>1. Správce údajů</h2>
     <div class="card">
@@ -42,74 +43,142 @@
       Web: <a href="https://lifepocket.app">lifepocket.app</a></p>
     </div>
 
-    <h2>2. Jaké údaje sbíráme</h2>
-    <p><strong>Při registraci a přihlášení:</strong></p>
+    <h2>2. Přihlášení a účet</h2>
+    <p>Přihlásit se můžeš dvěma způsoby. Účty spravuje služba <strong>Firebase Authentication</strong> (Google).</p>
     <ul>
-      <li>E-mailová adresa</li>
-      <li>Jméno a profilová fotka (při přihlášení přes Google)</li>
+      <li><strong>Účtem Google</strong>: Firebase od Googlu dostane tvůj e-mail, jméno a odkaz na profilovou fotku. Fotku aplikace jen zobrazuje v záhlaví, do své databáze ji neukládá. Jméno z Google účtu se použije jen tehdy, když nemáš vyplněnou přezdívku (např. jako tvé jméno ve skupině).</li>
+      <li><strong>E-mailem a heslem</strong>: Firebase uloží tvůj e-mail a heslo (heslo v zabezpečené podobě, my ho nikdy nevidíme). Při registraci ti Firebase pošle e-mail k ověření adresy, na požádání i e-mail pro obnovu hesla.</li>
     </ul>
-    <p><strong>Data která sám zadáváš:</strong></p>
+
+    <h2>3. Jaké údaje ukládáme</h2>
+    <p>Vše, co v aplikaci zadáš, se ukládá do databáze <strong>Firebase Firestore</strong> (Google) pod tvůj účet:</p>
     <ul>
-      <li>Jméno / přezdívka, pohlaví, vybraný avatar</li>
+      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly, denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, členství ve skupinách</li>
+      <li>Cíle a podcíle</li>
       <li>Návyky a záznamy o jejich plnění</li>
-      <li>Zápisky a deníkové záznamy (včetně fotografií)</li>
-      <li>Nákupní seznam (osobní i sdílený)</li>
-      <li>Recepty, jídelníček, zásoby</li>
-      <li>Checklist položky</li>
-      <li>Kalendářní události a narozeniny</li>
-      <li>Záznamy o jídle a zdraví (kalorický příjem, voda, nálada)</li>
-      <li>Cíle a vize</li>
-      <li>Konverzace s AI asistentem</li>
+      <li>Zápisky (deník) včetně nálady a fotografií</li>
+      <li>Checklisty včetně fotografií u položek</li>
+      <li>Kalendářní události a narozeniny (mohou obsahovat jména dalších lidí, která zadáš)</li>
+      <li>Nákupní seznam, pravidelné nákupy, uložené recepty a plánovaná jídla</li>
+      <li>Záznamy o jídle (název, kalorie a živiny) a o zdraví (nálada, spánek, energie, stres, voda, poznámka)</li>
+      <li>Konverzace s AI společníkem: posledních 30 zpráv a souhrn starších rozhovorů, který vytváří AI (viz bod 4)</li>
+      <li>Tokeny zařízení pro push notifikace (viz bod 6)</li>
+      <li>Technické záznamy chyb (viz bod 7)</li>
     </ul>
-    <p><strong>Technické údaje:</strong></p>
+    <p><strong>Fotografie</strong> se v telefonu zmenší a uloží přímo do databáze Firestore u zápisku nebo položky checklistu. Nepoužíváme žádné jiné úložiště souborů a fotografie se nikdy neposílají AI.</p>
+    <p>Některé údaje zůstávají jen v tvém zařízení (např. zásoby mimo skupinu, oblíbené nákupy, počítadlo vody), viz bod 12.</p>
+
+    <h2>4. AI funkce</h2>
+    <p>AI funkce zajišťuje <strong>Anthropic API</strong> (Anthropic PBC, USA). Aplikace pošle dotaz na náš server (Firebase Cloud Functions, funkce <code>claudeProxy</code>, region europe-west1 v EU) a ten ho jen předá Anthropicu. Server obsah dotazů ani odpovědí neukládá ani nezapisuje do logů. Ukládá jen počet AI dotazů za den (viz bod 7).</p>
+    <p>Co se AI posílá:</p>
     <ul>
-      <li>Tokeny zařízení pro doručení push notifikací (jedno na každé zařízení s povolenými notifikacemi) a jejich platforma a datum aktualizace; mažou se při odhlášení, pokud je zařízení online, a při nejbližším odesílání notifikací, pokud jsou starší než 60 dní</li>
-      <li>Nastavení notifikací</li>
-      <li>Počet AI dotazů (pro rate limiting — ochrana před zneužitím)</li>
-      <li>Technické záznamy chyb aplikace (text chybové hlášky, místo v kódu, verze aplikace a zkrácené označení prohlížeče); neobsahují obsah tvých zápisků ani jiných dat, jména, e-maily ani adresy s parametry. Slouží jen k opravě chyb a ukládají se do tvého účtu ve Firebase Firestore (v EU)</li>
+      <li><strong>Chat se společníkem</strong>: tvá zpráva, posledních 10 zpráv rozhovoru, souhrn starších rozhovorů a přehled tvých dat z modulů (cíle, návyky, posledních 5 zápisků ve zkrácené podobě, nálada za 7 dní, checklisty, nákupy, kalendář na 90 dní dopředu, zásoby, jídelníček, recepty, jídlo, zdraví, fokus, týdenní report a skupiny). Data skupin se do přehledu dostanou tak, jak je ve skupině vidíš ty, tedy včetně názvu skupiny, počtu členů a u sdílených událostí jména autora. Každých 20 zpráv AI ze starších zpráv vytvoří souhrn, který se uloží do tvého účtu.</li>
+      <li><strong>Uložení zápisku</strong>: pokud má text zápisku víc než 20 znaků, aplikace ho po uložení automaticky pošle AI, aby našla plánovaná jídla a splněné nebo nové návyky. Když nevybereš náladu, AI ji z textu navrhne.</li>
+      <li><strong>Další AI funkce</strong>, které použiješ nebo které se spouštějí v aplikaci: ranní pozdrav a týdenní report (plnění návyků včetně jejich názvů, počty zápisků a nálada, jména oslavenců z narozenin), shrnutí dne (tvůj text, vize, cíle a dnešní návyky), citát dne, odhad kalorií (název jídla), recepty a postup vaření (název a suroviny), návrh jídelníčku a návrh nákupu (názvy receptů a zásoby).</li>
     </ul>
+    <p>AI dostává i tvoje jméno nebo přezdívku. Neposíláme jí e-mail, heslo, tokeny zařízení, pohlaví ani fotografie. Dobu uchování dat u Anthropicu určují zásady tohoto poskytovatele.</p>
 
-    <h2>3. Proč data zpracováváme</h2>
+    <h2>5. Skupiny (sdílení s rodinou a dalšími lidmi)</h2>
+    <p>Skupinu může kdokoli založit a pozvat do ní další lidi. Data skupiny jsou ve společném prostoru ve Firestore, do kterého mají přístup jen její členové.</p>
+    <p><strong>Co vidí ostatní členové skupiny:</strong></p>
     <ul>
-      <li><strong>Poskytnutí služby</strong> — zobrazení tvých dat v aplikaci, synchronizace mezi zařízeními</li>
-      <li><strong>Push notifikace</strong> — ranní/večerní připomínky, upozornění na narozeniny</li>
-      <li><strong>AI asistent</strong> — AI chat (Rex a další avataři) při každém dotazu využívá data z tvých modulů (cíle, návyky, zápisky, checklisty, nákupy, kalendář, zásoby, jídelníček, zdraví, rodina) a spolu s konverzací je přes náš server odesílá ke zpracování Anthropic API (viz níže); fotografie se neodesílají</li>
-      <li><strong>Sdílení v rodině</strong> — data sdílená se skupinou jsou uložena ve společném Firestore dokumentu přístupném členům skupiny</li>
+      <li>název skupiny a seznam členů: tvé jméno nebo přezdívku, avatar, datum připojení a roli (zakladatel / člen)</li>
+      <li>podle toho, co má skupina zapnuté: sdílený nákupní seznam, události, které do skupiny sdílíš (i s tím, kdo je přidal), jídelníček skupiny, zásoby (když jsi ve skupině, zásoby se ukládají do skupiny) a checklisty, které označíš ke sdílení, včetně fotografií u položek</li>
+      <li>upozornění, které pošleš ostatním členům (tvé jméno a krátká zpráva, např. o změně nákupního seznamu)</li>
     </ul>
+    <p>Tvoje osobní data (zápisky, návyky, cíle, zdraví, chat s AI a další) členové skupiny nevidí.</p>
+    <p><strong>Pozvánka:</strong> každá skupina má kód ve tvaru <code>SLOVO-1234</code>. Kdo kód zná, nebo dostane odkaz s pozvánkou (<code>lifepocket.app/?join=KÓD</code>), může si po přihlášení zobrazit název a seznam členů skupiny a připojit se. U odkazu se aplikace před připojením vždy zeptá. Kód je jediná ochrana skupiny, sdílej ho proto jen s lidmi, kterým věříš. Kterýkoli člen může měnit nastavení sdílení skupiny.</p>
+    <p><strong>Odchod ze skupiny:</strong> po odchodu ti aplikace přestane skupinu a její data zobrazovat. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Samotnou skupinu nelze v aplikaci smazat. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem.</p>
 
-    <h2>4. Kde jsou data uložena</h2>
-    <p>Data jsou uložena ve službě <strong>Firebase Firestore</strong> (Google LLC, servery v EU — region europe-west). Přihlášení zajišťuje <strong>Firebase Authentication</strong>.</p>
-    <p>Konverzace s AI asistentem jsou zpracovávány přes <strong>Anthropic API</strong> (Anthropic PBC, USA). Dotaz se odesílá z aplikace na náš server (Firebase Functions, region europe-west1), který jej pouze předá Anthropic API; tato serverová funkce obsah dotazu ani odpovědi neukládá ani nelogí, uchovává jen počet dotazů za den (samotnou konverzaci si ukládá aplikace do tvého účtu, viz výše). Data z modulů (v rozsahu popsaném výše, bez e-mailů, přístupových tokenů a fotografií) se odesílají pouze pro zpracování konkrétního dotazu. Data sdílená ve skupině se do dotazu dostanou jen tak, jak je ve skupině vidíš ty, tedy včetně názvu skupiny, počtu členů a u sdílených událostí jména autora. Dobu uchování u Anthropic určují zásady tohoto poskytovatele.</p>
-
-    <h2>5. Jak dlouho data uchováváme</h2>
+    <h2>6. Push notifikace</h2>
+    <p>Notifikace dostáváš jen tehdy, když je v prohlížeči nebo telefonu povolíš. Doručuje je <strong>Firebase Cloud Messaging</strong> (Google) přes push službu tvého prohlížeče nebo systému (např. Google, Apple, Mozilla).</p>
     <ul>
-      <li>Data jsou uložena po dobu trvání tvého účtu</li>
-      <li>O smazání účtu můžeš požádat e-mailem (viz níže) — všechna data pak trvale odstraníme do 30 dní</li>
-      <li>Záznamy o rate limiting se vymažou automaticky po uplynutí dne</li>
-      <li>Technické záznamy chyb uchováváme zpravidla do 90 dní; mažou se při pravidelném ručním čištění</li>
-      <li>Při smazání účtu na tvou žádost smažeme i technické záznamy chyb (podkolekce errorLogs)</li>
+      <li>U každého zařízení ukládáme token pro doručení, typ platformy, datum poslední aktualizace a náhodné ID zařízení.</li>
+      <li>Token se smaže při odhlášení, pokud je zařízení online. Server navíc při odesílání notifikací maže tokeny, které služba označí za neplatné, tokeny starší než 60 dní a nechává nejvýš 10 nejnovějších zařízení.</li>
+      <li>Aby server mohl poslat připomínku, čte každých 5 minut z tvého účtu: přezdívku, pohlaví, nastavení notifikací, tokeny, návyky (název, emoji, čas připomínky), dnešní záznamy o plnění návyků a události z tvého kalendáře i z kalendáře hlavní skupiny (název, datum, čas, typ). Text notifikace se z nich složí a odešle, nikam se neukládá ani neloguje.</li>
+      <li>Funkce „upozornit skupinu“ (<code>notifyFamily</code>) pošle ostatním členům tvou přezdívku a zprávu (nejvýš 200 znaků). Funkce „test notifikací“ (<code>testPush</code>) pošle zkušební notifikaci jen tobě.</li>
     </ul>
+    <p>Notifikace můžeš kdykoli vypnout v nastavení aplikace nebo prohlížeče.</p>
 
-    <h2>6. Tvá práva (GDPR)</h2>
+    <h2>7. Technické záznamy</h2>
     <ul>
-      <li><strong>Přístup</strong> — kdykoli si můžeš stáhnout svá data (Firebase Console nebo na vyžádání)</li>
-      <li><strong>Oprava</strong> — údaje lze upravit přímo v nastavení aplikace</li>
-      <li><strong>Výmaz</strong> — o smazání účtu a všech dat požádej e-mailem na <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>; výmaz provedeme do 30 dní</li>
-      <li><strong>Přenositelnost</strong> — na vyžádání zašleme export dat ve strojově čitelném formátu</li>
-      <li><strong>Námitka</strong> — máš právo vznést námitku proti zpracování — kontaktuj nás e-mailem</li>
+      <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Prvním dotazem dalšího dne se záznam přepíše.</li>
+      <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb.</li>
+      <li><strong>Provozní logy serveru</strong>: serverové funkce zapisují do logů Google Cloud jen technické údaje (např. ID účtu, kód chyby, počet odeslaných notifikací), ne obsah tvých dat ani text notifikací.</li>
+      <li><strong>Hosting</strong>: web běží na <strong>GitHub Pages</strong> (GitHub, Inc., USA). Při načtení stránky vidí GitHub v serverových záznamech tvou IP adresu a údaje o prohlížeči.</li>
     </ul>
-    <p>Pro uplatnění práv nebo dotazy piš na <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>. Odpovíme do 30 dní.</p>
 
-    <h2>7. Soubory cookie</h2>
-    <p>LifePocket nepoužívá sledovací cookies. Využívá <strong>localStorage</strong> v prohlížeči pro uložení lokálních nastavení a pomocných dat jen v tomto zařízení (např. téma a nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení pro push notifikace <code>lp_device_id</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, text AI týdenního reportu <code>lp_weekly_report</code>, oblíbené nákupy <code>lp_fav_shop</code>, zásoby <code>lp_pantry</code>, dnešní nálada <code>lp_daily_mood</code>, denní fokus a jeho historie <code>lp_focus</code>, <code>lp_focus_next</code> a <code>lp_focus_history</code>, datum posledního pozdravu Rexe <code>lp_rex_greet</code> a dokončení úvodní prohlídky <code>lp_tour_done</code>, počítadlo vody <code>lp_water</code>, citát dne <code>lp_daily_quote</code> a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code>) a Firebase Auth session cookie nezbytnou pro přihlášení. Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (např. zásoby, oblíbené nákupy, fokus, nálada, počítadlo vody a text týdenního reportu) se při přihlášení smažou; při běžném odhlášení a opětovném přihlášení téhož účtu zůstávají.</p>
+    <h2>8. Kdo se na zpracování podílí</h2>
+    <ul>
+      <li><strong>Google</strong> (Firebase Authentication, Firestore, Cloud Functions, Cloud Messaging): přihlášení, uložení dat, serverové funkce, notifikace. Knihovny Firebase a písma (Google Fonts) se načítají ze serverů Googlu, které přitom vidí tvou IP adresu.</li>
+      <li><strong>Anthropic</strong>: zpracování AI dotazů (bod 4).</li>
+      <li><strong>GitHub</strong>: hosting webu (bod 7).</li>
+      <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy a doručí nám je.</li>
+      <li><strong>Hlasové zadávání</strong>: diktování používá rozpoznávání řeči vestavěné v prohlížeči. Některé prohlížeče (např. Chrome) posílají zvuk ke zpracování na servery svého výrobce.</li>
+      <li><strong>Podpora projektu</strong>: odkaz a QR kód Buy Me a Coffee a QR kód BTC Lightning vedou mimo aplikaci. Platbu zpracuje daná služba podle svých podmínek, aplikace o ní nic neví a nic jí nepředává.</li>
+    </ul>
+    <p>Anthropic, Google, GitHub a Formspree jsou firmy z USA, takže se data mohou předávat mimo EU. Takové předání je zajištěno standardními smluvními doložkami schválenými Evropskou komisí nebo rámcem EU-US Data Privacy Framework podle toho, co daný poskytovatel používá.</p>
 
-    <h2>8. Bezpečnost</h2>
-    <p>Přístup k datům je chráněn Firebase Authentication. Každý uživatel vidí pouze svá vlastní data — sdílená data jsou přístupná jen členům dané skupiny. API klíče jsou uloženy na serveru a nikdy nejsou odesílány do prohlížeče.</p>
+    <h2>9. Proč a na jakém právním základě</h2>
+    <ul>
+      <li><strong>Plnění smlouvy</strong> (čl. 6 odst. 1 písm. b GDPR): účet, uložení a synchronizace tvých dat, AI funkce, skupiny. Bez toho aplikace nemůže fungovat.</li>
+      <li><strong>Souhlas</strong> (čl. 6 odst. 1 písm. a GDPR): push notifikace. Souhlas dáváš povolením notifikací a můžeš ho kdykoli odvolat jejich vypnutím.</li>
+      <li><strong>Oprávněný zájem</strong> (čl. 6 odst. 1 písm. f GDPR): záznamy chyb, denní limit AI dotazů, provozní logy a ochrana před zneužitím, odpovědi na zprávy z kontaktního formuláře.</li>
+    </ul>
+    <p>Zápisky, nálady a záznamy o zdraví mohou obsahovat citlivé údaje. Zadáváš je dobrovolně a zpracováváme je jen k tomu, abychom ti je zobrazili a aby s nimi mohly pracovat AI funkce, které používáš.</p>
 
-    <h2>9. Změny těchto zásad</h2>
-    <p>O podstatných změnách budeme informovat prostřednictvím aplikace (sekce Co je nového). Datum poslední aktualizace je uvedeno v záhlaví tohoto dokumentu.</p>
+    <h2>10. Jak dlouho data uchováváme</h2>
+    <ul>
+      <li>Data v účtu uchováváme, dokud účet existuje.</li>
+      <li>Smazání účtu zatím v aplikaci není. Požádej o něj e-mailem (viz bod 11) a všechna data účtu včetně záznamů chyb trvale smažeme do 30 dní.</li>
+      <li>Záznamy chyb starší než 90 dní mažeme ručně při pravidelném čištění (mazání není automatické).</li>
+      <li>Záznam o počtu AI dotazů obsahuje jen poslední datum a počet, smažeme ho spolu s účtem.</li>
+      <li>Obsah, který jsi přidal do skupiny, zůstává ve skupině i po tvém odchodu (bod 5).</li>
+    </ul>
 
-    <h2>10. Kontakt</h2>
+    <h2>11. Tvá práva</h2>
+    <ul>
+      <li><strong>Přístup a přenositelnost</strong>: export dat zatím v aplikaci není. Na vyžádání ti pošleme kopii tvých dat ve strojově čitelném formátu.</li>
+      <li><strong>Oprava</strong>: většinu údajů upravíš přímo v aplikaci, ostatní opravíme na požádání.</li>
+      <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci, smazání celého účtu provedeme na žádost e-mailem do 30 dní.</li>
+      <li><strong>Omezení zpracování a námitka</strong>: proti zpracování na základě oprávněného zájmu můžeš vznést námitku.</li>
+      <li><strong>Odvolání souhlasu</strong>: vypnutím notifikací.</li>
+      <li><strong>Stížnost</strong>: můžeš se obrátit na Úřad pro ochranu osobních údajů (<a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>).</li>
+    </ul>
+    <p>Pro uplatnění práv piš na <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>. Odpovíme do 30 dní.</p>
+
+    <h2>12. Úložiště v zařízení a cookies</h2>
+    <p>LifePocket nepoužívá reklamní ani sledovací cookies. V prohlížeči ukládá jen to, co potřebuje ke svému chodu:</p>
+    <ul>
+      <li><strong>IndexedDB</strong>: přihlášení do Firebase a údaje pro push notifikace.</li>
+      <li><strong>Mezipaměť (service worker)</strong>: soubory aplikace pro práci offline a čekající akce „Splněno“ z notifikace.</li>
+      <li><strong>localStorage</strong>:
+        <ul>
+          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní) a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code></li>
+          <li>osobní údaje jen v tomto zařízení: zásoby mimo skupinu <code>lp_pantry</code>, oblíbené nákupy <code>lp_fav_shop</code>, dnešní nálada <code>lp_daily_mood</code>, denní fokus a jeho historie <code>lp_focus</code>, <code>lp_focus_next</code>, <code>lp_focus_history</code>, počítadlo vody <code>lp_water</code>, text týdenního reportu <code>lp_weekly_report</code>, citát dne <code>lp_daily_quote</code></li>
+          <li>značky, aby se připomínky a pozdravy neopakovaly: <code>lp_rex_greet</code>, <code>lp_last_remind</code>, <code>lp_sched_…</code>, <code>lp_hrnotif_…</code>, <code>lp_notif_…</code>, <code>lp_inactivity_shown_…</code></li>
+        </ul>
+      </li>
+    </ul>
+    <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, počítadlo vody, týdenní report, citát dne a stav úvodních tipů na hlavní obrazovce) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají.</p>
+
+    <h2>13. Bezpečnost</h2>
+    <ul>
+      <li>K datům se dostaneš jen po přihlášení přes Firebase Authentication.</li>
+      <li>Data pod tvým účtem může číst a měnit jen tvůj účet.</li>
+      <li>Data skupiny mohou číst a měnit jen její členové. Konkrétní skupinu lze načíst jen podle jejího kódu, seznam všech skupin vypsat nelze. Nečlen může skupinu změnit jen tak, že do ní přidá sám sebe.</li>
+      <li>Konfigurace serveru (včetně klíče k AI) není z aplikace dostupná vůbec a klíč nikdy neopustí server.</li>
+      <li>Počítadlo AI dotazů si můžeš jen přečíst, měnit ho smí jen server.</li>
+      <li>Komunikace probíhá šifrovaně (HTTPS).</li>
+    </ul>
+
+    <h2>14. Věk</h2>
+    <p>Aplikace je určena lidem od 15 let.</p>
+
+    <h2>15. Změny těchto zásad</h2>
+    <p>O podstatných změnách budeme informovat prostřednictvím aplikace (sekce Co je nového). Datum platnosti je uvedeno v záhlaví tohoto dokumentu.</p>
+
+    <h2>16. Kontakt</h2>
     <p>Máš otázku ohledně zpracování tvých dat? Napiš nám: <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a></p>
   </div>
 </body>
