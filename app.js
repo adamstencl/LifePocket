@@ -6019,6 +6019,7 @@ function subscribeExtraGroup(gid) {
     }
     extraGroupsData[gid] = snap.data();
     if (!_gfUnsub[gid]) startGroupUnread(gid);
+    consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap2 => {
@@ -6055,6 +6056,7 @@ function subscribeFamily() {
     }
     familyData = snap.data();
     if(!_gfUnsub[fid]) startGroupUnread(fid);
+    consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     renderFamilySettings();
     renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
     // Přihlásit se k sdíleným datům
@@ -6347,9 +6349,10 @@ function logGroupActivity(gid, module, action, title = '', count = 1) {
   if(_accDeleting || _accDeleted || !groupModShared(gid, module)) return;
   const key = gid+'|'+module+'|'+action;
   let b = _gaBuf.get(key);
-  if(!b) { b = {gid, module, action, titles:[], count:0, t0:Date.now(), timer:0}; _gaBuf.set(key, b); }
+  if(!b) { b = {gid, module, action, titles:[], occ:new Map(), noTitle:false, count:0, t0:Date.now(), timer:0}; _gaBuf.set(key, b); }
   const tt = cutName(title, 60);
-  if(tt && !b.titles.includes(tt)) b.titles.push(tt);
+  if(tt) { if(!b.titles.includes(tt)) b.titles.push(tt); b.occ.set(tt, (b.occ.get(tt) || 0) + 1); }
+  else b.noTitle = true;
   b.count += Math.max(1, count|0);
   clearTimeout(b.timer);
   b.timer = setTimeout(() => flushGroupActivity(key), Math.max(0, Math.min(GA_DEBOUNCE, GA_MAX_WAIT - (Date.now() - b.t0))));
@@ -6358,9 +6361,14 @@ function logGroupActivity(gid, module, action, title = '', count = 1) {
 function unlogGroupActivity(gid, module, action, title = '') {
   const key = gid+'|'+module+'|'+action;
   const b = _gaBuf.get(key); if(!b) return;
-  const i = b.titles.indexOf(cutName(title, 60)); if(i < 0) return;
-  b.titles.splice(i, 1); b.count--;
-  if(b.count <= 0) { clearTimeout(b.timer); _gaBuf.delete(key); }
+  const tt = cutName(title, 60), k = b.occ.get(tt) || 0;
+  if(!tt || !k) return; // bez názvu nebo nenalezeno → nic neměnit
+  // Duplicitní jména: odebrat jen jeden výskyt
+  if(k > 1) b.occ.set(tt, k - 1);
+  else { b.occ.delete(tt); b.titles.splice(b.titles.indexOf(tt), 1); }
+  b.count--;
+  // Prázdný buffer zrušit bez zápisu (žádný záznam s n=0 a prázdným názvem)
+  if(b.count <= 0 || (!b.titles.length && !b.noTitle)) { clearTimeout(b.timer); _gaBuf.delete(key); }
 }
 function flushGroupActivity(key) {
   const b = _gaBuf.get(key);
@@ -6400,6 +6408,8 @@ function myGroupIds() {
   return [familyId, ...extraGroupIds].filter((g, i, a) => g && okFamilyCode(g) && a.indexOf(g) === i);
 }
 function groupDataOf(gid) { return gid === familyId ? familyData : extraGroupsData[gid]; }
+// Modul ve feedu/nepřečtených: hlavní skupina vše, vedlejší jen sdílené moduly (jako server)
+function gfModVisible(gid, m) { return GA_MODS.includes(m) && (gid === familyId || groupModShared(gid, m)); }
 function groupFeedSeen(gid) { const v = prof?.groupFeedSeen?.[gid]; return Number.isFinite(v) ? v : 0; }
 
 // Nepřečtené: jeden listener na skupinu (od posledního otevření feedu, nejvýš 7 dní), jen změny ostatních
@@ -6413,12 +6423,12 @@ function startGroupUnread(gid) {
       const mods = {}; let total = 0;
       snap.docs.forEach(d => {
         const a = d.data();
-        if(a.uid === CU?.uid || !GA_MODS.includes(a.module)) return;
+        if(a.uid === CU?.uid || !gfModVisible(gid, a.module)) return;
         mods[a.module] = (mods[a.module] || 0) + 1; total++;
       });
       _gfUnread[gid] = {total, mods};
       updateGroupFeedBadges();
-    }, familyListenErr);
+    }, e => { delete _gfUnsub[gid]; familyListenErr(e); }); // po chybě jde listener spustit znovu
 }
 function stopGroupUnread(gid) {
   if(!gid) return;
@@ -6488,7 +6498,7 @@ async function loadGroupFeed(gid) {
       where('ts','>',Timestamp.fromMillis(Date.now() - GA_TTL_MS)), orderBy('ts','desc'), limit(100)));
     if(tok !== _gf.token) return;
     _gf.items = snap.docs.map(d => d.data({serverTimestamps:'estimate'}))
-      .filter(a => GA_MODS.includes(a.module) && typeof a.ts?.toMillis === 'function')
+      .filter(a => gfModVisible(gid, a.module) && typeof a.ts?.toMillis === 'function')
       .map(a => ({...a, _ts: a.ts.toMillis()}));
   } catch(e) {
     if(tok !== _gf.token) return;
@@ -6501,7 +6511,9 @@ async function loadGroupFeed(gid) {
 // Přečteno = otevření feedu; přesné pole groupFeedSeen.<gid> (merge), synchronizuje se mezi zařízeními
 function markGroupFeedSeen(gid) {
   if(!CU || !prof || !okFamilyCode(gid)) return;
-  const now = Date.now();
+  // Kurzor aspoň za nejnovější načtený záznam: hodiny klienta jdoucí pozadu nevrátí odznak
+  const maxTs = _gf.gid === gid ? (_gf.items || []).reduce((m, a) => Math.max(m, a._ts || 0), 0) : 0;
+  const now = Math.max(Date.now(), maxTs);
   prof.groupFeedSeen = {...(prof.groupFeedSeen || {}), [gid]: now};
   setDoc(doc(db,'users',CU.uid,'profile','main'), {groupFeedSeen: {[gid]: now}}, {merge:true})
     .catch(e => console.warn('[LP] groupFeedSeen', e?.code || e?.name));
@@ -6545,7 +6557,10 @@ function renderGroupFeed() {
     : '';
   // Čipy: sdílené moduly skupiny + moduly, které ve feedu jsou
   const items = _gf.items || [];
-  const mods = GA_MODS.filter(m => groupModShared(gid, m) || items.some(a => a.module === m) || m === _gf.mod);
+  if(_gf.mod && gid !== familyId && !gfModVisible(gid, _gf.mod)) _gf.mod = null;
+  const mods = GA_MODS.filter(m => gid === familyId
+    ? (groupModShared(gid, m) || items.some(a => a.module === m) || m === _gf.mod)
+    : gfModVisible(gid, m));
   cEl.setAttribute('aria-label', t('gf.filter'));
   cEl.innerHTML = `<button type="button" class="gf-chip${!_gf.mod ? ' active' : ''}" aria-pressed="${!_gf.mod}" data-a0="" onclick="gfPickMod(this.dataset.a0)">${tH('gf.all')}</button>`
     + mods.map(m => `<button type="button" class="gf-chip${_gf.mod === m ? ' active' : ''}" aria-pressed="${_gf.mod === m}" aria-label="${esc(gfModName(m))}" title="${esc(gfModName(m))}" data-a0="${m}" onclick="gfPickMod(this.dataset.a0)">${GF_EMOJI[m]}</button>`).join('');
@@ -10386,6 +10401,7 @@ window.pantryToShop = async function() {
   if (!low.length) { toast('Žádné docházející zásoby'); return; }
   try {
     let added = 0;
+    const fid = isShopShared() ? familyId : null; // skupina zachycená před cyklem
     for (const item of low) {
       const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: guessShopCategory(item.name), done: false, createdAt: new Date().toISOString() };
       if (isShopShared()) {
@@ -10395,6 +10411,7 @@ window.pantryToShop = async function() {
       }
       added++;
     }
+    if (fid && added > 0) logGroupActivity(fid, 'shop', 'add', low[0].name, added);
     toast(`✓ ${added} položek přidáno do nákupního seznamu`);
   } catch(e) { toast('❌ Chyba při přidávání do nákupů'); }
 };

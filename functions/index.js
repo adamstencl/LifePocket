@@ -1229,12 +1229,16 @@ function tsAfter(a, b) { return tsBefore(b, a); }
 function sameVal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function deadlineErr() { return Object.assign(new Error('deadline'), {code: 'deadline'}); }
 
+// Historie změn (families/{id}/activity) se do nové skupiny nepřenáší, jinak by všem naskočily staré „nové“ záznamy
+function skipRotateCol(srcRef, col) { return col.id === 'activity' && srcRef.parent?.id === 'families'; }
+
 // Zkopíruje všechny podkolekce src → dst (rekurzivně, i dokumenty bez dat s vnořenými kolekcemi);
 // copied = cesty zapsané v cíli (delta pak pozná dokument, který přepnutý klient smazal);
 // check() hlídá čas před každou dávkou
 async function copySubcollections(srcRef, dstRef, stats, copied, check) {
   const cols = await srcRef.listCollections();
   for (const col of cols) {
+    if (skipRotateCol(srcRef, col)) continue;
     const refs = await col.listDocuments();
     for (let i = 0; i < refs.length; i += COPY_BATCH) {
       check();
@@ -1263,6 +1267,7 @@ async function copySubcollections(srcRef, dstRef, stats, copied, check) {
 async function copyDelta(srcRef, dstRef, since, copyEnd, copied, stats, check) {
   const cols = await srcRef.listCollections();
   for (const col of cols) {
+    if (skipRotateCol(srcRef, col)) continue;
     const refs = await col.listDocuments();
     for (let i = 0; i < refs.length; i += COPY_BATCH) {
       check();
