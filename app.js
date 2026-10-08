@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
@@ -21,8 +21,19 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.31';
+const APP_VERSION = '4.32';
 const CHANGELOG = [
+  { v:'4.32', items:[
+    '🍳 Vaření: přehlednější pole a filtry, nic se nezalamuje ani neusekává',
+    '🏷️ Filtry receptů mají jasné popisky Styl a Typ jídla, čipy jdou posouvat do strany',
+    '🗑️ Uložené recepty: větší tlačítko pro smazání a kratší karta bez zbytečných údajů',
+    '🔎 Když filtr nic nenajde, jedním ťuknutím zobrazíš všechny recepty',
+    '👥 Odebrání člena ve vedlejší skupině už nesahá na hlavní skupinu',
+    '🔗 Pozvánka do skupiny počká, až dokončíš nebo přeskočíš úvodního průvodce',
+    '🍽️ Přidání jídla do kalorií offline už nezasekne okno',
+    '📋 Když kopírování kódu skupiny nejde, ukáže se kód k ručnímu zkopírování',
+    '🔔 Po chybě registrace notifikací chodí připomínky aspoň z telefonu'
+  ]},
   { v:'4.31', items:[
     '✋ Návyky a položky checklistu přesuneš podržením prstu a tažením',
     '📒 Poznámky na mobilu: seznam zápisků přes celou obrazovku, uvítání nepřekáží',
@@ -452,7 +463,7 @@ function errClean(v, max) {
   t = t.replace(/(https?:\/\/[^\s/'")]+)([^\s?#'")]*)[?#][^\s'")]*/g, '$1$2');   // parametry a #hash v URL
   t = t.replace(/https?:\/\/(?:www\.)?lifepocket\.app/g, '');                   // vlastní origin zkracuje
   t = t.replace(/\b(users|families)\/[^\s/'")]+/g, '$1/[id]'); // cesty v Firestore
-  t = t.replace(/\b[A-Z]{4}-\d{4}\b/g, '[kod]');                                // kódy skupin
+  t = t.replace(/\b[A-Z]{4}-(\d{4}|[A-HJKMNP-Z2-9]{6})\b/g, '[kod]');           // kódy skupin (starý i nový formát)
   t = t.replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[id]');                              // dlouhé identifikátory
   if (/JSON/i.test(t)) t = t.replace(/"[\s\S]*"/, '"…"');                        // chyby JSON.parse citují text (od první po poslední uvozovku)
   t = t.replace(/(['"`])[^'"`]{31,}\1/g, '$1…$1');                              // dlouhé citované řetězce
@@ -2227,7 +2238,7 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
 
 // Pořadí návyků po přetažení: zapíše jen změněné `order` jednou dávkou (jako šipky – v rámci skupiny)
 function saveHabitOrder(ids){
-  if (!CU || !ids.length) return;
+  if (!CU || !ids.length || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const first = habits.find(x => x.id === ids[0]);
   if (!first) return;
   const group = first.group || 'day';
@@ -3645,6 +3656,7 @@ window.lpUid = () => CU ? CU.uid : null; // pwa.js přidá uid k odložené akci
 // posílá server (cron). Lokální plánování těchto typů je jen záloha pro zařízení bez push.
 function hasPushToken() {
   if (fcmState === 'ok') return true;
+  if (fcmState === 'error') return false; // registrace selhala → server sem nedoručí, plánovat lokálně
   try { return !!prof?.fcmTokens?.[getDeviceId()]?.token; } catch(e) { return false; }
 }
 // Je návyk dnes na řadě? Shodně se serverem (functions/index.js isHabitDueToday)
@@ -4896,10 +4908,10 @@ window.joinFamily = async (codeArg) => {
     if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return false; }
     const fData = fSnap.data();
     if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return false; }
-    // Přidej sebe do skupiny
-    await setDoc(doc(db,'families',code), {
-      members: { ...fData.members, [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' } }
-    }, {merge:true});
+    // Přidej sebe do skupiny jen vlastním klíčem (celá mapa z paměti by přepsala souběžné změny)
+    await updateDoc(doc(db,'families',code), {
+      ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
+    });
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: code}, {merge:true});
     // Změna hlavní skupiny: odhlásit listenery a data té předchozí
     if(familyId && familyId !== code) { resetFamilyLocal(); renderAfterFamilyChange(); }
@@ -5020,7 +5032,8 @@ window.leaveFamily = async () => {
 window.copyFamilyCode = (gid) => {
   const code = gid || familyId;
   if(!code) return;
-  navigator.clipboard.writeText(code).then(()=>toast('📋 Kód zkopírován!'));
+  // Schránka nemusí být dostupná (http, starší prohlížeč, odepřeno) → nabídnout ruční kopii
+  Promise.resolve().then(()=>navigator.clipboard.writeText(code)).then(()=>toast('📋 Kód zkopírován!')).catch(()=>prompt('Zkopíruj kód:', code));
 };
 
 // Pozvánka do skupiny: odkaz ?join=KÓD (po přihlášení se appka zeptá, zda se připojit)
@@ -5122,11 +5135,14 @@ function showJoinInviteModal(name) {
     +body+'</div></div>');
 }
 // Po přihlášení a načtení profilu (volá initApp): zjistí název skupiny a zeptá se
+let _pendingJoinTimer = null;
 async function checkPendingJoin() {
   try {
     if(!CU || !prof || document.getElementById('join-invite-modal')) return;
     const p = readPendingJoin();
     if(!p) return;
+    // Průvodce (naplánovaný nebo otevřený) má přednost, dotaz na pozvánku počká, až skončí
+    if(tourActive()) { clearTimeout(_pendingJoinTimer); _pendingJoinTimer = setTimeout(checkPendingJoin, 1500); return; }
     if(p.code === familyId || p.code === prof.familyId || (prof.extraGroupIds||[]).includes(p.code) || extraGroupIds.includes(p.code)) {
       clearPendingJoin(); toast('Už jsi v této skupině'); return;
     }
@@ -5210,7 +5226,8 @@ window.createExtraGroup = async () => {
   try {
     const code = await createFamilyDoc(data);
     extraGroupIds = [...extraGroupIds, code];
-    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+    // arrayUnion – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím skupinu přidat/odebrat)
+    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayUnion(code)});
     prof.extraGroupIds = extraGroupIds;
     subscribeExtraGroup(code);
     document.getElementById('extra-group-form').style.display = 'none';
@@ -5242,7 +5259,8 @@ window.joinExtraGroup = async (codeArg) => {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
     extraGroupIds = [...extraGroupIds, code];
-    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds});
+    // arrayUnion – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím skupinu přidat/odebrat)
+    await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayUnion(code)});
     prof.extraGroupIds = extraGroupIds;
     subscribeExtraGroup(code);
     const gf = document.getElementById('extra-group-form'); if(gf) gf.style.display = 'none';
@@ -5290,11 +5308,15 @@ async function dropExtraGroupLocal(gid) {
 
 // Smaže familyId z profilu jen tehdy, když na serveru pořád ukazuje na fid
 // (jiné zařízení se mezitím mohlo přidat k jiné skupině – to nepřepisovat)
+// a jen když v members skupiny opravdu nejsem (mohl jsem se mezitím znovu připojit)
 async function clearProfileFamilyIdIf(fid) {
   const ref = doc(db,'users',CU.uid,'profile','main');
+  const fref = doc(db,'families',fid);
   return runTransaction(db, async tx => {
     const ps = await tx.get(ref);
+    const fs = await tx.get(fref);
     if(!ps.exists() || ps.data().familyId !== fid) return false;
+    if(fs.exists() && fs.data().members?.[CU.uid]) return false;
     tx.update(ref, {familyId: deleteField()});
     return true;
   });
@@ -5308,12 +5330,17 @@ function isRemovedFromGroup(snap, gid) {
   return !!(m && typeof m === 'object' && !m[CU.uid]);
 }
 
-window.removeFamilyMember = async (uid) => {
-  if(!familyId || !familyData) return;
+// gid: skupina, ze které se odebírá (karta vedlejší skupiny); bez něj hlavní skupina
+window.removeFamilyMember = async (uid, gid) => {
+  const targetGid = gid || familyId;
+  if(!CU || !uid || !targetGid) return;
+  const gData = targetGid === familyId ? familyData : extraGroupsData[targetGid];
+  // Odebírat smí jen správce té skupiny, o kterou jde
+  if(!gData || gData.members?.[CU.uid]?.role !== 'admin' || uid === CU.uid) return;
   if(!confirm('Odebrat tohoto člena ze skupiny?')) return;
   try {
     // deleteField – merge vnořené mapy by klíč nesmazal. Profil odebraného si uklidí jeho klient sám.
-    await updateDoc(doc(db,'families',familyId), {[`members.${uid}`]: deleteField()});
+    await updateDoc(doc(db,'families',targetGid), {[`members.${uid}`]: deleteField()});
     toast('✓ Člen odebrán');
   } catch(e) { toast('❌ Člena se nepodařilo odebrat'); }
 };
@@ -5484,7 +5511,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div class="family-member-name">'+esc(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
     +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
     +'</div>'
-    +(isAdmin&&uid!==CU?.uid?'<button data-uid="'+esc(uid)+'" onclick="removeFamilyMember(this.dataset.uid)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
+    +(isAdmin&&uid!==CU?.uid?'<button data-uid="'+esc(uid)+'" data-gid="'+gidAttr+'" onclick="removeFamilyMember(this.dataset.uid,this.dataset.gid)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
     +'</div>'
   ).join('');
   const modsHtml = shareModules.map(m=>
@@ -5881,8 +5908,9 @@ window.addFoodFromPlan = async (name, mealKey, btn) => {
     const today = toDS();
     const now = new Date().toTimeString().slice(0,5);
     const log = {name, kcal:est.kcal||0, protein:est.protein||0, carbs:est.carbs||0, fat:est.fat||0, date:today, time:now};
-    // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned)
-    await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
+    // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned).
+    // Bez await: offline by Promise čekal na server a okno by viselo
+    addDoc(collection(db,'users',CU.uid,'foodLogs'), log).catch(e => toast('❌ '+userErr(e,'jídlo z plánu')));
     closeFoodLogModal();
     toast('✅ '+name+' přidáno ('+(Number(est.kcal)||0)+' kcal)');
   } catch(e) {
@@ -5907,15 +5935,11 @@ window.saveFoodLog = async (btn) => {
     fat: parseInt(document.getElementById('fl-f').value)||0,
     date: today, time: now
   };
-  try {
-    // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned)
-    await addDoc(collection(db,'users',CU.uid,'foodLogs'), log);
-    closeFoodLogModal();
-    toast('✅ Jídlo přidáno');
-  } catch(e) {
-    if(btn) btn.disabled = false;
-    toast('❌ '+userErr(e,'jídlo'));
-  }
+  // Seznam a součty překreslí onSnapshot (lokální zápis se projeví hned).
+  // Bez await: offline by Promise čekal na server a okno by viselo
+  addDoc(collection(db,'users',CU.uid,'foodLogs'), log).catch(e => toast('❌ '+userErr(e,'jídlo')));
+  closeFoodLogModal();
+  toast('✅ Jídlo přidáno');
 };
 
 window.deleteFoodLog = async (id) => {
@@ -6282,7 +6306,7 @@ function renderChecklist() {
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
   const list = [...checklists,...familyChecklists].find(c => c.id === listId);
-  if (!list) return;
+  if (!list || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const undone = list.items.filter(i => !i.done);
   if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
   const slots = list.items.map((it, i) => it.done ? -1 : i).filter(i => i >= 0);
@@ -6542,7 +6566,7 @@ window.sp=id=>{
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
   if(id==='checklist')renderChecklist();
-  if(id==='cooking')initPantry();
+  if(id==='cooking'){initPantry();refreshCookChipFade();}
 };
 
 // ── Denní motivační citát ────────────────────────────────
@@ -8662,16 +8686,28 @@ window.setPortions=(n,btn)=>{
 
 window.setCookType=(t,btn)=>{
   cookType=t;
-  document.querySelectorAll('[data-t]').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('.cook-opt-btn[data-t]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});
+  btn.classList.add('active');btn.setAttribute('aria-pressed','true');
 };
 
 window.setCookMealType=(t,btn)=>{
   cookMealType=t;
-  document.querySelectorAll('[data-m]').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('.cook-opt-btn[data-m]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false');});
+  if(btn){btn.classList.add('active');btn.setAttribute('aria-pressed','true');}
   renderSavedRecipes();
 };
+
+// Fade vpravo u řádků čipů jen pokud je ještě co scrollovat (skrytý řádek nechá fade beze změny)
+function cookChipFade(el){
+  if(!el.clientWidth)return;
+  el.classList.toggle('is-end',el.scrollLeft+el.clientWidth>=el.scrollWidth-4);
+}
+function refreshCookChipFade(){document.querySelectorAll('.cook-chip-scroll').forEach(cookChipFade);}
+document.querySelectorAll('.cook-chip-scroll').forEach(el=>{
+  el.addEventListener('scroll',()=>cookChipFade(el),{passive:true});
+  cookChipFade(el);
+});
+window.addEventListener('resize',refreshCookChipFade);
 
 window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
@@ -8856,7 +8892,7 @@ function renderRecipe(r, scaledPortions){
   const scale = portions / basePortions;
   // Reset save button
   const saveBtn=document.getElementById('btn-save-recipe');
-  if(saveBtn){saveBtn.textContent='🔖 Uložit recept';saveBtn.style.background='';saveBtn.style.color='';saveBtn.style.borderColor='';}
+  if(saveBtn){saveBtn.textContent='🔖 Uložit';saveBtn.style.background='';saveBtn.style.color='';saveBtn.style.borderColor='';}
 
   // Funkce pro škálování množství (jednoduché číslo × scale)
   const scaleQty = (qty) => {
@@ -9018,23 +9054,26 @@ function renderSavedRecipes(){
   if(!section||!list)return;
   const filtered=cookMealType==='any'?savedRecipes:savedRecipes.filter(r=>(r.mealType||r.difficulty||'')=== cookMealType);
   if(!filtered.length){
-    list.innerHTML=`<div style="font-size:14px;color:var(--text3);font-style:italic;padding:8px 0">${savedRecipes.length?'Žádné recepty pro tento typ jídla.':'Zatím žádné uložené recepty. Vygeneruj recept a klikni 🔖 Uložit.'}</div>`;
+    // Prázdný výsledek filtru: rovnou nabídnout zrušení filtru
+    list.innerHTML=savedRecipes.length
+      ? `<div class="cook-empty">Pro „${esc(cookMealType)}“ zatím nemáš uložený recept.
+           <button class="cook-empty-btn" onclick="setCookMealType(&#39;any&#39;,document.querySelector(&#39;.cook-opt-btn[data-m=any]&#39;))">Zobrazit všechny</button></div>`
+      : `<div class="cook-empty">Zatím tu nic není. Nech si navrhnout recept a ťukni na 🔖 Uložit.</div>`;
     return;
   }
-  list.innerHTML=filtered.map(r=>`
-    <div class="saved-recipe-card" data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)">
+  list.innerHTML=filtered.map(r=>{
+    const meta=[r.time?`⏱ ${esc(r.time)}`:'',(r.mealType||r.difficulty)?`🍽 ${esc(r.mealType||r.difficulty)}`:'',
+      `${Number(r.portions)||2} porcí`].filter(Boolean).join(' · ');
+    return `<div class="saved-recipe-card" role="button" tabindex="0" data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)" onkeydown="if(event.key===&#39;Enter&#39;&amp;&amp;event.target===this)openSavedRecipe(this.dataset.a0)">
       <div class="saved-recipe-top">
-        <div style="font-size:24px">🍽️</div>
-        <div style="flex:1">
+        <div class="saved-recipe-ico" aria-hidden="true">🍽️</div>
+        <div style="flex:1;min-width:0">
           <div class="saved-recipe-name">${esc(r.name)}</div>
-          <div class="saved-recipe-meta">⏱ ${esc(r.time||'?')} · 🍽 ${esc(r.mealType||r.difficulty||'?')} · ${r.portions||2} porcí · Uloženo ${new Date(r.savedAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>
+          <div class="saved-recipe-meta">${meta}</div>
         </div>
-        <button data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px;transition:color .2s;flex-shrink:0" title="Smazat">🗑️</button>
+        <button class="saved-recipe-del" data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" aria-label="Smazat recept" title="Smazat">🗑️</button>
       </div>
-      <div class="saved-recipe-actions">
-        <button data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)" style="background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.25);border-radius:8px;padding:5px 12px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">📖 Otevřít recept</button>
-      </div>
-    </div>`).join('');
+    </div>`;}).join('');
 }
 
 // ===== ZÁSOBY (PANTRY) =====
@@ -9049,6 +9088,7 @@ window.switchCookTab = function(tab) {
   if (rs) rs.style.display = tab === 'recipes' ? '' : 'none';
   if (ps) ps.style.display = tab === 'pantry' ? '' : 'none';
   if (tab === 'pantry') renderPantry();
+  if (tab === 'recipes') refreshCookChipFade();
 };
 
 window.switchShopTab = function(tab) {
@@ -9844,7 +9884,13 @@ const TOUR_MODULES = {
 };
 
 // Spustit uvítací tour pro nového uživatele
+// Průvodce je naplánovaný nebo běží (uvítání, kroky, závěrečné okno) → nepřekrývat ho dalšími okny
+let _tourPlanned = false;
+function tourActive() {
+  return _tourPlanned || !!document.querySelector('#tour-welcome,#tour-step,#tour-overlay,#tour-done');
+}
 function startWelcomeTour() {
+  _tourPlanned = false;
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
   const name = prof?.prezdivka || prof?.nickname || 'příteli';
 
@@ -10000,7 +10046,7 @@ window.finishOnboard = async () => {
   if(_onbBusy) return; // dvojklik
   try { localStorage.setItem('lp_tour_pending', '1'); } catch(e) {}
   const ok = await _origFinishOnboard();
-  if(ok) setTimeout(startWelcomeTour, 1000);
+  if(ok) { _tourPlanned = true; setTimeout(startWelcomeTour, 1000); }
   else { try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} }
 };
 
@@ -10009,6 +10055,7 @@ const _origInitApp = initApp;
 window.initApp = function(){
   _origInitApp();
   if(!localStorage.getItem('lp_tour_done') && !localStorage.getItem('lp_tour_pending') && prof?.createdAt) {
+    _tourPlanned = true;
     setTimeout(startWelcomeTour, 2000);
   }
   localStorage.removeItem('lp_tour_pending');

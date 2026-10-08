@@ -1061,21 +1061,27 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cook-prompt-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:16px}
 .cook-prompt-label{font-size:14px;color:var(--text2);margin-bottom:10px;font-weight:600}
 .cook-input-card{}
-.cook-top-row{display:flex;gap:8px;margin-bottom:10px;overflow:hidden}
-.cook-what-input{flex:1;min-width:0;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:15px;background:var(--bg2);color:var(--text);outline:none;transition:border-color .2s}
+/* Pole přes celou šířku, pod ním 2 tlačítka; 16px kvůli zoomu na iOS */
+.cook-top-row{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.cook-what-input{width:100%;min-height:46px;border:1px solid var(--border2);border-radius:12px;padding:10px 14px;font-family:'Crimson Pro',Georgia,serif;font-size:16px;background:var(--bg);color:var(--text);outline:none;transition:border-color .2s}
+.cook-what-input::placeholder{color:var(--text3);font-family:inherit;opacity:1}
 .cook-what-input:focus{border-color:var(--accent)}
-.btn-cook-gen{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0}
-@media(max-width:400px){.btn-cook-gen{padding:10px 10px;font-size:12px}}
+.cook-btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn-cook-gen{min-height:44px;background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);border-radius:12px;padding:0 12px;font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn-cook-gen--ghost{background:var(--card2);border-color:var(--border2);color:var(--text)}
+.btn-cook-gen:active{transform:scale(.98)}
 .cook-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.cook-filter-label{font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .cook-filter-sep{width:1px;height:16px;background:var(--border);margin:0 2px}
 .cook-type-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px}
-.cook-filter-box{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:8px;display:flex;flex-direction:column;gap:6px}
-.cook-filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.cook-filter-sep-h{height:1px;background:var(--border)}
-.cook-meal-scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-.cook-meal-scroll::-webkit-scrollbar{display:none}
-.cook-filter-label{font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.05em;text-transform:uppercase;flex-shrink:0;min-width:40px}
+/* Filtry: popisek nad řádkem, čipy v jednom řádku s vodorovným scrollem a fadem vpravo */
+.cook-filter-box{display:flex;flex-direction:column;gap:4px}
+.cook-filter-label{font-size:12px;color:var(--text2);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:4px 2px 0}
+.cook-chip-scroll{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
+  padding:3px 28px 3px 3px;margin:0 -3px;scroll-padding-inline:3px;
+  -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
+          mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+.cook-chip-scroll::-webkit-scrollbar{display:none}
+.cook-chip-scroll.is-end{-webkit-mask-image:none;mask-image:none}
 .cook-inp-row{display:flex;gap:8px;margin-bottom:12px}
 .cook-inp{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;transition:border-color .2s}
 .cook-inp:focus{border-color:var(--accent)}
@@ -1083,9 +1089,11 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cook-mic-btn:hover{border-color:var(--accent)}
 .cook-mic-btn.rec{background:var(--red);border-color:var(--red);animation:pulse 1s infinite}
 .cook-options-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.cook-opt-btn{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
-.cook-opt-btn:hover{border-color:var(--border2)}
-.cook-opt-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(245,200,66,0.08)}
+.cook-opt-btn{flex:0 0 auto;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:0 14px;
+  background:var(--card2);border:1px solid var(--border2);border-radius:22px;
+  font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.cook-opt-btn:hover{border-color:var(--accent)}
+.cook-opt-btn.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
 .cook-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:12px}
 .cook-recipe-name{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);margin-bottom:4px;font-weight:700}
 .cook-recipe-meta{font-size:13px;color:var(--text3);margin-bottom:14px}
@@ -1096,10 +1104,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cook-step{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:15px;line-height:1.6;color:var(--text2);display:flex;gap:10px}
 .cook-step-num{color:var(--accent);font-weight:700;flex-shrink:0;font-family:'Playfair Display',serif}
 .cook-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-.saved-recipe-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .2s}
-.saved-recipe-card:hover{border-color:var(--accent2)}
-.saved-recipe-name{font-size:15px;font-weight:600;color:var(--text)}
-.saved-recipe-meta{font-size:12px;color:var(--text3);margin-top:2px}
 
 /* MOBILE — Nákupy */
 @media(max-width:640px){
@@ -1117,9 +1121,10 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .cook-inp-row .btn-p{width:100%!important;padding:13px!important;font-size:16px!important}
   .cook-options-row{gap:6px}
   .cook-options-row span{width:100%;margin-left:0!important;margin-top:6px}
-  .cook-opt-btn{padding:7px 14px;font-size:14px}
-  .cook-actions{flex-direction:column;gap:8px}
-  .cook-actions button{width:100%!important;padding:12px!important;font-size:15px!important}
+  /* Akce pod receptem: hlavní přes celou šířku, ostatní 2×2 */
+  .cook-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cook-actions button{width:100%!important;min-height:44px;padding:10px 8px!important;font-size:14px!important}
+  .cook-actions .btn-p{grid-column:1/-1;font-size:16px!important}
   .cook-recipe-card{padding:14px}
   .cook-recipe-name{font-size:19px}
 }
@@ -1161,6 +1166,12 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .saved-recipe-name{flex:1;font-size:16px;font-weight:700;color:var(--text);font-family:'Playfair Display',serif;font-style:italic}
 .saved-recipe-meta{font-size:12px;color:var(--text3);margin-top:4px}
 .saved-recipe-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.saved-recipe-ico{font-size:24px;flex-shrink:0}
+.saved-recipe-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-recipe-del{width:44px;height:44px;margin:-8px -8px -8px 0;flex-shrink:0;background:none;border:none;border-radius:10px;font-size:18px;color:var(--text3);cursor:pointer}
+.saved-recipe-del:active{background:var(--card2)}
+.cook-empty{font-size:15px;color:var(--text2);font-style:italic;padding:8px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.cook-empty-btn{min-height:44px;padding:0 14px;background:none;border:1px solid var(--border2);border-radius:22px;font-family:'Crimson Pro',serif;font-size:14px;font-style:normal;color:var(--accent);cursor:pointer}
 
 /* COOKING TABS */
 .cook-tabs{display:flex;gap:0;margin-bottom:16px;background:var(--card2);border-radius:12px;padding:3px;border:1px solid var(--border)}
