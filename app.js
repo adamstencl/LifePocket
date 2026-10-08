@@ -6638,21 +6638,22 @@ function renderGroupNotifSettings() {
         `<button type="button" class="seg-btn${gp[k] === v ? ' active' : ''}" role="radio" aria-checked="${gp[k] === v}" data-a0="${k}" data-a1="${v}" onclick="setGroupNotif(this.dataset.a0,this.dataset.a1)">${tH('gn.opt.' + v)}</button>`).join('')}</div></div>`).join('')}
     <label class="gn-check"><input type="checkbox" id="gn-checked"${gp.notifyChecked ? ' checked' : ''} onchange="setGroupNotif('notifyChecked',this.checked)"><span>${tH('gn.checked')}</span></label>
     <label class="gn-check"><input type="checkbox" id="gn-quiet-on"${gp.quiet ? ' checked' : ''} onchange="setGroupQuiet()"><span>🌙 ${tH('gn.quiet')}</span></label>
-    <div class="setrow" id="gn-quiet-times" style="gap:12px;flex-wrap:wrap"${gp.quiet ? '' : ' hidden'}>
+    ${gp.quiet ? `<div class="setrow" id="gn-quiet-times" style="gap:12px">
       <div class="fg"><label class="flbl" for="gn-quiet-from">${tH('gn.from')}</label>
         <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-from" value="${esc(gp.quiet?.from || GROUP_NOTIF_DEFAULTS.quiet.from)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
       <div class="fg"><label class="flbl" for="gn-quiet-to">${tH('gn.to')}</label>
         <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-to" value="${esc(gp.quiet?.to || GROUP_NOTIF_DEFAULTS.quiet.to)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
-    </div>
+    </div>` : ''}
     <div class="gn-hint">${tH('gn.quietHint')}</div>
     <div class="gn-hint">💡 ${tH('gn.hint')}</div>`;
 }
 function saveGroupNotif(patch) {
   if(!CU || !prof) return;
   prof.groupNotif = {...(prof.groupNotif || {}), ...patch};
+  // Bez čekání na server (offline se zápis odešle později), stejně jako saveNotifSettings
   setDoc(doc(db,'users',CU.uid,'profile','main'), {groupNotif: patch}, {merge:true})
-    .then(() => toast(t('gn.saved')))
     .catch(e => toast('❌ ' + userErr(e)));
+  toast(t('gn.saved'));
   renderGroupNotifSettings();
 }
 window.setGroupNotif = (key, val) => {
