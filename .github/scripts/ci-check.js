@@ -189,6 +189,9 @@ const FORBIDDEN = [
     re: /toISOString\(\)\s*\.\s*(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\)\s*\[\s*0\s*\])/g },
   { name: "interpolace '${…}' v inline handleru (použij data-aN)", allow: 14,
     re: /\bon\w+=\\?"[^"]*'\$\{/g },
+  // Záznam návyku se píše jen přes putHabitLog / delHabitLog (zrcadlo sdíleného návyku ve skupině)
+  { name: "přímý zápis doc(…'habitLogs'…) mimo putHabitLog/delHabitLog", allow: 2,
+    re: /\bdoc\(\s*db\s*,\s*'users'\s*,[^)]*'habitLogs'/g },
 ];
 for (const f of FORBIDDEN) {
   const hits = [...appSrc.matchAll(f.re)].map(m => lineOf(appSrc, m.index));
