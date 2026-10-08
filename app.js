@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
@@ -23,7 +23,6 @@ const msgReady=(async()=>{
 })();
 const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
-const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const testPushFn=httpsCallable(functions,'testPush');
 const deleteAccountFn=httpsCallable(functions,'deleteAccount');
 // Kopie velké skupiny může trvat déle než výchozích 70 s (funkce má limit 300 s)
@@ -2465,16 +2464,19 @@ function saveHabitOrder(ids){
 window.migrateCalEvents = async function() {
   if(!isCalShared()||!events.length) return;
   if(!confirm(`Přesunout ${events.length} osobních událostí do sdíleného kalendáře?`)) return;
-  let ok=0;
+  let ok=0, firstName='';
+  const fid=familyId;
   for(const ev of events) {
     try {
       const {id, ...data} = ev;
       data.addedBy = CU.uid;
-      await addDoc(collection(db,'families',familyId,'events'), data);
+      await addDoc(collection(db,'families',fid,'events'), data);
       await deleteDoc(doc(db,'users',CU.uid,'events',id));
+      if(!ok) firstName=ev.name||'';
       ok++;
-    } catch(e) { console.warn('migrate err', e); }
+    } catch(e) { console.warn('migrate err', e?.code||e?.name); }
   }
+  if(ok) logGroupActivity(fid, 'cal', 'add', firstName, ok);
   toast(`✓ ${ok} událostí přesunuto do sdíleného kalendáře`);
 };
 window.calDayClick=(ds)=>{
@@ -2682,6 +2684,7 @@ window.saveEvent=async()=>{
     try {
       if(inFamily && editGroupId) {
         await setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate);
+        logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')));
       } else {
         await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
       }
@@ -2690,7 +2693,9 @@ window.saveEvent=async()=>{
     toast('✓ Událost upravena');
   } else {
     if(selEvShare && selEvShareGroupId) {
-      await addDoc(collection(db,'families',selEvShareGroupId,'events'),ev);
+      const gid=selEvShareGroupId;
+      await addDoc(collection(db,'families',gid,'events'),ev);
+      logGroupActivity(gid, 'cal', 'add', gaTitle(name, fmtDate(date,'dm')));
     } else {
       await addDoc(collection(db,'users',CU.uid,'events'),ev);
     }
@@ -2702,9 +2707,12 @@ window.saveEvent=async()=>{
 window.delEvent=async(id)=>{
   if(!CU||!confirm('Smazat událost?'))return;
   const allGids = [familyId, ...extraGroupIds].filter(Boolean);
+  // Sdílená událost: do aktivity jen její skupina (maže se naslepo ve všech)
+  const famEv = getAllFamilyEvents().find(e => e.id === id);
   const delPromises = allGids.map(gid => deleteDoc(doc(db,'families',gid,'events',id)).catch(()=>{}));
   delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
   await Promise.all(delPromises);
+  if(famEv) logGroupActivity(famEv.groupId || familyId, 'cal', 'del', gaTitle(famEv.name||'', famEv.date ? fmtDate(famEv.date,'dm') : ''));
   toast('Smazáno');
 };
 
@@ -2902,7 +2910,7 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();location.reload();};
+window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();location.reload();};
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
@@ -5396,6 +5404,8 @@ const _leavingGids = new Set();
 
 // Vynuluje stav hlavní skupiny v paměti a zruší odběry (po odchodu nebo odebrání)
 function resetFamilyLocal() {
+  flushAllGroupActivity(); // čekající aktivita ještě do staré skupiny
+  stopGroupUnread(familyId);
   familyId = null; familyData = null;
   familyEvents = []; familyShopItems = []; familyMealPlan = {};
   if(unsubFamily) { unsubFamily(); unsubFamily=null; }
@@ -5764,6 +5774,7 @@ window.leaveExtraGroup = async (gid) => {
 
 // Zruší odběry a data vedlejší skupiny jen v paměti (profil nemění)
 function forgetExtraGroupLocal(gid) {
+  stopGroupUnread(gid);
   extraGroupIds = extraGroupIds.filter(id => id !== gid);
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
@@ -6111,13 +6122,16 @@ window.toggleChecklistShare = async function(listId) {
   if(!list || !familyId) return;
   list.shared = !list.shared;
   saveChecklistDoc(list);
+  const fid = familyId;
   if(list.shared) {
-    await setDoc(doc(db,'families',familyId,'checklists',list.id), {
+    await setDoc(doc(db,'families',fid,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
     });
+    logGroupActivity(fid, 'check', 'share', list.name || '');
     toast(`✅ "${list.name}" sdíleno s rodinou`);
   } else {
-    await deleteDoc(doc(db,'families',familyId,'checklists',list.id));
+    await deleteDoc(doc(db,'families',fid,'checklists',list.id));
+    logGroupActivity(fid, 'check', 'del', list.name || '');
     toast(`"${list.name}" odebráno ze sdílení`);
   }
   renderChecklist();
@@ -6243,23 +6257,104 @@ window.renameFamilyGroup = async () => {
 // Override addShopItem aby zapisoval do rodinného prostoru pokud je aktivní sdílení
 async function addShopItemToFamily(name, category) {
   if(!familyId || !familyData?.shareShop) return false;
-  await addDoc(collection(db,'families',familyId,'shopItems'), {
+  const fid = familyId;
+  await addDoc(collection(db,'families',fid,'shopItems'), {
     name, category: category||'Ostatní', done:false,
     addedBy: CU.uid, addedByName: prof.prezdivka||prof.nickname||'',
     createdAt: new Date().toISOString()
   });
+  logGroupActivity(fid, 'shop', 'add', name);
   return true;
 }
 
 async function toggleFamilyShopItem(id, done) {
   if(!familyId) return;
-  await setDoc(doc(db,'families',familyId,'shopItems',id), {done:!done, doneBy:CU.uid}, {merge:true});
+  const fid = familyId, name = familyShopItems.find(i => i.id === id)?.name || '';
+  await setDoc(doc(db,'families',fid,'shopItems',id), {done:!done, doneBy:CU.uid}, {merge:true});
+  // Odškrtnutí → „koupeno“; zpětné zrušení vyjme položku z čekajícího záznamu (omyl se nehlásí)
+  if(!done) logGroupActivity(fid, 'shop', 'done', name);
+  else unlogGroupActivity(fid, 'shop', 'done', name);
 }
 
 async function deleteFamilyShopItem(id) {
   if(!familyId) return;
-  await deleteDoc(doc(db,'families',familyId,'shopItems',id));
+  const fid = familyId, name = familyShopItems.find(i => i.id === id)?.name || '';
+  await deleteDoc(doc(db,'families',fid,'shopItems',id));
+  logGroupActivity(fid, 'shop', 'del', name);
 }
+
+// ── AKTIVITA SKUPINY (feed „Co je nového“ + push ostatním přes cron) ──
+// Záznam families/{gid}/activity: ts (server), uid, name, g, module, action, title ≤ 60, n, count, expireAt (+7 dní, TTL).
+// Rychlé změny se slučují: stejná skupina+modul+akce do 4 s od poslední, nejdéle 20 s od první → 1 záznam.
+const GA_MODS = ['shop','cal','meal','check','pantry'];
+const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share']);
+const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
+const _gaBuf = new Map();
+// Je modul ve skupině sdílený? Stejně jako server: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
+function groupModShared(gid, module) {
+  if(!gid) return false;
+  if(gid === familyId) {
+    const fd = familyData || {};
+    if(module === 'cal') return !!fd.shareCal;
+    if(module === 'shop') return !!fd.shareShop;
+    if(module === 'meal') return !!fd.shareMeal;
+    if(module === 'check') return fd.shareChecklist !== false;
+    return module === 'pantry';
+  }
+  return module === 'cal' && extraGroupIds.includes(gid) && !!extraGroupsData[gid]?.shareCal;
+}
+// Název do záznamu: hlavní část se zkrátí tak, aby se vešla i přípona („ · 12. 10.“), celkem ≤ 60
+function gaTitle(main, suffix = '') {
+  main = String(main ?? '').trim();
+  if(!main) return cutName(suffix, 60);
+  const sfx = suffix ? ' · ' + cutName(suffix, 30) : '';
+  return cutName(main, 60 - sfx.length) + sfx;
+}
+// Checklist: jen rodinný seznam; název „položka · seznam“
+function gaCheck(list, action, text, count = 1) {
+  if(list?._family && familyId) logGroupActivity(familyId, 'check', action, gaTitle(text, list.name || ''), count);
+}
+function logGroupActivity(gid, module, action, title = '', count = 1) {
+  if(!CU || !okFamilyCode(gid) || !GA_MODS.includes(module) || !GA_ACTS.has(action)) return;
+  if(_accDeleting || _accDeleted || !groupModShared(gid, module)) return;
+  const key = gid+'|'+module+'|'+action;
+  let b = _gaBuf.get(key);
+  if(!b) { b = {gid, module, action, titles:[], count:0, t0:Date.now(), timer:0}; _gaBuf.set(key, b); }
+  const tt = cutName(title, 60);
+  if(tt && !b.titles.includes(tt)) b.titles.push(tt);
+  b.count += Math.max(1, count|0);
+  clearTimeout(b.timer);
+  b.timer = setTimeout(() => flushGroupActivity(key), Math.max(0, Math.min(GA_DEBOUNCE, GA_MAX_WAIT - (Date.now() - b.t0))));
+}
+// Zpětné vzetí (odškrtnutí → hned zrušení): vyjmout z čekajícího záznamu; už odeslaný záznam zůstává
+function unlogGroupActivity(gid, module, action, title = '') {
+  const key = gid+'|'+module+'|'+action;
+  const b = _gaBuf.get(key); if(!b) return;
+  const i = b.titles.indexOf(cutName(title, 60)); if(i < 0) return;
+  b.titles.splice(i, 1); b.count--;
+  if(b.count <= 0) { clearTimeout(b.timer); _gaBuf.delete(key); }
+}
+function flushGroupActivity(key) {
+  const b = _gaBuf.get(key);
+  _gaBuf.delete(key);
+  if(!b) return;
+  clearTimeout(b.timer);
+  if(!CU || _accDeleting || _accDeleted) return;
+  let title = '', n = 0;
+  for(const tt of b.titles) { const nx = title ? title+', '+tt : tt; if(nx.length > 60) break; title = nx; n++; }
+  const data = {
+    ts: serverTimestamp(), uid: CU.uid, name: cutName(prof?.prezdivka || prof?.nickname || '', 40),
+    module: b.module, action: b.action, title, n, count: Math.min(Math.max(b.count, n, 1), 500),
+    expireAt: Timestamp.fromMillis(Date.now() + GA_TTL_MS)
+  };
+  if(prof?.gender === 'f') data.g = 'f';
+  // Bez await: funguje i offline, serverTimestamp se doplní při odeslání. Obsah se neloguje.
+  addDoc(collection(db,'families',b.gid,'activity'), data)
+    .catch(e => console.warn('[LP] aktivita skupiny', e?.code || e?.name));
+}
+function flushAllGroupActivity() { for(const k of [..._gaBuf.keys()]) flushGroupActivity(k); }
+addEventListener('pagehide', flushAllGroupActivity);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushAllGroupActivity(); });
 
 // ── JÍDELNÍČEK ────────────────────────────────────────
 const DAYS_CS = ['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'];
@@ -6355,8 +6450,13 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
     if(!isMealAdmin()) { toast('⚠️ Rodinný jídelníček upravuje správce. Ulož si jídlo do „Moje“.'); return false; }
     // Vnořená mapa (setDoc s merge bere tečku v klíči jako součást názvu pole)
     const update = {[dayKey]: {[mealKey]: val}};
-    setDoc(doc(db,'families',familyId,'mealplan','week'), update, {merge:true})
+    const fid = familyId, prev = String(familyMealPlan?.[dayKey]?.[mealKey] || '').trim();
+    setDoc(doc(db,'families',fid,'mealplan','week'), update, {merge:true})
       .catch(e => toast('❌ '+userErr(e,'jídelníček')));
+    // Aktivita: „Svíčková · út oběd“; vymazání hlásí původní jídlo
+    const slot = DAYS_CS[+dayKey[1]].slice(0,2).toLowerCase() + ' ' + MEALS_CS[+mealKey[1]].toLowerCase();
+    if(val.trim()) { if(val.trim() !== prev) logGroupActivity(fid, 'meal', 'edit', gaTitle(val.trim(), slot)); }
+    else if(prev) logGroupActivity(fid, 'meal', 'del', gaTitle(prev, slot));
   } else {
     if(!prof.mealPlan) prof.mealPlan = {};
     if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
@@ -6393,6 +6493,7 @@ window.generateMealPlanAI = async () => {
     if(shared) {
       if(!fid || fid !== familyId) { toast('⚠️ Skupina se mezitím změnila, jídelníček se neuložil'); return; }
       await setDoc(doc(db,'families',fid,'mealplan','week'), plan);
+      logGroupActivity(fid, 'meal', 'plan');
       renderMealPlan();
     } else {
       prof.mealPlan = plan;
@@ -6666,8 +6767,9 @@ window.mealplanToShopping = async () => {
 
   const isSharedShop = isShopShared();
   const activeShopItems = isSharedShop ? familyShopItems : shopItems;
+  const shopFid = familyId;
 
-  let addedCount = 0;
+  let addedCount = 0, firstAdded = '';
   let foundRecipes = [];
   const alreadyAdded = new Set();
 
@@ -6692,12 +6794,15 @@ window.mealplanToShopping = async () => {
             done: false, fromRecipe: recipe.name,
             createdAt: new Date().toISOString()
           });
+          if(!addedCount) firstAdded = ing.name;
           addedCount++;
           alreadyAdded.add(key);
         }
       }
     }
   }
+  // Aktivita jednou za celou dávku (počet místo 20 volání)
+  if(isSharedShop && addedCount) logGroupActivity(shopFid, 'shop', 'add', firstAdded, addedCount);
 
   const withoutRecipe = mealNames.filter(m =>
     !savedRecipes.find(r =>
@@ -7069,6 +7174,7 @@ window.addCheckItem = function() {
   list.items.unshift(item);
   inp.value = '';
   saveChecklistDoc(list);
+  gaCheck(list, 'add', item.text);
   renderChecklist();
   document.getElementById('cl-new-inp')?.focus();
 };
@@ -7094,6 +7200,9 @@ window.toggleCheckItem = function(itemId) {
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
   saveChecklistDoc(list);
+  // Odškrtnutí → „hotovo“; vrácení zpět vyjme položku z čekajícího záznamu
+  if (item?.done) gaCheck(list, 'done', item.text);
+  else if (item && list._family && familyId) unlogGroupActivity(familyId, 'check', 'done', gaTitle(item.text, list.name || ''));
   renderChecklist();
 };
 
@@ -7114,17 +7223,21 @@ window.saveExpandedCheckItem = function(itemId) {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
+  const changed = !!item && item.text !== newText;
   if (item) item.text = newText;
   expandedCheckItemId = null;
   saveChecklistDoc(list);
+  if (changed) gaCheck(list, 'edit', newText);
   renderChecklist();
 };
 
 window.deleteCheckItem = function(itemId) {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
+  const gone = list.items.find(i => i.id === itemId);
   list.items = list.items.filter(i => i.id !== itemId);
   saveChecklistDoc(list);
+  if (gone) gaCheck(list, 'del', gone.text);
   renderChecklist();
 };
 
@@ -7185,8 +7298,10 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
 window.clearDoneChecklistItems = function() {
   const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
   if (!list) return;
+  const nDone = list.items.filter(i => i.done).length;
   list.items = list.items.filter(i => !i.done);
   saveChecklistDoc(list);
+  if (nDone) gaCheck(list, 'clear', '', nDone);
   renderChecklist();
 };
 
@@ -7204,7 +7319,9 @@ window.deleteChecklist = async function(id) {
   if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
   if (!confirm(`Smazat seznam "${list?.name}"? Tato akce je nevratná.`)) return;
   if (isFamilyList && familyId) {
-    await deleteDoc(doc(db,'families',familyId,'checklists',id));
+    const fid = familyId;
+    await deleteDoc(doc(db,'families',fid,'checklists',id));
+    logGroupActivity(fid, 'check', 'del', list?.name || '');
   } else {
     await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
   }
@@ -8719,8 +8836,8 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
 window.confirmRecipeToShop=async(btnEl)=>{
   if(!lastRecipe){toast('Nejprve nechej Rexe navrhnout recept');return;}
   btnEl?.remove();
-  let added=0;
-  const isShared = isShopShared();
+  let added=0, firstAdded='';
+  const isShared = isShopShared(), shopFid = familyId;
   const activeItems = isShared ? familyShopItems : shopItems;
   for(const ing of lastRecipe.ingredients){
     const exists=activeItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
@@ -8734,9 +8851,11 @@ window.confirmRecipeToShop=async(btnEl)=>{
         done:false, fromRecipe:lastRecipe.name,
         createdAt:new Date().toISOString()
       });
+      if(!added) firstAdded=ing.name;
       added++;
     }
   }
+  if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
   const {row:doneRow,bubble:done}=makeBotBubble(`✅ Přidal jsem <b>${added} surovin</b> do nákupního seznamu! Dobrou chuť 😋 <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`,avCur.emoji,avCur.name);
@@ -8783,9 +8902,13 @@ function renderShop(){
   const moveBtn = document.getElementById('shop-move-to-family');
   if(moveBtn) moveBtn.style.display = (!isShared && familyId && familyData?.shareShop && shopItems.length) ? 'block' : 'none';
 
-  // Tlačítko "Informovat skupinu" — jen ve sdíleném módu s aktivní rodinnou skupinou
-  const notifyBtn = document.getElementById('shop-notify-family');
-  if(notifyBtn) notifyBtn.style.display = (isShared && familyId && familyData?.shareShop) ? 'block' : 'none';
+  // Místo ručního „Informovat ostatní“: ostatní dostanou upozornění samy (cron), odkaz do nastavení
+  const gnNote = document.getElementById('shop-gn-note');
+  if(gnNote) {
+    gnNote.hidden = !isShared;
+    if(isShared && !gnNote.firstChild) gnNote.innerHTML = `<span aria-hidden="true">🔔</span> ${tH('gn.autoNote')} <button type="button" class="gn-note-link" onclick="openGroupNotifSettings()">${tH('gn.setup')}</button>`;
+  }
+  updateGroupFeedBells();
 
   if(!activeItems.length){
     list.innerHTML='';empty.style.display='flex';
@@ -8899,24 +9022,6 @@ window.onShopInpKey=()=>{
   }
 };
 
-window.notifyShopFamily=async()=>{
-  if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
-  const senderName=prof?.prezdivka||prof?.nickname||'Člen rodiny';
-  const groupName=familyData?.groupName||'rodiny';
-  const count=familyShopItems.filter(i=>!i.done).length;
-  const msg=count>0
-    ?`${senderName} aktualizoval${prof?.gender==='f'?'a':''} nákupní seznam — ${count} položek čeká na nákup`
-    :`${senderName} aktualizoval${prof?.gender==='f'?'a':''} nákupní seznam`;
-  try {
-    const res=await notifyFamilyFn({message:msg,type:'shop-update'});
-    const n=res.data.members??res.data.sent; // starší server vrací jen počet zařízení
-    toast(n>0?`📣 Upozornění odesláno (${n} členům)`:'📣 Nikdo jiný nemá zapnuté notifikace');
-  } catch(e) {
-    toast('❌ Nepodařilo se odeslat upozornění');
-    console.warn('notifyShopFamily error:',e);
-  }
-};
-
 let _shopMoveBusy=false;
 window.moveShopToFamily=async(btn)=>{
   if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
@@ -8941,6 +9046,7 @@ window.moveShopToFamily=async(btn)=>{
       }
       await batch.commit();
     }
+    logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
     shopViewMode='shared';
     renderShop();
     toast(`✓ ${items.length} položek přesunuto do rodinného seznamu 👨‍👩‍👧`);
@@ -8963,11 +9069,13 @@ window.addShopItem=async()=>{
   inp.value='';
   if(qtyInp)qtyInp.value='';
   if(isShopShared()) {
-    await addDoc(collection(db,'families',familyId,'shopItems'),{
+    const fid=familyId;
+    await addDoc(collection(db,'families',fid,'shopItems'),{
       name, category:cat, done:false, qty,
       addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
       createdAt:new Date().toISOString()
     });
+    logGroupActivity(fid, 'shop', 'add', name);
     toast('✓ Přidáno do sdíleného seznamu 👨‍👩‍👧');
   } else {
     await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category:cat,qty,createdAt:new Date().toISOString()});
@@ -9053,7 +9161,7 @@ function checkRecurringShop() {
     const alreadyIn = activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
     if (!alreadyIn) {
       const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
-      if (isShopShared()&&familyId) await addDoc(collection(db,'families',familyId,'shopItems'),si);
+      if (isShopShared()&&familyId) { const fid=familyId; await addDoc(collection(db,'families',fid,'shopItems'),si); logGroupActivity(fid,'shop','add',item.name); }
       else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
       toast(`🔄 Automaticky přidáno: ${item.name}`);
     }
@@ -9082,7 +9190,7 @@ window.addFromRecurring = async (id) => {
   const activeItems = isShopShared() ? familyShopItems : shopItems;
   if (activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done)) { toast(`${item.name} už je v seznamu`); return; }
   const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, addedAt:new Date().toISOString()};
-  if (isShopShared()&&familyId) await addDoc(collection(db,'families',familyId,'shopItems'),si);
+  if (isShopShared()&&familyId) { const fid=familyId; await addDoc(collection(db,'families',fid,'shopItems'),si); logGroupActivity(fid,'shop','add',item.name); }
   else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
   toast(`✓ ${item.name} přidáno`);
 };
@@ -9216,7 +9324,11 @@ window.editShopQty = (id, currentQty, el) => {
     const newQty = inp.value.trim();
     try {
       if(isShopShared()) {
-        await updateDoc(doc(db,'families',familyId,'shopItems',id), {qty: newQty});
+        const fid = familyId;
+        await updateDoc(doc(db,'families',fid,'shopItems',id), {qty: newQty});
+        // Jen skutečná změna (blur bez úpravy nic nehlásí)
+        const it = familyShopItems.find(i => i.id === id);
+        if(it && newQty !== String(currentQty ?? '').trim()) logGroupActivity(fid, 'shop', 'edit', cutName(it.name, 44) + (newQty ? ' (' + cutName(newQty, 12) + ')' : ''));
       } else {
         await updateDoc(doc(db,'users',CU.uid,'shopItems',id), {qty: newQty});
       }
@@ -9303,10 +9415,11 @@ window.addRecipeToShop = async function(recipeId, el) {
   el.style.pointerEvents = 'none';
   const isSharedShop = isShopShared();
   const activeShopItems = isSharedShop ? familyShopItems : shopItems;
+  const shopFid = familyId;
   const ref = isSharedShop
-    ? collection(db,'families',familyId,'shopItems')
+    ? collection(db,'families',shopFid,'shopItems')
     : collection(db,'users',CU.uid,'shopItems');
-  let added = 0;
+  let added = 0, firstAdded = '';
   for(const ing of recipe.ingredients) {
     const key = ing.name.toLowerCase();
     if(activeShopItems.some(i => i.name.toLowerCase() === key)) continue;
@@ -9316,8 +9429,10 @@ window.addRecipeToShop = async function(recipeId, el) {
       done: false, fromRecipe: recipe.name,
       createdAt: new Date().toISOString()
     });
+    if(!added) firstAdded = ing.name;
     added++;
   }
+  if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? `Přidáno ${added} ingrediencí` : 'Vše už máš v nákupu'}</div></div>`;
   toast(added > 0 ? `✅ Přidáno ${added} ingrediencí z "${recipe.name}"` : '📌 Vše z tohoto receptu už máš v nákupu');
 };
@@ -9327,7 +9442,9 @@ window.clearDoneItems=async()=>{
   const done=activeItems.filter(i=>i.done);
   if(!done.length){toast('Žádné splněné položky');return;}
   if(isShopShared()) {
-    for(const i of done) await deleteDoc(doc(db,'families',familyId,'shopItems',i.id));
+    const fid=familyId;
+    for(const i of done) await deleteDoc(doc(db,'families',fid,'shopItems',i.id));
+    logGroupActivity(fid, 'shop', 'clear', '', done.length);
   } else {
     for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
   }
@@ -9878,8 +9995,9 @@ window.savePantryItem = async function(existingId) {
   const item = { name, qty, unit, minQty: minQty || null, updatedAt: Date.now() };
 
   if (familyId) {
-    const id = existingId || Math.random().toString(36).substr(2, 9);
-    await setDoc(doc(db, 'families', familyId, 'pantry', id), item);
+    const id = existingId || Math.random().toString(36).substr(2, 9), fid = familyId;
+    await setDoc(doc(db, 'families', fid, 'pantry', id), item);
+    logGroupActivity(fid, 'pantry', existingId ? 'edit' : 'add', name);
   } else {
     const id = existingId || Math.random().toString(36).substr(2, 9);
     if (existingId) {
@@ -9901,7 +10019,9 @@ window.changePantryQty = async function(id, delta) {
   item.qty = Math.max(0, (item.qty || 0) + delta);
 
   if (familyId) {
-    await setDoc(doc(db, 'families', familyId, 'pantry', id), item);
+    const fid = familyId;
+    await setDoc(doc(db, 'families', fid, 'pantry', id), item);
+    logGroupActivity(fid, 'pantry', 'edit', item.name || ''); // tlačítka ± sloučí debounce
   } else {
     lsSave('lp_pantry', pantryItems);
     renderPantry();
@@ -9912,7 +10032,9 @@ window.deletePantryItem = async function(id) {
   if (!confirm('Smazat tuto zásobu?')) return;
 
   if (familyId) {
-    await deleteDoc(doc(db, 'families', familyId, 'pantry', id));
+    const fid = familyId, gone = pantryItems.find(i => i.id === id);
+    await deleteDoc(doc(db, 'families', fid, 'pantry', id));
+    logGroupActivity(fid, 'pantry', 'del', gone?.name || '');
   } else {
     pantryItems = pantryItems.filter(i => i.id !== id);
     lsSave('lp_pantry', pantryItems);
@@ -9982,14 +10104,16 @@ Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množstv�
 };
 
 window.aiShopAddAll = async function(items) {
+  const shared = isShopShared(), fid = familyId;
   for(const i of items){
     const cat = guessShopCategory(i.name);
-    if(isShopShared()){
-      await addDoc(collection(db,'families',familyId,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,addedBy:CU.uid,createdAt:new Date().toISOString()});
+    if(shared){
+      await addDoc(collection(db,'families',fid,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,addedBy:CU.uid,createdAt:new Date().toISOString()});
     } else {
       await addDoc(collection(db,'users',CU.uid,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,createdAt:new Date().toISOString()});
     }
   }
+  if(shared && items.length) logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
   switchShopTab('list');
   toast(`✓ ${items.length} položek přidáno do nákupního seznamu`);
 };
@@ -10043,7 +10167,8 @@ function offerPantryDeduct(ingredients) {
 
 window.deductPantryIngredients = async function(ingredients) {
   const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i);
-  let matched = 0;
+  let matched = 0, firstName = '';
+  const fid = familyId;
   for (const ing of normalized) {
     const ingName = ing.name.toLowerCase();
     const pantryItem = pantryItems.find(p => ingName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingName.split(' ')[0]));
@@ -10057,11 +10182,13 @@ window.deductPantryIngredients = async function(ingredients) {
       else { deduct = converted; }
     }
     pantryItem.qty = Math.max(0, Math.round((pantryItem.qty - deduct) * 1000) / 1000);
-    if (familyId) {
-      await setDoc(doc(db, 'families', familyId, 'pantry', pantryItem.id), pantryItem);
+    if (fid) {
+      await setDoc(doc(db, 'families', fid, 'pantry', pantryItem.id), pantryItem);
     }
+    if (!matched) firstName = pantryItem.name || '';
     matched++;
   }
+  if (fid && matched) logGroupActivity(fid, 'pantry', 'edit', firstName, matched);
   if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
   toast(matched > 0 ? `✓ ${matched} položek odečteno ze zásob` : 'Žádné suroviny nenalezeny v zásobách');
 };
