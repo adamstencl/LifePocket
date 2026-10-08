@@ -53,12 +53,14 @@ const CHANGELOG = [
     '🌱 Body, úrovně a štíty série – tvůj společník roste s tebou',
     '❄️ Za 7 dní v řadě získáš štít, který sérii sám podrží, když jeden den vynecháš',
     '🎯 Měřitelné cíle (třeba kila nebo kilometry) s mezníky 25, 50, 75 a 100 % a oslavou',
-    '⏸ Pauza návyku s důvodem (nemoc, dovolená) a série teď všude počítá stejně – pauza ani přeskočený den ji nepřeruší'
+    '⏸ Pauza návyku s důvodem (nemoc, dovolená) a série teď všude počítá stejně – pauza ani přeskočený den ji nepřeruší',
+    '👥 Ikony členů skupiny teď odpovídají jejich avatarům'
   ], en:[
     '🌱 Points, levels and streak shields – your companion grows with you',
     '❄️ 7 days in a row earn a shield that keeps your streak when you miss a day',
     '🎯 Measurable goals (like kilos or kilometres) with 25, 50, 75 and 100% milestones and a celebration',
-    '⏸ Pause a habit with a reason (sick, holiday) and streaks now count the same everywhere – a pause or skipped day never breaks them'
+    '⏸ Pause a habit with a reason (sick, holiday) and streaks now count the same everywhere – a pause or skipped day never breaks them',
+    '👥 Group member icons now match their avatars'
   ]},
   { v:'4.39', items:[
     '👏 Sdílení návyků se skupinou – ostatní uvidí tvůj pokrok a můžou tě pochválit'
@@ -5326,12 +5328,13 @@ function gameTotal(g=game){
 // Zobrazená úroveň nikdy neklesne pod už oslavenou (odškrtnutí jen vrátí lištu)
 function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)||1); }
 // Den: splněné návyky (max. 10) + perfektní den (všechny denní návyky na řadě, aspoň 2). Týdenní se do perfektního dne nepočítají.
+// Archivovaný návyk splněný v ten den se počítá dál (archivace body neubere)
 function isPerfectDay(ds){
-  const due=habits.filter(h=>!h.archived&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral');
+  const due=habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral');
   return due.length>=2&&due.every(h=>hDone(h.id,ds));
 }
 function dayXP(ds){
-  const done=habits.filter(h=>!h.archived&&hDone(h.id,ds)).length;
+  const done=habits.filter(h=>hDone(h.id,ds)).length;
   return Math.min(done,XP.habitCap)*XP.habit+(isPerfectDay(ds)?XP.perfect:0);
 }
 // Bonusy dnes (podcíle, úkoly, mezníky a hodnoty cílů) – strop proti „farmení“ zakládáním cílů
@@ -5633,11 +5636,12 @@ window.gameIntroOpen=()=>{ window.dismissGameIntro(); window.openGame(); };
 const GOAL_MS=[25,50,75,100];
 const goalUnits=()=>t('game.goal.units').split('·').map(x=>x.trim()).filter(Boolean);
 const goalOldEnough=g=>!!g&&!!g.createdAt&&Date.now()-Date.parse(g.createdAt)>864e5;  // XP za mezníky až u cíle staršího 24 h
-// Číslo z pole (čárka i tečka)
+// Číslo z pole: desetinná čárka i tečka, mezery jako tisíce; nejednoznačné (1.234,5 / 1.2.3) → NaN
 const parseNum=v=>{
-  let s=String(v??'').replace(/\s/g,'');
-  s=s.includes(',')&&s.includes('.')?s.replace(/,/g,''):s.replace(',','.');  // 1,234.5 i 87,5
-  const x=/^[-+]?\d*\.?\d+$/.test(s)?parseFloat(s):NaN; return Number.isFinite(x)?x:NaN;
+  const s=String(v??'').replace(/\s/g,'');
+  if(/[,.].*[,.]/.test(s)) return NaN;                       // víc oddělovačů nebo oba druhy
+  const x=/^[-+]?(\d+[,.]?\d*|[,.]\d+)$/.test(s)?parseFloat(s.replace(',','.')):NaN;  // „5.“ = 5
+  return Number.isFinite(x)?x:NaN;
 };
 // Platná měřitelná hodnota cíle, jinak null
 function goalMetric(g){
@@ -5651,14 +5655,16 @@ function goalMetric(g){
 const goalPct=m=>Math.round(Math.max(0,Math.min(1,(m.cur-m.start)/(m.target-m.start)))*100);
 const fmtVal=v=>fmtNum(Math.round(Number(v)*100)/100);
 // Změna pokroku cíle: nové mezníky (jen přibývají), XP a oslava nejvyššího nového mezníku
-function goalProgressChanged(g,newP,silent=false){
+// prevP: pokrok před změnou (starší cíl bez msHit má mezníky do prevP za dosažené, potichu a bez XP)
+function goalProgressChanged(g,newP,silent=false,prevP=0){
   if(!g||!CU||!g.id) return;
-  const hit=Array.isArray(g.msHit)?g.msHit:[];
+  const legacy=Array.isArray(g.msHit)?[]:GOAL_MS.filter(m=>(Number(prevP)||0)>=m);
+  const hit=Array.isArray(g.msHit)?g.msHit:legacy;
   const fresh=GOAL_MS.filter(m=>newP>=m&&!hit.includes(m));
-  if(!fresh.length) return;
+  if(!fresh.length&&!legacy.length) return;
   g.msHit=[...hit,...fresh];
-  updateDoc(doc(db,'users',CU.uid,'goals',g.id),{msHit:arrayUnion(...fresh)}).catch(e=>console.warn('[LP] msHit:',e?.code||e?.name));
-  if(silent) return;
+  updateDoc(doc(db,'users',CU.uid,'goals',g.id),{msHit:arrayUnion(...legacy,...fresh)}).catch(e=>console.warn('[LP] msHit:',e?.code||e?.name));
+  if(silent||!fresh.length) return;
   if(goalOldEnough(g)) fresh.forEach(m=>gameAward('gm_'+g.id+'_'+m,XP.gms[m]));
   celebrateGoal(g,Math.max(...fresh));
 }
@@ -5758,12 +5764,12 @@ window.saveGoalVal=async()=>{
   mlog.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
   mlog=mlog.slice(-60);
   const metric={start:m.start,target:m.target,unit:m.unit,cur:Number(mlog[mlog.length-1].v)};
-  const progress=goalPct(metric);
+  const progress=goalPct(metric), prevP=g.progress;
   g.metric=metric; g.mlog=mlog; g.progress=progress;
   cm('m-gval');
   const w=updateDoc(doc(db,'users',CU.uid,'goals',g.id),{metric,mlog,progress,updatedAt:new Date().toISOString()});
   gameAward('mv_'+g.id+'_'+date,XP.metric);
-  goalProgressChanged(g,progress);
+  goalProgressChanged(g,progress,false,prevP);
   rGoals();
   try{ await w; toast(t('game.goal.saved')); }catch(e){ toast('❌ '+userErr(e,'goal value')); }
 };
@@ -5825,7 +5831,8 @@ function checkAvatarReactions(hid, date, justCompleted) {
   const msNew = [3,7,14,30].includes(streak) && once(hid + '_' + streak);
 
   if(msNew && streak === 7) {
-    const shieldMsg = h && h.freq?.type !== 'weekly' && habitShields(h) > 0 ? ' ' + t('game.shield.earned') : '';
+    // Hláška o štítu jen když dnešní splnění štít opravdu přidalo (při plném počtu nebo po použitém štítu ne)
+    const shieldMsg = h && h.freq?.type !== 'weekly' && habitShields(h, today) > habitShields(h, addDays(today, -1)) ? ' ' + t('game.shield.earned') : '';
     showAvReaction('🔥', `7 dní v řadě!`, `${av.name}: Týden bez přerušení u „${h?.name}"! ${name ? name+', jsi' : 'Jsi'} neporazitelný! 💪` + shieldMsg, true);
     return;
   }
@@ -9568,7 +9575,7 @@ async function updateGoalProgress(gid) {
   if(!arr.length) return;
   const pct=Math.round(arr.filter(s=>s.done).length/arr.length*100);
   const w=updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});
-  if(g){ g.progress=pct; goalProgressChanged(g,pct); } // oslava z lokálního stavu, ne z potvrzení serveru
+  if(g){ const prevP=g.progress; g.progress=pct; goalProgressChanged(g,pct,false,prevP); } // oslava z lokálního stavu, ne z potvrzení serveru
   await w;
 }
 
@@ -9615,11 +9622,11 @@ window.saveG=async()=>{
     const pm=goalMetric(prevG);
     d.metric={start,target,unit:cutName(document.getElementById('g-mu')?.value||'',8).trim(),cur:pm?pm.cur:start};
     d.progress=goalPct(d.metric);
-  } else if(goalMetric(prevG)) d.metric=deleteField();
+  } else if(goalMetric(prevG)||prevG?.mlog){ d.metric=deleteField(); d.mlog=deleteField(); }
   let gid=editGId;
   if(editGId){
     await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
-    if(prevG){ if(gMode==='val') prevG.metric=d.metric; else delete prevG.metric; prevG.progress=d.progress; goalProgressChanged(prevG,d.progress); }
+    if(prevG){ const prevP=prevG.progress; if(gMode==='val') prevG.metric=d.metric; else { delete prevG.metric; delete prevG.mlog; } prevG.progress=d.progress; goalProgressChanged(prevG,d.progress,false,prevP); }
     toast('✓ Cíl upraven');
   } else {
     d.createdAt=new Date().toISOString();
