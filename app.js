@@ -1023,6 +1023,7 @@ window.saveEntry=async(opts)=>{
     await setDoc(doc(db,'users',CU.uid,'entries',id),data);
     renderEntryList();
     if(!auto) toast('✓ Uloženo');
+    if(createdId) gameKick();   // nová poznámka → odznak Pisálek (vyhodnotí gameSync)
   }catch(e){
     entryDirty=true;
     if(runAI&&_aiHashPending[id]===h) delete _aiHashPending[id];
@@ -1237,13 +1238,17 @@ function resetHabitLogCache(){ _hlOldAll=false; _hlOldLoading=null; _hlOldHabits
 
 // Zápis a mazání záznamu návyku – jediné místo (zrcadlo sdíleného návyku ve skupině musí sedět).
 // Po zápisu doplní cache v paměti a ohlásí změnu (onHabitLogChanged → zrcadlo, aktivita, milník).
+// Čas splnění odškrtnutého záznamu dneška (jen v paměti): znovuzaškrtnutí téhož dne vrátí původní čas
+const _atCache=new Map();
+function atRemember(prev){ if(prev?.done&&prev.date===toDS()&&typeof prev.at==='string') _atCache.set(prev.id,prev.at); }
 async function putHabitLog(log,merge=false){
   const prevLog=hLog(log.id), wasDone=!!prevLog?.done;
   // Čas splnění (odznak „Ranní ptáče“): jen nové splnění dneška; u už splněného záznamu se převezme, zpětně se nedopočítává
   if(log.done&&log.date===toDS()&&!log.at){
-    const at=wasDone?prevLog.at:new Date().toTimeString().slice(0,5);
+    const at=wasDone?prevLog.at:(_atCache.get(log.id)||new Date().toTimeString().slice(0,5));
     if(typeof at==='string'&&/^\d\d:\d\d$/.test(at)) log={...log,at};
   }
+  if(wasDone&&!log.done) atRemember(prevLog);
   const ref=doc(db,'users',CU.uid,'habitLogs',log.id);
   await (merge?setDoc(ref,log,{merge:true}):setDoc(ref,log));
   const ex=hLog(log.id);
@@ -1254,6 +1259,7 @@ async function putHabitLog(log,merge=false){
 // silent: hromadné mazání (smazání návyku), zrcadlo se ruší zvlášť
 async function delHabitLog(logId,silent=false){
   const prev=hLog(logId);
+  atRemember(prev);
   await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
   habitLogs=habitLogs.filter(l=>l.id!==logId);
   shieldCacheReset();
@@ -3082,7 +3088,7 @@ window.addEventListener('popstate', () => {
   if (timePickerOpen()) { closeTimePicker(); return; }
   // 1. Zavři otevřený modal
   const openModal = document.querySelector('.moverlay.open, .modal-wrap.open');
-  if(openModal) { cm(openModal.id); return; }
+  if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else cm(openModal.id); return; }
   // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
   if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
     window.closeEntry(); return;
@@ -5523,7 +5529,8 @@ function gameRenderUI(){
   if(aem){ if(on){ aem.innerHTML=gameRingHTML(56); aem.classList.add('has-ring'); } else { aem.textContent=av.emoji; aem.classList.remove('has-ring'); } }
   const al=document.getElementById('av-lvl');
   if(al) al.innerHTML=on?`<div class="av-lvl-line">${tH('game.lvl',{n:gameLevel()})} · ${esc(lvlName(gameLevel()))}</div><button type="button" class="btn-s av-grow-btn" onclick="openGame()">${tH('game.growth')}</button>`:'';
-  if(document.getElementById('m-game')?.classList.contains('open')) renderGameSheet();
+  // Záložka Odznaky: překreslit jen při změně počtu odznaků (XP se na ní nezobrazuje)
+  if(document.getElementById('m-game')?.classList.contains('open')&&(_gameTab!=='badges'||_bdgDrawn!==gameBadgeCount())) renderGameSheet();
   renderGameSetting();
 }
 // Odezva „+10“ nad tlačítkem návyku (jen vizuální, nic neukládá)
@@ -5611,7 +5618,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-share','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-share') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -5670,7 +5677,7 @@ const BADGES=[
   {id:'lvl_25',em:'🌲',f:c=>({cur:c.lvl,max:25})},
   {id:'lvl_50',em:'✨',f:c=>({cur:c.lvl,max:50})},
 ];
-const EARLY_BEFORE='09:00', COMEBACK_GAP=7;
+const EARLY_FROM='04:00', EARLY_BEFORE='09:00', COMEBACK_GAP=7;   // Ranní ptáče: 04:00–08:59 (noční splnění po půlnoci se nepočítá)
 // Rozdíl dní mezi dvěma 'YYYY-MM-DD' (poledne → změna času nevadí)
 const dsDiff=(a,b)=>Math.round((Date.parse(b+'T12:00:00')-Date.parse(a+'T12:00:00'))/864e5);
 // Podklady z logů (dražší část, cache do další změny logů nebo návyků a do dalšího dne)
@@ -5680,7 +5687,7 @@ function badgeLogCtx(){
   const doneDates=new Set(), earlyDates=new Set(); let shieldN=0, doneN=0;
   for(const l of habitLogs){
     if(!l||typeof l.date!=='string'||l.date>today) continue;
-    if(l.done){ doneN++; doneDates.add(l.date); if(typeof l.at==='string'&&l.at<EARLY_BEFORE) earlyDates.add(l.date); }
+    if(l.done){ doneN++; doneDates.add(l.date); if(typeof l.at==='string'&&/^\d\d:\d\d$/.test(l.at)&&l.at>=EARLY_FROM&&l.at<EARLY_BEFORE) earlyDates.add(l.date); }
     else if(l.shield) shieldN++;
   }
   const dates=[...doneDates].sort();
@@ -5750,8 +5757,9 @@ function celebrateBadges(list){
   showAvReaction(list[0].em,t('game.badge.new',{n:list.length}),nm,true);
 }
 // Odznaky: mřížka 3×N v sheetu „Můj růst“
-let _gameTab='grow', _bdgSeen=null; // _bdgSeen: odznaky viděné před otevřením záložky (zvýraznění nových vydrží do zavření)
-window.gameTab=id=>{ _gameTab=id==='badges'?'badges':'grow'; _bdgSeen=null; renderGameSheet(); };
+let _gameTab='grow', _bdgSeen=null, _bdgDrawn=-1; // _bdgSeen: odznaky viděné před otevřením sheetu (zvýraznění nových vydrží do zavření)
+const gameBadgeCount=()=>Object.keys(game?.badges||{}).length;
+window.gameTab=id=>{ _gameTab=id==='badges'?'badges':'grow'; renderGameSheet(); };
 function badgesHTML(){
   const c=badgeCtx();
   if(!_bdgSeen){ const v=lsGet('lp_bdg_seen',[]); _bdgSeen=Array.isArray(v)?v:[]; }
@@ -5766,6 +5774,7 @@ function badgesHTML(){
     return `<button type="button" class="bdg${st.done?'':' locked'}${isNew?' bdg-new':''}" aria-label="${esc(aria)}" data-a0="${b.id}" onclick="openBadge(this.dataset.a0)"><span class="bdg-em" aria-hidden="true">${b.em}</span><span class="bdg-nm">${esc(nm)}</span>${sub?`<span class="bdg-sub" aria-hidden="true">${esc(sub)}</span>`:''}</button>`;
   }).join('');
   // Prohlédnuté → příště bez zvýraznění
+  _bdgDrawn=gameBadgeCount();
   lsSave('lp_bdg_seen',BADGES.filter(b=>game?.badges?.[b.id]).map(b=>b.id));
   return `<div class="gs-sec" style="margin-top:4px">${tH('game.badges.count',{n,total:BADGES.length})}</div><div class="bdg-grid">${tiles}</div>`;
 }
@@ -5790,7 +5799,7 @@ window.openBadge=id=>{
 // Karta je vždy v tmavém brandu, skládá se jen v zařízení a obsahuje jen čísla (žádné texty z deníku ani AI).
 const SC_W=1080, SC_H=1350, SC={bg:'#0f0f12',card:'#1e1e26',gold:'#f5c842',gold2:'#e0954a',text:'#f0f0f5',text2:'#9090a8',green:'#3dd68c',line:'#32323f'};
 const SC_EMOJI='"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-let _scFile=null, _scUrl=null, _scSpec=null, _scSeq=0;
+let _scFile=null, _scUrl=null, _scSpec=null, _scSeq=0, _scFocus=false, _scSharing=false;
 async function ensureCardFonts(sample){
   if(!document.fonts?.load) return;
   const tx=String(sample||'')+' \u011b\u0161\u010d\u0159\u017e\u00fd\u00e1\u00ed\u00e9\u016f\u00fa\u0148 0123456789 %\u2013\u201e\u201c'; // vzorek znaků latin-ext (escapy: mimo ráčnu českých textů)
@@ -5872,7 +5881,8 @@ function openShareCard(kind,arg){
       <button type="button" class="btn-p" id="sc-share" onclick="shareCardNow()" disabled>${tH('game.share.preparing')}</button>
       <button type="button" class="btn-s" id="sc-dl" onclick="downloadShareCard()" disabled>${tH('game.share.save')}</button>
     </div>`;
-  om('m-share');
+  om('m-sccard');
+  _scFocus=true;   // po prvním vykreslení fokus na Sdílet (tlačítko je do té doby zakázané)
   renderShareCard();
 }
 window.renderShareCard=async()=>{
@@ -5887,7 +5897,7 @@ window.renderShareCard=async()=>{
   if(!spec){ closeShareCard(); return; }
   const blob=await drawShareCard(spec);
   if(seq!==_scSeq||!_scSpec) return;  // mezitím přepnuto nebo zavřeno
-  if(!blob){ toast(t('game.share.err')); return; }
+  if(!blob){ toast(t('game.share.err')); if(_scFocus){ _scFocus=false; document.querySelector('#m-sccard .gf-x')?.focus(); } return; }
   const fn='lifepocket-'+(_scSpec.kind==='badge'?'badge-':'week-')+_scSpec.arg+'.png';
   try{ _scFile=new File([blob],fn,{type:'image/png'}); }catch(e){ _scFile=null; }
   if(_scUrl) URL.revokeObjectURL(_scUrl);
@@ -5896,11 +5906,15 @@ window.renderShareCard=async()=>{
   const canFiles=!!(_scFile&&navigator.canShare&&navigator.canShare({files:[_scFile]}));
   if(btn){ btn.disabled=false; btn.textContent=t(canFiles?'game.share.share':'game.share.download'); }
   if(dl){ dl.disabled=false; dl.hidden=!canFiles; }
+  if(_scFocus&&btn){ _scFocus=false; btn.focus(); }
 };
 window.shareCardNow=()=>{   // bez await před share: zachová gesto (iOS)
-  if(!_scUrl) return;
+  if(!_scUrl||_scSharing) return;   // dvojí klik: druhé share by skončilo InvalidStateError
   if(_scFile&&navigator.canShare&&navigator.canShare({files:[_scFile]})){
-    navigator.share({files:[_scFile],title:t('game.share.fileTitle')}).catch(e=>{ if(e?.name!=='AbortError') window.downloadShareCard(); });
+    _scSharing=true;
+    let p;
+    try{ p=navigator.share({files:[_scFile],title:t('game.share.fileTitle')}); }catch(e){ p=Promise.reject(e); }
+    Promise.resolve(p).catch(e=>{ if(e?.name!=='AbortError'&&e?.name!=='InvalidStateError') window.downloadShareCard(); }).finally(()=>{ _scSharing=false; });
   } else window.downloadShareCard();
 };
 window.downloadShareCard=()=>{
@@ -5910,7 +5924,7 @@ window.downloadShareCard=()=>{
   toast(t('game.share.saved'));
 };
 window.closeShareCard=()=>{
-  cm('m-share'); _scSpec=null; _scSeq++;
+  cm('m-sccard'); _scSpec=null; _scSeq++; _scFocus=false;
   if(_scUrl){ URL.revokeObjectURL(_scUrl); _scUrl=null; } _scFile=null;
   const img=document.getElementById('sc-prev'); if(img) img.removeAttribute('src');
 };
