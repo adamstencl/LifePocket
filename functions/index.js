@@ -18,6 +18,71 @@ const DEFAULT_MAX_TOKENS = 500;
 const MAX_TOKENS_CAP = 2000;
 const CLAUDE_TIMEOUT_MS = 45000;
 
+// Výběr modelu z config/ai (pole model, u 5.5 volitelně effort) — přepnutí bez nasazení.
+// Jen hodnoty z allowlistu; chybějící nebo neplatný dokument = výchozí Haiku 4.5.
+const AI_MODEL_HAIKU45 = 'claude-haiku-4-5-20251001';
+const AI_MODEL_HAIKU55 = 'claude-haiku-5-5';
+const AI_MODELS = [AI_MODEL_HAIKU45, AI_MODEL_HAIKU55];
+const AI_DEFAULT_MODEL = AI_MODEL_HAIKU45;
+const AI_EFFORTS = ['low', 'medium', 'high']; // thinking:disabled je u 5.5 povolené jen při těchto úrovních
+const AI_DEFAULT_EFFORT = 'medium';
+const AI_CONFIG_TTL_MS = 5 * 60 * 1000;
+
+function normAiConfig(d) {
+  const m = (d && typeof d.model === 'string') ? d.model.trim() : '';
+  const model = AI_MODELS.includes(m) ? m : AI_DEFAULT_MODEL;
+  if (m && model !== m) console.warn('[LP] config/ai.model není povolený, používám výchozí model.');
+  const e = (d && typeof d.effort === 'string') ? d.effort.trim().toLowerCase() : '';
+  const effort = AI_EFFORTS.includes(e) ? e : AI_DEFAULT_EFFORT;
+  return {model, effort};
+}
+
+// Cache v instanci na 5 min; při chybě čtení platí poslední známá (nebo výchozí) hodnota
+let cachedAiConfig = null;
+let cachedAiConfigAt = 0;
+async function getAiConfig() {
+  const now = Date.now();
+  if (cachedAiConfig && now - cachedAiConfigAt < AI_CONFIG_TTL_MS) return cachedAiConfig;
+  let cfg;
+  try {
+    const snap = await db.doc('config/ai').get();
+    cfg = normAiConfig(snap.exists ? snap.data() : null);
+  } catch(e) {
+    console.error('[LP] Načtení config/ai selhalo:', e.code || e.message);
+    cfg = cachedAiConfig || normAiConfig(null);
+  }
+  cachedAiConfig = cfg;
+  cachedAiConfigAt = now;
+  return cfg;
+}
+
+// Tělo requestu podle modelu. Nikdy neposílá temperature/top_p/top_k (u 5.5 = 400).
+// Haiku 5.5 má thinking ve výchozím stavu zapnuté a počítá se do max_tokens → vypínáme ho.
+function buildClaudeBody(cfg, input) {
+  const body = {
+    model: cfg.model,
+    max_tokens: input.maxTokens,
+    system: input.system,
+    messages: input.messages
+  };
+  if (cfg.model === AI_MODEL_HAIKU55) {
+    body.thinking = {type: 'disabled'};
+    body.output_config = {effort: cfg.effort};
+  }
+  return body;
+}
+
+// Odpověď: text = spojení všech bloků type 'text' (5.5 může začínat blokem thinking)
+function parseClaudeResponse(body) {
+  const stopReason = body?.stop_reason || null;
+  const blocks = Array.isArray(body?.content) ? body.content : [];
+  const text = blocks
+    .filter(b => b && b.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('');
+  return {text, stopReason, refusalCategory: stopReason === 'refusal' ? (body?.stop_details?.category || null) : null};
+}
+
 // Klíč z config/secrets: načte se jednou za instanci, neúspěch se necachuje (příště znovu)
 let cachedClaudeKey = null;
 async function getClaudeKey() {
@@ -72,6 +137,8 @@ function validateClaudeInput(data) {
     }
   }
   if (!out.length) throw bad('Chybí zpráva uživatele.');
+  // Poslední zpráva musí být od uživatele (assistant prefill vrací u Haiku 5.5 chybu 400)
+  if (out[out.length - 1].role !== 'user') throw bad('Poslední zpráva musí být od uživatele.');
   if (total > MAX_INPUT_CHARS) throw bad('Text pro AI je příliš dlouhý. Zkrať ho prosím.');
   const mt = (Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= MAX_TOKENS_CAP) ? maxTokens : DEFAULT_MAX_TOKENS;
   return {system, messages: out, maxTokens: mt};
@@ -97,8 +164,9 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
   // 2. Validace vstupu — před odečtem limitu, neplatný dotaz limit nespotřebuje
   const input = validateClaudeInput(request.data);
 
-  // 3. Claude API klíč (cache v instanci; admin přístup, klient config/** číst nemůže)
+  // 3. Claude API klíč a volba modelu (cache v instanci; admin přístup, klient config/** číst nemůže)
   const claudeKey = await getClaudeKey();
+  const aiCfg = await getAiConfig();
 
   // 4. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
   // aby paralelní requesty nemohly limit obejít)
@@ -118,12 +186,7 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
 
   // 5. Zavolej Claude API
   const https = require('https');
-  const body = JSON.stringify({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: input.maxTokens,
-    system: input.system,
-    messages: input.messages
-  });
+  const body = JSON.stringify(buildClaudeBody(aiCfg, input));
 
   let result;
   try {
@@ -177,10 +240,20 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
     const msg = result.body?.error?.message || `Claude API chyba: ${result.status}`;
     throw new HttpsError('internal', msg);
   }
-  const content = result.body?.content?.[0]?.text;
-  if (!content) throw new HttpsError('internal', 'Claude API: prázdná odpověď');
+  const parsed = parseClaudeResponse(result.body);
+  // Odmítnutí bezpečnostním filtrem (HTTP 200): dotaz proběhl, do limitu se nevrací. Loguje se jen kategorie.
+  if (parsed.stopReason === 'refusal') {
+    console.warn('[LP] AI odmítla dotaz, kategorie:', parsed.refusalCategory || '?');
+    throw new HttpsError('failed-precondition', 'AI na tento dotaz nemůže odpovědět. Zkus ho formulovat jinak.');
+  }
+  if (!parsed.text.trim()) {
+    if (parsed.stopReason === 'max_tokens') {
+      throw new HttpsError('internal', 'AI nestihla odpověď dopsat (limit délky). Zkus to prosím znovu.');
+    }
+    throw new HttpsError('internal', 'Claude API: prázdná odpověď');
+  }
 
-  return {text: content, remaining: DAILY_LIMIT - todayCount - 1};
+  return {text: parsed.text, remaining: DAILY_LIMIT - todayCount - 1};
 });
 
 // ── Helpers ──────────────────────────────────────────────
