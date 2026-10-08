@@ -62,6 +62,7 @@
       <li>Nákupní seznam, pravidelné nákupy, uložené recepty a plánovaná jídla</li>
       <li>Záznamy o jídle (název, kalorie a živiny) a o zdraví (nálada, spánek, energie, stres, voda, poznámka)</li>
       <li>Konverzace s AI společníkem: posledních 30 zpráv a souhrn starších rozhovorů, který vytváří AI (viz bod 4)</li>
+      <li>Nahlášené odpovědi AI, pokud nějakou nahlásíš (viz bod 4)</li>
       <li>Tokeny zařízení pro push notifikace (viz bod 6)</li>
       <li>Technické záznamy chyb (viz bod 7)</li>
     </ul>
@@ -77,6 +78,7 @@
       <li><strong>Další AI funkce</strong>, které použiješ nebo které se spouštějí v aplikaci: ranní pozdrav a týdenní report (plnění návyků včetně jejich názvů, počty zápisků a nálada, jména oslavenců z narozenin), shrnutí dne (tvůj text, vize, cíle a dnešní návyky), citát dne, odhad kalorií (název jídla), recepty a postup vaření (název a suroviny), návrh jídelníčku a návrh nákupu (názvy receptů a zásoby).</li>
     </ul>
     <p>AI dostává i tvoje jméno nebo přezdívku. Neposíláme jí e-mail, heslo, tokeny zařízení, pohlaví ani fotografie. Dobu uchování dat u Anthropicu určují zásady tohoto poskytovatele.</p>
+    <p><strong>Nahlášení odpovědi AI</strong>: u každé odpovědi AI společníka můžeš klepnout na „⚑ Nahlásit“. Do tvého účtu (podkolekce <code>aiReports</code>) se pak uloží zvolený důvod (nevhodná, nepravdivá, urážlivá, jiné), tvoje volitelná poznámka (nejvýš 500 znaků), text nahlášené odpovědi (nejvýš 2000 znaků), čas a verze aplikace. Nahlášení slouží jen ke kontrole a zlepšování odpovědí AI a k ochraně před nevhodným obsahem. Nikam dál, ani Anthropicu, se neposílá. Smaže se spolu s účtem.</p>
 
     <h2>5. Skupiny (sdílení s rodinou a dalšími lidmi)</h2>
     <p>Skupinu může kdokoli založit a pozvat do ní další lidi. Data skupiny jsou ve společném prostoru ve Firestore, do kterého mají přístup jen její členové.</p>
@@ -88,7 +90,7 @@
     </ul>
     <p>Tvoje osobní data (zápisky, návyky, cíle, zdraví, chat s AI a další) členové skupiny nevidí.</p>
     <p><strong>Pozvánka:</strong> každá skupina má kód ve tvaru např. <code>SLOVO-K7M2QX</code> (starší skupiny mají kratší kód, např. <code>SLOVO-1234</code>). Kdo kód zná, nebo dostane odkaz s pozvánkou (<code>lifepocket.app/?join=KÓD</code>), může si po přihlášení zobrazit název a seznam členů skupiny a připojit se. U odkazu se aplikace před připojením vždy zeptá. Kód je jediná ochrana skupiny, sdílej ho proto jen s lidmi, kterým věříš. Kterýkoli člen může měnit nastavení sdílení skupiny.</p>
-    <p><strong>Odchod ze skupiny:</strong> po odchodu se tvé jméno, avatar a role odstraní ze seznamu členů a aplikace ti přestane skupinu a její data zobrazovat. Stejně to platí, když tě ze skupiny odebere jiný člen: tvoje aplikace si skupinu při nejbližším načtení sama odebere. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Samotnou skupinu nelze v aplikaci smazat. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem.</p>
+    <p><strong>Odchod ze skupiny:</strong> po odchodu se tvé jméno, avatar a role odstraní ze seznamu členů a aplikace ti přestane skupinu a její data zobrazovat. Stejně to platí, když tě ze skupiny odebere jiný člen: tvoje aplikace si skupinu při nejbližším načtení sama odebere. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Samotnou skupinu nelze v aplikaci smazat, výjimkou je smazání účtu (viz <a href="#smazani-uctu">bod 10</a>): skupina, kde jsi jediný člen, se smaže celá. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem.</p>
 
     <h2>6. Push notifikace</h2>
     <p>Notifikace dostáváš jen tehdy, když je v prohlížeči nebo telefonu povolíš. Doručuje je <strong>Firebase Cloud Messaging</strong> (Google) přes push službu tvého prohlížeče nebo systému (např. Google, Apple, Mozilla).</p>
@@ -117,7 +119,7 @@
       <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy a doručí nám je.</li>
       <li><strong>Hlasové zadávání</strong>: diktování používá rozpoznávání řeči vestavěné v prohlížeči. Některé prohlížeče (např. Chrome) posílají zvuk ke zpracování na servery svého výrobce.</li>
       <li><strong>Sdílení odkazu</strong>: tlačítka „Sdílet LifePocket“ a „Poslat pozvánku“ otevřou sdílení přímo v tvém zařízení (nebo text zkopírují do schránky). Komu a čím odkaz pošleš, vybíráš ty, nám ani nikomu dalšímu se nic neposílá.</li>
-      <li><strong>Podpora projektu</strong>: odkaz a QR kód Buy Me a Coffee a QR kód BTC Lightning vedou mimo aplikaci. Platbu zpracuje daná služba podle svých podmínek, aplikace o ní nic neví a nic jí nepředává.</li>
+      <li><strong>Podpora projektu</strong>: odkaz a QR kód Buy Me a Coffee a QR kód BTC Lightning vedou mimo aplikaci. Platbu zpracuje daná služba podle svých podmínek, aplikace o ní nic neví a nic jí nepředává. V aplikaci stažené z Google Play se podpora projektu nezobrazuje.</li>
     </ul>
     <p>Anthropic, Google, GitHub a Formspree jsou firmy z USA, takže se data mohou předávat mimo EU. Takové předání je zajištěno standardními smluvními doložkami schválenými Evropskou komisí nebo rámcem EU-US Data Privacy Framework podle toho, co daný poskytovatel používá.</p>
 
@@ -132,17 +134,17 @@
     <h2>10. Jak dlouho data uchováváme</h2>
     <ul>
       <li>Data v účtu uchováváme, dokud účet existuje.</li>
-      <li>Smazání účtu zatím v aplikaci není. Požádej o něj e-mailem (viz bod 11) a všechna data účtu včetně záznamů chyb trvale smažeme do 30 dní.</li>
+      <li id="smazani-uctu"><strong>Smazání účtu</strong>: účet smažeš přímo v aplikaci (Nastavení → Účet → Smazat účet). Všechna data tvého účtu (včetně záznamů chyb, nahlášení AI a záznamu o počtu AI dotazů) se smažou okamžitě a nevratně, smaže se i samotný účet a odejdeš ze všech skupin. Skupina, kde jsi byl jediný člen, se smaže celá. Obsah, který jsi přidal do sdílené skupiny (položky nákupu, události, checklisty apod.), zůstává ostatním členům, a to včetně tvého jména u těchto položek (<code>addedByName</code>). Pokud jsi byl jediný správce skupiny, převezme správu člen, který je ve skupině nejdéle. Před smazáním si můžeš stáhnout zálohu dat (bod 11). Alternativně o smazání účtu můžeš požádat e-mailem (bod 11) a data smažeme do 30 dní.</li>
       <li>Záznamy chyb starší než 90 dní mažeme ručně při pravidelném čištění (mazání není automatické).</li>
-      <li>Záznam o počtu AI dotazů obsahuje jen poslední datum a počet, smažeme ho spolu s účtem.</li>
+      <li>Záznam o počtu AI dotazů obsahuje jen poslední datum a počet, smaže se spolu s účtem.</li>
       <li>Obsah, který jsi přidal do skupiny, zůstává ve skupině i po tvém odchodu (bod 5).</li>
     </ul>
 
     <h2>11. Tvá práva</h2>
     <ul>
-      <li><strong>Přístup a přenositelnost</strong>: export dat zatím v aplikaci není. Na vyžádání ti pošleme kopii tvých dat ve strojově čitelném formátu.</li>
+      <li><strong>Přístup a přenositelnost</strong>: kopii všech svých dat máš kdykoli k dispozici, stáhneš si je v aplikaci (Nastavení → Účet → Stáhnout moje data) jako soubor ve strojově čitelném formátu JSON. U skupin export obsahuje jen jejich kód a název, ne obsah ostatních členů. Na vyžádání ti kopii dat pošleme i e-mailem.</li>
       <li><strong>Oprava</strong>: většinu údajů upravíš přímo v aplikaci, ostatní opravíme na požádání.</li>
-      <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci, smazání celého účtu provedeme na žádost e-mailem do 30 dní.</li>
+      <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci a celý účet smažeš sám v Nastavení → Účet (data se smažou okamžitě, viz <a href="#smazani-uctu">bod 10</a>). Na žádost e-mailem účet smažeme do 30 dní.</li>
       <li><strong>Omezení zpracování a námitka</strong>: proti zpracování na základě oprávněného zájmu můžeš vznést námitku.</li>
       <li><strong>Odvolání souhlasu</strong>: vypnutím notifikací.</li>
       <li><strong>Stížnost</strong>: můžeš se obrátit na Úřad pro ochranu osobních údajů (<a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>).</li>
@@ -153,16 +155,17 @@
     <p>LifePocket nepoužívá reklamní ani sledovací cookies. V prohlížeči ukládá jen to, co potřebuje ke svému chodu:</p>
     <ul>
       <li><strong>IndexedDB</strong>: přihlášení do Firebase a údaje pro push notifikace.</li>
+      <li><strong>sessionStorage</strong>: jen po dobu spuštění aplikace příznak <code>lp_twa</code>, že běží aplikace z Google Play (podle něj se skryje podpora projektu).</li>
       <li><strong>Mezipaměť (service worker)</strong>: soubory aplikace pro práci offline a čekající akce „Splněno“ z notifikace.</li>
       <li><strong>localStorage</strong>:
         <ul>
-          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, naposledy otevřená záložka Jídelníčku <code>lp_meal_tab</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, skryté karty „Pozvat rodinu“ v Nákupech a Kalendáři <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní) a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code> (podle něj appka také pozná, že ses tu už přihlásil, a místo úvodní stránky ukáže rovnou přihlášení)</li>
+          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, naposledy otevřená záložka Jídelníčku <code>lp_meal_tab</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, skryté karty „Pozvat rodinu“ v Nákupech a Kalendáři <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní), značka, že zařízení už spustilo aplikaci z Google Play, <code>lp_twa_seen</code> a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code> (podle něj appka také pozná, že ses tu už přihlásil, a místo úvodní stránky ukáže rovnou přihlášení)</li>
           <li>osobní údaje jen v tomto zařízení: zásoby mimo skupinu <code>lp_pantry</code>, oblíbené nákupy <code>lp_fav_shop</code>, dnešní nálada <code>lp_daily_mood</code>, denní fokus a jeho historie <code>lp_focus</code>, <code>lp_focus_next</code>, <code>lp_focus_history</code>, počítadlo vody <code>lp_water</code>, text týdenního reportu <code>lp_weekly_report</code>, citát dne <code>lp_daily_quote</code></li>
           <li>značky, aby se připomínky a pozdravy neopakovaly: <code>lp_rex_greet</code>, <code>lp_last_remind</code>, <code>lp_sched_…</code>, <code>lp_hrnotif_…</code>, <code>lp_notif_…</code>, <code>lp_inactivity_shown_…</code></li>
         </ul>
       </li>
     </ul>
-    <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, počítadlo vody, týdenní report, citát dne, stav úvodních tipů na hlavní obrazovce a skryté karty „Pozvat rodinu“) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají.</p>
+    <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, počítadlo vody, týdenní report, citát dne, stav úvodních tipů na hlavní obrazovce a skryté karty „Pozvat rodinu“) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají. Po smazání účtu v aplikaci se z tohoto zařízení smažou všechny údaje <code>lp_…</code> kromě značky <code>lp_twa_seen</code>.</p>
 
     <h2>13. Bezpečnost</h2>
     <ul>

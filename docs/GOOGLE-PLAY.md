@@ -59,7 +59,7 @@ Pravidla plateb Google Play zakazují v aplikaci z obchodu odkazovat na jiné pl
 | Launcher name | `LifePocket` |
 | App version | `1.0.0` |
 | App version code | `1` (při každém novém .aab o 1 víc) |
-| Host / Start URL | `lifepocket.app` / `/` |
+| Host / Start URL | `lifepocket.app` / `/?src=twa` (parametr appka používá k rozpoznání verze z Google Play, ve které skryje odkazy na dobrovolnou podporu) |
 | Theme / background color | nechat z manifestu |
 | Display mode | Standalone |
 | Notification delegation | **zapnuto** (push notifikace půjdou přes Android) |

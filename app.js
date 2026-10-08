@@ -1,5 +1,5 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
@@ -18,11 +18,34 @@ const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
 const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const testPushFn=httpsCallable(functions,'testPush');
+const deleteAccountFn=httpsCallable(functions,'deleteAccount');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
+// Mazání účtu: během něj neběží AI ani zápisy na pozadí (viz sekce ÚČET)
+let _accDeleting=false, _accDeleted=false, _accStopped=false; // _accStopped: listenery zastavené (po chybě obnoví reload)
+// Aplikace z Google Play (TWA): referrer / ?src=twa platí jen při startu → příznak lp_twa v sessionStorage;
+// záloha: tohle zařízení už TWA vidělo (lp_twa_seen) a appka běží samostatně (ne v prohlížeči)
+const IS_TWA=(()=>{
+  let t=false;
+  try{ t=/^android-app:\/\/app\.lifepocket(\/|$)/.test(String(document.referrer||'')) || new URLSearchParams(location.search).get('src')==='twa'; }catch(e){}
+  if(t){
+    try{ sessionStorage.setItem('lp_twa','1'); }catch(e){}
+    try{ localStorage.setItem('lp_twa_seen','1'); }catch(e){}
+    return true;
+  }
+  try{ if(sessionStorage.getItem('lp_twa')==='1') return true; }catch(e){}
+  try{ return localStorage.getItem('lp_twa_seen')==='1' && window.matchMedia('(display-mode: standalone)').matches; }catch(e){}
+  return false;
+})();
+if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.34';
+const APP_VERSION = '4.35';
 const CHANGELOG = [
+  { v:'4.35', items:[
+    '🗑️ Smazání účtu přímo v aplikaci (Nastavení → Účet)',
+    '📥 Stažení všech tvých dat do souboru',
+    '⚑ Nahlášení nevhodné odpovědi AI přímo v chatu'
+  ]},
   { v:'4.34', items:[
     '⚡ Rychlejší start a menší spotřeba dat, hlavně u dlouhé historie návyků',
     '✍️ Analýza zápisku je rychlejší a ubírá jen jeden AI dotaz místo tří',
@@ -439,6 +462,7 @@ let customReminders = [];
 
 // ── CLAUDE API HELPER — volá Firebase Function (klíč nikdy v klientu) ──────
 async function callClaude(messages, maxTokens = 500) {
+  if (_accDeleting || _accDeleted || _accStopped) throw new Error('AI není k dispozici'); // během mazání účtu žádné AI dotazy
   try {
     const result = await claudeProxyFn({messages, maxTokens});
     return result.data.text;
@@ -484,6 +508,7 @@ function errClean(v, max) {
   return t.slice(0, max);
 }
 function logClientError(msg, src, stack) {
+  if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   try {
     if (!CU || _errLogCount >= ERRLOG_MAX || navigator.onLine === false) return;
     const m = errClean(msg, 300);
@@ -592,6 +617,7 @@ function pragueDS(d=new Date()){
 }
 // Poslední otevření appky do profilu (pro anonymní souhrn „aktivní za 1/7/30 dní“), nejvýš jednou za pražský den
 function touchLastSeen(uid){
+  if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   try{
     const last=prof.lastSeen?new Date(prof.lastSeen):null;
     if(last&&!isNaN(last)&&pragueDS(last)===pragueDS()) return;
@@ -630,7 +656,7 @@ onAuthStateChanged(auth,async u=>{
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     clearUserSessionState();
-    ss('s-login');
+    ss(_accDeleted?'s-deleted':'s-login');
   }
 });
 
@@ -870,6 +896,7 @@ function textHash(t){let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCod
 // Bez zámku: offline se setDoc nevrátí a zámek by blokoval další ukládání. Duplikátu brání ID přidělené před await.
 const _aiHashPending={}; // id zápisku → otisk textu, jehož analýza už byla spuštěna (synchronně, proti dvojí AI)
 window.saveEntry=async(opts)=>{
+  if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   if(!CU)return;
   const auto=opts?.auto===true;
   const title=document.getElementById('j-title').value.trim()||'Bez názvu';
@@ -2809,6 +2836,351 @@ function resetLoginBtn(){
 }
 window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();location.reload();};
 
+// ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
+// Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
+const EXPORT_COLS = [
+  ['profile','profil'], ['entries','poznámky'], ['habits','návyky'], ['habitLogs','záznamy návyků'],
+  ['events','kalendář'], ['goals','cíle'], ['shopItems','nákupy'], ['recurringShop','pravidelné nákupy'],
+  ['savedRecipes','recepty'], ['foodLogs','jídlo'], ['healthLogs','zdraví'], ['checklists','checklisty'],
+  ['chatMemory','chat s AI'], ['aiReports','nahlášení AI'], ['errorLogs','technické chyby']
+];
+// Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
+function exportPlain(v, depth = 0) {
+  if (v === null || v === undefined || typeof v !== 'object') return v;
+  if (depth > 20) return null;
+  if (typeof v.toDate === 'function') { try { return v.toDate().toISOString(); } catch (e) { return null; } }
+  if (typeof v.toBase64 === 'function') { try { return v.toBase64(); } catch (e) { return null; } }
+  if (typeof v.path === 'string' && typeof v.id === 'string' && v.firestore) return v.path;
+  if (Array.isArray(v)) return v.map(x => exportPlain(x, depth + 1));
+  const o = {};
+  Object.keys(v).forEach(k => { o[k] = exportPlain(v[k], depth + 1); });
+  return o;
+}
+function setExportStatus(html) { document.querySelectorAll('.acc-export-st').forEach(el => { el.innerHTML = html; }); }
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+let _exporting = false, _exportFile = null;
+window.exportMyData = async () => {
+  if (!CU || _exporting || _accDeleting) return;
+  _exporting = true; _exportFile = null;
+  const uid = CU.uid;
+  document.querySelectorAll('.acc-export-btn').forEach(b => { b.disabled = true; });
+  try {
+    // JSON po částech (bez odsazení): každá kolekce se hned převede na text, objekty se neuchovávají
+    const colParts = [];
+    const addCol = (name, col) => { colParts.push((colParts.length ? ',' : '') + JSON.stringify(name) + ':' + JSON.stringify(col)); };
+    for (let i = 0; i < EXPORT_COLS.length; i++) {
+      const [name, label] = EXPORT_COLS[i];
+      setExportStatus('⏳ Načítám ' + esc(label) + ' (' + (i + 1) + '/' + EXPORT_COLS.length + ')…');
+      const snap = await getDocs(collection(db, 'users', uid, name));
+      if (CU?.uid !== uid) return;
+      const col = {};
+      snap.forEach(d => {
+        const data = exportPlain(d.data());
+        if (name === 'profile' && data) { delete data.fcmToken; delete data.fcmTokens; } // technické tokeny zařízení
+        col[d.id] = data;
+      });
+      addCol(name, col);
+      if (name === 'goals') {
+        const gids = Object.keys(col);
+        setExportStatus('⏳ Načítám podcíle…');
+        const res = await Promise.all(gids.map(g => getDocs(collection(db, 'users', uid, 'goals', g, 'subgoals'))));
+        if (CU?.uid !== uid) return;
+        const sg = {};
+        gids.forEach((g, k) => { const m = {}; res[k].forEach(d => { m[d.id] = exportPlain(d.data()); }); if (Object.keys(m).length) sg[g] = m; });
+        addCol('subgoals', sg);
+      }
+    }
+    // Skupiny: jen ID a název, cizí obsah se neexportuje
+    const groups = [];
+    const addG = (id, name, primary) => { if (typeof id === 'string' && id && !groups.some(g => g.id === id)) groups.push({ id, name: String(name || 'Skupina'), primary }); };
+    addG(familyId || prof?.familyId, familyData?.groupName, true);
+    const extra = (Array.isArray(extraGroupIds) && extraGroupIds.length) ? extraGroupIds : (Array.isArray(prof?.extraGroupIds) ? prof.extraGroupIds : []);
+    extra.forEach(g => addG(g, extraGroupsData?.[g]?.groupName, false));
+    const head = JSON.stringify({ exportedAt: new Date().toISOString(), appVersion: APP_VERSION, uid, email: CU.email || null, groups });
+    const fname = 'lifepocket-export-' + toDS() + '.json';
+    const blob = new Blob([head.slice(0, -1) + ',"collections":{', ...colParts, '}}'], { type: 'application/json' });
+    // iPhone z plochy: stažení přes a[download] je nespolehlivé → sdílení souboru (potřebuje nové klepnutí)
+    if (isIOSDevice() && isStandaloneApp() && typeof navigator.share === 'function') {
+      try {
+        const file = new File([blob], fname, { type: 'application/json' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          _exportFile = file;
+          setExportStatus('✅ Data jsou připravená. <button type="button" class="btn-sv acc-share-btn" onclick="shareExportFile()">📤 Uložit soubor</button>');
+          return;
+        }
+      } catch (e) {}
+    }
+    downloadBlob(blob, fname);
+    setExportStatus('✅ Staženo: ' + esc(fname));
+  } catch (e) {
+    setExportStatus('⚠️ ' + esc(userErr(e, 'export dat')));
+  } finally {
+    _exporting = false;
+    document.querySelectorAll('.acc-export-btn').forEach(b => { b.disabled = false; });
+  }
+};
+window.shareExportFile = async () => {
+  const f = _exportFile;
+  if (!f) return;
+  try { await navigator.share({ files: [f], title: 'LifePocket – moje data' }); setExportStatus('✅ Soubor ' + esc(f.name) + ' je připravený.'); }
+  catch (e) {
+    if (e?.name === 'AbortError') return;
+    downloadBlob(f, f.name); setExportStatus('✅ Staženo: ' + esc(f.name));
+  }
+};
+
+// Smazání účtu: serverová funkce deleteAccount (vyžaduje přihlášení mladší než 10 min)
+const DEL_REAUTH_MS = 10 * 60 * 1000;
+function authProviderKind() {
+  const ids = (CU?.providerData || []).map(p => p && p.providerId);
+  if (ids.includes('google.com')) return 'google';
+  if (ids.includes('password')) return 'password';
+  return '';
+}
+let _delAuthMs = 0;        // čas posledního přihlášení z ID tokenu (načte se při otevření modalu)
+let _forceReauth = false;  // server chtěl čerstvé přihlášení → další klik ověří vždy
+let _accDataGone = false;  // server smazal data, ale ne účet → modal zůstává jen se „Zkusit znovu“
+async function loadAuthAge() {
+  try { const r = await CU.getIdTokenResult(); const t = Date.parse(r.authTime); _delAuthMs = Number.isFinite(t) ? t : 0; }
+  catch (e) { _delAuthMs = 0; }
+}
+// Synchronně, aby popup Googlu vznikl přímo v klepnutí (bez await před ním)
+function authFreshSync() { return !_forceReauth && _delAuthMs > 0 && Date.now() - _delAuthMs < DEL_REAUTH_MS - 60000; } // rezerva na posun hodin a síť
+// Modal na heslo; vrátí heslo, nebo null při zrušení
+function askPassword() {
+  return new Promise(resolve => {
+    document.getElementById('m-reauth-pw')?.remove();
+    const m = document.createElement('div');
+    m.id = 'm-reauth-pw'; m.className = 'moverlay open'; m.style.zIndex = '10001';
+    m.innerHTML = `<div class="modal" style="max-width:400px">
+      <div class="mtitle">🔐 Potvrď heslo</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">Z bezpečnostních důvodů zadej heslo k účtu <b>${esc(CU?.email || '')}</b>.</div>
+      <form id="reauth-pw-form" autocomplete="on">
+        <input type="email" name="email" autocomplete="username" value="${esc(CU?.email || '')}" hidden>
+        <input class="finp" type="password" id="reauth-pw-inp" autocomplete="current-password" placeholder="Heslo" style="width:100%;box-sizing:border-box">
+        <div class="macts"><button type="button" class="btn-s" id="reauth-pw-cancel">Zrušit</button><button type="submit" class="btn-p">Potvrdit</button></div>
+      </form>
+    </div>`;
+    let settled = false, mo = null;
+    const onPop = () => done(null); // systémové Zpět
+    const done = v => {
+      if (settled) return;
+      settled = true;
+      mo?.disconnect(); window.removeEventListener('popstate', onPop);
+      m.remove(); resolve(v);
+    };
+    m.addEventListener('click', e => { if (e.target === m) { e.stopPropagation(); done(null); } });
+    // Zavření zvenku (cm() při Zpět nebo globální klik na .moverlay) = zrušit
+    mo = new MutationObserver(() => { if (!m.classList.contains('open')) done(null); });
+    mo.observe(m, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('popstate', onPop);
+    document.body.appendChild(m);
+    m.querySelector('#reauth-pw-cancel').addEventListener('click', () => done(null));
+    m.querySelector('#reauth-pw-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const v = m.querySelector('#reauth-pw-inp').value;
+      if (v) done(v);
+    });
+    setTimeout(() => m.querySelector('#reauth-pw-inp')?.focus(), 50);
+  });
+}
+// Znovuověření (Google popup / heslo); false = uživatel zrušil
+async function reauthUser() {
+  const kind = authProviderKind();
+  try {
+    if (kind === 'google') {
+      await reauthenticateWithPopup(CU, new GoogleAuthProvider());
+    } else if (kind === 'password') {
+      const pw = await askPassword();
+      if (pw === null) return false;
+      await reauthenticateWithCredential(CU, EmailAuthProvider.credential(CU.email, pw));
+    } else {
+      throw Object.assign(new Error('reauth'), { code: 'lp/no-provider' });
+    }
+  } catch (e) {
+    if (['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(e?.code)) return false;
+    throw e;
+  }
+  await CU.getIdToken(true);
+  _delAuthMs = Date.now(); _forceReauth = false;
+  return true;
+}
+// Zastaví listenery, časovače a zápisy na pozadí (stejně jako odhlášení, ale bez mazání UI)
+function stopSessionActivity() {
+  _accStopped = true;
+  destroyAllFireSubs();
+  clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv = null; clearTimeout(_foodDayTimer);
+  [unsub, unsubHabits, unsubLogs, unsubFamily, unsubFamilyShop, unsubFamilyCal, unsubFamilyMeal, unsubFamilyChecklist].forEach(u => { if (u) u(); });
+  Object.values(unsubExtraGroupDocs).forEach(u => u && u());
+  Object.values(unsubExtraGroupCals).forEach(u => u && u());
+  unsub = null; unsubHabits = null; unsubLogs = null;
+  unsubFamily = null; unsubFamilyShop = null; unsubFamilyCal = null; unsubFamilyMeal = null; unsubFamilyChecklist = null;
+  unsubExtraGroupDocs = {}; unsubExtraGroupCals = {};
+  if (pantryUnsub) { pantryUnsub(); pantryUnsub = null; }
+  entryDirty = false; _chatDirty = false;  // automatické uložení zápisku a chatu nic nezapíše
+  _errLogCount = ERRLOG_MAX;               // zapisovač chyb nesmí znovu založit data
+}
+function delAccErrText(e) {
+  const c = String(e?.code || '');
+  const msg = String(e?.message || '').slice(0, 200);
+  if (c === 'lp/no-provider') return 'Odhlas se, znovu se přihlas a zkus to hned potom.';
+  if (['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(c)) return 'Nesprávné heslo, zkus to znovu.';
+  if (c === 'auth/user-mismatch') return 'Ověř se stejným účtem, kterým jsi přihlášený/á.';
+  if (c === 'functions/failed-precondition') return 'Z bezpečnostních důvodů je potřeba se znovu ověřit. Klepni na Zkusit znovu.';
+  if (_accDataGone && c === 'functions/internal') return (msg || 'Data jsou smazaná, ale účet se nepodařilo odstranit.') + ' Klepni na Zkusit znovu.';
+  if (c === 'functions/invalid-argument') return 'Chybí potvrzení – napiš SMAZAT a zkus to znovu.';
+  if (c === 'functions/unauthenticated') return 'Přihlášení vypršelo – odhlas se, znovu se přihlas a zkus to znovu.';
+  if (c === 'functions/internal') return msg || 'Smazání účtu se nepodařilo dokončit. Zkus to prosím znovu.';
+  return userErr(e, 'smazání účtu');
+}
+function delAccSetStatus(txt, isErr) {
+  const st = document.getElementById('delacc-st');
+  if (!st) return;
+  st.textContent = txt;
+  st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
+}
+function delAccInputOk() { return (document.getElementById('delacc-inp')?.value || '').trim().toUpperCase() === 'SMAZAT'; }
+window.delAccInput = () => { const b = document.getElementById('delacc-btn'); if (b && !_accDeleting) b.disabled = !delAccInputOk(); };
+window.openDeleteAccount = () => {
+  if (!CU || _accDeleting) return;
+  document.getElementById('m-delacc')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-delacc'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:460px">
+    <div class="mtitle">🗑️ Smazat účet</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.6">
+      <ul style="margin:0 0 12px;padding-left:20px">
+        <li>Smažou se všechna tvoje osobní data (poznámky, návyky, cíle, kalendář, nákupy, jídlo, chat s AI…) a odejdeš ze všech skupin.</li>
+        <li>Obsah, který jsi přidal/a do sdílených skupin, zůstane ostatním členům. Skupina, kde jsi byl/a jediný člen, se smaže celá.</li>
+        <li><b style="color:var(--red)">Smazání nejde vrátit.</b></li>
+      </ul>
+    </div>
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:8px">💡 Doporučujeme si nejdřív stáhnout zálohu svých dat.</div>
+      <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()">📥 Stáhnout moje data</button>
+      <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
+    </div>
+    <label class="flbl" for="delacc-inp">Pro potvrzení napiš <b>SMAZAT</b></label>
+    <input class="finp" type="text" id="delacc-inp" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SMAZAT" oninput="delAccInput()" style="width:100%;box-sizing:border-box">
+    <div id="delacc-st" role="status" aria-live="polite" style="font-size:14px;margin-top:10px;min-height:1em"></div>
+    <div class="macts">
+      <button type="button" class="btn-s" id="delacc-cancel" onclick="closeDeleteAccount()">Zrušit</button>
+      <button type="button" class="btn-p" id="delacc-btn" disabled onclick="confirmDeleteAccount()" style="background:var(--red);color:#fff">Smazat účet</button>
+    </div>
+  </div>`;
+  // Klik vedle okna: zavřít jen mimo probíhající mazání (globální handler .moverlay by okno jen skryl)
+  m.addEventListener('click', e => { if (e.target === m) { e.stopPropagation(); window.closeDeleteAccount(); } });
+  // Skrytí zvenku (Zpět → cm()): během mazání a po „Data jsou smazaná…“ okno vrátit, jinak zavřít celé
+  new MutationObserver(() => {
+    if (m.classList.contains('open') || !m.isConnected) return;
+    if (_accDeleting || _accDataGone) m.classList.add('open');
+    else window.closeDeleteAccount();
+  }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  document.body.appendChild(m);
+  _delAuthMs = 0; loadAuthAge(); // čerstvost přihlášení předem, klik pak nečeká
+};
+window.closeDeleteAccount = () => {
+  if (_accDeleting || _accDataGone) return;
+  document.getElementById('m-delacc')?.remove();
+  if (_accStopped) location.reload(); // po neúspěchu (listenery zastavené) obnoví data, ať se okno zavře jakkoli
+};
+window.confirmDeleteAccount = async () => {
+  if (!CU || _accDeleting || !delAccInputOk()) return;
+  const m = document.getElementById('m-delacc');
+  const btn = document.getElementById('delacc-btn'), cancel = document.getElementById('delacc-cancel');
+  const busy = on => {
+    if (btn) { btn.disabled = on; btn.textContent = on ? 'Mažu…' : 'Zkusit znovu'; }
+    if (cancel) cancel.disabled = on;
+    document.querySelectorAll('.acc-export-btn').forEach(b => { b.disabled = on; });
+  };
+  const needReauth = !authFreshSync(); // synchronně před prvním await
+  _accDeleting = true; busy(true);
+  try {
+    if (needReauth) {
+      delAccSetStatus('🔐 Ověř se prosím znovu…');
+      if (!(await reauthUser())) {
+        _accDeleting = false; busy(false);
+        delAccSetStatus('Ověření bylo zrušené, účet zůstal beze změny.', true);
+        return;
+      }
+    }
+    delAccSetStatus('⏳ Mažu účet a data, chvíli to může trvat…');
+    stopSessionActivity();
+    // failed-precondition se znovu neověřuje hned (popup by byl mimo klepnutí) → _forceReauth a „Zkusit znovu“
+    const res = await deleteAccountFn({ confirm: 'SMAZAT' });
+    if (!res?.data?.ok) throw Object.assign(new Error(''), { code: 'functions/internal' });
+    await finishAccountDeleted();
+  } catch (e) {
+    if (e?.code === 'functions/failed-precondition') _forceReauth = true;
+    if (e?.code === 'functions/internal' && /Data jsou smazan/i.test(String(e?.message || ''))) _accDataGone = true;
+    _accDeleting = false; busy(false);
+    if (cancel) cancel.style.display = _accDataGone ? 'none' : '';
+    m?.classList.add('open'); // mohlo se skrýt tlačítkem Zpět
+    delAccSetStatus('⚠️ ' + delAccErrText(e), true);
+  }
+};
+async function finishAccountDeleted() {
+  _accDeleted = true;
+  // Push token tohoto zařízení zneplatnit (profil s tokeny už smazal server)
+  try { if (messaging && fcmState === 'ok') await Promise.race([deleteToken(messaging), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
+  try { await signOut(auth); } catch (e) {}
+  // Lokální data aplikace (lp_*); lp_twa_seen zůstává – je to vlastnost instalace, ne účtu
+  try {
+    const del = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('lp_') && k !== 'lp_twa_seen') del.push(k); }
+    del.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  } catch (e) {}
+  document.getElementById('m-delacc')?.remove();
+  document.getElementById('m-reauth-pw')?.remove();
+  _accDeleting = false;
+  ss('s-deleted');
+}
+window.goHomeAfterDelete = () => { location.replace('/'); };
+
+// ── Nahlášení odpovědi AI (Google Play: obsah generovaný AI) ──
+const AI_REPORT_REASONS = [['nevhodne', 'Nevhodná'], ['nepravdive', 'Nepravdivá'], ['urazlive', 'Urážlivá'], ['jine', 'Jiné']];
+let _aiReportText = '';
+function openAiReport(text) {
+  if (!CU) return;
+  _aiReportText = String(text || '').slice(0, 2000);
+  document.getElementById('m-aireport')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-aireport'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:420px">
+    <div class="mtitle">⚑ Nahlásit odpověď AI</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:12px;line-height:1.5">Co je s odpovědí špatně? Uložíme text odpovědi a tvoji poznámku, abychom AI mohli vylepšit.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      ${AI_REPORT_REASONS.map(([v, l], i) => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px"><input type="radio" name="aireport-reason" value="${v}"${i === 0 ? ' checked' : ''} style="width:18px;height:18px;accent-color:var(--accent)"> ${l}</label>`).join('')}
+    </div>
+    <label class="flbl" for="aireport-note">Poznámka <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
+    <textarea class="finp" id="aireport-note" rows="3" maxlength="500" style="width:100%;box-sizing:border-box;resize:none;font-family:'Crimson Pro',serif;font-size:15px"></textarea>
+    <div class="macts">
+      <button type="button" class="btn-s" onclick="document.getElementById('m-aireport')?.remove()">Zrušit</button>
+      <button type="button" class="btn-p" id="aireport-btn" onclick="submitAiReport()">Nahlásit</button>
+    </div>
+  </div>`;
+  m.addEventListener('click', e => { if (e.target === m) { e.stopPropagation(); m.remove(); } });
+  document.body.appendChild(m);
+}
+window.openAiReport = openAiReport;
+window.submitAiReport = () => {
+  if (!CU) return;
+  const reason = document.querySelector('#m-aireport input[name="aireport-reason"]:checked')?.value;
+  const r = AI_REPORT_REASONS.some(([v]) => v === reason) ? reason : 'jine';
+  const note = String(document.getElementById('aireport-note')?.value || '').trim().slice(0, 500);
+  const rec = { createdAt: new Date().toISOString(), reason: r, note, messageText: _aiReportText.slice(0, 2000), appVersion: APP_VERSION };
+  document.getElementById('m-aireport')?.remove();
+  // Bez čekání na server: offline se zápis odešle po připojení
+  addDoc(collection(db, 'users', CU.uid, 'aiReports'), rec).catch(e => toast('⚠️ ' + userErr(e, 'nahlášení AI')));
+  toast('Díky, nahlášení jsme uložili');
+};
+
 // ── EMAIL / HESLO PŘIHLÁŠENÍ ──────────────────────────
 window.doEmailLogin=async()=>{
   const email=document.getElementById('email-inp').value.trim();
@@ -3055,6 +3427,7 @@ async function saveChatMessage(role, content, persist = true) {
 }
 // Ulož do Firestore: summary + posledních 30 zpráv
 async function persistChat() {
+  if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   if(!CU) return;
   _chatDirty = false;
   try {
@@ -3271,6 +3644,7 @@ function updateNotifTokenLine() {
 // Uloží token zařízení do mapy fcmTokens + legacy pole fcmToken (poslední zařízení); jen tato pole, ne celý profil
 const FCM_REFRESH_MS = 7*24*3600*1000; // server maže tokeny starší než 60 dní, obnova po 7 dnech stačí
 async function saveFcmToken(token, extra = {}) {
+  if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   const id = getDeviceId();
   // Beze změny (stejný token i platforma, čerstvý updatedAt, nic navíc) → žádný zápis do profilu
   const cur = prof?.fcmTokens?.[id];
@@ -3306,6 +3680,7 @@ async function unregisterFcmDevice() {
 
 let fcmRegPromise = null;
 function registerFcmToken() {
+  if(_accDeleting||_accDeleted||_accStopped) return Promise.resolve(); // mazání účtu: žádná registrace
   // Souběžná volání (init + otevření nastavení) sdílí jednu registraci
   if (!fcmRegPromise) fcmRegPromise = doRegisterFcmToken().finally(() => { fcmRegPromise = null; });
   return fcmRegPromise;
@@ -9512,7 +9887,7 @@ function showFoodDetectBanner(foods) {
 window.addPlannedMeals = (foods, bannerEl) => {
   bannerEl?.remove();
   const today = new Date().toLocaleDateString('cs-CZ', {day:'numeric', month:'long'});
-  const existing = new Set(plannedMeals.map(m => m.name.toLowerCase()));
+  const existing = new Set(plannedMeals.map(m => (m.name||'').toLowerCase()));
   let added = 0;
   foods.forEach(food => {
     if (!existing.has(food.toLowerCase())) {
@@ -9735,7 +10110,7 @@ function showHabitDetectBanner(completed, newHabits) {
     html += '<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Splněno dnes</div>';
     completed.forEach((item, i) => {
       const existingHabit = habits.find(h =>
-        item.matchesHabit && h.name.toLowerCase().includes(item.matchesHabit.toLowerCase())
+        item.matchesHabit && (h.name||'').toLowerCase().includes(String(item.matchesHabit).toLowerCase())
       );
       const meta = item.type === 'count' && item.count
         ? `${esc(item.count)}× dnes · počitatelný`
@@ -9760,7 +10135,7 @@ function showHabitDetectBanner(completed, newHabits) {
   if (newHabits.length > 0) {
     html += '<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">Nové návyky k vytvoření</div>';
     newHabits.forEach((h, i) => {
-      const alreadyExists = habits.some(ex => ex.name.toLowerCase() === h.name.toLowerCase());
+      const alreadyExists = habits.some(ex => (ex.name||'').toLowerCase() === (h.name||'').toLowerCase());
       if (alreadyExists) return;
       html += `<div class="habit-detect-card">
         <div class="hdc-info">
@@ -9896,6 +10271,14 @@ function appendMsg(role,text,nm='',em=''){
   if(role==='bot'){
     const lbl=nm?`<div class="mlbl">${esc(em||'')} ${esc(nm)}</div>`:'';
     bubble.innerHTML=lbl+esc(text).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`;
+    // Nahlášení odpovědi AI (ne u chybových hlášek appky)
+    if(nm!=='Chyba'){
+      const rb=document.createElement('button');
+      rb.type='button'; rb.className='msg-report'; rb.textContent='⚑ Nahlásit';
+      rb.setAttribute('aria-label','Nahlásit odpověď AI');
+      rb.addEventListener('click',()=>openAiReport(text));
+      bubble.insertBefore(rb,bubble.querySelector('.msg-time'));
+    }
   } else {
     bubble.innerHTML=esc(text).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`;
   }

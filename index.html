@@ -76,6 +76,14 @@
   </div>
 </div>
 
+<!-- ÚČET SMAZÁN (po deleteAccount) -->
+<div class="screen" id="s-deleted" style="flex-direction:column;gap:16px;background:var(--bg);text-align:center;padding:24px">
+  <img src="icon-192.png" style="width:72px;height:72px;border-radius:18px" alt="">
+  <div style="font-family:'Playfair Display',serif;font-size:24px;color:var(--text)">Účet byl smazán</div>
+  <div style="font-size:15px;color:var(--text2);max-width:320px;line-height:1.5">Tvoje data jsme smazali a odešel/odešla jsi ze všech skupin. Díky, že jsi LifePocket používal/a.</div>
+  <button class="btn-p" style="width:auto;padding:10px 24px" onclick="goHomeAfterDelete()">Na úvod</button>
+</div>
+
 <!-- LOGIN: landing pro nové návštěvníky + přihlášení (ID prvků čte app.js, neměnit) -->
 <div class="screen" id="s-login">
   <div class="card lp-card">
@@ -965,6 +973,8 @@
         <div class="setsec-t" style="margin-top:20px">💛 Doporuč LifePocket</div>
         <div class="setsec-d">Nejvíc pomůžeš, když o appce řekneš kamarádům. Stačí jedno klepnutí.</div>
         <button type="button" class="share-app-btn" onclick="shareApp()">📤 Sdílet LifePocket</button>
+        <!-- Podpora projektu: v aplikaci z Google Play (TWA) skrytá přes html.is-twa -->
+        <div class="lp-support">
         <div class="setsec-t">☕ Podpořit projekt</div>
         <div class="setsec-d">LifePocket vznikl jako osobní projekt a zůstává zdarma a bez reklam. Každý příspěvek pomáhá pokrýt náklady na provoz a motivuje k dalšímu vývoji nových funkcí. Pokud ti appka usnadňuje každodenní život, budu rád za jakoukoli podporu. Díky moc! 🙏</div>
         <div style="margin-top:12px">
@@ -983,6 +993,7 @@
           <a href="https://buymeacoffee.com/adamstencl" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:10px;background:#FFDD00;color:#000;font-weight:700;font-size:15px;padding:13px 24px;border-radius:12px;text-decoration:none;font-family:'Crimson Pro',serif">
             ☕ Podpořit na Buy Me a Coffee
           </a>
+        </div>
         </div>
 
                 <div class="setsec-t" style="margin-top:20px">📄 Právní dokumenty</div>
@@ -1018,6 +1029,15 @@
           <span class="setlbl">Účet</span>
           <button class="btn-sv" style="background:var(--red);color:white" onclick="doLogout()">Odhlásit se</button>
         </div>
+      </div>
+
+      <!-- ÚČET: export dat a smazání účtu -->
+      <div class="setsec" id="set-account">
+        <div class="setsec-t">🔐 Účet</div>
+        <div class="setsec-d">Stáhni si všechna svoje data do souboru, nebo účet trvale smaž.</div>
+        <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()" style="margin-top:10px">📥 Stáhnout moje data</button>
+        <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
+        <button type="button" class="acc-del-link" onclick="openDeleteAccount()">🗑️ Smazat účet</button>
       </div>
     </div>
 
