@@ -42,11 +42,14 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v30';
+const CACHE = 'lifepocket-v31';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
   '/app.js',
+  '/i18n.js',
+  '/i18n/cs.js',
+  '/i18n/en.js', // oba slovníky kvůli přepnutí jazyka offline
   '/style.css',
   '/manifest.json',
   '/icon-192.png',

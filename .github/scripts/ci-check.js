@@ -49,6 +49,9 @@ function stringLiterals(src) {
 
 console.log('Syntaxe');
 checkSyntax('app.js', true);
+checkSyntax('i18n.js', true);
+checkSyntax('i18n/cs.js', true);
+checkSyntax('i18n/en.js', true);
 checkSyntax('sw.js', false);
 checkSyntax('pwa.js', false);
 checkSyntax('functions/index.js', false);
@@ -143,7 +146,7 @@ try {
 
 console.log('CACHE v sw.js vs. změněné soubory');
 (function checkCacheBump() {
-  const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js'];
+  const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js', 'i18n.js', 'i18n/cs.js', 'i18n/en.js'];
   const git = args => execFileSync('git', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   const tryGit = args => { try { return git(args); } catch (e) { return null; } };
   if (tryGit(['rev-parse', '--is-inside-work-tree']) !== 'true') { info('git není k dispozici, kontrola přeskočena'); return; }
@@ -241,6 +244,204 @@ try {
   if (!ids.length) ok('všechny funkce z inline handlerů jsou na window (' + onWin.size + ' exportů)');
   else ids.forEach(id => fail('inline handler volá ' + id + '(), ale chybí window.' + id + ' (' + [...new Set(missing[id])].join(' ') + ')'));
 } catch (e) { fail('inline handlery: ' + e.message); }
+
+// Ráčny vícejazyčnosti (docs/NAVRH-I18N.md): každá fáze překladu čísla sníží, nový český text mimo slovník CI shodí
+const I18N_ALLOW = { appCz: 1084, htmlCz: 159, csCZ: 24, manualPlural: 0 };
+console.log('i18n: slovníky a použité klíče');
+// Slovník je ES modul „export default { … }“ s čistým objektem; načte se bez importu přes vm
+function loadDict(f) {
+  const vm = require('vm');
+  const src = read(f).replace(/^\s*export\s+default\s+/m, 'result = ');
+  const ctx = { result: null };
+  vm.runInNewContext(src, ctx, { filename: f, timeout: 1000 });
+  if (!ctx.result || typeof ctx.result !== 'object') throw new Error(f + ': chybí export default {…}');
+  return ctx.result;
+}
+const I18N_CZ = /[áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]/;
+let i18nCs = null;
+try {
+  const cs = loadDict('i18n/cs.js'), en = loadDict('i18n/en.js');
+  i18nCs = cs;
+  const base = k => k.replace(/#f$/, '');
+  const kc = new Set(Object.keys(cs).map(base)), ke = new Set(Object.keys(en).map(base));
+  const onlyCs = [...kc].filter(k => !ke.has(k)), onlyEn = [...ke].filter(k => !kc.has(k));
+  onlyCs.forEach(k => fail('i18n/en.js: chybí klíč ' + k));
+  onlyEn.forEach(k => fail('i18n/cs.js: chybí klíč ' + k));
+  if (!onlyCs.length && !onlyEn.length) ok('cs a en mají stejné klíče (' + kc.size + ')');
+  // Plurály: cs { one, few, other }, en { one, other }; stejný typ hodnoty v obou jazycích
+  const FORMS = { cs: ['one', 'few', 'other'], en: ['one', 'other'] };
+  let badPl = 0;
+  for (const [lang, d] of [['cs', cs], ['en', en]]) {
+    for (const [k, v] of Object.entries(d)) {
+      if (v && typeof v === 'object') {
+        const miss = FORMS[lang].filter(f => typeof v[f] !== 'string');
+        if (miss.length) { fail('i18n/' + lang + '.js: plurál ' + k + ' nemá tvary ' + miss.join(',')); badPl++; }
+      } else if (typeof v !== 'string') { fail('i18n/' + lang + '.js: ' + k + ' není text ani plurál'); badPl++; }
+    }
+  }
+  for (const k of kc) {
+    if (!ke.has(k) || !(k in cs) || !(k in en)) continue;
+    if ((typeof cs[k] === 'object') !== (typeof en[k] === 'object')) { fail('i18n: ' + k + ' je plurál jen v jednom jazyce'); badPl++; }
+  }
+  if (!badPl) ok('tvary plurálů v pořádku');
+  // Stejné {proměnné} v obou jazycích (varianta #f musí mít stejné jako základní klíč)
+  const vars = v => JSON.stringify([...new Set(String(v && typeof v === 'object' ? Object.values(v).join(' ') : v).match(/\{\w+\}/g) || [])].sort());
+  let badVars = 0;
+  for (const k of Object.keys(cs)) {
+    const b = base(k);
+    const other = [en[k], en[b], cs[b]].filter(x => x !== undefined);
+    for (const o of other) if (vars(cs[k]) !== vars(o)) { fail('i18n: proměnné se liší u ' + k); badVars++; break; }
+  }
+  if (!badVars) ok('proměnné {…} shodné v cs a en');
+  // Použité klíče: t('…'), tH('…'), řetězce tvaru 'jmenný.prostor.klíč' v app.js, data-i18n a data-i18n-attr v index.html
+  const html = read('index.html');
+  const ns = new Set(Object.keys(cs).map(k => k.split('.')[0]));
+  const used = new Set();
+  for (const m of appSrc.matchAll(/\bt[H]?\(\s*'([\w.#-]+)'/g)) if (!m[1].endsWith('.')) used.add(m[1]);
+  for (const m of appSrc.matchAll(/'([a-z][\w]*(?:\.[\w#-]+)+)'/g)) if (ns.has(m[1].split('.')[0])) used.add(m[1]);
+  for (const m of html.matchAll(/data-i18n="([^"]+)"/g)) used.add(m[1].trim());
+  for (const m of html.matchAll(/data-i18n-attr="([^"]+)"/g)) m[1].split(';').forEach(x => used.add(x.slice(x.indexOf(':') + 1).trim()));
+  const missingKeys = [...used].filter(k => !(k in cs));
+  missingKeys.forEach(k => fail('i18n: klíč neexistuje: ' + k));
+  if (!missingKeys.length) ok('všech ' + used.size + ' použitých klíčů existuje');
+  // Dynamické klíče: 'mod.' + id → každý modul z MODS musí mít překlad
+  const mods = appSrc.match(/const\s+MODS\s*=\s*\[([\s\S]*?)\n\];/);
+  if (mods) {
+    const ids = [...mods[1].matchAll(/\{\s*id\s*:\s*'([\w-]+)'/g)].map(m => m[1]);
+    const miss = ids.filter(id => !(('mod.' + id) in cs));
+    if (miss.length) fail('i18n: moduly bez překladu mod.*: ' + miss.join(','));
+    else ok('všech ' + ids.length + ' modulů má klíč mod.<id>');
+  }
+  // Nepoužité klíče jen jako informace (část klíčů se skládá dynamicky)
+  const dynPrefixes = [...appSrc.matchAll(/'([a-z][\w]*(?:\.[\w-]+)*\.)'\s*\+/g)].map(m => m[1]);
+  const unused = Object.keys(cs).map(base).filter(k => !used.has(k) && !dynPrefixes.some(p => k.startsWith(p)) && !k.startsWith('meta.'));
+  if (unused.length) info('nepoužité klíče (' + unused.length + '): ' + [...new Set(unused)].slice(0, 15).join(', '));
+  // Čeština v index.html = slovník (HTML je pro cs zdroj, slovník se nepoužije → nesmí se rozjet)
+  const norm = x => String(x).replace(/\s+/g, ' ').trim();
+  const decode = x => x.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  let diff = 0;
+  for (const m of html.matchAll(/<(\w+)\b([^>]*?)\sdata-i18n="([^"]+)"[^>]*>([\s\S]*?)<\/\1>/g)) {
+    const k = m[3], inner = m[4];
+    if (/</.test(inner)) { fail('index.html: prvek s data-i18n="' + k + '" obsahuje HTML (rozděl na spany)'); diff++; continue; }
+    if (k in cs && typeof cs[k] === 'string' && norm(decode(inner)) !== norm(cs[k])) { fail('index.html: text u data-i18n="' + k + '" se liší od i18n/cs.js'); diff++; }
+  }
+  for (const m of html.matchAll(/<\w+\b[^>]*\sdata-i18n-attr="([^"]+)"[^>]*>/g)) {
+    for (const part of m[1].split(';')) {
+      const i = part.indexOf(':'), a = part.slice(0, i).trim(), k = part.slice(i + 1).trim();
+      const am = m[0].match(new RegExp('\\s' + a + '="([^"]*)"'));
+      if (am && k in cs && norm(decode(am[1])) !== norm(cs[k])) { fail('index.html: atribut ' + a + ' u klíče ' + k + ' se liší od i18n/cs.js'); diff++; }
+    }
+  }
+  if (!diff) ok('texty s data-i18n v index.html odpovídají i18n/cs.js');
+} catch (e) { fail('i18n slovníky: ' + e.message); }
+
+console.log('i18n: ráčny (český text mimo slovník)');
+// Řetězcové a šablonové literály mimo komentáře (zjednodušený lexer: řetězce, šablony s ${…}, komentáře, regexy)
+function jsLiterals(src) {
+  const out = [];
+  let i = 0;
+  const n = src.length;
+  const isRegexCtx = pos => {
+    let j = pos - 1;
+    while (j >= 0 && /\s/.test(src[j])) j--;
+    if (j < 0) return true;
+    if (/[(,=:[!&|?{};+\-*%<>~^]/.test(src[j])) return true;
+    const w = src.slice(Math.max(0, j - 9), j + 1).match(/(?:return|typeof|case|in|of|delete|void|throw|new|else|do)$/);
+    return !!(w && !/[\w$]/.test(src[j - w[0].length] || ''));
+  };
+  function code(untilBrace) {
+    let depth = 0;
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === '/' && d === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+      if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; continue; }
+      if (c === '\'' || c === '"') {
+        const st = i; i++;
+        let s = '';
+        while (i < n && src[i] !== c) { if (src[i] === '\\') { s += src[i + 1]; i += 2; continue; } if (src[i] === '\n') break; s += src[i++]; }
+        i++; out.push({ s, at: st }); continue;
+      }
+      if (c === '`') { i++; tpl(); continue; }
+      if (c === '/' && isRegexCtx(i)) {
+        i++;
+        let cls = false;
+        while (i < n && src[i] !== '\n') {
+          if (src[i] === '\\') { i += 2; continue; }
+          if (src[i] === '[') cls = true; else if (src[i] === ']') cls = false; else if (src[i] === '/' && !cls) break;
+          i++;
+        }
+        i++; continue;
+      }
+      if (c === '{') depth++;
+      if (c === '}') { if (untilBrace && depth === 0) { i++; return; } depth--; }
+      i++;
+    }
+  }
+  function tpl() {
+    let st = i, s = '';
+    while (i < n) {
+      const c = src[i];
+      if (c === '\\') { s += src[i + 1]; i += 2; continue; }
+      if (c === '`') { i++; out.push({ s, at: st }); return; }
+      if (c === '$' && src[i + 1] === '{') { out.push({ s, at: st }); i += 2; code(true); st = i; s = ''; continue; }
+      s += c; i++;
+    }
+  }
+  code(false);
+  return out;
+}
+// Allowlist = stav při zavedení; nový výskyt CI shodí, při úbytku INFO připomene snížení
+function ratchet(name, count, allow, detail) {
+  if (count > allow) fail(name + ': ' + count + ', povoleno ' + allow + (detail ? ' (' + detail + ')' : ''));
+  else {
+    ok(name + ': ' + count + ' (allowlist ' + allow + ')');
+    if (count < allow) info('sniž allowlist "' + name + '" na ' + count);
+  }
+}
+try {
+  const clStart = appSrc.indexOf('const CHANGELOG');
+  const clEnd = clStart < 0 ? -1 : appSrc.indexOf('\n];', clStart);
+  const lits = jsLiterals(appSrc).filter(l => I18N_CZ.test(l.s) && !(l.at > clStart && l.at < clEnd));
+  ratchet('české literály v app.js (mimo CHANGELOG)', lits.length, I18N_ALLOW.appCz);
+} catch (e) { fail('ráčna app.js: ' + e.message); }
+try {
+  // Textové uzly a atributy s češtinou v index.html bez data-i18n (translate="no" = záměrně nepřekládat)
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
+  const VOID = new Set('area base br col embed hr img input link meta param source track wbr'.split(' '));
+  const stack = [];
+  let count = 0;
+  const re = /<\/?([a-zA-Z][\w-]*)\b([^>]*)>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(html))) {
+    if (m[3] !== undefined) {
+      const txt = m[3];
+      if (!I18N_CZ.test(txt)) continue;
+      const parent = stack[stack.length - 1];
+      const skip = stack.some(s => /\stranslate="no"/.test(s.attrs)) || (parent && /\sdata-i18n="/.test(parent.attrs));
+      if (!skip) count++;
+      continue;
+    }
+    const name = m[1].toLowerCase(), attrs = m[2] || '';
+    if (m[0][1] === '/') {
+      const idx = stack.map(s => s.name).lastIndexOf(name);
+      if (idx >= 0) stack.length = idx;
+      continue;
+    }
+    for (const a of attrs.matchAll(/\s(placeholder|aria-label|title|alt)="([^"]*)"/g)) {
+      if (!I18N_CZ.test(a[2])) continue;
+      const tr = (attrs.match(/\sdata-i18n-attr="([^"]*)"/) || [])[1] || '';
+      if (!tr.split(';').some(x => x.split(':')[0].trim() === a[1])) count++;
+    }
+    if (!VOID.has(name) && !/\/\s*$/.test(attrs)) stack.push({ name, attrs });
+  }
+  ratchet('české texty v index.html bez data-i18n', count, I18N_ALLOW.htmlCz);
+} catch (e) { fail('ráčna index.html: ' + e.message); }
+{
+  const csCz = (appSrc.match(/'cs-CZ'/g) || []).length;
+  ratchet("'cs-CZ' v app.js (použij LOCALE / fmtDate)", csCz, I18N_ALLOW.csCZ);
+  const manualPl = (appSrc.match(/===\s*1\s*\?[^:]+:\s*\w+\s*<\s*5/g) || []).length;
+  ratchet('ruční plurál x===1?…:x<5 (použij t(…,{n}))', manualPl, I18N_ALLOW.manualPlural);
+}
 
 console.log('');
 if (errors.length) {

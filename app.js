@@ -3,16 +3,23 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,langSyncPending,clearLangSync,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+
+// Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
+await initI18n();
+applyI18n();
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
 const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
+// E-maily Auth (ověření, reset hesla) a okno Google v jazyce appky; čeština beze změny (výchozí šablony projektu)
+if(LANG!=='cs') auth.languageCode=LANG;
 // Push: messaging se vytvoří jen když to prohlížeč podporuje; důvod nepodpory se ukáže v nastavení notifikací
 let messaging=null,msgUnsupportedReason='';
 const msgReady=(async()=>{
   try{
     if(await isSupported()){messaging=getMessaging(fb);onMessage(messaging,showForegroundPush);}
-    else msgUnsupportedReason='Prohlížeč nepodporuje push (chybí Push API, Service Worker nebo IndexedDB).';
-  }catch(e){msgUnsupportedReason='Inicializace push selhala ('+(e&&e.code||'chyba')+').';}
+    else msgUnsupportedReason=t('notif.unsupported');
+  }catch(e){msgUnsupportedReason=t('notif.initFailed',{code:e&&e.code||t('notif.error')});}
 })();
 const functions=getFunctions(fb,'europe-west1');
 const claudeProxyFn=httpsCallable(functions,'claudeProxy');
@@ -41,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.36';
+const APP_VERSION = '4.37';
 const CHANGELOG = [
+  { v:'4.37', items:[
+    '🌍 Příprava anglické verze – náhled přes lifepocket.app/?lang=en'
+  ], en:[
+    '🌍 English preview – some parts of the app are still in Czech'
+  ]},
   { v:'4.36', items:[
     '🔄 Správce skupiny může vygenerovat nový, bezpečnější kód'
   ]},
@@ -391,16 +403,19 @@ function checkChangelog() {
   localStorage.removeItem('lp_daily_quote');
   const entry = CHANGELOG.find(c => c.v === APP_VERSION);
   if (!entry) return;
+  // Jiný jazyk než čeština: jen záznamy s překladem (entry.en); bez něj se modal neukáže, ale verze se označí jako viděná
+  const items = LANG === 'cs' ? entry.items : entry[LANG];
+  if (!items) { lsSave('lp_seen_version', APP_VERSION); return; }
   document.getElementById('app').insertAdjacentHTML('beforeend', `
     <div class="moverlay open" id="changelog-modal" onclick="if(event.target===this)closeChangelog()">
       <div class="modal" style="max-width:380px;gap:0">
         <div style="font-size:36px;text-align:center;margin-bottom:8px">🎉</div>
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:4px">Co je nového</div>
-        <div style="font-size:13px;color:var(--text3);text-align:center;margin-bottom:18px">Verze ${entry.v}</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:4px">${tH('changelog.title')}</div>
+        <div style="font-size:13px;color:var(--text3);text-align:center;margin-bottom:18px">${tH('changelog.version',{v:entry.v})}</div>
         <ul style="list-style:none;padding:0;margin:0 0 20px;display:flex;flex-direction:column;gap:10px">
-          ${entry.items.map(i=>`<li style="font-size:14px;color:var(--text);background:var(--card2);border-radius:10px;padding:10px 14px">${i}</li>`).join('')}
+          ${items.map(i=>`<li style="font-size:14px;color:var(--text);background:var(--card2);border-radius:10px;padding:10px 14px">${i}</li>`).join('')}
         </ul>
-        <button class="btn-p" onclick="closeChangelog()">Super, díky! 👍</button>
+        <button class="btn-p" onclick="closeChangelog()">${tH('changelog.ok')}</button>
       </div>
     </div>`);
 }
@@ -457,7 +472,6 @@ const ONB_TPLS = {
   ]},
 };
 let selTpl = null;
-const AVGREET={rex:{m:n=>`Vítej, ${n}! Makáme a plníme cíle. Připraven?`,f:n=>`Vítej, ${n}! Připravena?`},sage:{m:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`,f:n=>`Ahoj ${n}, pojď zkoumat sebe sama.`},ash:{m:n=>`Hej ${n}! Co dnes změníme?`,f:n=>`Hej ${n}! Co dnes změníme?`},nora:{m:n=>`Ahoj ${n}! Postarám se o tebe.`,f:n=>`Ahoj ${n}! Postarám se o tebe.`},rio:{m:n=>`Yo ${n}! Žijeme naplno!`,f:n=>`Yo ${n}! Žijeme naplno!`}};
 const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
 const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
 
@@ -538,31 +552,31 @@ function userErr(e, ctx = '') {
   const sp = typeof e?.error === 'string' ? e.error : ''; // SpeechRecognition
   let txt = '', expected = true;
   const AUTH_MSGS = {
-    'auth/popup-blocked': 'Povol vyskakovací okna pro lifepocket.app a zkus to znovu.',
-    'auth/too-many-requests': 'Příliš mnoho pokusů, zkus to za chvíli.',
-    'auth/unauthorized-domain': 'Přihlášení z této adresy není povolené – otevři appku na lifepocket.app.',
-    'auth/user-disabled': 'Tento účet je zablokovaný.'
+    'auth/popup-blocked': 'err.popupBlocked',
+    'auth/too-many-requests': 'err.tooManyRequests',
+    'auth/unauthorized-domain': 'err.unauthorizedDomain',
+    'auth/user-disabled': 'err.userDisabled'
   };
-  if (Object.prototype.hasOwnProperty.call(AUTH_MSGS, full)) txt = AUTH_MSGS[full];
-  else if (sp === 'no-speech') txt = 'Nic jsem neslyšel – zkus mluvit blíž k mikrofonu.';
-  else if (sp === 'not-allowed' || sp === 'service-not-allowed' || e?.name === 'NotAllowedError') txt = 'Povol mikrofon v nastavení prohlížeče.';
-  else if (sp === 'audio-capture') txt = 'Mikrofon není dostupný – zkontroluj, jestli ho nepoužívá jiná aplikace.';
-  else if (sp === 'network') txt = 'Rozpoznávání řeči potřebuje internet – zkontroluj připojení.';
-  else if (sp) { txt = 'Mikrofon teď nefunguje, zkus to znovu.'; expected = false; }
+  if (Object.prototype.hasOwnProperty.call(AUTH_MSGS, full)) txt = t(AUTH_MSGS[full]);
+  else if (sp === 'no-speech') txt = t('err.noSpeech');
+  else if (sp === 'not-allowed' || sp === 'service-not-allowed' || e?.name === 'NotAllowedError') txt = t('err.micAllow');
+  else if (sp === 'audio-capture') txt = t('err.micUnavailable');
+  else if (sp === 'network') txt = t('err.speechNetwork');
+  else if (sp) { txt = t('err.micFailed'); expected = false; }
   else if (navigator.onLine === false || ['unavailable', 'network-request-failed', 'deadline-exceeded'].includes(code) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
-    txt = 'Nejsi připojený k internetu – zkus to znovu, až budeš online.';
-  else if (full === 'functions/resource-exhausted') txt = 'Dnešní limit AI dotazů je vyčerpaný. Obnoví se o půlnoci.';
+    txt = t('err.offline');
+  else if (full === 'functions/resource-exhausted') txt = t('err.aiLimit');
   // Proxy odmítla dotaz (česká hláška ze serveru); není to chyba appky, nelogovat
-  else if (full === 'functions/failed-precondition') txt = msg.slice(0, 200) || 'AI na tento dotaz nemůže odpovědět. Zkus ho formulovat jinak.';
+  else if (full === 'functions/failed-precondition') txt = msg.slice(0, 200) || t('err.aiRefused');
   else if (full.startsWith('functions/') && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
-    txt = 'AI je teď přetížená, zkus to za minutku.';
-  else if (code === 'resource-exhausted') txt = 'Služba je přetížená, zkus to za chvíli.';
-  else if (code === 'permission-denied') txt = 'Na tuhle akci nemáš oprávnění (třeba už nejsi ve skupině).';
-  else if (code === 'unauthenticated') txt = 'Přihlášení vypršelo – přihlas se prosím znovu.';
-  else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = 'AI vrátila nečekanou odpověď, zkus to znovu.'; expected = false; }
+    txt = t('err.aiBusy');
+  else if (code === 'resource-exhausted') txt = t('err.busy');
+  else if (code === 'permission-denied') txt = t('err.permission');
+  else if (code === 'unauthenticated') txt = t('err.unauthenticated');
+  else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = t('err.aiBadReply'); expected = false; }
   else if (/\bAI\b|Claude/.test(msg) || (full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
-    { txt = 'AI je teď nedostupná, zkus to prosím později.'; expected = false; }
-  else { txt = 'Něco se nepovedlo, zkus to prosím znovu.'; expected = false; }
+    { txt = t('err.aiUnavailable'); expected = false; }
+  else { txt = t('err.generic'); expected = false; }
   try {
     console.warn('[LP] chyba' + (ctx ? ' (' + ctx + ')' : '') + ':', full || sp || e?.name || '', msg);
     if (!expected) logClientError((e?.name || 'Error') + ': ' + (full ? full + ' ' : '') + (sp || msg), 'userErr' + (ctx ? ':' + ctx : ''), e?.stack);
@@ -604,6 +618,7 @@ async function startSession(u){
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
   if(s.exists()){prof=s.data();
+    if(syncProfileLang(u.uid)) return; // jazyk přepnutý na jiném zařízení → reload
     // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
@@ -612,7 +627,7 @@ async function startSession(u){
     selMods=new Set(prof.modules||[]);initApp();
     touchLastSeen(u.uid);
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
-      setTimeout(()=>toast('📧 Ověř svůj email — zkontroluj schránku',5000),1000);
+      setTimeout(()=>toast(t('auth.verifyEmail'),5000),1000);
     }
   }else ss('s-step1');
 }
@@ -632,6 +647,46 @@ function touchLastSeen(uid){
       .catch(e=>console.warn('[LP] lastSeen:',e?.code||e?.name));
   }catch(e){}
 }
+// Jazyk: profile.lang platí pro všechna zařízení (a později pro notifikace ze serveru), lp_lang je jeho kopie v zařízení.
+// Výslovná volba v zařízení (?lang= nebo přepínač, příznak lp_lang_sync) se zapíše do profilu; jinak se převezme jazyk z profilu.
+// Vrací true, když se stránka znovu načítá kvůli jazyku.
+function syncProfileLang(uid){
+  if(_accDeleting||_accDeleted||_accStopped) return false;
+  if(!langSyncPending() && SUPPORTED.includes(prof.lang)){
+    return prof.lang!==LANG && reloadForProfileLang(prof.lang);
+  }
+  if(prof.lang===LANG){ clearLangSync(); return false; }
+  prof.lang=LANG;
+  setDoc(doc(db,'users',uid,'profile','main'),{lang:LANG},{merge:true})
+    .then(()=>clearLangSync()).catch(e=>console.warn('[LP] jazyk profilu:',e?.code||e?.name));
+  return false;
+}
+// Přepínač jazyka v Nastavení: uložit do profilu (nejvýš 1,5 s čekání, offline se dopíše po startu) a načíst znovu
+let _langSwitching=false;
+window.setLang=async l=>{
+  if(!SUPPORTED.includes(l)||_langSwitching) return;
+  if(l===LANG){ renderLangSwitch(); return; }
+  _langSwitching=true;
+  document.querySelectorAll('.lang-btn').forEach(b=>{b.disabled=true;});
+  if(CU&&!_accDeleting&&!_accDeleted){
+    prof.lang=l;
+    const w=setDoc(doc(db,'users',CU.uid,'profile','main'),{lang:l},{merge:true}).catch(e=>console.warn('[LP] jazyk profilu:',e?.code||e?.name));
+    await Promise.race([w,new Promise(r=>setTimeout(r,1500))]);
+  }
+  reloadWithLang(l);
+};
+function renderLangSwitch(){
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    const on=b.dataset.lang===LANG;
+    b.classList.toggle('active',on); b.setAttribute('aria-pressed',String(on));
+  });
+}
+// Název modulu v jazyce appky (MODS drží jen české výchozí texty)
+const modName=m=>t('mod.'+m.id);
+const modDesc=m=>t('mod.'+m.id+'.desc');
+const avVibe=a=>t('av.'+a.id+'.vibe');
+// Ukázkový návyk šablony v jazyce appky (ONB_TPLS drží jen nastavení návyku)
+const tplHabitName=(tpl,i)=>t('tpl.'+tpl+'.h'+(i+1));
 // Úvodní obrazovka: spinner, nebo hláška o chybě načtení s tlačítkem
 function showLoadError(on){
   const spin=document.getElementById('load-spin'), box=document.getElementById('load-err');
@@ -2823,7 +2878,7 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('moverlay')
 
 window.doLogin=async()=>{
   const b=document.getElementById('login-btn'),e=document.getElementById('login-err');
-  e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> Přihlašuji…';
+  e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> '+tH('auth.signingIn');
   try{
     await signInWithPopup(auth,gp);
   } catch(ex){
@@ -2837,9 +2892,9 @@ window.doLogin=async()=>{
 };
 function resetLoginBtn(){
   const b=document.getElementById('login-btn');
-  if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> Pokračovat přes Google';
+  if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm('Odhlásit se?'))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();location.reload();};
+window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();location.reload();};
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
@@ -3193,14 +3248,14 @@ window.doEmailLogin=async()=>{
   const e=document.getElementById('login-err');
   const b=document.getElementById('email-login-btn');
   e.classList.remove('show');
-  if(!email||!pass){e.textContent='Vyplň email a heslo';e.classList.add('show');return;}
-  b.disabled=true;b.textContent='Přihlašuji…';
+  if(!email||!pass){e.textContent=t('auth.fillBoth');e.classList.add('show');return;}
+  b.disabled=true;b.textContent=t('auth.signingIn');
   try{
     await signInWithEmailAndPassword(auth,email,pass);
   }catch(ex){
-    b.disabled=false;b.textContent='Přihlásit se';
-    const msgs={'auth/invalid-credential':'Špatný email nebo heslo','auth/user-not-found':'Účet neexistuje','auth/wrong-password':'Špatné heslo','auth/invalid-email':'Neplatný email'};
-    e.textContent=msgs[ex.code]||userErr(ex,'login');
+    b.disabled=false;b.textContent=t('auth.login');
+    const msgs={'auth/invalid-credential':'auth.err.invalidCredential','auth/user-not-found':'auth.err.userNotFound','auth/wrong-password':'auth.err.wrongPassword','auth/invalid-email':'auth.err.invalidEmail'};
+    e.textContent=msgs[ex.code]?t(msgs[ex.code]):userErr(ex,'login');
     e.classList.add('show');
   }
 };
@@ -3211,16 +3266,16 @@ window.doEmailRegister=async()=>{
   const e=document.getElementById('login-err');
   const b=document.getElementById('email-login-btn');
   e.classList.remove('show');
-  if(!email||!pass){e.textContent='Vyplň email a heslo';e.classList.add('show');return;}
-  if(pass.length<6){e.textContent='Heslo musí mít alespoň 6 znaků';e.classList.add('show');return;}
-  b.disabled=true;b.textContent='Registruji…';
+  if(!email||!pass){e.textContent=t('auth.fillBoth');e.classList.add('show');return;}
+  if(pass.length<6){e.textContent=t('auth.passShort');e.classList.add('show');return;}
+  b.disabled=true;b.textContent=t('auth.registering');
   try{
     await createUserWithEmailAndPassword(auth,email,pass);
     await sendEmailVerification(auth.currentUser);
   }catch(ex){
-    b.disabled=false;b.textContent='Vytvořit účet';
-    const msgs={'auth/email-already-in-use':'Email je už registrovaný','auth/invalid-email':'Neplatný email','auth/weak-password':'Heslo je příliš slabé'};
-    e.textContent=msgs[ex.code]||userErr(ex,'login');
+    b.disabled=false;b.textContent=t('auth.createAccount');
+    const msgs={'auth/email-already-in-use':'auth.err.emailInUse','auth/invalid-email':'auth.err.invalidEmail','auth/weak-password':'auth.err.weakPassword'};
+    e.textContent=msgs[ex.code]?t(msgs[ex.code]):userErr(ex,'login');
     e.classList.add('show');
   }
 };
@@ -3228,10 +3283,10 @@ window.doEmailRegister=async()=>{
 window.doPasswordReset=async()=>{
   const email=document.getElementById('email-inp').value.trim();
   const e=document.getElementById('login-err');
-  if(!email){e.textContent='Zadej email pro reset hesla';e.classList.add('show');return;}
+  if(!email){e.textContent=t('auth.resetNeedEmail');e.classList.add('show');return;}
   try{
     await sendPasswordResetEmail(auth,email);
-    e.textContent='✅ Email pro reset hesla odeslán!';
+    e.textContent=t('auth.resetSent');
     e.style.color='var(--green)';
     e.classList.add('show');
     setTimeout(()=>{e.classList.remove('show');e.style.color='';},4000);
@@ -3245,12 +3300,12 @@ window.togglePassVis=()=>{
   const btn=document.getElementById('pass-eye-btn');
   if(!inp)return;
   inp.type=inp.type==='password'?'text':'password';
-  if(btn){btn.textContent=inp.type==='password'?'👁️':'🙈';btn.setAttribute('aria-label',inp.type==='password'?'Zobrazit heslo':'Skrýt heslo');}
+  if(btn){btn.textContent=inp.type==='password'?'👁️':'🙈';btn.setAttribute('aria-label',t(inp.type==='password'?'auth.showPass':'auth.hidePass'));}
 };
 
 window.toggleLoginMode=(mode)=>{
   const isReg=mode==='register';
-  document.getElementById('email-login-btn').textContent=isReg?'Vytvořit účet':'Přihlásit se';
+  document.getElementById('email-login-btn').textContent=t(isReg?'auth.createAccount':'auth.login');
   document.getElementById('email-login-btn').onclick=isReg?window.doEmailRegister:window.doEmailLogin;
   document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
   document.getElementById('login-toggle-login').style.display=isReg?'block':'none';
@@ -3258,7 +3313,7 @@ window.toggleLoginMode=(mode)=>{
   const pi=document.getElementById('pass-inp');
   if(pi)pi.autocomplete=isReg?'new-password':'current-password'; // správce hesel nabídne nové heslo
   const lbl=document.getElementById('auth-mode-lbl');
-  if(lbl)lbl.textContent=isReg?'✨ Nový účet':'🔑 Přihlásit se';
+  if(lbl)lbl.textContent=t(isReg?'auth.modeRegister':'auth.modeLogin');
   document.getElementById('login-err').classList.remove('show');
 };
 
@@ -3267,19 +3322,19 @@ window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!(nick&&selG);};
 window.gS2=()=>{prof.nickname=cutName(document.getElementById('u-nick').value,40);prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
-function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${a.vibe.replace('\n','<br>')}</div></div>`).join('');}
+function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${avVibe(a).replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{prof.avatarId=selAv;window.pickTpl(null);ss('s-step3');}; // pickTpl(null) = moduly podle avatara, bez šablony
 function rMods(){
-  const s3t=document.getElementById('s3-title'); if(s3t) s3t.textContent=`Co chceš sledovat, ${prof.nickname}?`;
+  const s3t=document.getElementById('s3-title'); if(s3t) s3t.textContent=t('onb.s3.titleName',{name:prof.nickname});
   const p=selTpl?ONB_TPLS[selTpl].mods:(AVMODS[prof.avatarId]||[]);
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
 }
-function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${m.name}</div><div class="mds">${m.desc}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
+function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${modName(m)}</div><div class="mds">${modDesc(m)}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
-window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=el.classList.contains('open')?'− Skrýt':'+ Zobrazit další možnosti';};
+window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=t(el.classList.contains('open')?'onb.less':'onb.more');};
 // Šablona: přepíše předvybrané moduly a nabídne ukázkové návyky (id null = bez šablony)
 window.pickTpl=id=>{
   selTpl=ONB_TPLS[id]?id:null;
@@ -3290,13 +3345,13 @@ window.pickTpl=id=>{
   if(s) s.hidden=!selTpl; if(c) c.hidden=!selTpl;
   const chk=document.getElementById('tpl-samples-chk'); if(chk) chk.checked=true;
   const l=document.getElementById('tpl-samples-list');
-  if(l) l.textContent=selTpl?ONB_TPLS[selTpl].habits.map(h=>h.emoji+' '+h.name).join(', '):'';
+  if(l) l.textContent=selTpl?ONB_TPLS[selTpl].habits.map((h,i)=>h.emoji+' '+tplHabitName(selTpl,i)).join(', '):'';
 };
 // Vrací true po úspěšném dokončení (obal níže podle toho spustí průvodce)
 let _onbBusy=false;
 window.finishOnboard=async()=>{
   if(_onbBusy) return false; // dvojklik nesmí založit návyky dvakrát
-  if(selMods.size===0){toast('⚠️ Vyber alespoň jeden modul');return false;}
+  if(selMods.size===0){toast(t('onb.pickOne'));return false;}
   _onbBusy=true;
   const fb=document.getElementById('onb-finish-btn'); if(fb) fb.disabled=true;
   try{
@@ -3304,17 +3359,19 @@ window.finishOnboard=async()=>{
   prof.lastSeen=prof.createdAt;
   const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
   if(selTpl) prof.template=selTpl;
+  prof.lang=LANG;
   await setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
+  clearLangSync();
   // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start
   if(addSamples){
     try{
       const now=new Date().toISOString(), ord={};
-      await Promise.all(ONB_TPLS[selTpl].habits.map(t=>{
-        ord[t.group]=(ord[t.group]||0)+1;
-        const freq={type:t.freq.type};
-        if(t.freq.type==='weekly')freq.times=t.freq.times;
-        if(t.freq.type==='days')freq.days=[...t.freq.days];
-        const h={name:t.name,emoji:t.emoji,type:t.type,goal:t.goal,freq,group:t.group,reminderTime:null,goalId:null,order:ord[t.group],createdAt:now};
+      await Promise.all(ONB_TPLS[selTpl].habits.map((tp,i)=>{
+        ord[tp.group]=(ord[tp.group]||0)+1;
+        const freq={type:tp.freq.type};
+        if(tp.freq.type==='weekly')freq.times=tp.freq.times;
+        if(tp.freq.type==='days')freq.days=[...tp.freq.days];
+        const h={name:tplHabitName(selTpl,i),emoji:tp.emoji,type:tp.type,goal:tp.goal,freq,group:tp.group,reminderTime:null,goalId:null,order:ord[tp.group],createdAt:now};
         return addDoc(collection(db,'users',CU.uid,'habits'),h);
       }));
     }catch(e){console.warn('[LP] ukázkové návyky:',e?.code||e?.name);}
@@ -3380,13 +3437,14 @@ function getRexEnergy() {
 }
 
 function getRexState(energy) {
-  if (energy === null) return {emoji:'💤', label:'Čeká na tebe', color:'#888', msg:'Začni svůj den — já ožiju s tebou!'};
-  if (energy === 0)    return {emoji:'😴', label:'Spí', color:'#888', msg:'Ještě žádná aktivita dnes...'};
-  if (energy <= 25)   return {emoji:'😪', label:'Unavený', color:'#e8a87c', msg:'Pojď, trochu mě probudi!'};
-  if (energy <= 50)   return {emoji:'😕', label:'Trochu líný', color:'#f4c430', msg:'Jsi na půli cesty!'};
-  if (energy <= 75)   return {emoji:'😊', label:'Spokojený', color:'#4cd964', msg:'Skvělá práce, pokračuj!'};
-  if (energy <= 90)   return {emoji:'💪', label:'Nabitý', color:'#5ac8fa', msg:'Málem na vrcholu!'};
-  return {emoji:'🔥', label:'V zóně!', color:'#ff9500', msg:'Jsem na 100%! Jsi borec!'};
+  const st = (emoji, k, color) => ({emoji, label:t('rex.st.'+k), color, msg:t('rex.st.'+k+'Msg')});
+  if (energy === null) return st('💤', 'waiting', '#888');
+  if (energy === 0)    return st('😴', 'sleep', '#888');
+  if (energy <= 25)   return st('😪', 'tired', '#e8a87c');
+  if (energy <= 50)   return st('😕', 'lazy', '#f4c430');
+  if (energy <= 75)   return st('😊', 'happy', '#4cd964');
+  if (energy <= 90)   return st('💪', 'charged', '#5ac8fa');
+  return st('🔥', 'zone', '#ff9500');
 }
 
 // ── CHAT MEMORY (Firestore persistence + AI summary) ──────────────────────
@@ -3641,9 +3699,9 @@ function fcmFail(msg, e) {
 function updateNotifTokenLine() {
   const el = document.getElementById('notif-token-line');
   if (!el) return;
-  if (fcmState === 'ok') { el.style.color = 'var(--green)'; el.textContent = '✅ Token uložen pro toto zařízení'; }
-  else if (fcmState === 'error') { el.style.color = 'var(--red)'; el.innerHTML = '⚠️ ' + esc(fcmLastError) + ' — zkus „Obnovit token“.'; }
-  else { el.style.color = 'var(--text2)'; el.textContent = '⏳ Registruji toto zařízení…'; }
+  if (fcmState === 'ok') { el.style.color = 'var(--green)'; el.textContent = t('notif.tokenOk'); }
+  else if (fcmState === 'error') { el.style.color = 'var(--red)'; el.innerHTML = tH('notif.tokenErr', {err: fcmLastError}); }
+  else { el.style.color = 'var(--text2)'; el.textContent = t('notif.tokenWait'); }
 }
 
 // Uloží token zařízení do mapy fcmTokens + legacy pole fcmToken (poslední zařízení); jen tato pole, ne celý profil
@@ -3817,11 +3875,11 @@ async function checkNotifStatus() {
     [enableBtn, testBtn, testServerBtn, refreshTokenBtn].forEach(b => { if (b) b.style.display = 'none'; });
     box.style.borderColor = 'rgba(255,107,107,0.3)';
     if (isIOSDevice() && !isStandaloneApp()) {
-      box.innerHTML = '📲 Na iPhonu fungují notifikace jen v aplikaci přidané na plochu: otevři lifepocket.app v Safari → Sdílet → Přidat na plochu → otevři LifePocket z plochy a zapni notifikace tady.';
+      box.innerHTML = tH('notif.st.iosHome');
     } else if (isIOSDevice()) {
-      box.innerHTML = 'Tvoje verze iOS nepodporuje notifikace (potřebuješ iOS 16.4 nebo novější).';
+      box.innerHTML = tH('notif.st.iosOld');
     } else {
-      box.innerHTML = '❌ Tento prohlížeč nepodporuje notifikace. Zkus Chrome nebo Edge.';
+      box.innerHTML = tH('notif.st.noSupport');
     }
     return;
   }
@@ -3830,7 +3888,7 @@ async function checkNotifStatus() {
   const pushNote = messaging ? '' : '<div style="font-size:12px;margin-top:4px;color:var(--text2)">⚠️ ' + esc(msgUnsupportedReason) + '</div>';
   const perm = Notification.permission;
   if (perm === 'granted') {
-    box.innerHTML = '✅ Notifikace jsou povoleny a aktivní' + pushNote + '<div id="notif-token-line" style="font-size:12px;margin-top:4px"></div>';
+    box.innerHTML = tH('notif.st.granted') + pushNote + '<div id="notif-token-line" style="font-size:12px;margin-top:4px"></div>';
     box.style.borderColor = 'rgba(76,217,100,0.3)';
     box.style.color = 'var(--green)';
     if (enableBtn) enableBtn.style.display = 'none';
@@ -3841,12 +3899,12 @@ async function checkNotifStatus() {
     // Vždy obnov FCM token při otevření nastavení (stav se doplní do řádku výše)
     registerFcmToken();
   } else if (perm === 'denied') {
-    box.innerHTML = '🚫 Notifikace jsou <b>zakázány</b> v nastavení prohlížeče. Klikni na 🔒 v adresním řádku a povol notifikace.' + pushNote;
+    box.innerHTML = tH('notif.st.denied1') + ' <b>' + tH('notif.st.denied2') + '</b> ' + tH('notif.st.denied3') + pushNote;
     box.style.borderColor = 'rgba(255,107,107,0.3)';
     box.style.color = 'var(--red)';
     if (enableBtn) enableBtn.style.display = 'none';
   } else {
-    box.innerHTML = '⚪ Notifikace nejsou povoleny. Klikni na tlačítko níže.' + pushNote;
+    box.innerHTML = tH('notif.st.default') + pushNote;
     if (enableBtn) enableBtn.style.display = 'block';
     if (testBtn) testBtn.style.display = 'none';
   }
@@ -3855,18 +3913,18 @@ async function checkNotifStatus() {
 // ── Povolení notifikací ──
 window.enableNotifications = async () => {
   if (typeof Notification === 'undefined') {
-    toast(isIOSDevice() ? '📲 Na iPhonu otevři LifePocket z plochy (Sdílet → Přidat na plochu)' : '❌ Prohlížeč nepodporuje notifikace');
+    toast(t(isIOSDevice() ? 'notif.iosOpenHome' : 'notif.noSupportShort'));
     return;
   }
   const perm = await Notification.requestPermission();
   await checkNotifStatus();
   if (perm === 'granted') {
-    toast('✅ Notifikace povoleny!');
+    toast(t('notif.enabled'));
     scheduleAllNotifications();
     // Hned pošli uvítací notifikaci
-    setTimeout(() => sendNotif('✨ LifePocket', 'Notifikace fungují! Budu tě připomínat.', '🎉'), 1000);
+    setTimeout(() => sendNotif('✨ LifePocket', t('notif.welcome'), '🎉'), 1000);
   } else {
-    toast('❌ Notifikace zamítnuty');
+    toast(t('notif.denied'));
   }
 };
 
@@ -4787,7 +4845,7 @@ function getFocusWeek() {
   const dow = (today.getDay() + 6) % 7; // 0=Po, 6=Ne
   const monday = new Date(today); monday.setDate(today.getDate() - dow);
 
-  return ['Po','Út','St','Čt','Pá','So','Ne'].map((day, i) => {
+  return t('date.daysShort').split(',').map((day, i) => {
     const d = new Date(monday); d.setDate(monday.getDate() + i);
     const key = d.toDateString();
     const data = focusMap[key];
@@ -4807,16 +4865,16 @@ window.openFocusModal = function(mode) {
   const history = (!isTmrw) ? focusHistory : [];
   const histHtml = history.length ? `
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📜 Historie</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${tH('focus.history')}</div>
       ${history.map(h => {
-        const d = new Date(h.date).toLocaleDateString('cs-CZ', {day:'numeric', month:'short'});
+        const d = new Date(h.date).toLocaleDateString(LOCALE, {day:'numeric', month:'short'});
         const doneIcon = h.done ? '<span style="color:var(--green);font-size:11px">✓</span>' : '';
         return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
       }).join('')}
     </div>` : '';
-  const title    = isTmrw ? '📅 Co musíš udělat zítra?' : '🎯 Co musíš udělat dnes?';
-  const subtitle = isTmrw ? 'Nachystej si prioritu na zítřek.' : 'Jedna nejdůležitější věc na dnešek.';
-  const placeholder = isTmrw ? 'Nastav focus na zítra...' : 'Napiš svůj denní focus...';
+  const title    = tH(isTmrw ? 'focus.titleTomorrow' : 'focus.titleToday');
+  const subtitle = tH(isTmrw ? 'focus.subTomorrow' : 'focus.subToday');
+  const placeholder = tH(isTmrw ? 'focus.phTomorrow' : 'focus.phToday');
   const saveFn  = isTmrw ? 'saveTomorrowFocus' : 'saveFocus';
   const m = document.createElement('div');
   m.id = 'focus-modal';
@@ -4826,8 +4884,8 @@ window.openFocusModal = function(mode) {
     <p style="font-size:13px;color:var(--text3);margin:0 0 14px">${subtitle}</p>
     <input id="focus-inp" type="text" class="finp" placeholder="${placeholder}" value="${esc(existing)}" style="margin-bottom:14px">
     <div style="display:flex;gap:8px">
-      <button class="btn-sv" onclick="${saveFn}(document.getElementById('focus-inp').value)" style="flex:1">✓ Uložit</button>
-      <button class="btn-s" onclick="document.getElementById('focus-modal').remove()">Zrušit</button>
+      <button class="btn-sv" onclick="${saveFn}(document.getElementById('focus-inp').value)" style="flex:1">${tH('focus.save')}</button>
+      <button class="btn-s" onclick="document.getElementById('focus-modal').remove()">${tH('common.cancel')}</button>
     </div>
     ${histHtml}
   </div>`;
@@ -4838,15 +4896,15 @@ window.openFocusModal = function(mode) {
 function focusTodayRowHTML() {
   if (!dailyFocus) {
     return `<div class="focus-row focus-row-empty" onclick="openFocusModal('today')">
-      <span class="focus-label" style="color:var(--text3)">🎯 Dnes</span>
-      <span style="font-size:13px;color:var(--text3);flex:1">Nastav dnešní prioritu</span>
+      <span class="focus-label" style="color:var(--text3)">${tH('focus.today')}</span>
+      <span style="font-size:13px;color:var(--text3);flex:1">${tH('focus.todayEmpty')}</span>
       <span style="font-size:18px;color:var(--text3)">＋</span>
     </div>`;
   }
   return `<div class="focus-row ${dailyFocusDone ? 'focus-row-done' : ''}">
-    <span class="focus-label">🎯 Dnes</span>
+    <span class="focus-label">${tH('focus.today')}</span>
     <div class="focus-text" style="${dailyFocusDone ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(dailyFocus)}</div>
-    <button class="focus-done-btn ${dailyFocusDone ? 'active' : ''}" onclick="markFocusDone()" title="${dailyFocusDone ? 'Zrušit splnění' : 'Označit jako splněno'}">
+    <button class="focus-done-btn ${dailyFocusDone ? 'active' : ''}" onclick="markFocusDone()" title="${tH(dailyFocusDone ? 'focus.unmarkDone' : 'focus.markDone')}">
       ${dailyFocusDone ? '✅' : '☐'}
     </button>
     <button class="focus-edit-btn" onclick="openFocusModal('today')">✏️</button>
@@ -4856,13 +4914,13 @@ function focusTodayRowHTML() {
 function focusTmrwRowHTML() {
   if (!tomorrowFocus) {
     return `<div class="focus-row focus-row-empty" onclick="openFocusModal('tomorrow')">
-      <span class="focus-label" style="color:var(--text3)">📅 Zítra</span>
-      <span style="font-size:13px;color:var(--text3);flex:1">Naplánuj si zítřek</span>
+      <span class="focus-label" style="color:var(--text3)">${tH('focus.tomorrow')}</span>
+      <span style="font-size:13px;color:var(--text3);flex:1">${tH('focus.tomorrowEmpty')}</span>
       <span style="font-size:18px;color:var(--text3)">＋</span>
     </div>`;
   }
   return `<div class="focus-row">
-    <span class="focus-label">📅 Zítra</span>
+    <span class="focus-label">${tH('focus.tomorrow')}</span>
     <div class="focus-text">${esc(tomorrowFocus)}</div>
     <button class="focus-edit-btn" onclick="openFocusModal('tomorrow')">✏️</button>
   </div>`;
@@ -4875,7 +4933,7 @@ function focusStatsHTML() {
   const doneCount = week.filter(d => !d.isFuture && d.done).length;
 
   const streakHtml = streak > 0
-    ? `<span class="focus-streak">${streak >= 7 ? '🔥' : streak >= 3 ? '⚡' : '✨'} ${streak} ${streak === 1 ? 'den' : streak < 5 ? 'dny' : 'dní'} v řadě</span>`
+    ? `<span class="focus-streak">${streak >= 7 ? '🔥' : streak >= 3 ? '⚡' : '✨'} ${tH('focus.streak',{n:streak})}</span>`
     : '';
 
   const dotsHtml = week.map(d => {
@@ -4892,7 +4950,7 @@ function focusStatsHTML() {
     <div class="focus-week-row">
       ${dotsHtml}
       <span style="flex:1"></span>
-      <span style="font-size:11px;color:var(--text3)">${setCount}/7 nastaveno · ${doneCount}/7 splněno</span>
+      <span style="font-size:11px;color:var(--text3)">${tH('focus.weekStats',{set:setCount,done:doneCount})}</span>
     </div>
     ${streakHtml}
   </div>`;
@@ -4930,14 +4988,14 @@ function quickStartHTML() {
 
   // Definice úkolů podle aktivních modulů
   const allTasks = [
-    { id:'habit',    emoji:'🎯', text:'Přidej svůj první návyk',        page:'habits',   done: habits.length > 0 },
-    { id:'focus',    emoji:'🎯', text:'Nastav dnešní focus',               action:"openFocusModal('today')", done: !!dailyFocus },
-    { id:'water',    emoji:'💧', text:'Dej si první sklenici vody',       action:'addWater()',       done: waterToday > 0 },
-    { id:'recipe',   emoji:'🍳', text:'Vyzkoušej AI recept',             page:'cooking',  done: savedRecipes.length > 0 },
-    { id:'shop',     emoji:'🛒', text:'Přidej položku do nákupu',        page:'shopping', done: shopItems.length > 0 },
-    { id:'goal',     emoji:'🏆', text:'Vytvoř svůj první cíl',           page:'goals',    done: goals.length > 0 },
-    { id:'family',   emoji:'👨‍👩‍👧', text:'Připoj se k rodině nebo pozvi blízkého', page:'settings', done: !!familyId },
-    { id:'note',     emoji:'📝', text:'Napiš první poznámku',            page:'journal',  done: entries.length > 0 },
+    { id:'habit',    emoji:'🎯', text:t('qs.habit'),  page:'habits',   done: habits.length > 0 },
+    { id:'focus',    emoji:'🎯', text:t('qs.focus'),  action:"openFocusModal('today')", done: !!dailyFocus },
+    { id:'water',    emoji:'💧', text:t('qs.water'),  action:'addWater()',       done: waterToday > 0 },
+    { id:'recipe',   emoji:'🍳', text:t('qs.recipe'), page:'cooking',  done: savedRecipes.length > 0 },
+    { id:'shop',     emoji:'🛒', text:t('qs.shop'),   page:'shopping', done: shopItems.length > 0 },
+    { id:'goal',     emoji:'🏆', text:t('qs.goal'),   page:'goals',    done: goals.length > 0 },
+    { id:'family',   emoji:'👨‍👩‍👧', text:t('qs.family'), page:'settings', done: !!familyId },
+    { id:'note',     emoji:'📝', text:t('qs.note'),   page:'journal',  done: entries.length > 0 },
   ];
 
   // Filtruj podle aktivních modulů + základní (focus, water jsou vždy)
@@ -4979,11 +5037,11 @@ function quickStartHTML() {
       <div class="qs-title-row">
         <span style="font-size:20px">${av.emoji}</span>
         <div>
-          <div class="qs-title">Začínáme! ${completedCount}/${total} hotovo</div>
-          <div class="qs-sub">Prvních pár kroků v LifePocket</div>
+          <div class="qs-title">${tH('qs.title',{done:completedCount,total})}</div>
+          <div class="qs-sub">${tH('qs.sub')}</div>
         </div>
       </div>
-      <button class="qs-dismiss" onclick="dismissQS()" title="Skrýt">×</button>
+      <button class="qs-dismiss" onclick="dismissQS()" title="${tH('common.hide')}">×</button>
     </div>
     <div class="qs-bar-wrap"><div class="qs-bar" style="width:${pct}%"></div></div>
     <div class="qs-tasks">${taskHTML}</div>
@@ -5450,14 +5508,14 @@ window.shareGroupInvite = async (gid) => {
 };
 // Doporučení appky (Nastavení); URL zvlášť, ne v textu (jinak ji WhatsApp ukáže dvakrát)
 window.shareApp = async () => {
-  const url = 'https://lifepocket.app/';
-  const text = 'Používám LifePocket: návyky, kalendář, poznámky a společný nákupní seznam pro celou rodinu v jedné appce. Česky, zdarma a bez reklam.';
+  const url = 'https://lifepocket.app/' + (LANG === 'cs' ? '' : '?lang=' + LANG); // příjemce uvidí stejný jazyk
+  const text = t('set.share.text');
   if(navigator.share) {
     try { await navigator.share({title:'LifePocket', text, url}); return; }
     catch(e) { if(e.name==='AbortError') return; }
   }
-  try { await navigator.clipboard.writeText(text + '\n' + url); toast('📋 Zkopírováno, vlož to kamarádům'); }
-  catch(e) { prompt('Zkopíruj si odkaz:', url); }
+  try { await navigator.clipboard.writeText(text + '\n' + url); toast(t('set.share.copied')); }
+  catch(e) { prompt(t('set.share.copyPrompt'), url); }
 };
 
 // ── Pozvánka do skupiny odkazem (?join=WORD-XXXXXX, starší WORD-NNNN) ─────────
@@ -7184,17 +7242,17 @@ function buildNav(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const showRex=(prof.modules||[]).includes('rex');
   const fixed=showRex
-    ?[{id:'dashboard',emoji:'🏠',label:'Domů'},{id:'avatar',emoji:av.emoji,label:av.name}]
-    :[{id:'dashboard',emoji:'🏠',label:'Domů'}];
+    ?[{id:'dashboard',emoji:'🏠',label:t('nav.home')},{id:'avatar',emoji:av.emoji,label:av.name}]
+    :[{id:'dashboard',emoji:'🏠',label:t('nav.home')}];
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
-  const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:m.name}));
-  const all=[...fixed,...uMods,{id:'settings',emoji:'🔧',label:'Nastavení'}];
+  const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
+  const all=[...fixed,...uMods,{id:'settings',emoji:'🔧',label:t('nav.settings')}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">Více</span></button>`:'');
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
   const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
 }
 
@@ -7237,51 +7295,41 @@ window.sp=id=>{
 };
 
 // ── Denní motivační citát ────────────────────────────────
-const FALLBACK_QUOTES = [
-  'Každý velký výsledek začíná rozhodnutím zkusit to znovu.',
-  'Konzistence poráží motivaci — každý den, i malý krok.',
-  'Nejsilnější verze tebe čeká na druhé straně pohodlí.',
-  'Disciplína je most mezi cílem a výsledkem.',
-  'Nezáleží na tom jak pomalu jdeš, dokud se nezastavíš.',
-  'Úspěch není konečný, neúspěch není osudný — odvaha pokračovat rozhoduje.',
-  'Co děláš každý den je důležitější než to, co děláš občas.',
-  'Tvoje budoucí já ti poděkuje za dnešní rozhodnutí.',
-  'Malé kroky každý den vedou k velkým změnám.',
-  'Buď na sebe pyšný za každý den, kdy jsi to nevzdal.',
-];
+// Záložní citáty: klíče quote.0 … quote.9 ve slovníku
+const FALLBACK_QUOTE_COUNT = 10;
 
 async function loadDailyQuote() {
   const today = toDS();
   const cached = lsGet('lp_daily_quote', null);
-  if (cached?.date === today) return cached.text;
+  if (cached?.date === today && (cached.lang || 'cs') === LANG) return cached.text;
 
   // Pokus o AI citát
   try {
       const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
       const text = await callClaude([
-        {role:'system', content:`Jsi ${av.name}. Napiš JEDEN krátký motivační citát (max 15 slov). PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá, čínská ani jiná cizí slova. Pouze citát, žádné uvozovky, žádné doplnění.`},
-        {role:'user', content:'Dej mi dnešní motivační citát v češtině.'}
+        {role:'system', content:t('ai.quote.sys',{name:av.name})},
+        {role:'user', content:t('ai.quote.user')}
       ], 60);
       if (text) {
-        lsSave('lp_daily_quote', {date: today, text});
+        lsSave('lp_daily_quote', {date: today, text, lang: LANG});
         return text;
       }
     } catch(e) { /* fallback */ }
 
   // Fallback — lokální pool
-  const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
-  lsSave('lp_daily_quote', {date: today, text: fallback});
+  const fallback = t('quote.' + Math.floor(Math.random() * FALLBACK_QUOTE_COUNT));
+  lsSave('lp_daily_quote', {date: today, text: fallback, lang: LANG});
   return fallback;
 }
 
 function rDash(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const g=prof.gender==='f'?'f':'m';
-  const gr=AVGREET[av.id]?.[g]?.(prof.prezdivka||prof.nickname)||`Vítej, ${prof.prezdivka||prof.nickname}!`;
+  const gr=t('av.'+av.id+'.greet',{name:prof.prezdivka||prof.nickname,g});
   const h=new Date().getHours();
-  const tg=h<12?'Dobré ráno':h<18?'Ahoj':'Dobrý večer';
+  const tg=tH(h<12?'dash.hello.morning':h<18?'dash.hello.day':'dash.hello.evening');
   const dg=document.getElementById('d-greet'); if(dg) dg.innerHTML=`${tg}, <span style="color:var(--accent)">${esc(prof.prezdivka||prof.nickname)}</span>!`;
-  const ddl=document.getElementById('d-date-lbl'); if(ddl) ddl.textContent=new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const ddl=document.getElementById('d-date-lbl'); if(ddl) ddl.textContent=fmtDate(new Date(),'wdmy');
   const up=document.getElementById('upill');if(up){
     const uName=prof.prezdivka||prof.nickname||CU.displayName?.split(' ')[0]||CU.email?.split('@')[0]||'';
     const uInit=uName.charAt(0).toUpperCase();
@@ -7304,55 +7352,29 @@ function rDash(){
     return d>=t;
   }).sort((a,b)=>a.date.localeCompare(b.date))[0];
   
-  const rnd = (arr) => arr[Math.floor(Math.random()*arr.length)];
-  const nm = prof?.nickname || prof?.prezdivka || 'příteli';
-  const evStr = nextEv ? ' Dnes tě čeká "' + nextEv.name + '".' : '';
+  const nm = prof?.nickname || prof?.prezdivka || t('dash.friend');
+  const evStr = nextEv ? t('dash.ev',{name:nextEv.name}) : '';
   const remaining_r = totalHabits_r - doneToday_r;
+  // Vybere náhodnou ze zpráv dash.m.<prefix>1..3 (textContent, proměnné bez escapování)
+  const dv = {name:nm, n:totalHabits_r, done:doneToday_r, total:totalHabits_r, left:remaining_r, ev:evStr, g};
+  const pickMsg = pre => t('dash.m.'+pre+(1+Math.floor(Math.random()*3)), dv);
   let dynamicMsg = gr;
   if(totalHabits_r===0){
-    dynamicMsg = rnd([
-      'Ahoj ' + nm + '! Přidej si první návyk a začneme pracovat na tvých cílech. 💪',
-      'Vítej zpět, ' + nm + '! Co chceš dnes sledovat? Přidej si první návyk. 🎯',
-      nm + ', první krok je nejdůležitější — přidej si návyk a jdeme na to! 🚀',
-    ]);
+    dynamicMsg = pickMsg('none');
   } else if(h_r<9){
-    dynamicMsg = rnd([
-      'Dobré ráno, ' + nm + '! Čeká tě ' + totalHabits_r + ' návyků.' + evStr + ' Pojď na to! ☀️',
-      'Ráno, ' + nm + '! Nový den, nová šance. ' + totalHabits_r + ' návyků na tebe čeká. ☀️',
-      'Vstaň a svět je tvůj, ' + nm + '! ' + totalHabits_r + ' návyků dnes. Začínáme? ☀️',
-    ]);
+    dynamicMsg = pickMsg('morning');
   } else if(h_r>=21){
     if(doneToday_r===totalHabits_r && totalHabits_r>0){
-      dynamicMsg = rnd([
-        'Výborný den, ' + nm + '! Všechny návyky splněny ✅ — zasloužený odpočinek. 🌙',
-        doneToday_r + '/' + totalHabits_r + ' — perfektní! Dneska sis to ' + nm + ' opravdu zasloužil' + (g==='f'?'a':'') + '. 🌙',
-        'Den uzavřen na jedničku! ' + nm + ', jsi na správné cestě. 🌙',
-      ]);
+      dynamicMsg = pickMsg('allEve');
     } else {
-      dynamicMsg = rnd([
-        'Večer, ' + nm + '. Dnes ' + doneToday_r + '/' + totalHabits_r + ' návyků — zítra to vyjde! 🌙',
-        nm + ', den se chýlí ke konci. ' + doneToday_r + ' z ' + totalHabits_r + ' — dobrá práce. 🌙',
-        'Odpočívej, ' + nm + '. ' + doneToday_r + '/' + totalHabits_r + ' návyků — každý den se počítá. 🌙',
-      ]);
+      dynamicMsg = pickMsg('eve');
     }
   } else if(doneToday_r===0){
-    dynamicMsg = rnd([
-      nm + ', dnes zatím žádný návyk — první krok je nejdůležitější! 🚀',
-      'Pojď do toho, ' + nm + '! ' + totalHabits_r + ' návyků čeká.' + evStr + ' 💪',
-      'Ještě nic nesplněno, ' + nm + ' — ale den ještě nekončí. Jdeme! 🔥',
-    ]);
+    dynamicMsg = pickMsg('zero');
   } else if(doneToday_r>0 && doneToday_r<totalHabits_r){
-    dynamicMsg = rnd([
-      'Dobrý start, ' + nm + '! ' + doneToday_r + '/' + totalHabits_r + ' splněno — zbývá ' + remaining_r + '. 🔥',
-      nm + ', jdeš dobře! ' + doneToday_r + ' splněno, ještě ' + remaining_r + ' před tebou.' + evStr + ' 💪',
-      doneToday_r + ' z ' + totalHabits_r + ' — pokračuj, ' + nm + ', jsi na půl cesty! 🏃',
-    ]);
+    dynamicMsg = pickMsg('part');
   } else if(doneToday_r===totalHabits_r && totalHabits_r>0){
-    dynamicMsg = rnd([
-      'Dnešek patří tobě, ' + nm + '! Všechny návyky splněny ✅' + evStr + ' Perfektní den! 🎉',
-      '100 %! ' + nm + ', dneska jsi to zvládl' + (g==='f'?'a':'') + ' na jedničku. 🎉',
-      'Všechno hotovo, ' + nm + '! Takhle se to dělá. 🏆' + evStr,
-    ]);
+    dynamicMsg = pickMsg('all');
   }
   
   const dtx=document.getElementById('d-avtxt'); if(dtx) dtx.textContent=dynamicMsg;
@@ -7386,15 +7408,15 @@ function rDash(){
   // ── WIDGET: DENNÍ CITÁT ──
   const quoteToday = lsGet('lp_daily_quote', null);
   const quoteTodayStr = toDS();
-  const quoteText = quoteToday?.date === quoteTodayStr ? quoteToday.text : null;
+  const quoteText = quoteToday?.date === quoteTodayStr && (quoteToday.lang || 'cs') === LANG ? quoteToday.text : null;
   html += `<div class="dw" id="dash-quote-widget">
-    <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${av.name} říká</div>
+    <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${tH('dash.quote.says',{name:av.name})}</div>
     <div id="dash-quote-text" style="font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;color:var(--text);line-height:1.5">${esc(quoteText || '...')}</div>
   </div>`;
   if (!quoteText) {
-    loadDailyQuote().then(t => {
+    loadDailyQuote().then(q => {
       const el = document.getElementById('dash-quote-text');
-      if (el) el.textContent = t;
+      if (el) el.textContent = q;
     });
   }
 
@@ -7421,10 +7443,10 @@ function rDash(){
          :streak>1?`<div class="dw-hfire">🔥${streak}</div>`:''}
       </div>`;
     }).join('');
-    const more=habits.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">+ ${habits.length-4} dalších</div>`:'';
+    const more=habits.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:habits.length-4})}</div>`:'';
     html+=`<div class="dw" onclick="sp('habits')">
       <div class="dw-head">
-        <div class="dw-title">🎯 Návyky dnes</div>
+        <div class="dw-title">${tH('dash.h.title')}</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:15px;font-weight:700;color:${pctColor}">${doneTodayH}/${totalH}</span>
           <div class="dw-arrow">→</div>
@@ -7443,21 +7465,21 @@ function rDash(){
     if(lastEntry){
       html+=`<div class="dw" onclick="sp('journal')">
         <div class="dw-head">
-          <div class="dw-title">📝 Poznámky</div>
+          <div class="dw-title">${tH('dash.j.title')}</div>
           <div class="dw-arrow">→</div>
         </div>
-        <div class="dw-entry-title">${lastEntry.mood?`<span class="dw-entry-mood">${esc(lastEntry.mood)}</span>`:''}${esc(lastEntry.title||'Bez názvu')}</div>
+        <div class="dw-entry-title">${lastEntry.mood?`<span class="dw-entry-mood">${esc(lastEntry.mood)}</span>`:''}${esc(lastEntry.title||t('dash.j.untitled'))}</div>
         ${lastEntry.text?`<div class="dw-entry-preview">${esc(lastEntry.text.substring(0,120))}</div>`:''}
         <div class="dw-row" style="margin-top:8px">
-          ${todayEntries.length?`<div class="dw-pill">Dnes <b>${todayEntries.length} zápisků</b></div>`:''}
-          ${!todayEntries.length?`<div class="dw-pill" style="color:var(--text3)">Dnes jsi ještě nepsal</div>`:''}
-          <div class="dw-pill">Celkem <b>${entries.length}</b></div>
+          ${todayEntries.length?`<div class="dw-pill">${tH('dash.j.today')} <b>${tH('dash.j.entries',{n:todayEntries.length})}</b></div>`:''}
+          ${!todayEntries.length?`<div class="dw-pill" style="color:var(--text3)">${tH('dash.j.notYet')}</div>`:''}
+          <div class="dw-pill">${tH('dash.j.total')} <b>${entries.length}</b></div>
         </div>
       </div>`;
     } else {
       html+=`<div class="dw" onclick="sp('journal')">
-        <div class="dw-head"><div class="dw-title">📝 Poznámky</div><div class="dw-arrow">→</div></div>
-        <div class="dw-empty">Zatím žádné zápisky. Napiš první!</div>
+        <div class="dw-head"><div class="dw-title">${tH('dash.j.title')}</div><div class="dw-arrow">→</div></div>
+        <div class="dw-empty">${tH('dash.j.empty')}</div>
       </div>`;
     }
   }
@@ -7476,9 +7498,9 @@ function rDash(){
       </div>`).join('');
     html+=`<div class="dw" onclick="sp('goals')">
       <div class="dw-head">
-        <div class="dw-title">🌟 Moje cíle</div>
+        <div class="dw-title">${tH('dash.g.title')}</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:13px;color:var(--text2)">${doneGoals} splněno · ${avgProgress}% průměr</span>
+          <span style="font-size:13px;color:var(--text2)">${tH('dash.g.stats',{done:doneGoals,avg:avgProgress})}</span>
           <div class="dw-arrow">→</div>
         </div>
       </div>
@@ -7493,21 +7515,21 @@ function rDash(){
       const todayDate=new Date(); todayDate.setHours(0,0,0,0);
       const evRows=upcoming.slice(0,3).map(ev=>{
         const diff=Math.round((ev._date-todayDate)/86400000);
-        const diffLbl=diff===0?'Dnes 🔥':diff===1?'Zítra':'Za '+diff+' dní';
+        const diffLbl=diff===0?t('dash.c.today'):diff===1?t('dash.c.tomorrow'):t('dash.c.inDays',{n:diff});
         const isSoon=diff<=2;
         return `<div class="dw-ev-row">
           <div class="dw-ev-ico">${esc(getEvIcon(ev.type))}</div>
           <div style="flex:1">
             <div class="dw-ev-name">${esc(ev.name)}</div>
-            <div class="dw-ev-date">${ev._date.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'long'})}</div>
+            <div class="dw-ev-date">${ev._date.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'long'})}</div>
           </div>
           ${isSoon?`<span class="dw-ev-badge">${diffLbl}</span>`:`<span style="font-size:12px;color:var(--text3)">${diffLbl}</span>`}
         </div>`;
       }).join('');
-      const more=upcoming.length>3?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">+ ${upcoming.length-3} dalších událostí</div>`:'';
+      const more=upcoming.length>3?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.c.more',{n:upcoming.length-3})}</div>`:'';
       html+=`<div class="dw" onclick="sp('calendar')">
         <div class="dw-head">
-          <div class="dw-title">📅 Nadcházející události</div>
+          <div class="dw-title">${tH('dash.c.title')}</div>
           <div class="dw-arrow">→</div>
         </div>
         ${evRows}${more}
@@ -7518,8 +7540,8 @@ function rDash(){
   // ── WIDGET: VAŘENÍ ──
   if(mods.includes('cooking')){
     html+=`<div class="dw" onclick="sp('cooking')">
-      <div class="dw-head"><div class="dw-title">🍽️ Vaření</div><div class="dw-arrow">→</div></div>
-      <div class="dw-empty">Nech AI navrhnout recept na dnes!</div>
+      <div class="dw-head"><div class="dw-title">${tH('dash.cook.title')}</div><div class="dw-arrow">→</div></div>
+      <div class="dw-empty">${tH('dash.cook.text')}</div>
     </div>`;
   }
 
@@ -7530,13 +7552,13 @@ function rDash(){
     const done=shopItemsArr.filter(i=>i.done).length;
     if(shopItemsArr.length){
       const shopPct = shopItemsArr.length ? Math.round(done/shopItemsArr.length*100) : 0;
-      const shopLabel = pending.length===0 ? '✅ Vše nakoupeno!' : `${pending.length} položek zbývá`;
+      const shopLabel = pending.length===0 ? tH('dash.s.allDone') : tH('dash.s.left',{n:pending.length});
       const firstItems = pending.slice(0,3).map(i=>i.name).join(', ');
       html+=`<div class="dw" onclick="sp('shopping')">
         <div class="dw-head">
-          <div class="dw-title">🛒 Nákupní seznam</div>
+          <div class="dw-title">${tH('dash.s.title')}</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:13px;color:var(--text2)">${done}/${shopItemsArr.length} hotovo</span>
+            <span style="font-size:13px;color:var(--text2)">${tH('dash.s.done',{done,total:shopItemsArr.length})}</span>
             <div class="dw-arrow">→</div>
           </div>
         </div>
@@ -7554,13 +7576,13 @@ function rDash(){
     for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=toDS(d);const me=entries.filter(e=>entryDS(e)===ds&&e.mood);weekMoods.push(me[0]?.mood||'');}
     html+=`<div class="dw" onclick="sp('journal')">
       <div class="dw-head">
-        <div class="dw-title">💭 Nálada</div>
+        <div class="dw-title">${tH('dash.mood.title')}</div>
         <div class="dw-arrow">→</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <div style="font-size:40px">${esc(todayMoodVal||'😶')}</div>
         <div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Posledních 7 dní</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">${tH('dash.mood.week')}</div>
           <div style="display:flex;gap:4px">${weekMoods.map(m=>`<span style="font-size:18px">${esc(m||'·')}</span>`).join('')}</div>
         </div>
       </div>
@@ -7575,17 +7597,17 @@ function rDash(){
       const reportDate = new Date(wr.date);
       const daysDiff = Math.floor((new Date()-reportDate)/86400000);
       if(daysDiff <= 7) { // zobraz max 7 dní
-        const dateLabel = reportDate.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'});
+        const dateLabel = reportDate.toLocaleDateString(LOCALE,{weekday:'long',day:'numeric',month:'long'});
         const shortReport = wr.text.length > 120 ? wr.text.slice(0,120)+'…' : wr.text;
         html += `<div class="dw" style="cursor:default;background:linear-gradient(135deg,rgba(245,200,66,.07),rgba(224,149,74,.05));border-color:rgba(245,200,66,.25)">
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:20px">${esc(wr.avatar||'⭐')}</span>
-            <span style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--accent)">Týdenní report</span>
+            <span style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--accent)">${tH('dash.wr.title')}</span>
             <span style="font-size:12px;color:var(--text3);margin-left:auto">${dateLabel}</span>
           </div>
           <div id="wr-preview" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px">${esc(shortReport)}</div>
           <div id="wr-full" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px;display:none">${esc(wr.text)}</div>
-          <button onclick="const p=document.getElementById('wr-preview'),f=document.getElementById('wr-full'),b=this;if(f.style.display==='none'){f.style.display='block';p.style.display='none';b.textContent='Skrýt ↑'}else{f.style.display='none';p.style.display='block';b.textContent='Zobrazit celý report →'}" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif">${wr.text.length>120?'Zobrazit celý report →':'Otevřít chat →'}</button>
+          <button data-hide="${tH('dash.wr.hide')}" data-show="${tH('dash.wr.show')}" onclick="const p=document.getElementById('wr-preview'),f=document.getElementById('wr-full'),b=this;if(f.style.display==='none'){f.style.display='block';p.style.display='none';b.textContent=b.dataset.hide}else{f.style.display='none';p.style.display='block';b.textContent=b.dataset.show}" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif">${wr.text.length>120?tH('dash.wr.show'):tH('dash.wr.chat')}</button>
         </div>`;
       }
     } catch(e) { /* ignoruj */ }
@@ -7608,13 +7630,13 @@ function rDash(){
 
     if(streakHabits.length) {
       html += `<div class="dw" style="cursor:default">
-        <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">🔥 Aktivní streaky</div>
+        <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">${tH('dash.streaks.title')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${streakHabits.map(h=>`
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:20px">${esc(h.emoji||'⭐')}</span>
               <span style="flex:1;font-size:15px;color:var(--text)">${esc(h.name)}</span>
-              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">🔥 ${Number(h.streak)||0} dní</span>
+              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">${tH('dash.streaks.days',{n:Number(h.streak)||0})}</span>
             </div>`).join('')}
         </div>
       </div>`;
@@ -7625,7 +7647,7 @@ function rDash(){
   if(!mods.length){
     html+=`<div class="dw" style="text-align:center;cursor:default">
       <div style="font-size:32px;margin-bottom:8px">📱</div>
-      <div style="font-size:15px;color:var(--text2)">Zapni si moduly v <b style="color:var(--accent)">Nastavení</b></div>
+      <div style="font-size:15px;color:var(--text2)">${tH('dash.noMods')} <b style="color:var(--accent)">${tH('nav.settings')}</b></div>
     </div>`;
   }
 
@@ -8162,9 +8184,10 @@ function initSet(){
   document.getElementById('set-avem').textContent=av.emoji;
   document.getElementById('set-avnm').textContent=av.name;
   document.getElementById('set-avsub').textContent=prof.nickname||'';
+  renderLangSwitch();
 }
 function rSetMods(){
-  document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${m.name}</div><div class="togds">${m.desc}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
+  document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
 }
 window.togModSet=async(id,on)=>{
   const ms=new Set(prof.modules||[]);
@@ -8173,13 +8196,13 @@ window.togModSet=async(id,on)=>{
   try{
     await updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules});
     buildNav();rDash();rSetMods();
-    const modName=MODS.find(m=>m.id===id)?.name||id;
-    toast(on?`✓ ${modName} zapnut`:`${modName} vypnut`);
-  }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e,'moduly'));}
+    const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
+    toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
+  }catch(e){toast(t('common.saveFailed',{err:userErr(e,'moduly')}));}
 };
-window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast('✓ Jméno uloženo');};
+window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast(t('set.nameEmpty'));return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast(t('set.nameSaved'));};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
-window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
+window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast(t('set.avSaved'));};
 
 // VOICE — chat mic
 window.togMic=()=>{
@@ -10721,7 +10744,7 @@ window.handleContactSubmit = async function(e) {
   const form = e.target;
   const btn = form.querySelector('.cf-submit');
   btn.disabled = true;
-  btn.textContent = '⏳ Odesílám...';
+  btn.textContent = t('set.contact.sending');
   try {
     const res = await fetch('https://formspree.io/f/xlgpyjaa', {
       method: 'POST',
@@ -10734,13 +10757,13 @@ window.handleContactSubmit = async function(e) {
       if (successEl) successEl.style.display = 'block';
     } else {
       btn.disabled = false;
-      btn.textContent = '📤 Odeslat zprávu';
-      toast('❌ Chyba při odesílání. Zkus to znovu.');
+      btn.textContent = t('set.contact.send');
+      toast(t('set.contact.failRetry'));
     }
   } catch(err) {
     btn.disabled = false;
-    btn.textContent = '📤 Odeslat zprávu';
-    toast('❌ Chyba při odesílání.');
+    btn.textContent = t('set.contact.send');
+    toast(t('set.contact.fail'));
   }
 };
 
