@@ -5717,7 +5717,7 @@ function badgeCtx(){
 }
 function badgeState(b,c){
   const r=b.f(c), max=r.max, cur=Math.max(0,Math.min(max,Number(r.cur)||0));
-  return {cur,max,done:!!game?.badges?.[b.id]||cur>=max,got:game?.badges?.[b.id]||''};
+  return {cur:game?.badges?.[b.id]?max:cur,max,done:!!game?.badges?.[b.id],got:game?.badges?.[b.id]||''};
 }
 // Vyhodnocení v gameSync: nové odznaky se zapíšou přepisem pevných klíčů (badges.<id>, once.bd_<id>) → idempotentní.
 // První vyhodnocení (bdv chybí) proběhne potichu: odznaky z dosavadní historie bez vlny oslav.
@@ -5919,8 +5919,10 @@ function badgeCardSpec(id,nick){
   const b=BADGES.find(x=>x.id===id), got=game?.badges?.[id];
   if(!b||!got) return null;
   const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], L=gameLevel();
-  return {range:fmtDate(got,'dmy'),em:b.em,title:t('game.badge.'+b.id),sub:t('game.badge.got',{date:fmtDate(got,'dmy')}),name:nick,
-    quote:t('game.badge.'+b.id+'.d'),line:(av.emoji||'')+' '+av.name+' · '+t('game.lvl',{n:L})+' · '+lvlName(L)};
+  const n=BADGES.filter(x=>game.badges[x.id]).length, li=lvlIdx(L);
+  return {range:'',em:b.em,title:t('game.badge.'+b.id),sub:t('game.badge.got',{date:fmtDate(got,'dmy')}),name:nick,
+    quote:t('game.badge.'+b.id+'.d'),line:(av.emoji||'')+' '+av.name,
+    tiles:[['🏅',n+'/'+BADGES.length,t('game.card.badges')],[LVL_EM[li],t('game.lvl',{n:L}),t('game.lvl.'+LVL_KEYS[li])]]};
 }
 window.shareBadge=id=>{ if(!game?.badges?.[id]) return; cm('m-badge'); openShareCard('badge',id); };
 
@@ -5997,7 +5999,7 @@ window.shareWeek=mon=>{ if(!/^\d{4}-\d\d-\d\d$/.test(String(mon))) return; openS
 function weekCardSpec(mon,nick){
   const S=calcWeekSummary(mon), av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], wn=weekdayNames('short');
   const L=S.lvlUp||gameLevel();
-  return {range:weekRange(S),em:av.emoji||'⭐',title:t('game.card.week'),name:nick,big:S.hasData?S.pct+' %':'–',bigLbl:t('game.card.pct'),
+  return {range:weekRange(S),em:av.emoji||'⭐',title:t('game.card.week'),name:nick,big:S.hasData?t('game.card.pctVal',{n:S.pct}):'–',bigLbl:t('game.card.pct'),
     quote:t('game.card.quote',{say:t('game.wk.say.'+weekSayIdx(S.pct)),av:av.name}),
     line:t('game.card.lvlXp',{n:L,xp:S.xp}),
     bars:S.perDay.map((p,i)=>({lbl:wn[i],p})),

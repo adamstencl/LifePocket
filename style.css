@@ -1828,3 +1828,4 @@ label.sc-tog{cursor:pointer;min-height:48px}
 .wk-line{font-size:14px;color:var(--text);margin-top:8px;line-height:1.4;overflow-wrap:anywhere}
 .wk-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .wk-btns>button{flex:1 1 140px;min-height:44px}
+.wk-card .dw-head{flex-wrap:wrap;gap:2px 8px}

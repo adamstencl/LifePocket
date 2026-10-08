@@ -730,4 +730,6 @@ export default {
   'game.wk.lvl': '🌱 New level: {n} · {name}',
   'game.wk.new': '🏅 New: {list}',
   'game.wk.share': '📤 Share week',
+  'game.card.pctVal': '{n}%',
+  'game.card.badges': 'badges',
 };

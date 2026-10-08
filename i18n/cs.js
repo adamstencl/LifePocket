@@ -733,4 +733,6 @@ export default {
   'game.wk.lvl': '🌱 Nová úroveň: {n} · {name}',
   'game.wk.new': '🏅 Nové: {list}',
   'game.wk.share': '📤 Sdílet týden',
+  'game.card.pctVal': '{n} %',
+  'game.card.badges': 'odznaků',
 };
