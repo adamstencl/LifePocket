@@ -1,7 +1,7 @@
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
-const {getFirestore, FieldValue, FieldPath} = require('firebase-admin/firestore');
+const {getFirestore, FieldValue, FieldPath, Timestamp} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
 const {getAuth} = require('firebase-admin/auth');
 
@@ -181,7 +181,8 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
     if (count >= DAILY_LIMIT) {
       throw new HttpsError('resource-exhausted', `Denní limit ${DAILY_LIMIT} AI dotazů byl dosažen. Limit se obnoví zítra.`);
     }
-    tx.set(rateRef, {date: today, count: count + 1});
+    // merge: v dokumentu je i famNotify (omezení notifyFamily)
+    tx.set(rateRef, {date: today, count: count + 1}, {merge: true});
     return count;
   });
 
@@ -419,8 +420,144 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
   return {ok: true, sent};
 });
 
+// ── Upozornění ze skupin: preference a texty ─────────────────────────────────
+// Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS v app.js
+const GROUP_NOTIF_DEFAULTS = {shop: 'instant', cal: 'instant', meal: 'evening', check: 'evening', pantry: 'evening',
+  quiet: {from: '22:00', to: '07:00'}, notifyChecked: false};
+const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry'];
+const GN_MODES = ['instant', 'q15', 'evening'];       // + 'off' (nic)
+const INSTANT_SETTLE = 2 * 60000;                     // „Hned“: 2 min bez další změny…
+const INSTANT_MAX_WAIT = 10 * 60000;                  // …ale nejdéle 10 min od první neodeslané změny
+const CRON_STEP_MS = 5 * 60000;                       // cron běží po 5 min
+const GN_BACKLOG_MAX = 24 * 3600000;                  // starý kurzor (přepnutý režim) = nejvýš den zpětně
+const GN_QUERY_LIMIT = 200;
+const GN_BODY_MAX = 180;
+const GN_MAX_GROUPS = 10;
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Preference člena s výchozími hodnotami; neplatné hodnoty = výchozí, quiet:null = noční klid vypnutý
+function groupNotifPrefs(prof) {
+  const raw = (prof && prof.groupNotif && typeof prof.groupNotif === 'object') ? prof.groupNotif : {};
+  const gp = {};
+  for (const k of GN_MODULES) gp[k] = (GN_MODES.includes(raw[k]) || raw[k] === 'off') ? raw[k] : GROUP_NOTIF_DEFAULTS[k];
+  if (raw.quiet === null) gp.quiet = null;
+  else if (raw.quiet && HHMM_RE.test(raw.quiet.from) && HHMM_RE.test(raw.quiet.to)) gp.quiet = {from: raw.quiet.from, to: raw.quiet.to};
+  else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
+  gp.notifyChecked = raw.notifyChecked === true;
+  return gp;
+}
+
+// Je pražský čas h:m v nočním klidu? Rozsah může přecházet přes půlnoc (22:00–07:00)
+function inQuiet(h, m, q) {
+  if (!q) return false;
+  const toMin = (s) => { const [a, b] = s.split(':').map(Number); return a * 60 + b; };
+  const f = toMin(q.from), t = toMin(q.to), n = h * 60 + m;
+  if (f === t) return false;
+  return f < t ? (n >= f && n < t) : (n >= f || n < t);
+}
+
+const czPlural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
+const dalsi = (k) => `a ${k} ${k >= 5 ? 'dalších' : 'další'}`;
+const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby']};
+const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách'};
+// [sloveso, zbytek]; ženský tvar = první slovo slovesa + 'a' („začal sdílet“ → „začala sdílet“)
+const GN_VERB = {
+  shop:   {add: ['přidal', 'do nákupu'], edit: ['upravil', 'v nákupu'], del: ['smazal', 'z nákupu'], done: ['koupil', ''], clear: ['vyčistil', 'koupené položky']},
+  cal:    {add: ['přidal', 'do kalendáře'], edit: ['změnil', 'událost'], del: ['zrušil', 'událost']},
+  meal:   {edit: ['naplánoval', ''], del: ['vymazal', 'z jídelníčku'], plan: ['vygeneroval', 'nový jídelníček']},
+  check:  {add: ['přidal', 'do checklistu'], edit: ['upravil', 'v checklistu'], del: ['smazal', 'z checklistu'], done: ['odškrtl', ''], clear: ['vyčistil', 'hotové položky'], share: ['začal sdílet', 'checklist']},
+  pantry: {add: ['přidal', 'do zásob'], edit: ['upravil', 'zásoby'], del: ['smazal', 'ze zásob']},
+};
+
+// Jméno autora ze členů skupiny (server nevěří jménu z klienta); a.name jen pro bývalé členy
+function gnAuthorName(fam, a) {
+  const mem = fam && fam.members && fam.members[a.uid];
+  const n = (mem && typeof mem === 'object' && typeof mem.name === 'string' && mem.name.trim())
+    || (typeof a.name === 'string' && a.name.trim()) || 'Někdo';
+  return n.slice(0, 40);
+}
+// Názvy ze záznamu: title = n názvů spojených „, “ (když nesedí počet, bere se celý title)
+function gnTitles(a) {
+  const t = typeof a.title === 'string' ? a.title.slice(0, 60).trim() : '';
+  if (!t) return [];
+  const parts = t.split(', ');
+  return (Number.isInteger(a.n) && a.n > 1 && parts.length === a.n) ? parts : [t];
+}
+function gnCount(a) {
+  const c = Number(a.count);
+  return Number.isInteger(c) && c >= 1 ? Math.min(c, 500) : 1;
+}
+
+// Text jednoho modulu: autor → akce, nejvýš 3 názvy + „a N další“; dlouhý text → „Adam a Jana: 9 změn v nákupu“
+function gnModuleText(module, acts, fam) {
+  const byAuthor = new Map();
+  for (const a of acts) {
+    let au = byAuthor.get(a.uid);
+    if (!au) { au = {name: gnAuthorName(fam, a), f: false, actions: new Map()}; byAuthor.set(a.uid, au); }
+    if (a.g === 'f') au.f = true;
+    let ac = au.actions.get(a.action);
+    if (!ac) { ac = {titles: [], count: 0}; au.actions.set(a.action, ac); }
+    for (const t of gnTitles(a)) if (!ac.titles.includes(t)) ac.titles.push(t);
+    ac.count += gnCount(a);
+  }
+  const verbs = GN_VERB[module] || {};
+  const texts = [];
+  for (const au of byAuthor.values()) {
+    const parts = [];
+    for (const [action, ac] of au.actions) {
+      const [verb, rest] = verbs[action] || ['upravil', GN_IN[module] || ''];
+      const v = au.f ? verb.replace(/^(\S+)/, '$1a') : verb;
+      let s = rest ? `${v} ${rest}` : v;
+      if (action === 'clear') { if (ac.count > 1) s += ` (${ac.count})`; }
+      else if (action !== 'plan' && ac.titles.length) {
+        const shown = ac.titles.slice(0, 3);
+        const more = Math.max(0, ac.count - shown.length);
+        s += ': ' + shown.join(', ') + (more ? ' ' + dalsi(more) : '');
+      }
+      parts.push(s);
+    }
+    texts.push(`${au.name} ${parts.join('; ')}`);
+  }
+  let body = texts.join(' · ');
+  if (body.length > GN_BODY_MAX) {
+    const names = [...byAuthor.values()].map(au => au.name);
+    const who = names.length === 1 ? names[0]
+      : names.length > 3 ? `${names.slice(0, 2).join(', ')} ${dalsi(names.length - 2)}`
+      : `${names.slice(0, -1).join(', ')} a ${names[names.length - 1]}`;
+    const total = acts.reduce((s, a) => s + gnCount(a), 0);
+    body = `${who}: ${total} ${czPlural(total, 'změna', 'změny', 'změn')} ${GN_IN[module] || ''}`.trim();
+    if (body.length > GN_BODY_MAX) body = body.slice(0, GN_BODY_MAX - 1) + '…';
+  }
+  return body;
+}
+
+// Večerní souhrn skupiny: „🧺 5 změn · 🗓️ 1 nová událost · 📋 2 změny“
+function gnEveningBody(byModule) {
+  const parts = [];
+  for (const mod of GN_MODULES) {
+    const acts = byModule.get(mod);
+    if (!acts || !acts.length) continue;
+    const sum = (list) => list.reduce((s, a) => s + gnCount(a), 0);
+    const sub = [];
+    if (mod === 'cal') {
+      const nAdd = sum(acts.filter(a => a.action === 'add'));
+      const nOther = sum(acts.filter(a => a.action !== 'add'));
+      if (nAdd) sub.push(`${nAdd} ${czPlural(nAdd, 'nová událost', 'nové události', 'nových událostí')}`);
+      if (nOther) sub.push(`${nOther} ${czPlural(nOther, 'změna', 'změny', 'změn')}`);
+    } else {
+      const n = sum(acts);
+      sub.push(`${n} ${czPlural(n, 'změna', 'změny', 'změn')}`);
+    }
+    parts.push(`${GN_MOD[mod][0]} ${sub.join(', ')}`);
+  }
+  return parts.join(' · ');
+}
+
 // ── Notify Family ─────────────────────────────────────────────────────────────
-// Pošle push notifikaci všem členům rodinné skupiny (kromě odesílatele)
+// Pošle push notifikaci všem členům rodinné skupiny (kromě odesílatele).
+// Starší ruční upozornění (tlačítko v Nákupech): respektuje „off“ u nákupů a noční klid příjemce,
+// odesílatel smí volat nejvýš 1× za 2 min na skupinu (rateLimits/{uid}.famNotify, píše jen server)
+const FAM_NOTIFY_INTERVAL = 2 * 60000;
 exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
@@ -447,7 +584,21 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   // Odesílatel musí být členem skupiny (familyId v profilu si může nastavit sám)
   if (!Object.prototype.hasOwnProperty.call(members, uid)) throw new HttpsError('permission-denied', 'Nejsi členem této skupiny.');
 
+  // Omezení: 1× za 2 min na odesílatele a skupinu (atomicky, paralelní volání limit neobejdou)
+  const nowMs = Date.now();
+  const rateRef = db.doc(`rateLimits/${uid}`);
+  await db.runTransaction(async (tx) => {
+    const rs = await tx.get(rateRef);
+    const fn = rs.exists ? (rs.data() || {}).famNotify : null;
+    const last = fn && typeof fn === 'object' ? Number(fn[familyId]) : NaN;
+    if (Number.isFinite(last) && last <= nowMs && nowMs - last < FAM_NOTIFY_INTERVAL) {
+      throw new HttpsError('resource-exhausted', 'Upozornění jde poslat nejvýš jednou za 2 minuty.');
+    }
+    tx.set(rateRef, {famNotify: {[familyId]: nowMs}}, {merge: true});
+  });
+
   // Pošli notifikaci všem zařízením všech členů kromě odesílatele
+  const {h, m} = pragueNow();
   let sent = 0;
   let membersReached = 0;
   for (const memberUid of Object.keys(members)) {
@@ -457,6 +608,10 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
       if (!memberSnap.exists) continue;
       const memberProf = memberSnap.data();
       if (!collectTokens(memberProf).length) continue;
+      // Preference příjemce: nákupy vypnuté nebo noční klid = nic neposílat
+      const gp = groupNotifPrefs(memberProf);
+      if (type === 'shop-update' && gp.shop === 'off') continue;
+      if (inQuiet(h, m, gp.quiet)) continue;
       const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, `fam-${type}`);
       sent += res.sent;
       if (res.sent > 0) membersReached++;
@@ -528,6 +683,110 @@ exports.sendScheduledNotifications = onSchedule(
       return e[key];
     };
 
+    // ── Upozornění ze skupin ──
+    // Okamžik běhu pro kurzory a dotazy (všichni uživatelé stejný)
+    const nowMs = Date.now();
+    const nowTs = Timestamp.fromMillis(nowMs);
+    const actCol = (fid) => db.collection(`families/${fid}/activity`);
+    // Nejnovější aktivita skupiny: 1 čtení na skupinu a běh, sdílené pro všechny členy.
+    // Rozsah na ts zároveň vyřadí ne-Timestamp hodnoty a čas z budoucnosti.
+    const latestAct = (fid) => lazy(famEntry(fid), 'latest', async () => {
+      const s = await actCol(fid).where('ts', '<=', nowTs).orderBy('ts', 'desc').limit(1).get();
+      return s.docs.length ? (toMillis(s.docs[0].data().ts) || 0) : 0;
+    });
+
+    const groupNotifs = async (uid, prof, ns, push) => {
+      const extra = Array.isArray(prof.extraGroupIds) ? prof.extraGroupIds : [];
+      const gids = [...new Set([prof.familyId, ...extra])]
+        .filter(g => typeof g === 'string' && GROUP_ID_RE.test(g)).slice(0, GN_MAX_GROUPS);
+      if (!gids.length) return;
+      const gp = groupNotifPrefs(prof);
+      const sentMap = (prof.groupNotifSent && typeof prof.groupNotifSent === 'object') ? prof.groupNotifSent : {};
+      // Noční klid platí pro „Hned“ a „15 min“, ne pro večerní souhrn (čas si uživatel zvolil sám)
+      const quiet = inQuiet(h, m, gp.quiet);
+      const eveningRun = isTimeMatch(h, m, ns.evening || '21:00');
+      const q15Run = m % 15 < 5;  // jeden běh v každé čtvrthodině
+      const updates = [];         // [gid, režim, ms] → groupNotifSent.<gid>.<režim>
+      const pushes = [];
+      for (const gid of gids) {
+        try {
+          const famSnap = await famEntry(gid).doc;
+          const fam = famSnap.exists ? famSnap.data() : null;
+          if (!fam || !fam.members || !fam.members[uid]) continue;
+          // Kalendář sdílí každá skupina se shareCal, ostatní moduly jen hlavní skupina
+          const isMain = gid === prof.familyId;
+          const mods = GN_MODULES.filter(k => (k === 'cal' ? !!fam.shareCal : isMain) && gp[k] !== 'off');
+          const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
+          // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
+          for (const mode of GN_MODES) if (!Number.isFinite(Number(cur[mode]))) updates.push([gid, mode, nowMs]);
+          const from = {};
+          for (const mode of new Set(mods.map(k => gp[k]))) {
+            const c = Number(cur[mode]);
+            if (Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
+          }
+          const active = Object.keys(from);
+          if (!active.length) continue;
+          const latest = await latestAct(gid);
+          if (latest <= Math.min(...active.map(k => from[k]))) continue; // takhle skončí většina běhů
+          const due = [];
+          for (const mode of active) {
+            if (latest <= from[mode]) continue;
+            if (mode === 'evening') { if (eveningRun) due.push(mode); continue; }
+            if (quiet) continue; // po skončení klidu je první běh na řadě sám (latest > kurzor)
+            if (mode === 'q15') { if (q15Run) due.push(mode); continue; }
+            // instant: 2 min klidu, nebo by další běh překročil 10 min od první neodeslané změny
+            if (nowMs - latest >= INSTANT_SETTLE) { due.push(mode); continue; }
+            const first = await actCol(gid).where('ts', '>', Timestamp.fromMillis(from[mode])).where('ts', '<=', nowTs)
+              .orderBy('ts').limit(1).get();
+            const t0 = first.docs.length ? toMillis(first.docs[0].data().ts) : null;
+            if (t0 !== null && nowMs - t0 >= INSTANT_MAX_WAIT - CRON_STEP_MS) due.push(mode);
+          }
+          if (!due.length) continue;
+          const lo = Math.min(...due.map(k => from[k]));
+          const snap = await actCol(gid).where('ts', '>', Timestamp.fromMillis(lo)).where('ts', '<=', nowTs)
+            .orderBy('ts').limit(GN_QUERY_LIMIT).get();
+          const acts = [];
+          for (const d of snap.docs) {
+            const a = d.data() || {};
+            const t = toMillis(a.ts);
+            if (t !== null) acts.push({...a, _ts: t});
+          }
+          // Plný limit: kurzor jen po poslední načtenou změnu, zbytek přijde v dalším běhu
+          const upTo = (snap.docs.length >= GN_QUERY_LIMIT && acts.length) ? acts[acts.length - 1]._ts : nowMs;
+          const wanted = (a) => typeof a.uid === 'string' && a.uid !== uid   // autor nedostane nic
+            && mods.includes(a.module) && (a.action !== 'done' || gp.notifyChecked);
+          const groupName = String(fam.groupName || 'Skupina').slice(0, 30);
+          for (const mode of due) {
+            // Kurzor se posune i bez odeslání (jinak by se backlog opakoval)
+            updates.push([gid, mode, upTo]);
+            const list = acts.filter(a => a._ts > from[mode] && a._ts <= upTo && gp[a.module] === mode && wanted(a));
+            if (!list.length) continue;
+            const byModule = new Map();
+            for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
+            if (mode === 'evening') {
+              pushes.push([`👨‍👩‍👧 Dnes ve skupině ${groupName}`, gnEveningBody(byModule), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}}]);
+            } else {
+              for (const [mod, la] of byModule) {
+                pushes.push([`${GN_MOD[mod][0]} ${GN_MOD[mod][1]} · ${groupName}`, gnModuleText(mod, la, fam),
+                  `grp-${gid}-${mod}`, {data: {open: 'grpfeed', gid, module: mod}}]);
+              }
+            }
+          }
+        } catch(e) { console.error(`[LP] Skupinová upozornění uid=${uid}:`, e.message); }
+      }
+      if (updates.length) {
+        // Jen pole groupNotifSent.<gid>.<režim>, zbytek profilu se nemění. Kurzor dřív než push:
+        // když zápis selže, nic se neposílá (jinak by stejné změny chodily každý běh znovu)
+        try {
+          await db.doc(`users/${uid}/profile/main`).update(...updates.flatMap(([g, mo, ms]) => [new FieldPath('groupNotifSent', g, mo), ms]));
+        } catch(e) { console.error(`[LP] Kurzor skupin uid=${uid}:`, e.message); return; }
+      }
+      for (const [title, body, tag, options] of pushes) {
+        try { await push(title, body, tag, options); }
+        catch(e) { console.error(`[LP] skupinový push uid=${uid}:`, e.message); }
+      }
+    };
+
     const processUser = async (uid) => {
       try {
         const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
@@ -588,6 +847,10 @@ exports.sendScheduledNotifications = onSchedule(
             catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
           }
         }
+
+        // ── Změny ve skupinách (za večerním shrnutím, ať skupinový souhrn přijde hned po něm) ──
+        try { await groupNotifs(uid, prof, ns, push); }
+        catch(e) { console.error(`[LP] Skupiny uid=${uid}:`, e.message); }
 
         // ── Připomínky návyků ──
         if (ns.habits !== false) {
