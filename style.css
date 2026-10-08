@@ -1700,3 +1700,23 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .gf-item.ms .gf-em{font-size:24px}
 .gf-item .rx-bar{margin-top:8px}
 .share-chip:focus-visible,.rx-btn:focus-visible,.rx-sum:focus-visible,.shc-sec:focus-visible,.sh-x:focus-visible,.fshare-mod-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── 4.40: pauza návyku, štíty série, neutrální dny ── */
+.htd-dot.frozen{background:transparent;box-shadow:inset 0 0 0 1px var(--blue);color:var(--blue);font-size:10px}
+.htd-dot.paused{background:var(--card3);color:var(--text3);font-size:9px}
+.htd-dot.frozen.today,.htd-dot.paused.today{box-shadow:inset 0 0 0 1px var(--blue),0 0 0 2px var(--accent)}
+.hd-day-cell.frozen{background:transparent;box-shadow:inset 0 0 0 1px var(--blue);color:var(--blue)}
+.hd-day-cell.paused{background:var(--card3);color:var(--text3)}
+.hd-box{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px}
+.hp-desc{font-size:14px;color:var(--text2);margin-bottom:12px;line-height:1.45}
+.hp-lbl{font-size:13px;color:var(--text2);margin:0 0 6px}
+.hp-active{color:var(--accent);margin-bottom:10px;font-size:14px}
+.hp-end{min-height:44px}
+.hd-pause-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.hd-pause-grid .btn-s{min-height:44px;padding:0 6px}
+@media(max-width:640px){.hd-pause-grid{grid-template-columns:repeat(2,1fr)}}
+.hd-neutral-note{font-size:12px;color:var(--text2);margin:-6px 0 14px;text-align:center}
+.shield-chip{display:inline-flex;align-items:center;gap:2px;margin-left:6px;padding:1px 7px;border-radius:12px;border:1px solid var(--blue);color:var(--blue);font-size:11px;font-weight:700;white-space:nowrap}
+.shield-row{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--text);margin-bottom:8px}
+.shield-icons{font-size:22px;letter-spacing:2px}
+.shield-none{filter:grayscale(1);opacity:.45}

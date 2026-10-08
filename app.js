@@ -1224,19 +1224,22 @@ async function putHabitLog(log,merge=false){
   await (merge?setDoc(ref,log,{merge:true}):setDoc(ref,log));
   const ex=hLog(log.id);
   if(ex)Object.assign(ex,log); else habitLogs.push(log);
-  onHabitLogChanged(log.habitId,log.date,wasDone,!!log.done);
+  shieldCacheReset();
+  onHabitLogChanged(log.habitId,log.date,wasDone,!!hLog(log.id)?.done);
 }
 // silent: hromadné mazání (smazání návyku), zrcadlo se ruší zvlášť
 async function delHabitLog(logId,silent=false){
   const prev=hLog(logId);
   await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
   habitLogs=habitLogs.filter(l=>l.id!==logId);
+  shieldCacheReset();
   if(!silent&&prev) onHabitLogChanged(prev.habitId,prev.date,!!prev.done,false);
 }
 
 // Splní se po prvním snapshotu návyků i záznamů (akce "Splněno" z notifikace na nich závisí)
 let habitsReady=Promise.resolve();
 let _habitsSnapOk=false; // návyky už přišly ze snapshotu (bez nich nejde poznat smazaný návyk)
+let _hlServerOk=false;   // záznamy návyků už přišly ze serveru (backfill a štíty nesmí počítat z neúplných dat)
 function subHabits(){
   if(!CU)return;
   if(unsubHabits)unsubHabits();
@@ -1244,12 +1247,15 @@ function subHabits(){
   let hOk=false,lOk=false,markReady;
   habitsReady=new Promise(r=>{markReady=r;});
   _habitsSnapOk=false;
+  _hlServerOk=false;
   // includeMetadataChanges: přechod cache → server přijde i beze změny dat (jinak by _habitsSnapOk zůstal false)
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),{includeMetadataChanges:true},snap=>{
     // Offline start (data z cache) ještě neznamená úplný seznam návyků
     if(!snap.metadata.fromCache&&!_habitsSnapOk){_habitsSnapOk=true;Object.keys(_shUnsub).forEach(shDailyResync);}
     if(hOk&&!snap.docChanges().length)return; // jen změna metadat: nepřekreslovat
     habits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    migrateLegacyPauses();
+    shieldCacheReset();
     renderHabits();
     hOk=true;if(lOk)markReady();
   });
@@ -1259,7 +1265,10 @@ function subHabits(){
     const old=habitLogs.filter(l=>l&&!(l.date>=_hlCutoff));
     habitLogs=snap.docs.map(d=>({id:d.id,...d.data()})).concat(old);
     hlIndex();
+    shieldCacheReset();
+    if(!snap.metadata.fromCache) _hlServerOk=true;
     renderHabits();
+    gameKick();
     lOk=true;if(hOk)markReady();
   });
 }
@@ -1274,20 +1283,135 @@ function habitDayLabel(){
   return new Date(habitDay+'T12:00:00').toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'});
 }
 
-// Série návyku k danému dni: přeskočené dny (skipped) sérii nepřeruší ani nepřičtou.
-// Jediná logika pro kartu, avatara i zrcadlo ve skupině (jinak by „7 dní“ nesedělo).
-function habitStreak(hid,ds){
-  let streak=0;
-  const sd=new Date(ds+'T12:00:00');
-  for(let i=0;i<365;i++){
-    const l=hLog(hid+'_'+toDS(sd));
-    if(l&&l.done) streak++;
-    else if(!(l&&l.skipped)) break;
-    sd.setDate(sd.getDate()-1);
-  }
-  return streak;
+// Datum ± n dní (poledne: změna času den nepřeskočí)
+function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return toDS(d);}
+// Pauzy návyku: rozsahy {from,to,reason}; pausedUntil zůstává synchronní s aktivní pauzou (čte ho server)
+function habitPauses(h){return Array.isArray(h?.pauses)?h.pauses.filter(p=>p&&typeof p.from==='string'&&typeof p.to==='string'):[];}
+function isHabitPausedOn(h,ds){
+  if(habitPauses(h).some(p=>p.from<=ds&&ds<=p.to)) return true;
+  return !!(h?.pausedUntil&&ds===toDS()&&h.pausedUntil>=ds); // legacy záloha pro dnešek
+}
+// Aktivní pauza k danému dni (pro odznak „Pauza do …“)
+function habitPauseOn(h,ds){
+  const p=habitPauses(h).find(x=>x.from<=ds&&ds<=x.to);
+  if(p) return p;
+  return (h?.pausedUntil&&h.pausedUntil>=ds&&ds>=toDS())?{from:toDS(),to:h.pausedUntil,reason:'other'}:null;
+}
+// Den založení návyku (lokální čas), cache podle objektu návyku
+const _hStart=new WeakMap();
+function habitStartDS(h){
+  if(!h||typeof h!=='object') return '';
+  if(_hStart.has(h)) return _hStart.get(h);
+  let s='';
+  if(h.createdAt){ const d=new Date(h.createdAt); s=isNaN(d)?String(h.createdAt).slice(0,10):toDS(d); }
+  _hStart.set(h,s);
+  return s;
+}
+// Stav dne návyku: 'done' | 'miss' | 'neutral' (přeskočeno, štít, pauza, není na řadě, před založením) | 'future'
+function habitDayState(h,ds,today=toDS()){
+  if(ds>today) return 'future';
+  if(hDone(h.id,ds)) return 'done';
+  const l=hLog(h.id+'_'+ds);
+  if(l&&l.skipped) return 'neutral';                       // včetně štítu (frozen, shield)
+  if(isHabitPausedOn(h,ds)) return 'neutral';
+  const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};
+  if(f.type==='days'&&!(Array.isArray(f.days)?f.days:[]).map(Number).includes(new Date(ds+'T12:00:00').getDay())) return 'neutral';
+  const st=habitStartDS(h);
+  if(st&&ds<st) return 'neutral';
+  return 'miss';
 }
 
+// Série návyku k danému dni (jediná logika pro kartu, detail, dashboard, avatara, AI i zrcadlo ve skupině).
+// Neutrální dny (přeskočeno, štít, pauza, mimo dny frekvence) sérii nepřeruší ani nepřičtou; nesplněný dnešek ji nepřeruší.
+function habitStreak(hid,ds){
+  const h=habits.find(x=>x.id===hid)||{id:hid};
+  const today=toDS(), start=habitStartDS(h);
+  let d=ds, n=0;
+  if(ds===today&&habitDayState(h,ds,today)!=='done') d=addDays(ds,-1);
+  for(let i=0;i<HL_WINDOW;i++){
+    if(start&&d<start&&!hDone(hid,d)) break;
+    const st=habitDayState(h,d,today);
+    if(st==='done') n++; else if(st==='miss') break;
+    d=addDays(d,-1);
+  }
+  return n;
+}
+// Nejlepší série z načtených záznamů (stejná pravidla jako habitStreak)
+function calcBestStreak(h){
+  let first='';
+  for(const l of habitLogs) if(l&&l.habitId===h.id&&l.done&&typeof l.date==='string'&&(!first||l.date<first)) first=l.date;
+  if(!first) return 0;
+  const today=toDS(); let best=0,cur=0,d=first;
+  for(let i=0;i<1500&&d<=today;i++){
+    const st=habitDayState(h,d,today);
+    if(st==='done'){cur++; if(cur>best)best=cur;} else if(st==='miss'&&d<today) cur=0;
+    d=addDays(d,1);
+  }
+  return best;
+}
+// Je den návyku započítatelný do procent (neutrální dny se nepočítají do jmenovatele)?
+function habitDayCounts(h,ds,today=toDS()){ const st=habitDayState(h,ds,today); return st==='done'||st==='miss'; }
+
+
+// ── ŠTÍTY SÉRIE ❄️ (odvozené z logů, použitý štít = log {skipped,frozen,shield}) ──
+// Za každých 7 splněných dní v řadě 1 štít, max. 2 na návyk. Deterministicky z historie → stejné na všech zařízeních.
+const SHIELD_EVERY=7, SHIELD_MAX=2;
+let _shCache=new Map();
+function shieldCacheReset(){ _shCache=new Map(); }
+// Stav štítů návyku k datu: {sh: počet, run: splněné dny v aktuálním běhu}
+function habitShieldState(h,upTo=toDS()){
+  const key=h.id+'|'+upTo;
+  if(_shCache.has(key)) return _shCache.get(key);
+  let sh=0, run=0;
+  const today=toDS(), st0=habitStartDS(h);
+  let ds=(st0&&st0>_hlCutoff)?st0:(_hlCutoff||addDays(today,-HL_WINDOW));
+  for(let i=0;i<=HL_WINDOW+1&&ds<=upTo;i++,ds=addDays(ds,1)){
+    if(!hDone(h.id,ds)&&hLog(h.id+'_'+ds)?.shield){ sh=Math.max(0,sh-1); continue; } // použitý štít: sérii nepřeruší ani nepřičte
+    const st=habitDayState(h,ds,today);
+    if(st==='done'){ if(++run%SHIELD_EVERY===0) sh=Math.min(SHIELD_MAX,sh+1); }
+    else if(st==='miss'&&ds<today) run=0;                                             // dnešek ještě není zmeškaný
+  }
+  const r={sh,run};
+  _shCache.set(key,r);
+  return r;
+}
+function habitShields(h,upTo=toDS()){ return habitShieldState(h,upTo).sh; }
+// Start appky a nový den: zalepit mezeru (1–2 dny), jen když na ni štíty stačí a série má aspoň 3 dny
+let _shieldDay='';
+function gameAutoShield(){
+  if(!CU||_accDeleting||_accDeleted) return;
+  const today=toDS();
+  if(_shieldDay===today) return;
+  _shieldDay=today;
+  const saved=[];
+  for(const h of habits.filter(h=>!h.archived&&h.freq?.type!=='weekly')){
+    const gap=[]; let ds=addDays(today,-1);
+    while(gap.length<=SHIELD_MAX&&habitDayState(h,ds,today)==='miss'){ gap.push(ds); ds=addDays(ds,-1); }
+    if(!gap.length||gap.length>SHIELD_MAX) continue;
+    if(habitStreak(h.id,ds)<3||habitShields(h,ds)<gap.length) continue;
+    gap.forEach(d=>putHabitLog({id:h.id+'_'+d,habitId:h.id,date:d,skipped:true,frozen:true,shield:true},true).catch(e=>console.warn('[LP] štít:',e?.code||e?.name)));
+    saved.push(h);
+  }
+  if(saved.length){
+    shieldCacheReset();
+    toast(t('game.shield.used',{n:saved.length,name:cutName(saved[0].name,30)}),4000);
+    renderHabits();
+  }
+}
+// Sekce v detailu návyku
+function habitShieldSectionHTML(h){
+  const {sh,run}=habitShieldState(h);
+  const icons=sh?'❄️'.repeat(sh):'<span class="shield-none" aria-hidden="true">❄️</span>';
+  const left=SHIELD_EVERY-(run%SHIELD_EVERY);
+  return `<div class="hd-section-title" style="margin-top:20px">${tH('game.shield.title')}</div>
+    <div class="hd-box shield-box">
+      <div class="shield-row"><span class="shield-icons" aria-hidden="true">${icons}</span><span>${tH('game.shield.have',{n:sh})}</span></div>
+      <div class="hp-desc">${tH('game.shield.how')}</div>
+      ${sh<SHIELD_MAX?`<div class="hp-desc">${tH('game.shield.next',{n:left})}</div>`:''}
+    </div>`;
+}
+
+function gameKick(){} // GAMIFIKACE: doplní se (WIP)
 function buildHabitCard(h){
   const logId=h.id+'_'+habitDay;
   const log=hLog(logId);
@@ -1298,10 +1422,12 @@ function buildHabitCard(h){
   const goal=Number(h.goal)||1;
   const todayDS=toDS(new Date());
   const linkedGoal=h.goalId?goals.find(x=>x.id===h.goalId):null;
-  const isPaused=h.pausedUntil&&h.pausedUntil>=habitDay;
+  const pauseNow=habitPauseOn(h,habitDay);
+  const isPaused=!!pauseNow;
 
   // Streak
   const streak=habitStreak(h.id,habitDay);
+  const shields=(!h.freq||h.freq.type!=='weekly')?habitShields(h):0;
 
   // Weekly completion
   let weeklyStatus='';
@@ -1360,9 +1486,13 @@ function buildHabitCard(h){
     const isToday=ds===todayDS;
     const isHabitDay=ds===habitDay;
     const isSkipped=l&&l.skipped;
+    const isFrozen=!isDone&&l&&(l.shield||l.frozen);
+    const isPausedDay=!isDone&&!isSkipped&&isHabitPausedOn(h,ds);
     let cls='htd-dot';
     if(!active) cls+=' inactive';
     else if(isDone) cls+=' done';
+    else if(isFrozen) cls+=' frozen';
+    else if(isPausedDay) cls+=' paused';
     else if(isSkipped) cls+=' skipped';
     else if(isFailed) cls+=' failed';
     else if(isZero) cls+=' failed';
@@ -1373,6 +1503,8 @@ function buildHabitCard(h){
     let inner='';
     if(!active) inner='—';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${Number(l.value)||0}</span>`:'✓';
+    else if(isFrozen) inner='❄️';
+    else if(isPausedDay) inner='⏸';
     else if(isSkipped) inner='⏭';
     else if(isFailed) inner='✕';
     else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
@@ -1423,8 +1555,8 @@ function buildHabitCard(h){
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
         <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
-        ${isPaused?`<div class="habit-pause-badge">⏸ Pauza do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>`:''}
-        <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
+        ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
+        <div class="habit-streak">${streakHtml}${shields?`<span class="shield-chip" role="img" aria-label="${tH('game.shield.aria',{n:shields})}">❄️ ${shields}</span>`:''}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
       </div>
       ${badgeHtml}
       ${isPaused
@@ -1568,43 +1700,35 @@ function renderHabitDetail(h) {
   // Current streak (stejná logika jako karta a skupina)
   const curStreak = habitStreak(h.id, today);
 
-  // Best streak
-  let bestStreak = 0, tmpStreak = 0;
-  const allDates = logs.map(l => l.date).sort();
-  if (allDates.length) {
-    tmpStreak = 1; bestStreak = 1;
-    for (let i = 1; i < allDates.length; i++) {
-      const prev = new Date(allDates[i-1] + 'T12:00:00');
-      const cur = new Date(allDates[i] + 'T12:00:00');
-      const diff = Math.round((cur - prev) / 86400000);
-      if (diff === 1) { tmpStreak++; if (tmpStreak > bestStreak) bestStreak = tmpStreak; }
-      else tmpStreak = 1;
-    }
-  }
-  // Přeskočené dny sérii nepřeruší → nejlepší nesmí být menší než aktuální
-  bestStreak = Math.max(bestStreak, curStreak);
+  // Best streak (stejná pravidla jako aktuální série; nesmí být menší než aktuální)
+  const bestStreak = Math.max(calcBestStreak(h), curStreak);
 
-  // % this month
+  // % this month (neutrální dny – pauza, přeskočeno, štít, mimo frekvenci – se nepočítají)
   const nowD = new Date();
-  const daysInMonth = new Date(nowD.getFullYear(), nowD.getMonth()+1, 0).getDate();
-  const daysSoFar = nowD.getDate();
   const thisMonthKey = today.slice(0,7);
   const doneThisMonth = logs.filter(l => l.date.startsWith(thisMonthKey)).length;
-  const pctMonth = daysSoFar > 0 ? Math.round(doneThisMonth / daysSoFar * 100) : 0;
+  let monthTotal = 0;
+  for (let ds = thisMonthKey + '-01'; ds <= today; ds = addDays(ds, 1)) if (habitDayCounts(h, ds, today)) monthTotal++;
+  const pctMonth = monthTotal > 0 ? Math.min(100, Math.round(doneThisMonth / monthTotal * 100)) : 0;
 
-  // 30/60/90 day success rates
+  // 30/60/90 day success rates (bez neutrálních dnů)
   const calcPct=(days)=>{
-    let done=0,total=0;
+    let done=0,total=0,ds=today;
     for(let i=0;i<days;i++){
-      const d=new Date(); d.setDate(d.getDate()-i);
-      const ds=toDS(d);
-      const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
-      let active=true;
-      if(freq.type==='days')active=(freq.days||[]).includes(d.getDay());
-      if(active){total++;if(hDone(h.id,ds))done++;}
+      const st=habitDayState(h,ds,today);
+      if(st==='done'){total++;done++;} else if(st==='miss') total++;
+      ds=addDays(ds,-1);
     }
     return total>0?Math.round(done/total*100):0;
   };
+  // Neutrální dny za 90 dní (upřímná statistika): použité štíty a dny pauzy
+  let shUsed90 = 0, paused90 = 0;
+  for (let i = 0, ds = today; i < 90; i++, ds = addDays(ds, -1)) {
+    if (hDone(h.id, ds)) continue;
+    const l = hLog(h.id + '_' + ds);
+    if (l && (l.shield || l.frozen)) shUsed90++;
+    else if (!(l && l.skipped) && isHabitPausedOn(h, ds)) paused90++;
+  }
   const pct30=calcPct(30),pct60=calcPct(60),pct90=calcPct(90);
 
   // Linked goal
@@ -1617,14 +1741,8 @@ function renderHabitDetail(h) {
     const wStart = new Date(wEnd); wStart.setDate(wEnd.getDate() - 6);
     let done = 0, total = 0;
     for (let d = new Date(wStart); d <= wEnd; d.setDate(d.getDate()+1)) {
-      const ds = toDS(d);
-      const freq = (typeof h.freq === 'object' && h.freq) ? h.freq : {type:'daily'};
-      let active = true;
-      if (freq.type === 'days') active = (freq.days||[]).includes(d.getDay());
-      if (active) {
-        total++;
-        if (hDone(h.id,ds)) done++;
-      }
+      const st = habitDayState(h, toDS(d), today);
+      if (st === 'done') { total++; done++; } else if (st === 'miss') total++;
     }
     const pct = total > 0 ? Math.round(done/total*100) : 0;
     const label = wEnd.getDate() + '.' + (wEnd.getMonth()+1);
@@ -1667,12 +1785,17 @@ function renderHabitDetail(h) {
     const isDone = hDone(h.id,ds);
     const isToday = ds === today;
     const isFuture = ds > today;
+    const dl = isDone ? null : hLog(h.id + '_' + ds);
+    const isFrozen = !!(dl && (dl.shield || dl.frozen));
+    const isPausedDay = !isDone && !isFrozen && !(dl && dl.skipped) && isHabitPausedOn(h, ds);
     let cls = 'hd-day-cell';
     if (isFuture) cls += ' empty';
     else if (isDone) cls += ' done';
+    else if (isFrozen) cls += ' frozen';
+    else if (isPausedDay) cls += ' paused';
     else cls += ' miss';
     if (isToday) cls += ' today';
-    cells += `<div class="${cls}" title="${esc(ds)}">${isDone ? '✓' : (isFuture ? '' : day)}</div>`;
+    cells += `<div class="${cls}" title="${esc(ds)}">${isDone ? '✓' : isFuture ? '' : isFrozen ? '❄️' : isPausedDay ? '⏸' : day}</div>`;
   }
 
   const monthsHtml = `
@@ -1717,6 +1840,7 @@ function renderHabitDetail(h) {
       <div class="hd-stat"><div class="hd-stat-num" style="${pct60>=80?'color:var(--green)':pct60>=50?'color:var(--accent)':''}">${pct60}%</div><div class="hd-stat-lbl">📅 60 dní</div></div>
       <div class="hd-stat"><div class="hd-stat-num" style="${pct90>=80?'color:var(--green)':pct90>=50?'color:var(--accent)':''}">${pct90}%</div><div class="hd-stat-lbl">📅 90 dní</div></div>
     </div>
+    ${shUsed90 || paused90 ? `<div class="hd-neutral-note">${[shUsed90 ? tH('hd.shUsed90',{n:shUsed90}) : '', paused90 ? tH('hd.paused90',{n:paused90}) : ''].filter(Boolean).join(' · ')}</div>` : ''}
 
     ${hdLinkedGoal ? `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">🏆</span><div><div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Propojený cíl</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${esc(hdLinkedGoal.name)}</div><div class="habit-prog-bar" style="margin-top:6px;width:120px"><div class="habit-prog-fill" style="width:${hdLinkedGoal.progress||0}%"></div></div></div></div>` : ''}
 
@@ -1738,20 +1862,8 @@ function renderHabitDetail(h) {
       </div>
     </div>
 
-    <div class="hd-section-title" style="margin-top:20px">⏸ Pauza návyku</div>
-    <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;">
-      <div style="font-size:14px;color:var(--text2);margin-bottom:12px">Pozastav návyk na dobu nemoci nebo dovolené. Streak se nezlomí.</div>
-      ${h.pausedUntil && h.pausedUntil >= toDS()
-        ? `<div style="color:var(--accent);margin-bottom:10px;font-size:14px">⏸ Pauza aktivní do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})}</div>
-           <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,0)">▶️ Ukončit pauzu</button>`
-        : `<div style="display:flex;gap:8px;flex-wrap:wrap">
-             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,3)">3 dny</button>
-             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,7)">1 týden</button>
-             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,14)">2 týdny</button>
-             <button class="btn-s" data-a0="${esc(h.id)}" onclick="pauseHabit(this.dataset.a0,30)">Měsíc</button>
-           </div>`
-      }
-    </div>
+    ${(!h.freq || h.freq.type !== 'weekly') ? habitShieldSectionHTML(h) : ''}
+    ${habitPauseSectionHTML(h)}
 
     <div id="hd-share"></div>
 
@@ -2045,25 +2157,74 @@ window.archiveHabit = async (id) => {
   if (!isArchived) window.closeHabitDetail();
 };
 
+// ── PAUZA NÁVYKU (rozsahy pauses + synchronní pausedUntil pro server) ──
+const PAUSE_REASONS=['sick','vacation','other'];
+const PAUSE_EM={sick:'🤒',vacation:'🏖️',other:'✨'};
+let _hpReason='sick', _hpFrom=0; // volba v detailu: důvod a začátek (0 = dnes, 1 = včera)
+function habitPauseSectionHTML(h){
+  const today=toDS(), p=habitPauseOn(h,today), id=esc(h.id);
+  let inner;
+  if(p){
+    const r=PAUSE_REASONS.includes(p.reason)?p.reason:'other';
+    inner=`<div class="hp-active">${PAUSE_EM[r]} ${tH('hp.active',{date:fmtDate(p.to,'dm')})}</div>
+      <button class="btn-s hp-end" data-a0="${id}" onclick="pauseHabit(this.dataset.a0,0)">${tH('hp.end')}</button>`;
+  } else {
+    const seg=(kind,items,cur)=>`<div class="seg seg--block" role="group">${items.map(([v,lbl])=>`<button type="button" class="seg-btn${cur===v?' active':''}" aria-pressed="${cur===v}" data-a0="${esc(kind)}" data-a1="${esc(v)}" data-a2="${id}" onclick="setPauseOpt(this.dataset.a0,this.dataset.a1,this.dataset.a2)">${lbl}</button>`).join('')}</div>`;
+    inner=`<div class="hp-desc">${tH('hp.desc')}</div>
+      ${seg('r',PAUSE_REASONS.map(r=>[r,PAUSE_EM[r]+' '+tH('hp.r.'+r)]),_hpReason)}
+      <div class="hp-lbl">${tH('hp.from')}</div>
+      ${seg('f',[['0',tH('hp.today')],['1',tH('hp.yesterday')]],String(_hpFrom))}
+      <div class="hd-pause-grid">${[[3,'hp.d3'],[7,'hp.d7'],[14,'hp.d14'],[30,'hp.d30']].map(([d,k])=>`<button class="btn-s" data-a0="${id}" data-a1="${d}" onclick="pauseHabit(this.dataset.a0,+this.dataset.a1)">${tH(k)}</button>`).join('')}</div>`;
+  }
+  return `<div class="hd-section-title" style="margin-top:20px">${tH('hp.title')}</div>
+    <div class="hd-box">${inner}</div>`;
+}
+window.setPauseOpt=(kind,val,hid)=>{
+  if(kind==='r'&&PAUSE_REASONS.includes(val)) _hpReason=val;
+  if(kind==='f') _hpFrom=val==='1'?1:0;
+  const h=habits.find(x=>x.id===hid);
+  if(h&&detailHabitId===hid) renderHabitDetail(h);
+};
 window.pauseHabit=async(id,days)=>{
   if(!CU)return;
   const h=habits.find(h=>h.id===id);
   if(!h)return;
+  const today=toDS(), y=addDays(today,-1);
+  let pauses=habitPauses(h).map(p=>({from:p.from.slice(0,10),to:p.to.slice(0,10),reason:PAUSE_REASONS.includes(p.reason)?p.reason:'other'}));
+  if(!pauses.length&&h.pausedUntil&&h.pausedUntil>=today) pauses=[{from:today,to:h.pausedUntil,reason:'other'}]; // legacy
+  let pausedUntil=null;
   if(!days){
-    await updateDoc(doc(db,'users',CU.uid,'habits',id),{pausedUntil:null});
-    h.pausedUntil=null;
-    toast('▶️ Pauza ukončena');
+    // Ukončení: aktivní rozsah končí včera (dnešní začátek se smaže celý)
+    pauses=pauses.map(p=>(p.from<=today&&today<=p.to)?(p.from>=today?null:{...p,to:y}):p).filter(Boolean);
   } else {
-    const until=new Date(); until.setDate(until.getDate()+days);
-    const untilStr=toDS(until);
-    await updateDoc(doc(db,'users',CU.uid,'habits',id),{pausedUntil:untilStr});
-    h.pausedUntil=untilStr;
-    toast(`⏸ Pauza do ${until.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}`);
+    const from=_hpFrom?y:today, to=addDays(today,days);
+    // Překryté rozsahy zkrátit před začátek nové pauzy, budoucí zahodit
+    pauses=pauses.map(p=>p.to<from?p:(p.from<from?{...p,to:addDays(from,-1)}:null)).filter(Boolean);
+    pauses.push({from,to,reason:PAUSE_REASONS.includes(_hpReason)?_hpReason:'other'});
+    pauses=pauses.slice(-12);
+    pausedUntil=to;
   }
+  await updateDoc(doc(db,'users',CU.uid,'habits',id),{pauses,pausedUntil});
+  h.pauses=pauses; h.pausedUntil=pausedUntil;
+  shieldCacheReset();
+  toast(days?tH('hp.toast.on',{date:fmtDate(pausedUntil,'dm')}):t('hp.toast.off'));
   syncShared('h', id);
   renderHabits();
   if(detailHabitId===id)renderHabitDetail(h);
 };
+// Legacy pausedUntil bez rozsahu → rozsah od dneška (jednou za relaci a návyk; starší dny zpětně zjistit nejde)
+const _pauseMigrated=new Set();
+function migrateLegacyPauses(){
+  if(!CU) return;
+  const today=toDS();
+  for(const h of habits){
+    if(!h.pausedUntil||h.pausedUntil<today||Array.isArray(h.pauses)||_pauseMigrated.has(h.id)) continue;
+    _pauseMigrated.add(h.id);
+    const pauses=[{from:today,to:String(h.pausedUntil).slice(0,10),reason:'other'}];
+    h.pauses=pauses;
+    updateDoc(doc(db,'users',CU.uid,'habits',h.id),{pauses}).catch(e=>console.warn('[LP] migrace pauzy:',e?.code||e?.name));
+  }
+}
 
 window.toggleArchivedHabits = () => {
   _showArchived = !_showArchived;
@@ -2256,19 +2417,13 @@ function renderHabitMonth() {
   const today = new Date(); today.setHours(0,0,0,0);
   const days = 30;
   // Spočítej % plnění za posledních 30 dní pro každý návyk
+  const todayDS = toDS();
   const stats = activeHabits.map(h => {
-    let total=0, done=0;
-    for(let i=0; i<days; i++){
-      const d = new Date(today); d.setDate(d.getDate()-i);
-      const ds = toDS(d);
-      const dow = d.getDay();
-      const freq = h.freq||{type:'daily'};
-      let active = true;
-      if(freq.type==='days') active=(freq.days||[]).includes(dow);
-      if(!active) continue;
-      total++;
-      const log = hLog(h.id+'_'+ds);
-      if(log?.done) done++;
+    let total=0, done=0, ds=todayDS;
+    // Neutrální dny (pauza, přeskočeno, štít, mimo frekvenci) se nepočítají
+    for(let i=0; i<days; i++, ds=addDays(ds,-1)){
+      const st = habitDayState(h, ds, todayDS);
+      if(st==='done'){ total++; done++; } else if(st==='miss') total++;
     }
     const pct = total>0 ? Math.round(done/total*100) : 0;
     return {h, done, total, pct};
@@ -4169,6 +4324,7 @@ function hasPushToken() {
 function isHabitDueToday(h, today, dow) {
   if (h.archived) return false;
   if (h.pausedUntil && h.pausedUntil >= today) return false;
+  if (isHabitPausedOn(h, today)) return false;
   const freq = (typeof h.freq === 'object' && h.freq) ? h.freq : {type:'daily'};
   if (freq.type === 'days') return (Array.isArray(freq.days) ? freq.days : []).includes(dow);
   return true;
@@ -6535,22 +6691,15 @@ function buildHabitMirror(hid) {
   let doneDate = '';
   for(let i = 0; i < 60 && !doneDate; i++) { const ds = toDS(dayAt(i)); if(hDone(hid, ds)) doneDate = ds; }
   const streak = doneDate ? habitStreak(hid, doneDate) : 0;
-  // Nejlepší série z načtených záznamů (po sobě jdoucí splněné dny)
-  const dates = [...new Set(habitLogs.filter(l => l && l.habitId === hid && l.done && typeof l.date === 'string').map(l => l.date))].sort();
-  let best = 0, run = 0, prev = '';
-  for(const ds of dates) {
-    let next = '';
-    if(prev) { const x = new Date(prev + 'T12:00:00'); x.setDate(x.getDate() + 1); next = toDS(x); }
-    run = ds === next ? run + 1 : 1; prev = ds;
-    if(run > best) best = run;
-  }
+  // Nejlepší série z načtených záznamů (stejná pravidla jako habitStreak)
+  const best = calcBestStreak(h);
   const tl = hLog(hid + '_' + today);
   return {
     name: cutName(h.name, 60), emoji: cutName(h.emoji || '🎯', 16), freq,
     htype: h.type === 'count' ? 'count' : 'check', goal: clampInt(h.goal || 1, 1, 100000),
     doneDate, value: clampInt(tl?.value || 0, 0, 100000), streak: clampInt(streak, 0, 100000),
     best: clampInt(Math.max(best, streak), 0, 100000), last7,
-    paused: !!(h.pausedUntil && h.pausedUntil >= today), arch: !!h.archived
+    paused: !!(h.pausedUntil && h.pausedUntil >= today) || isHabitPausedOn(h, today), arch: !!h.archived
   };
 }
 // Zápis zrcadla do skupin (onlyGid = jen jedna skupina). Celý setDoc bez merge: deterministické ID, opraví se samo.
@@ -8508,8 +8657,7 @@ function rDash(){
       const failed=log?.failed||false;
       const isCount=hb.type==='count';
       const val=isCount?(log?.value||0)+'/'+hb.goal:'';
-      let streak=0;const sd=new Date(today+'T12:00:00');
-      for(let i=0;i<30;i++){const ds=toDS(sd);if(hDoneHD(hb.id,ds))streak++;else break;sd.setDate(sd.getDate()-1);}
+      const streak=habitStreak(hb.id,today);
       return `<div class="dw-habit-row">
         <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
         <div class="dw-hname">${esc(hb.emoji)} ${esc(hb.name)}</div>
@@ -8691,18 +8839,7 @@ function rDash(){
 
   // ── WIDGET: STREAKY ──
   if(mods.includes('habits') && habits.length) {
-    const streakHabits = habits.map(h => {
-      let streak = 0;
-      const d = new Date();
-      while(streak < 365) {
-        const ds = toDS(d);
-        const log = hDone(h.id,ds);
-        if(!log) break;
-        streak++;
-        d.setDate(d.getDate()-1);
-      }
-      return {...h, streak};
-    }).filter(h => h.streak >= 2).sort((a,b) => b.streak - a.streak).slice(0,4);
+    const streakHabits = habits.filter(h => !h.archived).map(h => ({...h, streak: habitStreak(h.id, today)})).filter(h => h.streak >= 2).sort((a,b) => b.streak - a.streak).slice(0,4);
 
     if(streakHabits.length) {
       html += `<div class="dw" style="cursor:default">
@@ -9460,15 +9597,8 @@ function buildChatContext(){
       const k=h.id+'|'+today;
       const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};
       const mark=done.has(k)?'✅':skip.has(k)?'⏭️':due(h)?'⬜':'➖';
-      // Streak: dnešní nesplněný den sérii nepřeruší
-      let streak=0;const sd=new Date(now);
-      if(!done.has(k)) sd.setDate(sd.getDate()-1);
-      for(let i=0;i<60;i++){
-        const dk=h.id+'|'+toDS(sd);
-        if(done.has(dk)) streak++;
-        else if(!skip.has(dk)&&!(f.type==='days'&&!(Array.isArray(f.days)?f.days:[]).includes(sd.getDay()))) break;
-        sd.setDate(sd.getDate()-1);
-      }
+      // Streak: stejná logika jako karta (dnešní nesplněný den, pauza ani přeskočení sérii nepřeruší)
+      const streak=habitStreak(h.id,today);
       let wk='';
       if(f.type==='weekly'){
         const ws=new Date(now);ws.setDate(ws.getDate()-((now.getDay()+6)%7));
