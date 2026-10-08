@@ -5276,7 +5276,7 @@ window.createFamily = async (presetName) => {
   };
   try {
     const fid = await createFamilyDoc(data); // kód = ID
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: fid}, {merge:true});
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: fid}, {merge:true}); // jen familyId, ať se nepřepíše zbytek profilu
     prof.familyId = fid;
     familyId = fid;
     subscribeFamily();
@@ -5312,7 +5312,7 @@ window.joinFamily = async (codeArg) => {
     await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {...profNoTokens(prof), familyId: code}, {merge:true});
+    await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: code}, {merge:true}); // jen familyId
     // Změna hlavní skupiny: odhlásit listenery a data té předchozí
     if(familyId && familyId !== code) { resetFamilyLocal(); renderAfterFamilyChange(); }
     prof.familyId = code;
@@ -5766,14 +5766,22 @@ function switchGroupLocal(oldGid, newGid) {
 const _rotatingGids = new Set();
 const _groupGoneChecks = new Set();
 // Dokument skupiny zmizel (ze serveru): kód mohl změnit správce → profil už přepsal server.
-// Znovu načte profil; když v něm je jiná skupina, tiše se přepne. Jinak se nic nemění (jako dřív).
+// Znovu načte profil; když v něm je jiná skupina, tiše se přepne. Když ji profil (ze serveru)
+// pořád má a skupina na serveru neexistuje, uklidí se jako po odebrání.
 async function checkGroupGone(snap, gid) {
   if(!CU || snap.exists() || snap.metadata.fromCache || _rotatingGids.has(gid) || _leavingGids.has(gid) || _groupGoneChecks.has(gid)) return;
   _groupGoneChecks.add(gid);
   const uid = CU.uid;
   try {
-    const ps = await getDoc(doc(db,'users',uid,'profile','main'));
-    if(CU?.uid !== uid || !ps.exists()) return;
+    // Profil z cache může mít ještě starý kód → zkusit znovu za 5 s, nejvýš 3×
+    let ps = null;
+    for(let i = 0; i <= 3; i++) {
+      if(i) await new Promise(r => setTimeout(r, 5000));
+      if(CU?.uid !== uid) return;
+      ps = await getDoc(doc(db,'users',uid,'profile','main'));
+      if(!ps.metadata.fromCache) break;
+    }
+    if(CU?.uid !== uid || !ps.exists() || ps.metadata.fromCache) return;
     const p = ps.data() || {};
     const freshExtra = Array.isArray(p.extraGroupIds) ? p.extraGroupIds.filter(okFamilyCode) : [];
     let newGid = null;
@@ -5784,7 +5792,23 @@ async function checkGroupGone(snap, gid) {
       const added = freshExtra.filter(g => !extraGroupIds.includes(g) && g !== familyId);
       if(added.length === 1) newGid = added[0];
     }
-    if(newGid && switchGroupLocal(gid, newGid)) toast('🔄 Kód skupiny se změnil');
+    if(newGid) { if(switchGroupLocal(gid, newGid)) toast('🔄 Kód skupiny se změnil'); return; }
+    // Profil skupinu pořád má → ověřit na serveru, že opravdu neexistuje, a uklidit
+    const mainGone = gid === familyId && p.familyId === gid;
+    const extraGone = gid !== familyId && extraGroupIds.includes(gid) && freshExtra.includes(gid);
+    if(!mainGone && !extraGone) return;
+    const fs = await getDoc(doc(db,'families',gid));
+    if(CU?.uid !== uid || fs.exists() || fs.metadata.fromCache || _leavingGids.has(gid)) return;
+    if(mainGone) {
+      if(familyId !== gid) return; // mezitím se přepnulo jinam
+      resetFamilyLocal();
+      if(prof.familyId === gid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
+      renderAfterFamilyChange();
+      await clearProfileFamilyIdIf(gid);
+    } else if(extraGroupIds.includes(gid)) {
+      await dropExtraGroupLocal(gid);
+    } else return;
+    toast('Skupina už neexistuje');
   } catch(e) { console.warn('[LP] kontrola změny kódu skupiny:', e?.code || e?.name); }
   finally { _groupGoneChecks.delete(gid); }
 }
@@ -5812,6 +5836,7 @@ window.openRotateGroupCode = (gid) => {
         <li>Starý kód <b>${esc(gid)}</b> a všechny dřívější odkazy na pozvánku <b>přestanou platit</b>.</li>
         <li>Členové ve skupině zůstanou a jejich aplikace se samy přepnou na nový kód.</li>
         <li>Nákupy, události, jídelníček, checklisty i zásoby se přesunou pod nový kód.</li>
+        <li>Kdo je právě offline, může přijít o změny, které ještě neodeslal.</li>
       </ul>
     </div>
     <div id="rotcode-st" role="status" aria-live="polite" style="font-size:14px;margin-top:4px;min-height:1em"></div>
@@ -5830,7 +5855,7 @@ window.openRotateGroupCode = (gid) => {
   document.body.appendChild(m);
 };
 // Chybové hlášky funkce jsou česky pro uživatele; síť a přihlášení přes userErr
-const ROT_SERVER_ERRS = ['functions/permission-denied','functions/not-found','functions/aborted','functions/resource-exhausted','functions/internal','functions/invalid-argument'];
+const ROT_SERVER_ERRS = ['functions/permission-denied','functions/not-found','functions/aborted','functions/resource-exhausted','functions/internal','functions/invalid-argument','functions/unavailable','functions/deadline-exceeded'];
 window.confirmRotateGroupCode = async (gid) => {
   if(!CU || _rotateBusy || !okFamilyCode(gid)) return;
   const btn = document.getElementById('rotcode-btn'), cancel = document.getElementById('rotcode-cancel');
@@ -5864,7 +5889,7 @@ window.confirmRotateGroupCode = async (gid) => {
   } catch(e) {
     busy(false);
     console.warn('rotateGroupCode selhalo', e?.code || e?.name);
-    const txt = ROT_SERVER_ERRS.includes(e?.code) && e?.message ? String(e.message).slice(0,200) : userErr(e, 'změna kódu skupiny');
+    const txt = ROT_SERVER_ERRS.includes(e?.code) && e?.message && !/^[a-z-]+$/i.test(e.message) ? String(e.message).slice(0,200) : userErr(e, 'změna kódu skupiny');
     document.getElementById('m-rotcode')?.classList.add('open'); // mohlo se skrýt tlačítkem Zpět
     rotSetStatus('⚠️ ' + txt, true);
   } finally {

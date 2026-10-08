@@ -879,21 +879,28 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
 //  (1) zámek ve staré skupině (codeRotation) – selže → nic se nezměnilo
 //  (2) nový dokument přes create() (unikátní ID) + kopie všech podkolekcí rekurzivně
 //      selže → nový strom se smaže, zámek se uvolní, stará skupina beze změny
-//  (3) profily členů (transakce): familyId / extraGroupIds stará → nová
+//  (3) profily členů (transakce): familyId / extraGroupIds stará → nová;
+//      pak dorovnání členů (připojení / odchod během kopie) a delta kopie: dokumenty změněné
+//      ve staré skupině od začátku kopie (klienti, kteří ještě nebyli přepnutí)
 //      selže → profily se vrátí na starý kód, nový strom se smaže, zámek se uvolní
 //  (4) smazání starého dokumentu (tím starý kód okamžitě přestane platit), pak zbytek stromu
 //      nový kód už platí (profily přepnuté), proto se vždy vrátí {code}: smazání dokumentu se zkusí 3×,
 //      když ani tak neprojde, vrátí se oldRemoved:false a zaloguje se (starou skupinu smazat ručně);
 //      selže jen úklid podkolekcí → zbytky nejsou dostupné (pravidla chtějí rodičovský dokument), jen log
-// Zápisy do staré skupiny během kopírování (sekundy) se nepřenesou.
+// Před (3) a před (4) hlídá čas: po 200 s se vše vrátí (deadline-exceeded), funkce má limit 300 s.
+// Nepřenese se: dokumenty smazané ve staré skupině během přesunu a zápisy offline klientů,
+// které dorazí až po smazání staré skupiny (pravidla je odmítnou).
 // Logy jen technicky: krok, počty a kód chyby; žádné kódy skupin ani obsah.
 // Slova a abeceda musí odpovídat app.js a firestore.rules (hlídá .github/scripts/ci-check.js)
 const FAMILY_WORDS = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
 const FAMILY_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const ROTATE_LOCK_MS = 6 * 60 * 1000;      // déle než timeout funkce → zámek po pádu sám vyprší
 const ROTATE_COOLDOWN_MS = 2 * 60 * 1000;  // ochrana proti opakovanému klikání
+const ROTATE_DEADLINE_MS = 200 * 1000;     // rezerva na úklid před timeoutem 300 s
 const COPY_BATCH = 400;
 const UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// Pole hlavního dokumentu, která delta kopie nepřenáší (vlastní rotace, členové zvlášť)
+const ROTATE_SKIP_FIELDS = new Set(['code', 'codeRotation', 'codeRotatedAt', 'members']);
 
 function genGroupCode() {
   const crypto = require('crypto');
@@ -902,8 +909,15 @@ function genGroupCode() {
   return FAMILY_WORDS[crypto.randomInt(FAMILY_WORDS.length)] + '-' + s;
 }
 
-// Zkopíruje všechny podkolekce src → dst (rekurzivně, i dokumenty bez dat s vnořenými kolekcemi)
-async function copySubcollections(srcRef, dstRef, stats) {
+// a < b pro Firestore Timestamp (bez převodu na ms, ať se neztratí přesnost)
+function tsBefore(a, b) {
+  return a.seconds < b.seconds || (a.seconds === b.seconds && a.nanoseconds < b.nanoseconds);
+}
+function sameVal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+// Zkopíruje všechny podkolekce src → dst (rekurzivně, i dokumenty bez dat s vnořenými kolekcemi);
+// copied = cesty zapsané v cíli (delta pak pozná dokument, který přepnutý klient smazal)
+async function copySubcollections(srcRef, dstRef, stats, copied) {
   const cols = await srcRef.listCollections();
   for (const col of cols) {
     const refs = await col.listDocuments();
@@ -914,12 +928,40 @@ async function copySubcollections(srcRef, dstRef, stats) {
       let n = 0;
       for (const s of snaps) {
         if (!s.exists) continue;
-        batch.set(dstRef.collection(col.id).doc(s.id), s.data());
+        const dst = dstRef.collection(col.id).doc(s.id);
+        batch.set(dst, s.data());
+        copied.add(dst.path);
         n++;
       }
       if (n) { await batch.commit(); stats.docs += n; }
     }
-    for (const r of refs) await copySubcollections(r, dstRef.collection(col.id).doc(r.id), stats);
+    for (const r of refs) await copySubcollections(r, dstRef.collection(col.id).doc(r.id), stats, copied);
+  }
+}
+
+// Delta kopie: dokumenty staré skupiny změněné po `since` (začátek kopie).
+// Cíl se přepíše jen když ho od kopie nikdo nezměnil (updateTime < copyEnd);
+// novější zápis už přepnutého klienta má přednost. Chybějící cíl: zkopírovaný dřív = přepnutý
+// klient ho smazal → nechat; jinak nový dokument → zapsat. Každý dokument ve vlastní transakci.
+async function copyDelta(srcRef, dstRef, since, copyEnd, copied, stats) {
+  const cols = await srcRef.listCollections();
+  for (const col of cols) {
+    const refs = await col.listDocuments();
+    for (let i = 0; i < refs.length; i += COPY_BATCH) {
+      const snaps = await db.getAll(...refs.slice(i, i + COPY_BATCH));
+      for (const s of snaps) {
+        if (!s.exists || !tsBefore(since, s.updateTime)) continue;
+        const dst = dstRef.collection(col.id).doc(s.id);
+        const wrote = await db.runTransaction(async (tx) => {
+          const t = await tx.get(dst);
+          if (t.exists ? !tsBefore(t.updateTime, copyEnd) : copied.has(dst.path)) return false;
+          tx.set(dst, s.data());
+          return true;
+        });
+        if (wrote) stats.delta++;
+      }
+    }
+    for (const r of refs) await copyDelta(r, dstRef.collection(col.id).doc(r.id), since, copyEnd, copied, stats);
   }
 }
 
@@ -948,30 +990,44 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
   if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', 'Neplatný kód skupiny.');
   const oldRef = db.doc(`families/${gid}`);
 
-  // (1) oprávnění + zámek v jedné transakci
+  // (1) oprávnění + zámek v jedné transakci; čas z budoucnosti (posunuté hodiny) se ignoruje
   const now = Date.now();
-  const src = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(oldRef);
-    if (!snap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
-    const d = snap.data() || {};
-    const me = d.members && d.members[uid];
-    if (!me || me.role !== 'admin') throw new HttpsError('permission-denied', 'Kód skupiny může změnit jen správce.');
-    const lockAt = Number(d.codeRotation && d.codeRotation.at);
-    if (Number.isFinite(lockAt) && now - lockAt < ROTATE_LOCK_MS) throw new HttpsError('aborted', 'Kód skupiny se právě mění, zkus to za chvíli.');
-    const lastAt = Date.parse(d.codeRotatedAt);
-    if (Number.isFinite(lastAt) && now - lastAt < ROTATE_COOLDOWN_MS) throw new HttpsError('resource-exhausted', 'Kód skupiny jde změnit nejvýš jednou za 2 minuty.');
-    tx.update(oldRef, {codeRotation: {at: now, by: uid}});
-    return d;
-  });
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(oldRef);
+      if (!snap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
+      const d = snap.data() || {};
+      const me = d.members && d.members[uid];
+      if (!me || me.role !== 'admin') throw new HttpsError('permission-denied', 'Kód skupiny může změnit jen správce.');
+      const lockAt = Number(d.codeRotation && d.codeRotation.at);
+      if (Number.isFinite(lockAt) && lockAt <= now && now - lockAt < ROTATE_LOCK_MS) throw new HttpsError('aborted', 'Kód skupiny se právě mění, zkus to za chvíli.');
+      const lastAt = Date.parse(d.codeRotatedAt);
+      if (Number.isFinite(lastAt) && lastAt <= now && now - lastAt < ROTATE_COOLDOWN_MS) throw new HttpsError('resource-exhausted', 'Kód skupiny jde změnit nejvýš jednou za 2 minuty.');
+      tx.update(oldRef, {codeRotation: {at: now, by: uid}});
+    });
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error(`[LP] rotateGroupCode uid=${uid} krok 1 selhal: ${e && e.code || ''}`);
+    throw new HttpsError('unavailable', 'Kód skupiny se teď nepodařilo změnit, skupina zůstala beze změny. Zkus to prosím znovu.');
+  }
 
   let step = '2';
   let newCode = null, newRef = null;
   const swapped = [];
-  const stats = {docs: 0};
+  const stats = {docs: 0, delta: 0};
+  const copied = new Set();
+  const timeUp = () => {
+    if (Date.now() - now > ROTATE_DEADLINE_MS) throw Object.assign(new Error('deadline'), {code: 'deadline'});
+  };
   try {
-    // (2) nový dokument s unikátním ID (create selže, když už existuje) + podkolekce
-    const data = {...src, codeRotatedAt: new Date(now).toISOString()};
-    delete data.codeRotation;
+    // (2) stav na začátku kopie: readTime = hranice pro delta kopii
+    const startSnap = await oldRef.get();
+    if (!startSnap.exists) throw Object.assign(new Error('gone'), {code: 'gone'});
+    const since = startSnap.readTime;
+    const base = startSnap.data() || {};
+    delete base.codeRotation;
+    // nový dokument s unikátním ID (create selže, když už existuje) + podkolekce
+    const data = {...base, codeRotatedAt: new Date(now).toISOString()};
     for (let i = 0; i < 5 && !newCode; i++) {
       const code = genGroupCode();
       if (code === gid) continue;
@@ -984,19 +1040,49 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
       }
     }
     if (!newCode) throw Object.assign(new Error('no free code'), {code: 'no-free-code'});
-    await copySubcollections(oldRef, newRef, stats);
+    await copySubcollections(oldRef, newRef, stats, copied);
 
-    // Členové se mohli během kopie změnit (připojení / odchod) → seznam podle aktuálního stavu
+    // Členové se mohli během kopie změnit (připojení / odchod) → seznam podle aktuálního stavu.
+    // readTime = konec kopie: cílové dokumenty starší než tohle zapsala jen kopie
     const cur = await oldRef.get();
-    const curMembers = (cur.exists && cur.data().members) || src.members || {};
+    const copyEnd = cur.readTime;
+    const curMembers = (cur.exists && cur.data().members) || base.members || {};
     await newRef.update({members: curMembers});
 
     // (3) profily členů
+    timeUp();
     step = '3';
-    const uids = [...new Set([...Object.keys(src.members || {}), ...Object.keys(curMembers)])].filter(u => UID_RE.test(u));
+    const uids = [...new Set([...Object.keys(base.members || {}), ...Object.keys(curMembers)])].filter(u => UID_RE.test(u));
     for (const m of uids) {
       if (await swapGroupInProfile(m, gid, newCode)) swapped.push(m);
     }
+
+    // Dorovnání: členové a pole hlavního dokumentu změněné ve staré skupině během kroku 3
+    // (nepřepisuje to, co mezitím v nové skupině změnil už přepnutý klient)
+    step = '3b';
+    const latest = await oldRef.get();
+    const ld = (latest.exists && latest.data()) || {};
+    const latestMembers = ld.members || {};
+    for (const m of Object.keys(latestMembers)) {
+      if (!UID_RE.test(m) || uids.includes(m)) continue;
+      if (await swapGroupInProfile(m, gid, newCode)) swapped.push(m);
+    }
+    await db.runTransaction(async (tx) => {
+      const t = await tx.get(newRef);
+      const nd = t.data() || {};
+      const out = {...nd, members: {...(nd.members || {})}};
+      for (const [m, v] of Object.entries(latestMembers)) if (!curMembers[m] && !out.members[m]) out.members[m] = v;
+      for (const m of Object.keys(curMembers)) if (!latestMembers[m]) delete out.members[m];
+      for (const k of new Set([...Object.keys(base), ...Object.keys(ld)])) {
+        if (ROTATE_SKIP_FIELDS.has(k) || sameVal(ld[k], base[k]) || !sameVal(nd[k], base[k])) continue;
+        if (k in ld) out[k] = ld[k]; else delete out[k];
+      }
+      if (!sameVal(out, nd)) tx.set(newRef, out);
+    });
+    // Podkolekce změněné od začátku kopie
+    step = '3c';
+    await copyDelta(oldRef, newRef, since, copyEnd, copied, stats);
+    timeUp();
   } catch (e) {
     // jen kód chyby: zpráva Firestore může obsahovat cestu s kódem skupiny
     console.error(`[LP] rotateGroupCode uid=${uid} krok ${step} selhal: ${e && e.code || ''}`);
@@ -1013,6 +1099,7 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
     try { await oldRef.update({codeRotation: FieldValue.delete()}); }
     catch (e2) { console.error(`[LP] rotateGroupCode uvolnění zámku selhalo: ${e2 && e2.code || ''}`); } // vyprší sám
     if (!cleanOk) console.error(`[LP] rotateGroupCode úklid neúplný`);
+    if (e && e.code === 'deadline') throw new HttpsError('deadline-exceeded', 'Přesun skupiny trval příliš dlouho, skupina zůstala beze změny. Zkus to prosím později.');
     throw new HttpsError('internal', 'Kód se nepodařilo změnit, skupina zůstala beze změny. Zkus to prosím znovu.');
   }
 
@@ -1030,6 +1117,6 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
     catch (e) { console.error(`[LP] rotateGroupCode uid=${uid} úklid podkolekcí selhal: ${e && e.code || ''}`); }
   }
 
-  console.log(`[LP] rotateGroupCode uid=${uid} hotovo: dokumentů ${stats.docs}, profilů ${swapped.length}, stará smazána ${oldRemoved}`);
+  console.log(`[LP] rotateGroupCode uid=${uid} hotovo: dokumentů ${stats.docs}, delta ${stats.delta}, profilů ${swapped.length}, stará smazána ${oldRemoved}`);
   return {code: newCode, oldRemoved};
 });
