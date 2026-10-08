@@ -1406,7 +1406,7 @@ function gameAutoShield(){
   _shieldDay=today;
   const saved=[], y=addDays(today,-1);
   for(const h of habits.filter(h=>!h.archived&&h.freq?.type!=='weekly')){
-    if(h.pausedUntil&&!Array.isArray(h.pauses)) continue;   // nepřevedená legacy pauza: radši nic
+    if(h.pausedUntil&&!Array.isArray(h.pauses)&&String(h.pausedUntil).slice(0,10)>=addDays(today,-SHIELD_DEPTH)) continue;   // nepřevedená legacy pauza v okně: radši nic
     // Mezera: zmeškané dny od včerejška zpět k poslednímu splněnému, neutrální dny (mimo frekvenci, pauza, přeskočeno) se přeskočí
     const gap=[]; let ds=y, base='';
     for(let i=0;i<SHIELD_DEPTH;i++,ds=addDays(ds,-1)){
