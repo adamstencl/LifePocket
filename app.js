@@ -47,8 +47,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.39';
+const APP_VERSION = '4.40';
 const CHANGELOG = [
+  { v:'4.40', items:[
+    '🌱 Body, úrovně a štíty série – tvůj společník roste s tebou',
+    '❄️ Za 7 dní v řadě získáš štít, který sérii sám podrží, když jeden den vynecháš',
+    '🎯 Měřitelné cíle (třeba kila nebo kilometry) s mezníky 25, 50, 75 a 100 % a oslavou',
+    '⏸ Pauza návyku s důvodem (nemoc, dovolená) a série teď všude počítá stejně – pauza ani přeskočený den ji nepřeruší'
+  ], en:[
+    '🌱 Points, levels and streak shields – your companion grows with you',
+    '❄️ 7 days in a row earn a shield that keeps your streak when you miss a day',
+    '🎯 Measurable goals (like kilos or kilometres) with 25, 50, 75 and 100% milestones and a celebration',
+    '⏸ Pause a habit with a reason (sick, holiday) and streaks now count the same everywhere – a pause or skipped day never breaks them'
+  ]},
   { v:'4.39', items:[
     '👏 Sdílení návyků se skupinou – ostatní uvidí tvůj pokrok a můžou tě pochválit'
   ], en:[
@@ -5788,18 +5799,18 @@ function checkAvatarReactions(hid, date, justCompleted) {
   // Každá oslava jen jednou za den (odškrtnutí a nové zaškrtnutí ji nezopakuje)
   const seen = (() => { const v = lsGet('lp_avr', null); return v && v.d === today && Array.isArray(v.k) ? v : {d: today, k: []}; })();
   const once = k => { if(seen.k.includes(k)) return false; seen.k.push(k); lsSave('lp_avr', seen); return true; };
-  if([3,7,14,30].includes(streak) && !once(hid + '_' + streak)) return;
+  const msNew = [3,7,14,30].includes(streak) && once(hid + '_' + streak);
 
-  if(streak === 7) {
+  if(msNew && streak === 7) {
     const shieldMsg = h && h.freq?.type !== 'weekly' && habitShields(h) > 0 ? ' ' + t('game.shield.earned') : '';
     showAvReaction('🔥', `7 dní v řadě!`, `${av.name}: Týden bez přerušení u „${h?.name}"! ${name ? name+', jsi' : 'Jsi'} neporazitelný! 💪` + shieldMsg, true);
     return;
   }
-  if(streak === 14) {
+  if(msNew && streak === 14) {
     showAvReaction('🏆', `14 dní v řadě!`, `${av.name}: Dva týdny nepřetržitě! Tohle je už charakter, ne náhoda. Bravo! 🌟`, true);
     return;
   }
-  if(streak === 30) {
+  if(msNew && streak === 30) {
     showAvReaction('👑', `30 dní v řadě!`, `${av.name}: Celý měsíc! ${name ? name+' — ' : ''}tohle je výjimečné. Jsem na tebe hrdý! 🎉`, true);
     return;
   }
@@ -5825,7 +5836,7 @@ function checkAvatarReactions(hid, date, justCompleted) {
   }
 
   // Streak 3 — malá oslava
-  if(streak === 3) {
+  if(msNew && streak === 3) {
     showAvReaction(av.emoji, '3 dny v řadě!', `${av.name}: Tři dny bez přestávky u „${h?.name}". Dobrý začátek! 🔥`);
   }
 }
