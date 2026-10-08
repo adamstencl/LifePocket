@@ -4,6 +4,12 @@ Stav ke dni 2026-10-08. Navazuje na `docs/NAVRH-NOTIF-SKUPINY.md` (dál jen **NO
 
 ---
 
+> **Implementováno:** fáze 1 (návyky + reakce) ve 4.39, fáze 2 (cíle) ve 4.42. Odchylky fáze 2 od návrhu:
+> - zrcadlo `g` nese místo názvů podcílů jen počet `sd`/`sn` (minimum dat), měřitelný cíl jako `metric:{start,target,cur,unit}` (stejně jako `goals/{id}.metric` z gamifikace), navíc `msHit` a `doneAt`;
+> - aktivita jen na mezníku 25/50/75 % (`goal/progress`, `val`) a při splnění (`goal/done`, `val:100`) podle rozhodnutí 10 gamifikace, ne po 10 % ani při splnění podcíle;
+> - výchozí upozornění pro Cíle **Večer**, mezníky hned přes „Milníky hned“ (`msInstant`); ikona modulu 🎯.
+> Pravidla (`validGoalMirror`, `goal` v `activity`) čekají na ruční nasazení.
+
 ## 0. Výchozí stav (co návrh mění)
 
 | Co | Kde | Pozn. |
