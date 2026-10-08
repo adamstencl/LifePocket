@@ -773,7 +773,8 @@ window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
 // Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;return c;}
+// groupNotifSent (kurzory) píše jen server, groupFeedSeen jen markGroupFeedSeen (přesné pole) → stará kopie je nesmí vrátit
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)

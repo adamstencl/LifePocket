@@ -54,7 +54,7 @@
     <h2>3. Jaké údaje ukládáme</h2>
     <p>Vše, co v aplikaci zadáš, se ukládá do databáze <strong>Firebase Firestore</strong> (Google) pod tvůj účet:</p>
     <ul>
-      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly a úvodní šablona (Rodina, Student nebo Zdraví), datum posledního otevření aplikace (viz bod 7), denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, členství ve skupinách</li>
+      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly a úvodní šablona (Rodina, Student nebo Zdraví), datum posledního otevření aplikace (viz bod 7), denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, nastavení upozornění ze skupin (<code>groupNotif</code>), čas posledního odeslaného upozornění ze skupiny (<code>groupNotifSent</code>) a čas, kdy sis naposledy otevřel/a „Co je nového“ (<code>groupFeedSeen</code>), členství ve skupinách</li>
       <li>Cíle a podcíle</li>
       <li>Návyky a záznamy o jejich plnění</li>
       <li>Zápisky (deník) včetně nálady a fotografií</li>
@@ -87,7 +87,8 @@
     <ul>
       <li>název skupiny a seznam členů: tvé jméno nebo přezdívku, avatar, datum připojení a roli (zakladatel / člen)</li>
       <li>podle toho, co má skupina zapnuté: sdílený nákupní seznam, události, které do skupiny sdílíš (i s tím, kdo je přidal), jídelníček skupiny, zásoby (když jsi ve skupině, zásoby se ukládají do skupiny) a checklisty, které označíš ke sdílení, včetně fotografií u položek</li>
-      <li>upozornění, které pošleš ostatním členům (tvé jméno a krátká zpráva, např. o změně nákupního seznamu)</li>
+      <li><strong>historii změn ve skupině</strong> („Co je nového“): kdo co přidal, upravil, odškrtl nebo smazal ve sdílených modulech (tvé jméno, druh změny a název položky, nejvýše 60 znaků). Historie se automaticky maže po 7 dnech, i když skupinu opustíš. Při smazání účtu se tvoje záznamy smažou hned.</li>
+      <li>upozornění, které ostatním členům poslala starší verze aplikace tlačítkem „Informovat ostatní“ (tvé jméno a krátká zpráva)</li>
     </ul>
     <p>Tvoje osobní data (zápisky, návyky, cíle, zdraví, chat s AI a další) členové skupiny nevidí.</p>
     <p><strong>Pozvánka:</strong> každá skupina má kód ve tvaru např. <code>SLOVO-K7M2QX</code> (starší skupiny mají kratší kód, např. <code>SLOVO-1234</code>). Kdo kód zná, nebo dostane odkaz s pozvánkou (<code>lifepocket.app/?join=KÓD</code>), může si po přihlášení zobrazit název a seznam členů skupiny a připojit se. U odkazu se aplikace před připojením vždy zeptá. Kód je jediná ochrana skupiny, sdílej ho proto jen s lidmi, kterým věříš. Správce skupiny může kdykoli vygenerovat nový kód: data skupiny i její členové se přesunou pod nový kód, starý kód a dřívější odkazy na pozvánku přestanou platit. Členové, kteří jsou v tu chvíli offline, mohou přijít o změny, které ještě neodeslali. Kterýkoli člen může měnit nastavení sdílení skupiny.</p>
@@ -99,7 +100,8 @@
       <li>U každého zařízení ukládáme token pro doručení, typ platformy, datum poslední aktualizace a náhodné ID zařízení.</li>
       <li>Token se smaže při odhlášení, pokud je zařízení online. Server navíc při odesílání notifikací maže tokeny, které služba označí za neplatné, tokeny starší než 60 dní a nechává nejvýš 10 nejnovějších zařízení.</li>
       <li>Aby server mohl poslat připomínku, čte každých 5 minut z tvého účtu: přezdívku, pohlaví, nastavení notifikací, tokeny, návyky (název, emoji, čas připomínky), dnešní záznamy o plnění návyků a události z tvého kalendáře i z kalendáře hlavní skupiny (název, datum, čas, typ). Text notifikace se z nich složí a odešle, nikam se neukládá ani neloguje.</li>
-      <li>Funkce „upozornit skupinu“ (<code>notifyFamily</code>) pošle ostatním členům tvou přezdívku a zprávu (nejvýš 200 znaků). Funkce „test notifikací“ (<code>testPush</code>) pošle zkušební notifikaci jen tobě.</li>
+      <li>Podle tvého nastavení (Nastavení → Notifikace → Upozornění ze skupin) ti posíláme upozornění na změny, které ve skupině udělali ostatní. Do textu jde jméno autora a názvy položek. Kvůli tomu si v profilu pamatujeme, kdy jsme ti poslali poslední upozornění.</li>
+      <li>Funkce „upozornit skupinu“ (<code>notifyFamily</code>, jen ve starších verzích aplikace) pošle ostatním členům tvou přezdívku a zprávu (nejvýš 200 znaků). Funkce „test notifikací“ (<code>testPush</code>) pošle zkušební notifikaci jen tobě.</li>
     </ul>
     <p>Notifikace můžeš kdykoli vypnout v nastavení aplikace nebo prohlížeče.</p>
 
@@ -139,6 +141,7 @@
       <li>Záznamy chyb starší než 90 dní mažeme ručně při pravidelném čištění (mazání není automatické).</li>
       <li>Záznam o počtu AI dotazů obsahuje jen poslední datum a počet, smaže se spolu s účtem.</li>
       <li>Obsah, který jsi přidal do skupiny, zůstává ve skupině i po tvém odchodu (bod 5).</li>
+      <li>Historie změn ve skupině („Co je nového“) se maže automaticky po 7 dnech (bod 5).</li>
     </ul>
 
     <h2>11. Tvá práva</h2>
@@ -160,7 +163,7 @@
       <li><strong>Mezipaměť (service worker)</strong>: soubory aplikace pro práci offline a čekající akce „Splněno“ z notifikace.</li>
       <li><strong>localStorage</strong>:
         <ul>
-          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, naposledy otevřená záložka Jídelníčku <code>lp_meal_tab</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, skryté karty „Pozvat rodinu“ v Nákupech a Kalendáři <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, zvolený jazyk aplikace <code>lp_lang</code> a <code>lp_lang_sync</code> (jazyk se ukládá i do tvého profilu jako <code>lang</code>, aby platil na všech zařízeních), zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní), značka, že zařízení už spustilo aplikaci z Google Play, <code>lp_twa_seen</code> a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code> (podle něj appka také pozná, že ses tu už přihlásil, a místo úvodní stránky ukáže rovnou přihlášení)</li>
+          <li>nastavení a stav aplikace: vzhled <code>lp_theme</code>, nastavení notifikací <code>lp_notif</code>, náhodné ID zařízení <code>lp_device_id</code>, poslední zobrazená verze <code>lp_seen_version</code>, rozbalené skupiny v menu <code>lp_open_groups</code>, naposledy otevřená záložka Jídelníčku <code>lp_meal_tab</code>, průvodce, nápovědy a úvodní tipy <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, skryté karty „Pozvat rodinu“ v Nákupech a Kalendáři <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, zavřená karta o upozorněních ze skupin <code>lp_gn_intro</code>, zvolený jazyk aplikace <code>lp_lang</code> a <code>lp_lang_sync</code> (jazyk se ukládá i do tvého profilu jako <code>lang</code>, aby platil na všech zařízeních), zavření návodů k instalaci <code>ios-dismissed</code> a <code>pwa-dismissed</code>, čekající pozvánka do skupiny <code>lp_pending_join</code> (platí 7 dní), značka, že zařízení už spustilo aplikaci z Google Play, <code>lp_twa_seen</code> a identifikátor účtu, kterému lokální data patří, <code>lp_owner_uid</code> (podle něj appka také pozná, že ses tu už přihlásil, a místo úvodní stránky ukáže rovnou přihlášení)</li>
           <li>osobní údaje jen v tomto zařízení: zásoby mimo skupinu <code>lp_pantry</code>, oblíbené nákupy <code>lp_fav_shop</code>, dnešní nálada <code>lp_daily_mood</code>, denní fokus a jeho historie <code>lp_focus</code>, <code>lp_focus_next</code>, <code>lp_focus_history</code>, počítadlo vody <code>lp_water</code>, text týdenního reportu <code>lp_weekly_report</code>, citát dne <code>lp_daily_quote</code></li>
           <li>značky, aby se připomínky a pozdravy neopakovaly: <code>lp_rex_greet</code>, <code>lp_last_remind</code>, <code>lp_sched_…</code>, <code>lp_hrnotif_…</code>, <code>lp_notif_…</code>, <code>lp_inactivity_shown_…</code></li>
         </ul>
