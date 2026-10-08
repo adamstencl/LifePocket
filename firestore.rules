@@ -104,9 +104,9 @@ service cloud.firestore {
     }
 
     // Rodinné podkomunity (shopItems, events, meals…) — jen členové skupiny.
-    // Kromě activity: pravidla se sčítají (OR), activity má vlastní přísnější pravidlo níže.
+    // Kromě activity, shared a reactions: pravidla se sčítají (OR), ty mají vlastní přísnější pravidla níže.
     match /families/{familyId}/{subcollection}/{docId} {
-      allow read, write: if subcollection != 'activity' && isFamMember(familyId);
+      allow read, write: if !(subcollection in ['activity', 'shared', 'reactions']) && isFamMember(familyId);
     }
 
     // Aktivita skupiny (feed „Co je nového“ + push přes cron). Zapisuje flushGroupActivity v app.js.
@@ -114,12 +114,19 @@ service cloud.firestore {
     match /families/{familyId}/activity/{actId} {
       allow read: if isFamMember(familyId);
       allow create: if isFamMember(familyId)
-        && request.resource.data.keys().hasOnly(['ts', 'uid', 'name', 'g', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
+        && request.resource.data.keys().hasOnly(['ts', 'uid', 'name', 'g', 'module', 'action', 'title', 'n', 'count', 'expireAt',
+             'ref', 'val', 'to', 'em', 'msg'])
         && request.resource.data.keys().hasAll(['ts', 'uid', 'name', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.ts == request.time
-        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry']
-        && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share']
+        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react']
+        && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak']
+        // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série, to + em / msg = reakce
+        && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref.size() <= 200))
+        && (!('val' in request.resource.data) || (request.resource.data.val is int && request.resource.data.val >= 0 && request.resource.data.val <= 1000))
+        && (!('to' in request.resource.data) || (request.resource.data.to is string && request.resource.data.to.size() <= 128))
+        && (!('em' in request.resource.data) || (request.resource.data.em is string && request.resource.data.em.size() <= 40))
+        && (!('msg' in request.resource.data) || (request.resource.data.msg is string && request.resource.data.msg.size() <= 200))
         && request.resource.data.title is string && request.resource.data.title.size() <= 60
         && request.resource.data.name is string && request.resource.data.name.size() <= 40
         && (!('g' in request.resource.data) || (request.resource.data.g is string && request.resource.data.g.size() <= 2))
@@ -129,8 +136,74 @@ service cloud.firestore {
         && request.resource.data.expireAt is timestamp
         && request.resource.data.expireAt <= request.time + duration.value(8, 'd');
       allow update: if false;
-      // Klient záznamy nemaže (unlog mění jen lokální buffer) → jen správce skupiny
-      allow delete: if isFamAdmin(familyId);
+      // Autor (úklid při zrušení sdílení položky) a správce skupiny
+      allow delete: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isFamAdmin(familyId));
+    }
+
+    // Sdílené položky (zrcadlo osobního návyku): sid = type_uid_itemId, čte člen, píše jen vlastník.
+    // Zatím jen návyky (type 'h'); jen souhrnná pole, žádné logy ani poznámky.
+    function validHabitMirror(fid, sid) {
+      let d = request.resource.data;
+      return isFamMember(fid)
+        && d.ownerUid == request.auth.uid
+        && d.type == 'h'
+        && d.itemId is string && d.itemId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && sid == d.type + '_' + request.auth.uid + '_' + d.itemId
+        && d.updatedAt == request.time
+        && d.keys().hasOnly(['type', 'ownerUid', 'itemId', 'updatedAt', 'arch', 'name', 'emoji', 'freq', 'htype', 'goal',
+             'doneDate', 'value', 'streak', 'best', 'last7', 'paused', 'ms'])
+        && d.keys().hasAll(['type', 'ownerUid', 'itemId', 'updatedAt', 'name'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 60
+        && (!('emoji' in d) || (d.emoji is string && d.emoji.size() <= 16))
+        && (!('arch' in d) || d.arch is bool)
+        && (!('paused' in d) || d.paused is bool)
+        && (!('htype' in d) || d.htype in ['check', 'count'])
+        && (!('freq' in d) || (d.freq is map && d.freq.keys().hasOnly(['type', 'times', 'days'])
+             && d.freq.get('type', 'daily') in ['daily', 'weekly', 'days']
+             && (!('times' in d.freq) || (d.freq.times is int && d.freq.times >= 1 && d.freq.times <= 7))
+             && (!('days' in d.freq) || (d.freq.days is list && d.freq.days.size() <= 7))))
+        && (!('goal' in d) || (d.goal is int && d.goal >= 0 && d.goal <= 100000))
+        && (!('value' in d) || (d.value is int && d.value >= 0 && d.value <= 100000))
+        && (!('streak' in d) || (d.streak is int && d.streak >= 0 && d.streak <= 100000))
+        && (!('best' in d) || (d.best is int && d.best >= 0 && d.best <= 100000))
+        && (!('doneDate' in d) || (d.doneDate is string && d.doneDate.size() <= 10))
+        && (!('last7' in d) || (d.last7 is string && d.last7.size() <= 7))
+        && (!('ms' in d) || (d.ms is map && d.ms.keys().hasOnly(['v', 'd']) && d.ms.v is int && d.ms.d is string && d.ms.d.size() <= 10));
+    }
+    match /families/{familyId}/shared/{sid} {
+      allow read: if isFamMember(familyId);
+      allow create: if validHabitMirror(familyId, sid);
+      allow update: if resource.data.ownerUid == request.auth.uid && validHabitMirror(familyId, sid);
+      // Vlastník i po odchodu nebo odebrání (úklid), správce kvůli odebraným členům
+      allow delete: if request.auth != null
+        && (resource.data.ownerUid == request.auth.uid || isFamAdmin(familyId));
+    }
+
+    // Reakce (👏 🔥 ❤️ 💪, kind 'e') a krátké komentáře (kind 'c') na sdílenou položku (s_<sid>) nebo záznam feedu (a_<id>).
+    // Emoji: rid = target_uid_em (nejde dát dvakrát), komentář: autoId. Mění se jen smazáním; maže TTL expireAt (30 dní).
+    match /families/{familyId}/reactions/{rid} {
+      allow read: if isFamMember(familyId);
+      allow create: if isFamMember(familyId)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.ts == request.time
+        && request.resource.data.to is string && request.resource.data.to.size() >= 1 && request.resource.data.to.size() <= 128
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.target is string && request.resource.data.target.matches('^(a|s)_[A-Za-z0-9_-]{1,200}$')
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.expireAt <= request.time + duration.value(31, 'd')
+        && ((request.resource.data.kind == 'e'
+             && request.resource.data.em in ['clap', 'fire', 'heart', 'strong']
+             && rid == request.resource.data.target + '_' + request.auth.uid + '_' + request.resource.data.em
+             && request.resource.data.keys().hasOnly(['kind', 'target', 'to', 'uid', 'em', 'ts', 'expireAt']))
+          || (request.resource.data.kind == 'c'
+             && request.resource.data.text is string
+             && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 200
+             && request.resource.data.keys().hasOnly(['kind', 'target', 'to', 'uid', 'text', 'ts', 'expireAt'])));
+      allow update: if false;
+      // Autor; adresát (komentář pod svou položkou); správce (moderace)
+      allow delete: if request.auth != null
+        && (resource.data.uid == request.auth.uid || resource.data.to == request.auth.uid || isFamAdmin(familyId));
     }
   }
 }

@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.38';
+const APP_VERSION = '4.39';
 const CHANGELOG = [
+  { v:'4.39', items:[
+    '👏 Sdílení návyků se skupinou – ostatní uvidí tvůj pokrok a můžou tě pochválit'
+  ], en:[
+    '👏 Share habits with your group – others see your progress and can cheer you on'
+  ]},
   { v:'4.38', items:[
     '🔔 Upozornění na změny ve skupině – nastav si u každého modulu, kdy je chceš dostávat',
     '🗞️ Nový přehled „Co je nového“ ve skupině: kdo co přidal, změnil nebo odškrtl za posledních 7 dní'
@@ -5827,6 +5832,9 @@ function isRemovedFromGroup(snap, gid) {
 // Přepne lokální stav ze staré skupiny na novou (hlavní i vedlejší); opakované volání nic nedělá.
 function switchGroupLocal(oldGid, newGid) {
   if(!okFamilyCode(newGid) || oldGid === newGid) return false;
+  // Server přenesl „přečteno“ feedu na nový kód (historie se kopíruje) → stejně i v paměti
+  const seenOld = prof?.groupFeedSeen?.[oldGid];
+  if(Number.isFinite(seenOld) && !Number.isFinite(prof.groupFeedSeen[newGid])) prof.groupFeedSeen = {...prof.groupFeedSeen, [newGid]: seenOld};
   let changed = false;
   if(familyId === oldGid) {
     resetFamilyLocal();

@@ -423,8 +423,8 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
 // ── Upozornění ze skupin: preference a texty ─────────────────────────────────
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS v app.js
 const GROUP_NOTIF_DEFAULTS = {shop: 'instant', cal: 'instant', meal: 'evening', check: 'evening', pantry: 'evening',
-  quiet: {from: '22:00', to: '07:00'}, notifyChecked: false};
-const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry'];
+  habit: 'evening', react: 'instant', quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
+const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react'];
 const GN_MODES = ['instant', 'q15', 'evening'];       // + 'off' (nic)
 const INSTANT_SETTLE = 2 * 60000;                     // „Hned“: 2 min bez další změny…
 const INSTANT_MAX_WAIT = 10 * 60000;                  // …ale nejdéle 10 min od první neodeslané změny
@@ -446,8 +446,12 @@ function groupNotifPrefs(prof) {
   else if (raw.quiet && HHMM_RE.test(raw.quiet.from) && HHMM_RE.test(raw.quiet.to)) gp.quiet = {from: raw.quiet.from, to: raw.quiet.to};
   else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
   gp.notifyChecked = raw.notifyChecked === true;
+  gp.msInstant = raw.msInstant !== false;
   return gp;
 }
+// Milník (série návyku) přijde při „Milníky hned“ okamžitě i v režimu Večer / 15 min; „Vypnuto“ platí vždy
+const gnIsMs = (a) => a.module === 'habit' && a.action === 'streak';
+const gnModeOf = (a, gp) => gp[a.module] === 'off' ? 'off' : (gnIsMs(a) && gp.msInstant ? 'instant' : gp[a.module]);
 
 // Je pražský čas h:m v nočním klidu? Rozsah může přecházet přes půlnoc (22:00–07:00)
 function inQuiet(h, m, q) {
@@ -460,8 +464,9 @@ function inQuiet(h, m, q) {
 
 const czPlural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
 const dalsi = (k) => `a ${k} ${k >= 5 ? 'dalších' : 'další'}`;
-const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby']};
-const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách'};
+const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby'],
+  habit: ['🔥', 'Návyky'], react: ['👏', 'Reakce']};
+const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách', habit: 'v návycích', react: ''};
 // [sloveso, zbytek]; ženský tvar = první slovo slovesa + 'a' („začal sdílet“ → „začala sdílet“)
 const GN_VERB = {
   shop:   {add: ['přidal', 'do nákupu'], edit: ['upravil', 'v nákupu'], del: ['smazal', 'z nákupu'], done: ['koupil', ''], clear: ['vyčistil', 'koupené položky']},
@@ -469,7 +474,50 @@ const GN_VERB = {
   meal:   {edit: ['naplánoval', ''], del: ['vymazal', 'z jídelníčku'], plan: ['vygeneroval', 'nový jídelníček']},
   check:  {add: ['přidal', 'do checklistu'], edit: ['upravil', 'v checklistu'], del: ['smazal', 'z checklistu'], done: ['odškrtl', ''], clear: ['vyčistil', 'hotové položky'], share: ['začal sdílet', 'checklist']},
   pantry: {add: ['přidal', 'do zásob'], edit: ['upravil', 'zásoby'], del: ['smazal', 'ze zásob']},
+  habit:  {done: ['splnil', '']},
 };
+const RX_EM = {clap: '👏', fire: '🔥', heart: '❤️', strong: '💪'};
+// Titulek reakce podle prvního emoji (ženský tvar se tu nemění: „ti tleská“ platí pro oba)
+const RX_TITLE = {clap: 'ti tleská', fire: 'ti posílá 🔥', heart: 'ti posílá ❤️', strong: 'tě povzbuzuje 💪'};
+const gnEms = (a) => String(a.em || '').split(',').filter(k => RX_EM[k]);
+const gnRef = (a) => (typeof a.title === 'string' ? a.title.slice(0, 60).trim() : '');
+
+// Milník série: vlastní push (titulek podle délky série)
+function gnMilestonePush(a, fam) {
+  const name = gnAuthorName(fam, a), v = Number.isInteger(a.val) ? a.val : 0;
+  const what = gnRef(a);
+  const [title, phrase] = v === 7 ? [`🔥 ${name}: týden v řadě!`, 'celý týden bez přerušení']
+    : v === 30 ? [`🎉 ${name}: 30 dní v řadě!`, 'celý měsíc bez přerušení']
+    : v === 100 ? [`👑 ${name}: 100 dní v řadě!`, 'sto dní bez přerušení']
+    : [`🔥 ${name}: ${v} ${czPlural(v, 'den', 'dny', 'dní')} v řadě!`, 'bez přerušení'];
+  const body = `${what ? what + ' – ' : ''}${phrase}. Pošli ${a.g === 'f' ? 'jí' : 'mu'} 👏`;
+  return [title, body.slice(0, GN_BODY_MAX)];
+}
+// Reakce na mě: 1 reakce → „👏 Adam ti tleská / za 50 dřepů“, komentář → „💬 Adam:“, víc → souhrn
+function gnReactPush(acts, fam, groupName) {
+  if (acts.length === 1) {
+    const a = acts[0], name = gnAuthorName(fam, a), what = gnRef(a);
+    const msg = typeof a.msg === 'string' ? a.msg.trim() : '';
+    if (msg) return [`💬 ${name}:`, `„${msg.length > 120 ? msg.slice(0, 119) + '…' : msg}“${what ? ' · k ' + what : ''}`];
+    const ems = gnEms(a);
+    const title = `${RX_EM[ems[0]] || '👏'} ${name} ${RX_TITLE[ems[0]] || RX_TITLE.clap}`;
+    return [title, `${what ? 'za ' + what : ''}${ems.length > 1 ? ' ' + ems.map(k => RX_EM[k]).join('') : ''}`.trim() || '👏'];
+  }
+  const byAuthor = new Map();
+  const whats = new Set();
+  for (const a of acts) {
+    let au = byAuthor.get(a.uid);
+    if (!au) { au = {name: gnAuthorName(fam, a), ems: [], c: false}; byAuthor.set(a.uid, au); }
+    for (const k of gnEms(a)) if (!au.ems.includes(k)) au.ems.push(k);
+    if (typeof a.msg === 'string' && a.msg.trim()) au.c = true;
+    const w = gnRef(a); if (w) whats.add(w);
+  }
+  const parts = [...byAuthor.values()].map(au => `${au.name} ${au.ems.map(k => RX_EM[k]).join('')}${au.c ? '💬' : ''}`.trim());
+  const who = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} a ${parts[parts.length - 1]}` : parts[0];
+  let body = who + (whats.size === 1 ? ` k ${[...whats][0]}` : '');
+  if (body.length > GN_BODY_MAX) body = body.slice(0, GN_BODY_MAX - 1) + '…';
+  return [`👏 Reakce · ${groupName}`, body];
+}
 
 // Jméno autora ze členů skupiny (server nevěří jménu z klienta); a.name jen pro bývalé členy
 function gnAuthorName(fam, a) {
@@ -546,6 +594,17 @@ function gnEveningBody(byModule) {
       const nOther = sum(acts.filter(a => a.action !== 'add'));
       if (nAdd) sub.push(`${nAdd} ${czPlural(nAdd, 'nová událost', 'nové události', 'nových událostí')}`);
       if (nOther) sub.push(`${nOther} ${czPlural(nOther, 'změna', 'změny', 'změn')}`);
+    } else if (mod === 'habit') {
+      // Lidi a počty, ne názvy (souhrn má zůstat krátký)
+      const nDone = sum(acts.filter(a => a.action === 'done'));
+      const nMs = acts.filter(a => a.action === 'streak').length;
+      const people = new Set(acts.map(a => a.uid)).size;
+      if (nDone) sub.push(`${nDone} ${czPlural(nDone, 'splněný návyk', 'splněné návyky', 'splněných návyků')}`);
+      if (nMs) sub.push(`🎉 ${nMs} ${czPlural(nMs, 'milník', 'milníky', 'milníků')}`);
+      if (people > 1) sub.push(`od ${people} ${czPlural(people, 'člověka', 'lidí', 'lidí')}`);
+    } else if (mod === 'react') {
+      const n = acts.length;
+      sub.push(`${n} ${czPlural(n, 'reakce na tebe', 'reakce na tebe', 'reakcí na tebe')}`);
     } else {
       const n = sum(acts);
       sub.push(`${n} ${czPlural(n, 'změna', 'změny', 'změn')}`);
@@ -747,14 +806,17 @@ exports.sendScheduledNotifications = onSchedule(
           // Sdílení modulů jako v klientu: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
           // podle shareShop / shareMeal / shareChecklist (checklist sdílený, dokud není false), zásoby vždy
           const isMain = gid === prof.familyId;
+          // Osobní moduly (sdílené návyky, reakce) v každé skupině
           const shared = {cal: !!fam.shareCal, shop: isMain && !!fam.shareShop, meal: isMain && !!fam.shareMeal,
-            check: isMain && fam.shareChecklist !== false, pantry: isMain};
+            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, react: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
           // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
           for (const mode of GN_MODES) if (typeof cur[mode] !== 'number' || !Number.isFinite(cur[mode])) updates.push([gid, mode, upperMs]);
           const from = {};
-          for (const mode of new Set(mods.map(k => gp[k]))) {
+          const modes = new Set(mods.map(k => gp[k]));
+          if (gp.msInstant && mods.includes('habit')) modes.add('instant'); // milníky hned
+          for (const mode of modes) {
             const c = cur[mode];
             if (typeof c === 'number' && Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
           }
@@ -776,14 +838,17 @@ exports.sendScheduledNotifications = onSchedule(
             if (t0 !== null && nowMs - t0 >= INSTANT_MAX_WAIT - CRON_STEP_MS) due.push(mode);
           }
           if (!due.length) continue;
+          // „Hlásit i odškrtnuté“ jen u nákupu a checklistu; reakce jen adresátovi
           const wanted = (a) => typeof a.uid === 'string' && a.uid !== uid   // autor nedostane nic
-            && mods.includes(a.module) && (a.action !== 'done' || gp.notifyChecked);
+            && mods.includes(a.module)
+            && (a.action !== 'done' || !(a.module === 'shop' || a.module === 'check') || gp.notifyChecked)
+            && (a.module !== 'react' || a.to === uid);
           const groupName = String(fam.groupName || 'Skupina').slice(0, 30);
           for (const mode of due) {
             const {acts, end} = await loadRange(gid, from[mode]);
             // Kurzor se posune i bez odeslání (jinak by se backlog opakoval) a nikdy necouvá
             updates.push([gid, mode, Math.max(from[mode], end)]);
-            const list = acts.filter(a => a._ts > from[mode] && a._ts <= end && gp[a.module] === mode && wanted(a));
+            const list = acts.filter(a => a._ts > from[mode] && a._ts <= end && gnModeOf(a, gp) === mode && wanted(a));
             if (!list.length) continue;
             const byModule = new Map();
             for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
@@ -791,7 +856,20 @@ exports.sendScheduledNotifications = onSchedule(
               pushes.push([`👨‍👩‍👧 Dnes ve skupině ${groupName}`, gnEveningBody(byModule), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}}]);
             } else {
               for (const [mod, la] of byModule) {
-                pushes.push([`${GN_MOD[mod][0]} ${GN_MOD[mod][1]} · ${groupName}`, gnModuleText(mod, la, fam),
+                if (mod === 'react') {
+                  const [title, body] = gnReactPush(la, fam, groupName);
+                  pushes.push([title, body, `grp-${gid}-react`, {data: {open: 'grpfeed', gid, module: mod}}]);
+                  continue;
+                }
+                // Milník má vlastní tag (další souhrn návyků ho nepřepíše)
+                const rest = la.filter(a => !gnIsMs(a));
+                for (const a of la.filter(gnIsMs)) {
+                  const [title, body] = gnMilestonePush(a, fam);
+                  const ref = String(a.ref || a.uid).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+                  pushes.push([title, body, `grp-${gid}-ms-${ref}`, {data: {open: 'grpfeed', gid, module: mod}}]);
+                }
+                if (!rest.length) continue;
+                pushes.push([`${GN_MOD[mod][0]} ${GN_MOD[mod][1]} · ${groupName}`, gnModuleText(mod, rest, fam),
                   `grp-${gid}-${mod}`, {data: {open: 'grpfeed', gid, module: mod}}]);
               }
             }
@@ -1109,19 +1187,25 @@ async function leaveGroupForDelete(gid, uid) {
   return outcome;
 }
 
-// Aktivita uživatele ve skupině (feed „Co je nového“, TTL 7 dní) zmizí hned, ne až přes TTL.
-// Levné: dotaz uid == (automatický index), jen záznamy za posledních 7 dní
+// Stopy uživatele ve skupině zmizí hned, ne až přes TTL: aktivita (feed, 7 dní), sdílené návyky (zrcadla),
+// reakce a komentáře, které dal (30 dní), i reakce na jeho položky (ty už neexistují).
+// Levné: dotazy na jedno pole (automatický index)
 const ACT_DELETE_BATCH = 400;
-async function deleteUserActivity(gid, uid) {
-  const col = db.collection(`families/${gid}/activity`);
+async function deleteWhere(col, field, uid) {
   for (let i = 0; i < 20; i++) {
-    const s = await col.where('uid', '==', uid).limit(ACT_DELETE_BATCH).get();
+    const s = await col.where(field, '==', uid).limit(ACT_DELETE_BATCH).get();
     if (!s.docs.length) return;
     const b = db.batch();
     s.docs.forEach(d => b.delete(d.ref));
     await b.commit();
     if (s.docs.length < ACT_DELETE_BATCH) return;
   }
+}
+async function deleteUserActivity(gid, uid) {
+  await deleteWhere(db.collection(`families/${gid}/activity`), 'uid', uid);
+  await deleteWhere(db.collection(`families/${gid}/shared`), 'ownerUid', uid);
+  await deleteWhere(db.collection(`families/${gid}/reactions`), 'uid', uid);
+  await deleteWhere(db.collection(`families/${gid}/reactions`), 'to', uid);
 }
 
 exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
@@ -1145,7 +1229,8 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
     const memberSnap = await db.collection('families')
       .where(new FieldPath('members', uid, 'role'), 'in', ['admin', 'member']).get();
     memberSnap.forEach(d => gids.add(d.id));
-    // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5), jeho aktivita (feed) se maže
+    // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5), jeho aktivita (feed),
+    //     sdílené návyky a reakce se mažou
     step = 'b';
     for (const gid of gids) {
       const outcome = await leaveGroupForDelete(gid, uid);
@@ -1229,16 +1314,12 @@ function tsAfter(a, b) { return tsBefore(b, a); }
 function sameVal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function deadlineErr() { return Object.assign(new Error('deadline'), {code: 'deadline'}); }
 
-// Historie změn (families/{id}/activity) se do nové skupiny nepřenáší, jinak by všem naskočily staré „nové“ záznamy
-function skipRotateCol(srcRef, col) { return col.id === 'activity' && srcRef.parent?.id === 'families'; }
-
 // Zkopíruje všechny podkolekce src → dst (rekurzivně, i dokumenty bez dat s vnořenými kolekcemi);
 // copied = cesty zapsané v cíli (delta pak pozná dokument, který přepnutý klient smazal);
 // check() hlídá čas před každou dávkou
 async function copySubcollections(srcRef, dstRef, stats, copied, check) {
   const cols = await srcRef.listCollections();
   for (const col of cols) {
-    if (skipRotateCol(srcRef, col)) continue;
     const refs = await col.listDocuments();
     for (let i = 0; i < refs.length; i += COPY_BATCH) {
       check();
@@ -1267,7 +1348,6 @@ async function copySubcollections(srcRef, dstRef, stats, copied, check) {
 async function copyDelta(srcRef, dstRef, since, copyEnd, copied, stats, check) {
   const cols = await srcRef.listCollections();
   for (const col of cols) {
-    if (skipRotateCol(srcRef, col)) continue;
     const refs = await col.listDocuments();
     for (let i = 0; i < refs.length; i += COPY_BATCH) {
       check();
@@ -1288,7 +1368,9 @@ async function copyDelta(srcRef, dstRef, since, copyEnd, copied, stats, check) {
   }
 }
 
-// Přepne skupinu v profilu člena (hlavní i vedlejší); transakce nepřepíše souběžné změny profilu
+// Přepne skupinu v profilu člena (hlavní i vedlejší); transakce nepřepíše souběžné změny profilu.
+// Kopíruje se všechno včetně activity (reakce a_<id> na ni odkazují), proto se přenese i „přečteno“
+// (groupFeedSeen), jinak by po změně kódu naskočila celá historie jako nová.
 async function swapGroupInProfile(uid, from, to) {
   const ref = db.doc(`users/${uid}/profile/main`);
   return db.runTransaction(async (tx) => {
@@ -1301,7 +1383,8 @@ async function swapGroupInProfile(uid, from, to) {
       upd.extraGroupIds = [...new Set(p.extraGroupIds.map(g => g === from ? to : g))];
     }
     if (!Object.keys(upd).length) return false;
-    tx.update(ref, upd);
+    const seen = p.groupFeedSeen && typeof p.groupFeedSeen === 'object' ? Number(p.groupFeedSeen[from]) : NaN;
+    tx.update(ref, ...Object.entries(upd).flat(), new FieldPath('groupFeedSeen', to), Number.isFinite(seen) ? seen : Date.now());
     return true;
   });
 }
