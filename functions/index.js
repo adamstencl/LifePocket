@@ -9,17 +9,102 @@ const db = getFirestore();
 
 // ── Claude Proxy ──────────────────────────────────────────────────────────────
 // Volání Claude API ze serveru — klíč nikdy neopustí backend
+const DAILY_LIMIT = 50;
+// Strop vstupu (ochrana nákladů). Chat = systém (~2 000 + paměť 6 000 + kontext 7 000) + 10 zpráv;
+// souhrn paměti posílá celou starší konverzaci v jedné zprávě, proto znaky s rezervou
+const MAX_MESSAGES = 22;          // včetně systémové zprávy
+const MAX_INPUT_CHARS = 60000;    // součet všech textů včetně systému
+const DEFAULT_MAX_TOKENS = 500;
+const MAX_TOKENS_CAP = 2000;
+const CLAUDE_TIMEOUT_MS = 45000;
+
+// Klíč z config/secrets: načte se jednou za instanci, neúspěch se necachuje (příště znovu)
+let cachedClaudeKey = null;
+async function getClaudeKey() {
+  if (cachedClaudeKey) return cachedClaudeKey;
+  const secretsSnap = await db.doc('config/secrets').get();
+  if (!secretsSnap.exists) throw new HttpsError('not-found', 'Konfigurace AI není dostupná.');
+  const secrets = secretsSnap.data();
+  const claudeKey = secrets.claudeKey || secrets.cladeKey || secrets.ClaudeKey || secrets.claude_key;
+  if (!claudeKey) throw new HttpsError('not-found', 'Claude API klíč není nastaven.');
+  cachedClaudeKey = claudeKey;
+  return claudeKey;
+}
+
+// Obsah zprávy: řetězec, nebo pole textových bloků {type:'text', text}. Vrací {content, chars} nebo null.
+function normContent(c) {
+  if (typeof c === 'string') return {content: c, chars: c.length};
+  if (!Array.isArray(c) || c.length === 0) return null;
+  const blocks = [];
+  let chars = 0;
+  for (const b of c) {
+    if (!b || typeof b !== 'object' || b.type !== 'text' || typeof b.text !== 'string') return null;
+    blocks.push({type: 'text', text: b.text});
+    chars += b.text.length;
+  }
+  return {content: blocks, chars};
+}
+
+// Validace vstupu z klienta. Klient (callClaude v app.js) posílá systémový prompt jako zprávu
+// s rolí 'system' (nejvýš jednu); ostatní role jen user/assistant. Vrací {system, messages, maxTokens}.
+function validateClaudeInput(data) {
+  const bad = (msg) => new HttpsError('invalid-argument', msg);
+  const {messages, maxTokens} = data || {};
+  if (!Array.isArray(messages) || messages.length === 0) throw bad('Chybí zprávy pro AI.');
+  if (messages.length > MAX_MESSAGES) throw bad(`Příliš mnoho zpráv (max. ${MAX_MESSAGES}).`);
+  let system = '';
+  let hasSystem = false;
+  let total = 0;
+  const out = [];
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') throw bad('Neplatná zpráva pro AI.');
+    const norm = normContent(m.content);
+    if (!norm) throw bad('Neplatný obsah zprávy (jen text).');
+    total += norm.chars;
+    if (m.role === 'system') {
+      if (hasSystem) throw bad('Povolena je jen jedna systémová zpráva.');
+      hasSystem = true;
+      system = norm.content;
+    } else if (m.role === 'user' || m.role === 'assistant') {
+      out.push({role: m.role, content: norm.content});
+    } else {
+      throw bad('Neplatná role zprávy.');
+    }
+  }
+  if (!out.length) throw bad('Chybí zpráva uživatele.');
+  if (total > MAX_INPUT_CHARS) throw bad('Text pro AI je příliš dlouhý. Zkrať ho prosím.');
+  const mt = (Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= MAX_TOKENS_CAP) ? maxTokens : DEFAULT_MAX_TOKENS;
+  return {system, messages: out, maxTokens: mt};
+}
+
+// Vrácení odečteného dotazu (výpadek Anthropicu) — jen ve stejný den a nikdy pod 0
+async function refundRate(rateRef, today) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(rateRef);
+      const d = snap.exists ? snap.data() : null;
+      if (!d || d.date !== today || !(d.count > 0)) return;
+      tx.update(rateRef, {count: FieldValue.increment(-1)});
+    });
+  } catch(e) { console.error('[LP] Vrácení AI limitu selhalo:', e.code || e.message); }
+}
+
 exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (request) => {
   // 1. Auth check
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
 
-  // 2. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
+  // 2. Validace vstupu — před odečtem limitu, neplatný dotaz limit nespotřebuje
+  const input = validateClaudeInput(request.data);
+
+  // 3. Claude API klíč (cache v instanci; admin přístup, klient config/** číst nemůže)
+  const claudeKey = await getClaudeKey();
+
+  // 4. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
   // aby paralelní requesty nemohly limit obejít)
   // Den počítáme v čase Europe/Prague (limit se nuluje o naší půlnoci, ne v UTC)
-  const today = new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(new Date());
+  const today = pragueDS(new Date());
   const rateRef = db.doc(`rateLimits/${uid}`);
-  const DAILY_LIMIT = 50;
   const todayCount = await db.runTransaction(async (tx) => {
     const rateSnap = await tx.get(rateRef);
     const rateData = rateSnap.exists ? rateSnap.data() : {};
@@ -31,70 +116,100 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
     return count;
   });
 
-  // 3. Načti Claude API klíč z Firestore (admin přístup, klient to nemůže číst)
-  const secretsSnap = await db.doc('config/secrets').get();
-  if (!secretsSnap.exists) throw new HttpsError('not-found', 'Konfigurace AI není dostupná.');
-  const secrets = secretsSnap.data();
-  const claudeKey = secrets.claudeKey || secrets.cladeKey || secrets.ClaudeKey || secrets.claude_key;
-  if (!claudeKey) throw new HttpsError('not-found', 'Claude API klíč není nastaven.');
-
-  // 4. Validace vstupu
-  const {messages, maxTokens = 500} = request.data;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    throw new HttpsError('invalid-argument', 'Chybí messages.');
-  }
-  if (maxTokens > 2000) throw new HttpsError('invalid-argument', 'maxTokens příliš vysoké.');
-
   // 5. Zavolej Claude API
-  const systemMsg = messages.find(m => m.role === 'system');
-  const userMsgs = messages.filter(m => m.role !== 'system');
   const https = require('https');
   const body = JSON.stringify({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: maxTokens,
-    system: systemMsg?.content || '',
-    messages: userMsgs
+    max_tokens: input.maxTokens,
+    system: input.system,
+    messages: input.messages
   });
 
-  const result = await new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve({status: res.statusCode, body: JSON.parse(data)}); }
-        catch(e) { reject(new Error('Nelze parsovat odpověď Claude API')); }
+  let result;
+  try {
+    result = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Length': Buffer.byteLength(body)
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          // Neparsovatelné tělo (např. HTML stránka brány při 502) → body null, rozhodne status
+          let parsed = null;
+          try { parsed = JSON.parse(data); } catch(e) { /* nic */ }
+          resolve({status: res.statusCode, body: parsed});
+        });
+        res.on('error', reject);
       });
+      req.setTimeout(CLAUDE_TIMEOUT_MS, () => {
+        const err = new Error('Claude API timeout');
+        err.lpTimeout = true;
+        req.destroy(err);
+      });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
     });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
+  } catch(e) {
+    // Timeout nebo síťová chyba = dotaz neproběhl → vrať odečtený limit
+    await refundRate(rateRef, today);
+    if (e && e.lpTimeout) throw new HttpsError('deadline-exceeded', 'AI neodpověděla včas. Zkus to prosím znovu.');
+    throw new HttpsError('unavailable', 'AI je teď nedostupná. Zkus to prosím za chvíli.');
+  }
 
   if (result.status !== 200) {
+    const errType = result.body?.error?.type;
+    const overloaded = result.status >= 500 || result.status === 529 || errType === 'overloaded_error';
+    if (overloaded) {
+      await refundRate(rateRef, today);
+      throw new HttpsError('unavailable', 'AI je teď přetížená. Zkus to prosím za chvíli (dotaz se nezapočítal).');
+    }
+    // Neplatný klíč → příště načíst config/secrets znovu (klíč mohl být vyměněn)
+    if (result.status === 401 || result.status === 403) cachedClaudeKey = null;
     const msg = result.body?.error?.message || `Claude API chyba: ${result.status}`;
     throw new HttpsError('internal', msg);
   }
-  const content = result.body.content?.[0]?.text;
+  const content = result.body?.content?.[0]?.text;
   if (!content) throw new HttpsError('internal', 'Claude API: prázdná odpověď');
 
   return {text: content, remaining: DAILY_LIMIT - todayCount - 1};
 });
 
 // ── Helpers ──────────────────────────────────────────────
+// Pražské datum YYYY-MM-DD pro daný okamžik
+function pragueDS(date) {
+  return new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(date);
+}
+
+// Pražský „nástěnný“ čas bez sekund: {prague (Date v lokální reprezentaci), h, m, today, dow, tmrwMD}
+function pragueNow(date = new Date()) {
+  const prague = new Date(date.toLocaleString('en-US', {timeZone: 'Europe/Prague'}));
+  // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
+  prague.setSeconds(0, 0);
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const tmrw = new Date(prague);
+  tmrw.setDate(tmrw.getDate() + 1);
+  return {
+    prague, h: prague.getHours(), m: prague.getMinutes(),
+    today: ymd(prague), dow: prague.getDay(), // den v týdnu v Europe/Prague
+    tmrwMD: ymd(tmrw).slice(5),
+  };
+}
+
+// Čas spadá do 5min okna běhu cronu; porovnání v minutách dne, ať okno přechází přes hodinu i půlnoc (07:58, 23:57)
 function isTimeMatch(h, m, timeStr) {
   if (!timeStr) return false;
   const [th, tm] = timeStr.split(':').map(Number);
-  return h === th && m >= tm && m < tm + 5;
+  const t = th * 60 + tm, n = h * 60 + m;
+  return ((n - t + 1440) % 1440) < 5;
 }
 
 async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
@@ -290,19 +405,30 @@ function isHabitDueToday(habit, today, dow) {
   return true;
 }
 
+// Události kolekce potřebné pro cron (místo celé kolekce):
+// dnešní (date == today) + každoročně opakované (repeat == 'yes'); narozeniny zvlášť a jen když jsou potřeba.
+// Vrací dokumenty bez duplicit, seřazené podle ID (stejné pořadí jako dřív celá kolekce).
+async function loadTimedEvents(path, today) {
+  const [todaySnap, repSnap] = await Promise.all([
+    db.collection(path).where('date', '==', today).get(),
+    db.collection(path).where('repeat', '==', 'yes').get(),
+  ]);
+  const byId = new Map();
+  for (const d of [...todaySnap.docs, ...repSnap.docs]) byId.set(d.id, d);
+  return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+async function loadBirthdays(path) {
+  return (await db.collection(path).where('type', '==', 'birthday').get()).docs;
+}
+
+const CRON_BATCH = 20;
+
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
-  {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1'},
+  {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 240},
   async () => {
-    const now = new Date();
-    const pragueStr = now.toLocaleString('en-US', {timeZone: 'Europe/Prague'});
-    const prague = new Date(pragueStr);
-    // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
-    prague.setSeconds(0, 0);
-    const h = prague.getHours();
-    const m = prague.getMinutes();
-    const today = `${prague.getFullYear()}-${String(prague.getMonth()+1).padStart(2,'0')}-${String(prague.getDate()).padStart(2,'0')}`;
-    const dow = prague.getDay(); // den v týdnu v Europe/Prague
+    const {prague, h, m, today, dow, tmrwMD} = pragueNow();
+    const todayMD = today.slice(5);
 
     console.log(`[LP] Cron: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}, datum: ${today}`);
 
@@ -311,14 +437,31 @@ exports.sendScheduledNotifications = onSchedule(
     const userRefs = await db.collection('users').listDocuments();
     let sentTotal = 0; // počet skutečně odeslaných notifikací (zařízení)
 
-    for (const userRef of userRefs) {
-      const uid = userRef.id;
+    // Skupiny: dokument a události čteme jednou za běh pro všechny členy (cache slibů podle familyId)
+    const famCache = new Map();
+    const famEntry = (fid) => {
+      let e = famCache.get(fid);
+      if (!e) {
+        e = {doc: db.doc(`families/${fid}`).get(), events: null, bdays: null};
+        e.doc.catch(() => {}); // chybu řeší každý člen sám (jako dřív), ne unhandled rejection
+        famCache.set(fid, e);
+      }
+      return e;
+    };
+    const lazy = (e, key, fn) => {
+      // Zamítnutý slib z cache smazat, ať další člen skupiny zkusí čtení znovu
+      if (!e[key]) { const p = fn(); e[key] = p; p.catch(() => { if (e[key] === p) delete e[key]; }); }
+      return e[key];
+    };
+
+    const processUser = async (uid) => {
       try {
         const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
-        if (!profileSnap.exists) continue;
+        if (!profileSnap.exists) return;
 
         const prof = profileSnap.data();
-        if (!collectTokens(prof).length) continue;
+        // Bez tokenu nemá smysl nic dalšího číst
+        if (!collectTokens(prof).length) return;
         const push = async (title, body, tag, options) => {
           const res = await sendPushToUser(uid, prof, title, body, tag, options);
           sentTotal += res.sent;
@@ -394,56 +537,62 @@ exports.sendScheduledNotifications = onSchedule(
         }
 
         // ── Narozeniny + Události — osobní i rodinné ──
-        const todayMD = today.slice(5);
-        const tmrwDate = new Date(prague);
-        tmrwDate.setDate(tmrwDate.getDate() + 1);
-        const tmrwMD = `${String(tmrwDate.getMonth()+1).padStart(2,'0')}-${String(tmrwDate.getDate()).padStart(2,'0')}`;
+        // Narozeniny se posílají jen v ranním čase uživatele → jen tehdy je čteme
+        const bdayRun = isTimeMatch(h, m, morningTime);
 
-        // Sbírej události z osobního i rodinného kalendáře
-        const evSnaps = [await db.collection(`users/${uid}/events`).get()];
+        // Osobní kalendář
+        const evGroups = [await loadTimedEvents(`users/${uid}/events`, today)];
+        const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
         if (prof.familyId) {
           try {
             // Události skupiny jen skutečnému členovi (odebraný člen může mít v profilu staré familyId)
-            const famSnap = await db.doc(`families/${prof.familyId}`).get();
+            const fid = prof.familyId;
+            const fe = famEntry(fid);
+            const famSnap = await fe.doc;
             if (famSnap.exists && famSnap.data().members?.[uid]) {
-              evSnaps.push(await db.collection(`families/${prof.familyId}/events`).get());
+              evGroups.push(await lazy(fe, 'events', () => loadTimedEvents(`families/${fid}/events`, today)));
+              if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
             }
           } catch(e) { /* rodina nemusí existovat */ }
         }
-        const allEvDocs = evSnaps.flatMap(s => s.docs);
 
-        for (const evDoc of allEvDocs) {
+        // Narozeniny — ráno
+        for (const evDoc of bdayGroups.flat()) {
           const ev = evDoc.data();
-          if (!ev.date) continue;
-
-          // Narozeniny — ráno
-          if (ev.type === 'birthday' && isTimeMatch(h, m, morningTime)) {
-            const bday = ev.date.slice(5);
-            if (bday === todayMD) {
-              try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
-              catch(e) { console.error(`[LP] bday push:`, e.message); }
-            } else if (bday === tmrwMD) {
-              try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
-              catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
-            }
+          if (!ev.date || ev.type !== 'birthday') continue;
+          const bday = ev.date.slice(5);
+          if (bday === todayMD) {
+            try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
+            catch(e) { console.error(`[LP] bday push:`, e.message); }
+          } else if (bday === tmrwMD) {
+            try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
+            catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
           }
+        }
 
-          // Události s časem — hodinu předem
-          if (ev.type === 'event' && ev.time) {
-            const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
-            if (evDate !== today) continue;
-            const evTime = new Date(`${today}T${ev.time}:00`);
-            const diffMin = Math.round((evTime - prague) / 60000);
-            // Okno 5 minut = jeden běh cronu → upozornění jen jednou
-            if (diffMin >= 58 && diffMin < 63) {
-              try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
-              catch(e) { console.error(`[LP] event push:`, e.message); }
-            }
+        // Události s časem — hodinu předem
+        for (const evDoc of evGroups.flat()) {
+          const ev = evDoc.data();
+          if (!ev.date || ev.type !== 'event' || !ev.time) continue;
+          const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
+          if (evDate !== today) continue;
+          const evTime = new Date(`${today}T${ev.time}:00`);
+          const diffMin = Math.round((evTime - prague) / 60000);
+          // Okno 5 minut = jeden běh cronu → upozornění jen jednou
+          if (diffMin >= 58 && diffMin < 63) {
+            try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
+            catch(e) { console.error(`[LP] event push:`, e.message); }
           }
         }
       } catch(userErr) {
         console.error(`[LP] Chyba při zpracování uid=${uid}:`, userErr.message);
       }
+    };
+
+    // Dávky po 20 uživatelích paralelně; chyba jednoho neshodí běh
+    for (let i = 0; i < userRefs.length; i += CRON_BATCH) {
+      const res = await Promise.allSettled(userRefs.slice(i, i + CRON_BATCH).map(r => processUser(r.id)));
+      res.forEach(r => { if (r.status === 'rejected') console.error('[LP] Cron uživatel selhal:', r.reason && r.reason.message); });
     }
 
     console.log(`[LP] Cron hotovo, odesláno ${sentTotal} notifikací`);
@@ -467,11 +616,6 @@ function toMillis(v) {
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v.getTime();
   if (typeof v.toMillis === 'function') { try { return v.toMillis(); } catch(e) { return null; } }
   return null;
-}
-
-// Pražské datum YYYY-MM-DD pro daný okamžik
-function pragueDS(date) {
-  return new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(date);
 }
 
 exports.dailyStats = onSchedule(
