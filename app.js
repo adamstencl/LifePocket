@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.40';
+const APP_VERSION = '4.41';
 const CHANGELOG = [
+  { v:'4.41', items:[
+    '🏅 Odznaky a týdenní souhrn od společníka – sdílej své úspěchy'
+  ], en:[
+    '🏅 Badges and a weekly summary from your companion – share your achievements'
+  ]},
   { v:'4.40', items:[
     '🌱 Body, úrovně a štíty série – tvůj společník roste s tebou',
     '❄️ Za 7 dní v řadě získáš štít, který sérii sám podrží, když jeden den vynecháš',
@@ -5606,7 +5611,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-share','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ cm(id); break; }
+  for(const id of ['m-share','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-share') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -5780,6 +5785,224 @@ window.openBadge=id=>{
   om('m-badge');
   setTimeout(()=>document.getElementById('badge-ok')?.focus(),50);
 };
+
+// ── KARTA KE SDÍLENÍ (canvas 1080×1350, docs/NAVRH-FUNKCE-2.md §3): obecný renderer pro odznak i týden ──
+// Karta je vždy v tmavém brandu, skládá se jen v zařízení a obsahuje jen čísla (žádné texty z deníku ani AI).
+const SC_W=1080, SC_H=1350, SC={bg:'#0f0f12',card:'#1e1e26',gold:'#f5c842',gold2:'#e0954a',text:'#f0f0f5',text2:'#9090a8',green:'#3dd68c',line:'#32323f'};
+const SC_EMOJI='"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+let _scFile=null, _scUrl=null, _scSpec=null, _scSeq=0;
+async function ensureCardFonts(sample){
+  if(!document.fonts?.load) return;
+  const tx=String(sample||'')+' \u011b\u0161\u010d\u0159\u017e\u00fd\u00e1\u00ed\u00e9\u016f\u00fa\u0148 0123456789 %\u2013\u201e\u201c'; // vzorek znaků latin-ext (escapy: mimo ráčnu českých textů)
+  const all=Promise.all([
+    document.fonts.load('italic 700 56px "Playfair Display"',tx),
+    document.fonts.load('700 170px "Playfair Display"',tx),
+    document.fonts.load('600 40px "Crimson Pro"',tx),
+    document.fonts.load('italic 400 38px "Crimson Pro"',tx),
+  ]).then(()=>document.fonts.ready);
+  await Promise.race([all.catch(()=>{}),new Promise(r=>setTimeout(r,3000))]); // offline: záloha Georgia
+}
+// Nastaví písmo a zmenšuje ho, dokud se text nevejde do šířky
+function scFit(c,text,font,size,maxW){ let sz=size; c.font=font.replace('{s}',sz); while(c.measureText(text).width>maxW&&sz>20){ sz-=2; c.font=font.replace('{s}',sz); } }
+function scRound(c,x,y,w,h,r){ c.beginPath(); if(c.roundRect) c.roundRect(x,y,w,h,r); else c.rect(x,y,w,h); }
+// spec: {range, em, title, sub, name, big, bigLbl, quote, line, bars:[{lbl,p}], tiles:[[em,val,lbl]]} → Promise<Blob>
+async function drawShareCard(spec){
+  await ensureCardFonts([spec.title,spec.sub,spec.name,spec.bigLbl,spec.quote,spec.line].join(' '));
+  const cv=document.createElement('canvas'); cv.width=SC_W; cv.height=SC_H;
+  const c=cv.getContext('2d');
+  if(!c) return null;
+  const PF='"Playfair Display", Georgia, serif', CP='"Crimson Pro", Georgia, serif';
+  c.fillStyle=SC.bg; c.fillRect(0,0,SC_W,SC_H);
+  const g=c.createRadialGradient(900,140,0,900,140,520); g.addColorStop(0,'rgba(245,200,66,.16)'); g.addColorStop(1,'rgba(245,200,66,0)');
+  c.fillStyle=g; c.fillRect(0,0,SC_W,SC_H);
+  // Hlavička: logo (stejný origin → canvas zůstane čistý), název, rozsah nebo datum
+  try{ const img=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src='icon-512.png'; });
+    c.save(); scRound(c,80,80,72,72,16); c.clip(); c.drawImage(img,80,80,72,72); c.restore(); }catch(e){}
+  c.textBaseline='middle';
+  const lg=c.createLinearGradient(172,0,460,0); lg.addColorStop(0,SC.gold); lg.addColorStop(1,SC.gold2);
+  c.fillStyle=lg; c.font='italic 700 44px '+PF; c.textAlign='left'; c.fillText('LifePocket',172,118);
+  if(spec.range){ c.fillStyle=SC.text2; c.textAlign='right'; scFit(c,spec.range,'600 {s}px '+CP,32,420); c.fillText(spec.range,1000,118); }
+  c.textAlign='center';
+  // Kruh s emoji (avatar nebo odznak)
+  const compact=!!(spec.bars&&spec.bars.length), r=compact?110:170, cy=compact?330:450;
+  c.beginPath(); c.arc(540,cy,r,0,Math.PI*2); c.fillStyle=SC.card; c.fill();
+  c.lineWidth=compact?4:6; c.strokeStyle=SC.gold; c.stroke();
+  c.fillStyle=SC.text; c.font=Math.round(r*1.05)+'px '+SC_EMOJI; c.fillText(spec.em||'⭐',540,cy+8);
+  let y=cy+r+(compact?70:100);
+  c.fillStyle=SC.text; scFit(c,spec.title||'','italic 700 {s}px '+PF,compact?56:76,940); c.fillText(spec.title||'',540,y); y+=compact?52:72;
+  if(spec.sub){ c.fillStyle=SC.gold; scFit(c,spec.sub,'600 {s}px '+CP,40,940); c.fillText(spec.sub,540,y); y+=56; }
+  if(spec.name){ c.fillStyle=SC.text2; scFit(c,spec.name,'600 {s}px '+CP,36,800); c.fillText(spec.name,540,y); y+=50; }
+  if(spec.big){ y+=78; c.fillStyle=SC.gold; scFit(c,spec.big,'700 {s}px '+PF,170,940); c.fillText(spec.big,540,y); y+=100;
+    if(spec.bigLbl){ c.fillStyle=SC.text2; c.font='600 40px '+CP; c.fillText(spec.bigLbl,540,y); y+=60; } }
+  if(spec.quote){ c.fillStyle=SC.text; scFit(c,spec.quote,'italic 400 {s}px '+CP,38,960); c.fillText(spec.quote,540,y); y+=56; }
+  if(spec.line){ c.fillStyle=SC.text2; scFit(c,spec.line,'600 {s}px '+CP,34,940); c.fillText(spec.line,540,y); y+=56; }
+  // Sloupce po dnech (procenta, null = nic na řadě)
+  if(compact){
+    const bottom=y+120;
+    spec.bars.forEach((b,i)=>{ const x=180+i*120, p=b.p, h=p==null?6:Math.max(8,p/100*110);
+      c.fillStyle=p==null?SC.line:p>=80?SC.green:p>=50?SC.gold:SC.gold2; scRound(c,x-30,bottom-h,60,h,10); c.fill();
+      c.fillStyle=SC.text2; c.font='600 30px '+CP; c.fillText(b.lbl,x,bottom+34); });
+    y=bottom+70;
+  }
+  // Dlaždice
+  const tiles=(spec.tiles||[]).slice(0,3);
+  if(tiles.length){
+    const tw=280, gap=40, x0=(SC_W-(tiles.length*tw+(tiles.length-1)*gap))/2, ty=Math.min(Math.max(y,compact?0:1060),SC_H-240);
+    tiles.forEach(([em,val,lbl],i)=>{ const x=x0+i*(tw+gap);
+      c.fillStyle=SC.card; scRound(c,x,ty,tw,140,24); c.fill();
+      c.fillStyle=SC.text; c.font='44px '+SC_EMOJI; c.fillText(em,x+tw/2,ty+38);
+      c.font='700 40px '+PF; c.fillText(String(val),x+tw/2,ty+86);
+      c.fillStyle=SC.text2; scFit(c,lbl,'600 {s}px '+CP,26,tw-20); c.fillText(lbl,x+tw/2,ty+122); });
+  }
+  c.fillStyle=SC.text2; c.font='600 34px '+CP; c.fillText('lifepocket.app',540,1295);
+  return new Promise(res=>{ try{ cv.toBlob(res,'image/png'); }catch(e){ res(null); } });
+}
+// Modal sdílení: obrázek se vyrenderuje hned (a po změně přepínače), aby navigator.share běžel přímo v gestu (iOS)
+function openShareCard(kind,arg){
+  if(!game) return;
+  _scSpec={kind,arg};
+  const tt=document.getElementById('share-title'), body=document.getElementById('share-body');
+  if(!tt||!body) return;
+  tt.textContent=t(kind==='badge'?'game.share.titleBadge':'game.share.titleWeek');
+  const nameOn=!!lsGet('lp_share_name',false);
+  body.innerHTML=`<img id="sc-prev" class="sc-prev" alt="${tH('game.share.prev')}">
+    <label class="togrow sc-tog"><div class="toginf"><div class="tognm">${tH('game.share.name')}</div></div>
+      <span class="togswitch"><input type="checkbox" id="sc-name" ${nameOn?'checked':''} onchange="renderShareCard()"><span class="togsl"></span></span></label>
+    <div class="sc-actions">
+      <button type="button" class="btn-p" id="sc-share" onclick="shareCardNow()" disabled>${tH('game.share.preparing')}</button>
+      <button type="button" class="btn-s" id="sc-dl" onclick="downloadShareCard()" disabled>${tH('game.share.save')}</button>
+    </div>`;
+  om('m-share');
+  renderShareCard();
+}
+window.renderShareCard=async()=>{
+  if(!_scSpec) return;
+  const seq=++_scSeq, nameOn=!!document.getElementById('sc-name')?.checked;
+  lsSave('lp_share_name',nameOn);
+  const btn=document.getElementById('sc-share'), dl=document.getElementById('sc-dl');
+  if(btn){ btn.disabled=true; btn.textContent=t('game.share.preparing'); }
+  if(dl) dl.disabled=true;
+  const nick=nameOn?cutName(prof?.prezdivka||prof?.nickname||'',24):'';
+  const spec=_scSpec.kind==='badge'?badgeCardSpec(_scSpec.arg,nick):weekCardSpec(_scSpec.arg,nick);
+  if(!spec){ closeShareCard(); return; }
+  const blob=await drawShareCard(spec);
+  if(seq!==_scSeq||!_scSpec) return;  // mezitím přepnuto nebo zavřeno
+  if(!blob){ toast(t('game.share.err')); return; }
+  const fn='lifepocket-'+(_scSpec.kind==='badge'?'badge-':'week-')+_scSpec.arg+'.png';
+  try{ _scFile=new File([blob],fn,{type:'image/png'}); }catch(e){ _scFile=null; }
+  if(_scUrl) URL.revokeObjectURL(_scUrl);
+  _scUrl=URL.createObjectURL(blob);
+  const img=document.getElementById('sc-prev'); if(img) img.src=_scUrl;
+  const canFiles=!!(_scFile&&navigator.canShare&&navigator.canShare({files:[_scFile]}));
+  if(btn){ btn.disabled=false; btn.textContent=t(canFiles?'game.share.share':'game.share.download'); }
+  if(dl){ dl.disabled=false; dl.hidden=!canFiles; }
+};
+window.shareCardNow=()=>{   // bez await před share: zachová gesto (iOS)
+  if(!_scUrl) return;
+  if(_scFile&&navigator.canShare&&navigator.canShare({files:[_scFile]})){
+    navigator.share({files:[_scFile],title:t('game.share.fileTitle')}).catch(e=>{ if(e?.name!=='AbortError') window.downloadShareCard(); });
+  } else window.downloadShareCard();
+};
+window.downloadShareCard=()=>{
+  if(!_scUrl) return;
+  const a=document.createElement('a'); a.href=_scUrl; a.download=_scFile?.name||'lifepocket.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast(t('game.share.saved'));
+};
+window.closeShareCard=()=>{
+  cm('m-share'); _scSpec=null; _scSeq++;
+  if(_scUrl){ URL.revokeObjectURL(_scUrl); _scUrl=null; } _scFile=null;
+  const img=document.getElementById('sc-prev'); if(img) img.removeAttribute('src');
+};
+// Odznak jako obrázek (jen získaný): velké emoji, název, datum, úroveň a společník
+function badgeCardSpec(id,nick){
+  const b=BADGES.find(x=>x.id===id), got=game?.badges?.[id];
+  if(!b||!got) return null;
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], L=gameLevel();
+  return {range:fmtDate(got,'dmy'),em:b.em,title:t('game.badge.'+b.id),sub:t('game.badge.got',{date:fmtDate(got,'dmy')}),name:nick,
+    quote:t('game.badge.'+b.id+'.d'),line:(av.emoji||'')+' '+av.name+' · '+t('game.lvl',{n:L})+' · '+lvlName(L)};
+}
+window.shareBadge=id=>{ if(!game?.badges?.[id]) return; cm('m-badge'); openShareCard('badge',id); };
+
+// ── TÝDENNÍ SOUHRN OD SPOLEČNÍKA (karta na Domů v pondělí a úterý, za minulý týden po–ne, lokální čas) ──
+const weekStartDS=ds=>addDays(ds,-((new Date(ds+'T12:00:00').getDay()+6)%7));   // pondělí týdne
+function calcWeekSummary(mon){
+  const sun=addDays(mon,6), today=toDS(), days=[];
+  for(let i=0;i<7;i++) days.push(addDays(mon,i));
+  const inW=d=>typeof d==='string'&&d>=mon&&d<=sun;
+  // Procenta: denní a „dny v týdnu“ návyky po dnech (neutrální dny se nepočítají), týdenní přes min(splněno, cíl)
+  let due=0, done=0;
+  const perDay=days.map(ds=>{
+    if(ds>today) return null;
+    let dd=0, dn=0;
+    for(const h of habits){
+      if(!h||h.freq?.type==='weekly'||(h.archived&&!hDone(h.id,ds))) continue;
+      const st=habitDayState(h,ds,today);
+      if(st==='done'){ dd++; dn++; } else if(st==='miss'&&ds<today) dd++;
+    }
+    due+=dd; done+=dn; return dd?Math.round(dn/dd*100):null;
+  });
+  for(const h of habits){
+    if(!h||h.archived||h.freq?.type!=='weekly') continue;
+    const st=habitStartDS(h); if(st&&st>sun) continue;
+    const target=Math.max(1,Number(h.freq.times)||3);
+    const n=days.filter(ds=>hDone(h.id,ds)).length;
+    due+=target; done+=Math.min(n,target);
+  }
+  let completions=0, shields=0;
+  for(const l of habitLogs){ if(!l||!inW(l.date)) continue; if(l.done) completions++; else if(l.shield) shields++; }
+  const perfect=days.filter(ds=>ds<=today&&isPerfectDay(ds)).length;
+  // Body týdne a úroveň na začátku a konci týdne (z dnů a jednorázových odměn s datem)
+  let xp=0, after=0, praise=0;
+  for(const [ds,v] of Object.entries(game?.days||{})){ if(inW(ds)) xp+=Number(v)||0; else if(ds>sun) after+=Number(v)||0; }
+  for(const [k,o] of Object.entries(game?.once||{})){
+    if(!o) continue;
+    if(inW(o.d)){ xp+=Number(o.x)||0; if(k.startsWith('pr_')) praise+=Number(o.n)||0; }
+    else if(o.d>sun) after+=Number(o.x)||0;
+  }
+  const endXP=Math.max(0,gameTotal()-after), lvlEnd=levelOf(endXP), lvlStart=levelOf(Math.max(0,endXP-xp));
+  const badges=BADGES.filter(b=>inW(game?.badges?.[b.id]));
+  let best=0;
+  for(const h of habits) if(h&&!h.archived&&h.freq?.type!=='weekly'){ const n=habitStreak(h.id,sun>today?today:sun); if(n>best) best=n; }
+  return {mon,sun,days,perDay,pct:due?Math.round(done/due*100):0,hasData:due>0||completions>0,completions,shields,perfect,
+    xp,praise,lvlUp:lvlEnd>lvlStart?lvlEnd:0,badges,best};
+}
+const weekSayIdx=p=>p>=90?3:p>=70?2:p>=40?1:0;
+function weekRange(S){ return fmtDate(S.mon,'dm')+' – '+fmtDate(S.sun,'dm'); }
+// Karta na Domů: pondělí a úterý, zavíratelná (lp_week_card = pondělí shrnutého týdne)
+function weekCardHTML(){
+  if(!gameOn()) return '';
+  const today=toDS(), wd=new Date(today+'T12:00:00').getDay();
+  if(wd!==1&&wd!==2) return '';
+  const mon=addDays(weekStartDS(today),-7);
+  if(lsGet('lp_week_card','')===mon) return '';
+  const S=calcWeekSummary(mon);
+  if(!S.hasData) return '';
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const tile=(num,lbl)=>`<div class="sth-card"><div class="gs-num">${esc(num)}</div><div class="gs-lbl">${lbl}</div></div>`;
+  return `<div class="dw wk-card" id="week-card" role="region" aria-label="${tH('game.wk.title',{av:av.name})}">
+    <div class="dw-head"><div class="dw-title">${tH('game.wk.title',{av:av.name})}</div><div class="gs-lbl">${esc(weekRange(S))}</div></div>
+    <div class="wk-say"><span aria-hidden="true">${av.emoji} </span>${tH('game.card.quote',{say:t('game.wk.say.'+weekSayIdx(S.pct)),av:av.name})}</div>
+    <div class="wk-tiles">${tile('+'+S.xp,tH('game.weekXp'))}${tile('✅ '+S.completions,tH('game.wk.done',{n:S.completions}))}
+      ${tile('⭐ '+S.perfect,tH('game.weekPerfect',{n:S.perfect}))}${tile('👏 '+S.praise,tH('game.wk.praise',{n:S.praise}))}</div>
+    ${S.lvlUp?`<div class="wk-line">${tH('game.wk.lvl',{n:S.lvlUp,name:lvlName(S.lvlUp)})}</div>`:''}
+    ${S.badges.length?`<div class="wk-line">${tH('game.wk.new',{list:S.badges.map(b=>b.em+' '+t('game.badge.'+b.id)).join(', ')})}</div>`:''}
+    <div class="wk-btns"><button type="button" class="btn-s" data-a0="${mon}" onclick="shareWeek(this.dataset.a0)">${tH('game.wk.share')}</button>
+      <button type="button" class="btn-s" data-a0="${mon}" onclick="dismissWeekCard(this.dataset.a0)">${tH('common.close')}</button></div>
+  </div>`;
+}
+window.dismissWeekCard=mon=>{ lsSave('lp_week_card',String(mon||'')); document.getElementById('week-card')?.remove(); };
+window.shareWeek=mon=>{ if(!/^\d{4}-\d\d-\d\d$/.test(String(mon))) return; openShareCard('week',mon); };
+// Týden jako obrázek: procenta, sloupce po dnech, splnění, perfektní dny, nejlepší série, úroveň a body
+function weekCardSpec(mon,nick){
+  const S=calcWeekSummary(mon), av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], wn=weekdayNames('short');
+  const L=S.lvlUp||gameLevel();
+  return {range:weekRange(S),em:av.emoji||'⭐',title:t('game.card.week'),name:nick,big:S.hasData?S.pct+' %':'–',bigLbl:t('game.card.pct'),
+    quote:t('game.card.quote',{say:t('game.wk.say.'+weekSayIdx(S.pct)),av:av.name}),
+    line:t('game.card.lvlXp',{n:L,xp:S.xp}),
+    bars:S.perDay.map((p,i)=>({lbl:wn[i],p})),
+    tiles:[['✅',S.completions+'×',t('game.card.done')],['⭐',String(S.perfect),t('game.weekPerfect',{n:S.perfect})],['🔥',String(S.best),t('game.card.streak',{n:S.best})]]};
+}
 
 // ── CÍLE: měřitelná hodnota a mezníky 25/50/75/100 % (msHit jen přibývá → oslava jen jednou i napříč zařízeními) ──
 const GOAL_MS=[25,50,75,100];
@@ -9290,6 +9513,8 @@ function rDash(){
   html+=groupNotifIntroHTML();
   // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
   html+=gameIntroHTML();
+  // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
+  html+=weekCardHTML();
 
   // Mini Rex energy widget
   const rexEn = getRexEnergy();
