@@ -42,7 +42,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v35';
+const CACHE = 'lifepocket-v36';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -114,7 +114,7 @@ self.addEventListener('notificationclick', e => {
     );
   } else if (data.open === 'grpfeed' && typeof data.gid === 'string' && /^[A-Z]{3,8}-[A-Z0-9]{4,8}$/.test(data.gid)) {
     // Upozornění ze skupiny → „Co je nového“: otevřené okno dostane zprávu, jinak se otevře s parametry v URL
-    const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react'].includes(data.module) ? data.module : '';
+    const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'].includes(data.module) ? data.module : '';
     const msg = {type: 'OPEN_GRPFEED', gid: data.gid, module: mod};
     e.waitUntil(
       self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {

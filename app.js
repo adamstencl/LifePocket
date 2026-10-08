@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.41';
+const APP_VERSION = '4.42';
 const CHANGELOG = [
+  { v:'4.42', items:[
+    '🎯 Sdílení cílů se skupinou – ostatní uvidí tvůj pokrok a pochválí tě na každém mezníku'
+  ], en:[
+    '🎯 Share goals with your group – others see your progress and cheer you on at every milestone'
+  ]},
   { v:'4.41', items:[
     '🏅 Odznaky a týdenní souhrn od společníka – sdílej své úspěchy'
   ], en:[
@@ -6062,6 +6067,7 @@ const fmtVal=v=>fmtNum(Math.round(Number(v)*100)/100);
 // prevP: pokrok před změnou (starší cíl bez msHit má mezníky do prevP za dosažené, potichu a bez XP)
 function goalProgressChanged(g,newP,silent=false,prevP=0){
   if(!g||!CU||!g.id) return;
+  syncShared('g',g.id); // sdílený cíl: zrcadlo ve skupinách (debounce)
   const legacy=Array.isArray(g.msHit)?[]:GOAL_MS.filter(m=>(Number(prevP)||0)>=m);
   const hit=Array.isArray(g.msHit)?g.msHit:legacy;
   const fresh=GOAL_MS.filter(m=>newP>=m&&!hit.includes(m));
@@ -6071,6 +6077,7 @@ function goalProgressChanged(g,newP,silent=false,prevP=0){
   if(silent||!fresh.length) return;
   if(goalOldEnough(g)) fresh.forEach(m=>gameAward('gm_'+g.id+'_'+m,XP.gms[m]));
   celebrateGoal(g,Math.max(...fresh));
+  announceGoal(g,Math.max(...fresh)); // skupině jen nejvyšší nový mezník (jen sdílený cíl)
 }
 // Oslava mezníku: 25/50/75 bublina společníka, 100 % modal (konfety respektují prefers-reduced-motion)
 function celebrateGoal(g,m){
@@ -7420,12 +7427,12 @@ async function deleteFamilyShopItem(id) {
 
 // ── AKTIVITA SKUPINY (feed „Co je nového“ + push ostatním přes cron) ──
 // Záznam families/{gid}/activity: ts (server), uid, name, g, module, action, title ≤ 60, n, count, expireAt (+7 dní, TTL).
-// Osobní moduly navíc: ref (zrcadlo / cíl reakce), val (série), to + em / msg (reakce).
+// Osobní moduly navíc: ref (zrcadlo / cíl reakce), val (série, mezník cíle v %), to + em / msg (reakce).
 // Rychlé změny se slučují: stejná skupina+modul+akce do 4 s od poslední, nejdéle 20 s od první → 1 záznam.
-// Milník (streak) se neslučuje (klíč i s ref), reakce se slučují podle adresáta, komentář jde hned.
-const GA_MODS = ['shop','cal','meal','check','pantry','habit','react'];
-const GA_PERSONAL = ['habit','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
-const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak']);
+// Milník (streak, mezník cíle) se neslučuje (klíč i s ref), reakce se slučují podle adresáta, komentář jde hned.
+const GA_MODS = ['shop','cal','meal','check','pantry','habit','goal','react'];
+const GA_PERSONAL = ['habit','goal','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
+const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak','progress']);
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
 const _gaBuf = new Map();
 // Je modul ve skupině sdílený? Stejně jako server: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
@@ -7457,7 +7464,7 @@ function gaCheck(list, action, text, count = 1) {
 let _gaSeq = 0;
 function gaKey(gid, module, action, x) {
   let key = gid+'|'+module+'|'+action;
-  if(action === 'streak') key += '|'+(x?.ref || '');
+  if(action === 'streak' || module === 'goal') key += '|'+(x?.ref || '');
   if(module === 'react') key += '|'+(x?.to || '') + (x?.rid ? '|c'+(++_gaSeq) : '');
   return key;
 }
@@ -7526,8 +7533,9 @@ function flushAllGroupActivity() { for(const k of [..._gaBuf.keys()]) flushGroup
 addEventListener('pagehide', flushAllGroupActivity);
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushAllGroupActivity(); });
 
-// ── SDÍLENÍ NÁVYKŮ VE SKUPINĚ (zrcadlo families/{gid}/shared) A REAKCE (families/{gid}/reactions) ──
+// ── SDÍLENÍ NÁVYKŮ A CÍLŮ VE SKUPINĚ (zrcadlo families/{gid}/shared) A REAKCE (families/{gid}/reactions) ──
 // Zrcadlo h_<uid>_<habitId> nese jen souhrn (název, frekvence, dnešek, série, 7 dní), píše ho jen vlastník.
+// Zrcadlo g_<uid>_<goalId> (4.42): název, ikona, barva, pokrok %, termín, mezníky, počet podcílů, u měřitelného cíle hodnoty.
 // Zdroj pravdy o tom, co sdílím, je zrcadlo samo: mySharedIn plní listener shared každé skupiny.
 const SH_MS = [7, 30, 100];                  // milníky série (aktivita habit/streak)
 const RX = [['clap','👏'],['fire','🔥'],['heart','❤️'],['strong','💪']];
@@ -7536,8 +7544,9 @@ const RX_TTL_MS = 30*86400000;               // reakce a komentáře mizí po 30
 const RX_MAX_LEN = 200;
 const RX_CID_RE = /^c_[A-Za-z0-9]{1,40}$/;   // ID komentáře (emoji reakce mají tvar target_uid_em)
 const MEMBER_AV = Object.fromEntries(AVS.map(a => [a.id, a.emoji])); // stejná emoji jako AVS (4.40)
-const mySharedIn = new Map();                // 'h_<habitId>' → Set(gid)
-const myMirrors = {};                        // gid → Map('h_<habitId>' → moje zrcadlo)
+const SH_KINDS = ['h', 'g'];                 // typy zrcadel: návyk, cíl
+const mySharedIn = new Map();                // 'h_<habitId>' | 'g_<goalId>' → Set(gid)
+const myMirrors = {};                        // gid → Map('h_<habitId>' | 'g_<goalId>' → moje zrcadlo)
 const sharedByGroup = {};                    // gid → [zrcadla ostatních členů]
 const rxByGroup = {};                        // gid → [reakce a komentáře za 30 dní]
 const _shUnsub = {}, _rxUnsub = {};
@@ -7554,15 +7563,16 @@ function memberName(gid, uid) {
   return cutName(groupDataOf(gid)?.members?.[uid]?.name, 40) || t('gf.someone');
 }
 
-// Listenery skupiny: zrcadla (návyky) + reakce. Spouští se spolu s nepřečtenými, končí ve stopGroupUnread.
+// Listenery skupiny: zrcadla (návyky, cíle) + reakce. Spouští se spolu s nepřečtenými, končí ve stopGroupUnread.
 function startGroupSocial(gid) {
   if(!CU || !okFamilyCode(gid)) return;
   const uid = CU.uid;
-  if(!_shUnsub[gid]) _shUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'shared'), where('type','==','h')), snap => {
+  if(!_shUnsub[gid]) _shUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'shared'), where('type','in',SH_KINDS)), snap => {
     const mine = new Map(), others = [];
     snap.docs.forEach(d => {
       const m = d.data({serverTimestamps:'estimate'});
-      if(m.ownerUid === uid) mine.set('h_' + m.itemId, m);
+      if(!SH_KINDS.includes(m.type)) return;
+      if(m.ownerUid === uid) mine.set(m.type + '_' + m.itemId, m);
       else others.push({...m, _sid: d.id});
     });
     for(const [k, set] of mySharedIn) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
@@ -7591,14 +7601,18 @@ function resetSocialLocal() {
   for(const tm of _shTimers.values()) clearTimeout(tm);
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear();
 }
-// Překreslení po změně zrcadel: karty návyků (odznak), sekce sdílených, detail a sheet sdílení
+// Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
 function refreshShareUI() {
   try { renderHabits(); } catch(e) {}
+  renderSharedGoals();
+  refreshGoalShareUI();
   refreshHabitShareUI();
   if(document.getElementById('m-share')?.classList.contains('open')) renderShareSheet();
 }
 function refreshRxUI(gid) {
   renderSharedHabits();
+  renderSharedGoals();
+  refreshGoalShareUI();
   refreshHabitShareUI();
   if(_gf.gid === gid && document.getElementById('m-grpfeed')?.classList.contains('open')) renderGroupFeed();
   if(_rx?.gid === gid && document.getElementById('m-rx')?.classList.contains('open')) renderRxList();
@@ -7635,23 +7649,58 @@ function buildHabitMirror(hid) {
     paused: !!(h.pausedUntil && h.pausedUntil >= today) || isHabitPausedOn(h, today), arch: !!h.archived
   };
 }
+// Souhrn cíle pro ostatní (4.42): jen nutná pole. NEsdílí se popis, kategorie, priorita, názvy podcílů, úkoly,
+// propojené návyky ani historie hodnot (mlog). Měřitelný cíl: start, cíl, aktuální hodnota a jednotka (SDIL 1b).
+const SH_COLOR_RE = /^#[0-9A-Fa-f]{3,8}$/;
+const SH_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+function buildGoalMirror(goalId) {
+  const g = goals.find(x => x.id === goalId);
+  if(!g) return null;
+  const d = {
+    name: cutName(g.name, 60) || '🎯', emoji: cutName(g.emoji || '🌟', 16),
+    color: SH_COLOR_RE.test(g.color || '') ? g.color : '#f5c842',
+    progress: clampInt(g.progress || 0, 0, 100),
+    deadline: SH_DS_RE.test(g.deadline || '') ? g.deadline : '',
+    msHit: GOAL_MS.filter(m => Array.isArray(g.msHit) && g.msHit.includes(m)),
+    arch: !!g.archivedGoal
+  };
+  // Počet podcílů jen když jsou načtené (jinak zůstane hodnota z minulého zrcadla)
+  if(Array.isArray(subs[goalId])) { d.sn = clampInt(subs[goalId].length, 0, 1000); d.sd = clampInt(subs[goalId].filter(x => x.done).length, 0, d.sn); }
+  const m = goalMetric(g);
+  if(m && [m.start, m.target, m.cur].every(v => Math.abs(v) <= 1e9)) d.metric = {start: m.start, target: m.target, cur: m.cur, unit: m.unit};
+  return d;
+}
+function buildMirror(type, itemId) { return type === 'h' ? buildHabitMirror(itemId) : type === 'g' ? buildGoalMirror(itemId) : null; }
+// Celý dokument zrcadla pro skupinu (base z buildMirror, prevM = moje dosavadní zrcadlo v té skupině)
+function mirrorDoc(type, itemId, gid, base) {
+  const prevM = myMirrors[gid]?.get(type + '_' + itemId), sid = shSid(type, itemId);
+  const data = {...base, type, ownerUid: CU.uid, itemId, updatedAt: serverTimestamp()};
+  if(type === 'h') {
+    data.best = Math.max(base.best, clampInt(prevM?.best || 0, 0, 100000));
+    const ms = _shMs.get(gid + '|' + sid) || prevM?.ms;
+    if(ms && Number.isInteger(ms.v) && typeof ms.d === 'string') data.ms = {v: ms.v, d: ms.d.slice(0, 10)};
+  } else {
+    // Den splnění: první zápis se 100 %, při dalších zůstává (pokles pod 100 % ho smaže)
+    const pd = typeof prevM?.doneAt === 'string' && SH_DS_RE.test(prevM.doneAt) ? prevM.doneAt : '';
+    data.doneAt = data.progress >= 100 ? (pd || toDS()) : '';
+    if(!('sn' in data) && Number.isInteger(prevM?.sn) && Number.isInteger(prevM?.sd)) {
+      data.sn = clampInt(prevM.sn, 0, 1000); data.sd = clampInt(prevM.sd, 0, data.sn);
+    }
+  }
+  return data;
+}
 // Zápis zrcadla do skupin (onlyGid = jen jedna skupina). Celý setDoc bez merge: deterministické ID, opraví se samo.
 function writeMirror(type, itemId, onlyGid) {
-  if(type !== 'h' || !CU || _accDeleting || _accDeleted) return;
+  if(!SH_KINDS.includes(type) || !CU || _accDeleting || _accDeleted) return;
   const gids = onlyGid ? [onlyGid] : sharedGids(type, itemId);
   if(!gids.length) return;
-  const base = buildHabitMirror(itemId);
-  // Návyk nenalezen (offline cache, ještě nenačteno): nic nemazat. Úklid jen z deleteHabit, zrušení sdílení a odchodu.
+  const base = buildMirror(type, itemId);
+  // Položka nenalezena (offline cache, ještě nenačteno): nic nemazat. Úklid jen ze smazání, zrušení sdílení a odchodu.
   if(!base) return;
-  const key = type + '_' + itemId, sid = shSid(type, itemId);
+  const sid = shSid(type, itemId);
   for(const gid of gids) {
-    const prevM = myMirrors[gid]?.get(key);
-    const ms = _shMs.get(gid + '|' + sid) || prevM?.ms;
-    const data = {...base, best: Math.max(base.best, clampInt(prevM?.best || 0, 0, 100000)),
-      type, ownerUid: CU.uid, itemId, updatedAt: serverTimestamp()};
-    if(ms && Number.isInteger(ms.v) && typeof ms.d === 'string') data.ms = {v: ms.v, d: ms.d.slice(0, 10)};
     // Bez await (offline se odešle později); obsah se neloguje
-    setDoc(doc(db,'families',gid,'shared',sid), data)
+    setDoc(doc(db,'families',gid,'shared',sid), mirrorDoc(type, itemId, gid, base))
       .catch(e => console.warn('[LP] zrcadlo', e?.code || e?.name));
   }
 }
@@ -7689,6 +7738,14 @@ function onHabitLogChanged(hid, date, wasDone, isDone) {
     }
   }
   syncShared('h', hid);
+}
+// Mezník sdíleného cíle do skupin: jen 25/50/75/100 % (rozhodnutí 10 gamifikace), jen nově dosažený (msHit jen přibývá)
+function announceGoal(g, m) {
+  if(!CU || !g?.id || !GOAL_MS.includes(m)) return;
+  const gids = sharedGids('g', g.id);
+  if(!gids.length) return;
+  const sid = shSid('g', g.id), name = cutName(g.name, 60);
+  for(const gid of gids) logGroupActivity(gid, 'goal', m >= 100 ? 'done' : 'progress', name, 1, {ref: sid, val: m});
 }
 // Milník odešel do aktivity → teprve teď do zrcadla (odškrtnutí do 4 s ho tak neztratí)
 function shMsSent(gid, sid) {
@@ -7746,9 +7803,10 @@ async function unshareAllInGroup(gid) {
 function dropMyMirrorsAfterRemoval(gid) {
   if(!CU) return;
   const uid = CU.uid;
-  // ID všech mých návyků (zrcadlo z paměti nemusí být úplné); neexistující dokument smazání nevadí
+  // ID všech mých návyků a cílů (zrcadlo z paměti nemusí být úplné); neexistující dokument smazání nevadí
   const ids = new Set([...(myMirrors[gid]?.keys() || [])].map(k => k[0] + '_' + uid + '_' + k.slice(2)));
   habits.forEach(h => { if(h?.id) ids.add('h_' + uid + '_' + h.id); });
+  goals.forEach(g => { if(g?.id) ids.add('g_' + uid + '_' + g.id); });
   for(const id of ids) deleteDoc(doc(db,'families',gid,'shared',id)).catch(() => {});
 }
 
@@ -7764,7 +7822,7 @@ function shareChipHTML(type, id) {
   const label = gids.length
     ? '👨‍👩‍👧 <span class="sc-nm">' + esc(groupLabel(gids[0])) + '</span>' + (gids.length > 1 ? ' +' + (gids.length - 1) : '')
     : '🔒 <span class="sc-nm">' + tH('sh.private') + '</span>';
-  return `<button type="button" class="share-chip${gids.length ? ' on' : ''}" aria-haspopup="dialog" data-a0="${esc(id)}" onclick="openShareSheet(this.dataset.a0)">${label} <span aria-hidden="true">›</span></button>`;
+  return `<button type="button" class="share-chip${gids.length ? ' on' : ''}" aria-haspopup="dialog" data-a0="${esc(id)}" data-a1="${type}" onclick="openShareSheet(this.dataset.a0,this.dataset.a1)">${label} <span aria-hidden="true">›</span></button>`;
 }
 // Sekce „Sdílení“ v detailu návyku (bez skupiny se nezobrazí vůbec)
 function habitShareHTML(h) {
@@ -7780,22 +7838,38 @@ function refreshHabitShareUI() {
   const h = habits.find(x => x.id === detailHabitId);
   box.innerHTML = h ? habitShareHTML(h) : '';
 }
-window.openShareSheet = hid => {
-  const h = habits.find(x => x.id === hid);
-  if(!CU || !h) return;
+// Sekce „Sdílení“ v rozbaleném cíli: čip + souhrn reakcí (bez skupiny nic)
+function goalShareHTML(g) {
+  if(!g || !myGroupIds().length) return '';
+  const sid = CU ? shSid('g', g.id) : '';
+  const sums = sharedGids('g', g.id).map(gid => rxSumHTML(gid, 's_' + sid, g.name, true)).join('');
+  return `<div class="sg-section-lbl">👨‍👩‍👧 ${tH('sh.section')}</div>${shareChipHTML('g', g.id)}${sums}`;
+}
+// Překreslit jen části karet cílů, které závisí na sdílení (rozepsaný úkol v kartě se tak neztratí)
+function refreshGoalShareUI() {
+  document.querySelectorAll('#goals-list [data-g-shb]').forEach(el => { el.innerHTML = shBadgeHTML('g', el.dataset.gShb); });
+  document.querySelectorAll('#goals-list .g-share').forEach(el => {
+    const g = goals.find(x => x.id === el.dataset.gid);
+    el.innerHTML = g ? goalShareHTML(g) : '';
+  });
+}
+const shItemOf = (type, id) => type === 'h' ? habits.find(x => x.id === id) : type === 'g' ? goals.find(x => x.id === id) : null;
+window.openShareSheet = (id, type) => {
+  type = type === 'g' ? 'g' : 'h';
+  if(!CU || !shItemOf(type, id)) return;
   if(!myGroupIds().length) { toast(t('gf.noGroup')); return; }
-  _shItem = {type: 'h', id: hid};
+  _shItem = {type, id};
   renderShareSheet();
   om('m-share');
 };
 function renderShareSheet() {
   const tEl = document.getElementById('sh-title'), iEl = document.getElementById('sh-item'), gEl = document.getElementById('sh-groups'), nEl = document.getElementById('sh-note');
   if(!tEl || !iEl || !gEl || !nEl || !_shItem) return;
-  const h = habits.find(x => x.id === _shItem.id);
+  const {type} = _shItem, h = shItemOf(type, _shItem.id);
   if(!h) { cm('m-share'); return; }
-  const on = new Set(sharedGids('h', h.id));
-  tEl.textContent = '👨‍👩‍👧 ' + t('sh.titleHabit');
-  iEl.textContent = (h.emoji || '🎯') + ' ' + h.name;
+  const on = new Set(sharedGids(type, h.id));
+  tEl.textContent = '👨‍👩‍👧 ' + t(type === 'g' ? 'sh.titleGoal' : 'sh.titleHabit');
+  iEl.textContent = (h.emoji || (type === 'g' ? '🌟' : '🎯')) + ' ' + h.name;
   gEl.innerHTML = myGroupIds().map(gid => {
     const n = Object.keys(groupDataOf(gid)?.members || {}).length;
     const isOn = on.has(gid);
@@ -7804,7 +7878,7 @@ function renderShareSheet() {
       <span style="flex:1;font-size:15px;color:var(--text)">${esc(groupLabel(gid))}${n ? ` <span class="sh-cnt">· ${esc(t('sh.members', {n}))}</span>` : ''}</span>
       <div class="fshare-toggle${isOn ? ' on' : ''}"><div class="fshare-thumb"></div></div></div>`;
   }).join('');
-  nEl.textContent = '👀 ' + t('sh.noteHabit');
+  nEl.textContent = '👀 ' + t(type === 'g' ? 'sh.noteGoal' : 'sh.noteHabit');
 }
 window.toggleItemShare = gid => {
   if(!CU || !_shItem || !myGroupIds().includes(gid)) return;
@@ -7814,13 +7888,14 @@ window.toggleItemShare = gid => {
     unshareItem(type, id, gid);
     toast(t('sh.offToast', {g}));
   } else {
-    if(!buildHabitMirror(id)) return;
+    const base = buildMirror(type, id);
+    if(!base) return;
     // Hned do mapy (listener to potvrdí); zápis bez await, chyba vrátí stav zpět
     if(!mySharedIn.has(key)) mySharedIn.set(key, new Set());
     mySharedIn.get(key).add(gid);
-    const sid = shSid(type, id), data = {...buildHabitMirror(id), type, ownerUid: CU.uid, itemId: id, updatedAt: serverTimestamp()};
-    setDoc(doc(db,'families',gid,'shared',sid), data).catch(e => {
-      console.warn('[LP] sdileni navyku', e?.code || e?.name);
+    const sid = shSid(type, id);
+    setDoc(doc(db,'families',gid,'shared',sid), mirrorDoc(type, id, gid, base)).catch(e => {
+      console.warn('[LP] sdileni polozky', e?.code || e?.name);
       mySharedIn.get(key)?.delete(gid);
       toast('❌ ' + userErr(e));
       refreshShareUI();
@@ -7879,8 +7954,7 @@ function renderSharedHabits() {
   // Jen dnes; zrcadla bývalých členů (ještě neuklizená) se nezobrazí
   const parts = habitDay !== toDS() ? [] : gids.map(gid => {
     const members = groupDataOf(gid)?.members || {};
-    const list = (sharedByGroup[gid] || []).filter(m => members[m.ownerUid] && !m.arch)
-      .sort((a, b) => memberName(gid, a.ownerUid).localeCompare(memberName(gid, b.ownerUid), LOCALE) || String(a.ownerUid).localeCompare(String(b.ownerUid)) || String(a.name || '').localeCompare(String(b.name || ''), LOCALE));
+    const list = (sharedByGroup[gid] || []).filter(m => m.type === 'h' && members[m.ownerUid] && !m.arch).sort(shSort(gid));
     return {gid, list};
   }).filter(p => p.list.length);
   if(!parts.length) { box.innerHTML = ''; return; }
@@ -7888,19 +7962,89 @@ function renderSharedHabits() {
   let html = `<button type="button" class="shc-sec" aria-expanded="${open}" onclick="toggleSharedHabits()">👨‍👩‍👧 ${tH('sh.sectionShared')} <span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
   if(open) for(const {gid, list} of parts) {
     if(parts.length > 1) html += `<div class="shc-grp">${esc(groupLabel(gid))}</div>`;
-    let lastOwner = null;
-    for(const m of list) {
-      if(m.ownerUid !== lastOwner) {
-        lastOwner = m.ownerUid;
-        const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[m.ownerUid]?.avatar, '👤');
-        html += `<div class="shc-owner"><span aria-hidden="true">${av}</span> ${esc(memberName(gid, m.ownerUid))}</div>`;
-      }
-      html += sharedHabitCardHTML(gid, m);
-    }
+    html += shOwnerCards(gid, list, sharedHabitCardHTML);
   }
   box.innerHTML = html;
 }
 window.toggleSharedHabits = () => { lsSave('lp_sh_closed', !lsGet('lp_sh_closed', false)); renderSharedHabits(); };
+// Pořadí sdílených položek: podle člena a názvu (karty neskáčou)
+function shSort(gid) {
+  return (a, b) => memberName(gid, a.ownerUid).localeCompare(memberName(gid, b.ownerUid), LOCALE)
+    || String(a.ownerUid).localeCompare(String(b.ownerUid)) || String(a.name || '').localeCompare(String(b.name || ''), LOCALE);
+}
+// Karty seskupené podle člena (avatar + jméno nad jeho první kartou)
+function shOwnerCards(gid, list, card) {
+  let html = '', lastOwner = null;
+  for(const m of list) {
+    if(m.ownerUid !== lastOwner) {
+      lastOwner = m.ownerUid;
+      const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[m.ownerUid]?.avatar, '👤');
+      html += `<div class="shc-owner"><span aria-hidden="true">${av}</span> ${esc(memberName(gid, m.ownerUid))}</div>`;
+    }
+    html += card(gid, m);
+  }
+  return html;
+}
+
+// ── Sekce „Sdíleno ve skupině“ v Cílech (4.42): pokrok, termín, podcíle (počet), mezníky, reakce ──
+function sharedGoalCardHTML(gid, m) {
+  const p = clampInt(m.progress || 0, 0, 100), done = p >= 100;
+  const color = SH_COLOR_RE.test(m.color || '') ? m.color : '#f5c842';
+  const meta = [];
+  const mt = m.metric;
+  if(mt && typeof mt === 'object' && [mt.start, mt.target, mt.cur].every(v => typeof v === 'number' && Number.isFinite(v)) && mt.start !== mt.target) {
+    const u = typeof mt.unit === 'string' && mt.unit ? ' ' + cutName(mt.unit, 8) : '';
+    const reached = (mt.target - mt.start) * (mt.cur - mt.target) >= 0;
+    meta.push(fmtVal(mt.cur) + ' / ' + fmtVal(mt.target) + u + (reached ? '' : ' · ' + t('sh.left', {v: fmtVal(Math.abs(mt.target - mt.cur)) + u})));
+  }
+  if(typeof m.deadline === 'string' && SH_DS_RE.test(m.deadline)) meta.push('🏁 ' + fmtDate(m.deadline, 'dm'));
+  const sn = clampInt(m.sn || 0, 0, 1000);
+  if(sn) meta.push('📌 ' + clampInt(m.sd || 0, 0, sn) + '/' + sn);
+  const hit = Array.isArray(m.msHit) ? GOAL_MS.filter(x => m.msHit.includes(x)) : [];
+  const ms = GOAL_MS.map(x => `<span class="gms${hit.includes(x) ? ' hit' : ''}">${hit.includes(x) ? '◆' : '◇'}${x === 100 ? '🏆' : x}</span>`).join('');
+  const owner = memberName(gid, m.ownerUid);
+  return `<article class="shc" aria-label="${esc(t('sh.goalCardAria', {who: owner, name: m.name || ''}))}">
+    <div class="shc-top"><span class="shc-em" aria-hidden="true">${esc(m.emoji || '🌟')}</span>
+      <div class="shc-nm">${esc(m.name || '')}</div><span class="shc-st${done ? ' done' : ''}">${done ? '🎉 ' + tH('sh.goalDone') : p + '%'}</span></div>
+    <div class="gpbar shc-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}" aria-label="${esc(t('sh.goalProgAria', {n: p}))}"><div class="gpfill" style="width:${p}%;background:${esc(color)}"></div></div>
+    ${meta.length ? `<div class="shc-meta">${esc(meta.join(' · '))}</div>` : ''}
+    <div class="gms-row shc-ms" role="img" aria-label="${esc(t('game.goal.msAria', {list: hit.length ? hit.map(x => x + ' %').join(', ') : '0'}))}">${ms}</div>
+    ${rxBarHTML(gid, 's_' + m._sid, m.ownerUid, m.name || '')}
+  </article>`;
+}
+let _shgArchOpen = false; // rozbalené „Splněné a archivované“ (jen v paměti)
+function renderSharedGoals() {
+  const box = document.getElementById('goals-shared');
+  if(!box) return;
+  // Zrcadla bývalých členů (ještě neuklizená) se nezobrazí
+  const parts = myGroupIds().map(gid => {
+    const members = groupDataOf(gid)?.members || {};
+    const all = (sharedByGroup[gid] || []).filter(m => m.type === 'g' && members[m.ownerUid]).sort(shSort(gid));
+    return {gid, list: all.filter(m => !m.arch), arch: all.filter(m => m.arch)};
+  }).filter(p => p.list.length || p.arch.length);
+  if(!parts.length) { box.innerHTML = ''; return; }
+  const open = !lsGet('lp_shg_closed', false);
+  let html = `<button type="button" class="shc-sec" aria-expanded="${open}" onclick="toggleSharedGoals()">👨‍👩‍👧 ${tH('sh.sectionShared')} <span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
+  if(open) {
+    for(const {gid, list} of parts) {
+      if(!list.length) continue;
+      if(parts.length > 1) html += `<div class="shc-grp">${esc(groupLabel(gid))}</div>`;
+      html += shOwnerCards(gid, list, sharedGoalCardHTML);
+    }
+    const nArch = parts.reduce((n, p) => n + p.arch.length, 0);
+    if(nArch) {
+      html += `<button type="button" class="garchived-toggle shc-arch" aria-expanded="${_shgArchOpen}" onclick="toggleSharedGoalsArch()">📦 ${tH('sh.goalArch', {n: nArch})} <span aria-hidden="true">${_shgArchOpen ? '▲' : '▼'}</span></button>`;
+      if(_shgArchOpen) for(const {gid, arch} of parts) {
+        if(!arch.length) continue;
+        if(parts.length > 1) html += `<div class="shc-grp">${esc(groupLabel(gid))}</div>`;
+        html += shOwnerCards(gid, arch, sharedGoalCardHTML);
+      }
+    }
+  }
+  box.innerHTML = html;
+}
+window.toggleSharedGoals = () => { lsSave('lp_shg_closed', !lsGet('lp_shg_closed', false)); renderSharedGoals(); };
+window.toggleSharedGoalsArch = () => { _shgArchOpen = !_shgArchOpen; renderSharedGoals(); };
 
 // ── Reakce (👏 🔥 ❤️ 💪) a komentáře ──
 // Emoji: rid = target_uid_em (přepínač set/delete), komentář: c_<autoId>. target = s_<sid> (zrcadlo) | a_<activityId> (feed).
@@ -8045,11 +8189,11 @@ window.delRxComment = rid => {
 };
 
 // ── CO JE NOVÉHO VE SKUPINĚ (feed, nepřečtené, odkaz z notifikace) ──
-const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', react:'👏'};
+const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', goal:'🎯', react:'👏'};
 // Akce, které klient zapisuje (popisky gf.a.<modul>.<akce>); ostatní = obecný popisek
 const GF_ACTS = {shop:['add','edit','del','done','clear'], cal:['add','edit','del'], meal:['edit','del','plan'],
-  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], react:['add']};
-const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', react:'habits'};
+  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], goal:['progress','done'], react:['add']};
+const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', goal:'goals', react:'habits'};
 const _gfUnsub = {};   // gid → odhlášení listeneru nepřečtených
 const _gfUnread = {};  // gid → {total, mods:{shop:n,…}}
 let _gf = {gid:null, mod:null, items:null, err:false, prevSeen:0, token:0};
@@ -8196,6 +8340,7 @@ function gfWhat(a, gid) {
   const count = Number.isInteger(a.count) && a.count > 0 ? a.count : 1;
   const title = typeof a.title === 'string' ? a.title.trim() : '';
   if(a.module === 'habit' && a.action === 'streak') return t('gf.a.habit.streak', {n: Number.isInteger(a.val) ? a.val : 0}) + (title ? ': ' + title : '');
+  if(a.module === 'goal' && a.action === 'progress') return t('gf.a.goal.progress', {n: Number.isInteger(a.val) ? a.val : 0}) + (title ? ': ' + title : '');
   if(a.module === 'react') {
     const ems = String(a.em || '').split(',').map(k => RX_EM[k] || '').join('');
     // Text komentáře z načtených reakcí (jen od autora aktivity); smazaný (nebo starší než načtené) = bez textu
@@ -8249,13 +8394,13 @@ function renderGroupFeed() {
     const mine = a.uid === CU?.uid;
     const who = mine ? t('gf.you') : (cutName(members[a.uid]?.name, 40) || cutName(a.name, 40) || t('gf.someone'));
     const unread = !mine && a._ts > _gf.prevSeen;
-    const ms = a.module === 'habit' && a.action === 'streak';
-    // Pod řádkem návyku reakce (cíl a_<id>); u vlastního řádku jen souhrn, na sebe reagovat nejde
-    const rx = a.module === 'habit' && a._id
+    const ms = (a.module === 'habit' && a.action === 'streak') || a.module === 'goal';
+    // Pod řádkem návyku a cíle reakce (cíl a_<id>); u vlastního řádku jen souhrn, na sebe reagovat nejde
+    const rx = (a.module === 'habit' || a.module === 'goal') && a._id
       ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
       : '';
     html += `<div class="gf-item${unread ? ' unread' : ''}${ms ? ' ms' : ''}">
-      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${ms ? '🎉' : GF_EMOJI[a.module]}</button>
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
       <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
       <div class="gf-what">${esc(gfWhat(a, gid))}</div>${rx}</div>
     </div>`;
@@ -8295,7 +8440,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 // ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
 const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
-  habit:'evening', react:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
+  habit:'evening', goal:'evening', react:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
 const GN_OPTS = ['instant','q15','evening','off'];
 // Preference s výchozími hodnotami; neplatné hodnoty = výchozí (stejně jako server)
 function groupNotifPrefs() {
@@ -8306,7 +8451,7 @@ function groupNotifPrefs() {
   else if(raw.quiet && TP_RE.test(raw.quiet.from) && TP_RE.test(raw.quiet.to)) gp.quiet = {from: raw.quiet.from, to: raw.quiet.to};
   else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
   gp.notifyChecked = raw.notifyChecked === true;
-  gp.msInstant = raw.msInstant !== false; // milníky (série 7/30/100) hned i při „Večer“
+  gp.msInstant = raw.msInstant !== false; // milníky (série 7/30/100, mezníky cílů) hned i při „Večer“
   return gp;
 }
 function renderGroupNotifSettings() {
@@ -10042,6 +10187,7 @@ window.saveG=async()=>{
     gid=r.id;
     toast('✓ Cíl přidán');
   }
+  syncShared('g',gid); // název, ikona, termín ve sdíleném zrcadle
   // Sync deadline → kalendář
   if(deadline) await syncGoalToCalendar(`goal-${gid}`, `🏆 ${nm}`, deadline);
   cm('m-goal');
@@ -10049,6 +10195,7 @@ window.saveG=async()=>{
 
 window.delG=async id=>{
   if(!CU||!confirm('Smazat cíl a všechny podcíle?'))return;
+  unshareAll('g',id); // zrcadla ve skupinách pryč dřív, než cíl zmizí
   await deleteDoc(doc(db,'users',CU.uid,'goals',id));
   try{await deleteDoc(doc(db,'users',CU.uid,'events',`goal-${id}`));}catch(e){}
   delete subs[id];
@@ -10107,6 +10254,7 @@ window.saveSubG=async()=>{
     toast('✓ Podcíl přidán');
   }
   // Sync deadline → kalendář
+  syncShared('g',gid); // počet podcílů ve sdíleném zrcadle
   if(deadline) await syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
   cm('m-subgoal');
   rGoals();
@@ -10120,6 +10268,7 @@ window.togSubDone=async(gid,sid)=>{
   if(s.done) gameAward('sg_'+sid, XP.sub);
   await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});
   await updateGoalProgress(gid);
+  syncShared('g',gid);
   rGoals();
 };
 
@@ -10129,6 +10278,7 @@ window.delSubG=async(gid,sid)=>{
   try{await deleteDoc(doc(db,'users',CU.uid,'events',`subgoal-${sid}`));}catch(e){}
   subs[gid]=subs[gid]?.filter(x=>x.id!==sid)||[];
   await updateGoalProgress(gid);
+  syncShared('g',gid);
   rGoals();
 };
 
@@ -10169,12 +10319,14 @@ window.archiveGoal=async(id)=>{
   if(!CU)return;
   await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:true,archivedAt:new Date().toISOString()});
   const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=true;
+  syncShared('g',id); // sdílený cíl zůstane ve skupině jako archivovaný (arch:true)
   toast('🎉 Výborně! Cíl splněn a archivován!');rGoals();
 };
 window.unarchiveGoal=async(id)=>{
   if(!CU)return;
   await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:false});
   const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=false;
+  syncShared('g',id);
   toast('✓ Cíl obnoven');rGoals();
 };
 
@@ -10261,7 +10413,7 @@ function buildGoalCard(g, openSet, doneToday) {
     +   '<div class="ghdr-r1">'
     +     '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +     '<div class="gem">' + (g.emoji||'🌟') + '</div>'
-    +     '<div class="gnm">' + esc(g.name) + '</div>'
+    +     '<div class="gnm">' + esc(g.name) + '<span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
     +     '<div class="gacts" onclick="event.stopPropagation()">'
     +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="openGM(this.dataset.a0)">✏️</button>'
     +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="delG(this.dataset.a0)">🗑️</button>'
@@ -10276,6 +10428,7 @@ function buildGoalCard(g, openSet, doneToday) {
     + '<div class="gsubs' + (io?' open':'') + '" id="gs-' + g.id + '">'
     +   fullNameHtml + descHtml + linkedHtml + subsHtml
     +   '<button class="btn-add-sg" data-a0="' + esc(g.id) + '" onclick="openSubGM(this.dataset.a0)">+ Přidat podcíl</button>'
+    +   '<div class="g-share" data-gid="' + esc(g.id) + '">' + goalShareHTML(g) + '</div>'
     +   archiveBtn
     + '</div>'
     + '</div>';
@@ -10287,7 +10440,7 @@ function buildArchivedSection(archivedGoals) {
     + '<div class="ghdr-r1" style="padding:14px 16px">'
     +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
-    +   '<div class="gnm" style="text-decoration:line-through">' + esc(g.name) + '</div>'
+    +   '<div class="gnm" style="text-decoration:line-through">' + esc(g.name) + '</div>' + shBadgeHTML('g', g.id)
     +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ Obnovit</button></div>'
     + '</div>'
     + '</div>'
@@ -10308,6 +10461,7 @@ function buildArchivedSection(archivedGoals) {
 function rGoals() {
   const c = document.getElementById('goals-list');
   if (!c) return;
+  renderSharedGoals(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních cílech
   const addBtn = document.querySelector('.add-goal');
   const activeGoals  = goals.filter(g => !g.archivedGoal).sort((a,b) => (a.priority||2)-(b.priority||2));
   const archivedGoals = goals.filter(g =>  g.archivedGoal);
