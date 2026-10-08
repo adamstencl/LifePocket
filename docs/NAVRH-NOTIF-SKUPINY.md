@@ -114,6 +114,15 @@ match /families/{familyId}/{subcollection}/{docId} {
 
 Pozor na rozpracovanou změnu `firestore.rules` jiného agenta. Doplnění udělat až po jejím commitu a nasadit jedním `firebase deploy --only firestore:rules`, se souhlasem uživatele.
 
+**Stav fáze C (2026-10-08): pravidla připravená ve `firestore.rules`, čeká na nasazení uživatelem.** Proti návrhu výše: `g` je volitelné (string ≤ 2), povinná pole hlídá `hasAll`, `expireAt <= request.time + 8 d`, `delete` smí správce skupiny (klient záznamy nemaže, `unlog` mění jen lokální buffer). Obecné pravidlo podkolekcí má `subcollection != 'activity'`. Logika `create` ověřena simulací v node na záznamech z `flushGroupActivity` (vč. prázdného `title` u `clear`/`plan`).
+
+Nasazení (se souhlasem uživatele):
+
+```
+firebase deploy --only firestore:rules
+gcloud firestore fields ttls update expireAt --collection-group=activity --enable-ttl --project=lifepocket-d8f0e
+```
+
 ---
 
 ## 2. Klient: kde zapisovat aktivitu

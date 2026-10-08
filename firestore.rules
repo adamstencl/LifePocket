@@ -91,11 +91,46 @@ service cloud.firestore {
       }
     }
 
-    // Rodinné podkomunity (shopItems, events, meals…) — jen členové skupiny
+    // Člen skupiny (stav dokumentu skupiny v databázi)
+    function isFamMember(fid) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/families/$(fid))
+        && request.auth.uid in get(/databases/$(database)/documents/families/$(fid)).data.members;
+    }
+    // Správce skupiny (role 'admin' v members)
+    function isFamAdmin(fid) {
+      return isFamMember(fid)
+        && get(/databases/$(database)/documents/families/$(fid)).data.members[request.auth.uid].get('role', '') == 'admin';
+    }
+
+    // Rodinné podkomunity (shopItems, events, meals…) — jen členové skupiny.
+    // Kromě activity: pravidla se sčítají (OR), activity má vlastní přísnější pravidlo níže.
     match /families/{familyId}/{subcollection}/{docId} {
-      allow read, write: if request.auth != null
-        && exists(/databases/$(database)/documents/families/$(familyId))
-        && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
+      allow read, write: if subcollection != 'activity' && isFamMember(familyId);
+    }
+
+    // Aktivita skupiny (feed „Co je nového“ + push přes cron). Zapisuje flushGroupActivity v app.js.
+    // Záznam nejde měnit; maže TTL (expireAt), server (Admin SDK) a správce skupiny.
+    match /families/{familyId}/activity/{actId} {
+      allow read: if isFamMember(familyId);
+      allow create: if isFamMember(familyId)
+        && request.resource.data.keys().hasOnly(['ts', 'uid', 'name', 'g', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
+        && request.resource.data.keys().hasAll(['ts', 'uid', 'name', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.ts == request.time
+        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry']
+        && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share']
+        && request.resource.data.title is string && request.resource.data.title.size() <= 60
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40
+        && (!('g' in request.resource.data) || (request.resource.data.g is string && request.resource.data.g.size() <= 2))
+        && request.resource.data.n is int && request.resource.data.count is int
+        && request.resource.data.n >= 0 && request.resource.data.n <= request.resource.data.count
+        && request.resource.data.count >= 1 && request.resource.data.count <= 500
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.expireAt <= request.time + duration.value(8, 'd');
+      allow update: if false;
+      // Klient záznamy nemaže (unlog mění jen lokální buffer) → jen správce skupiny
+      allow delete: if isFamAdmin(familyId);
     }
   }
 }
