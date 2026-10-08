@@ -1273,7 +1273,9 @@ function subHabits(){
     gameKick();
   });
   _hlCutoff=hlCutoffDS();
-  unsubLogs=onSnapshot(query(collection(db,'users',CU.uid,'habitLogs'),where('date','>=',_hlCutoff)),snap=>{
+  unsubLogs=onSnapshot(query(collection(db,'users',CU.uid,'habitLogs'),where('date','>=',_hlCutoff)),{includeMetadataChanges:true},snap=>{
+    // Jen změna metadat (cache → server): nepřekreslovat, jen potvrdit úplná data
+    if(lOk&&!snap.docChanges().length){ if(!snap.metadata.fromCache&&!_hlServerOk){ _hlServerOk=true; gameKick(); } return; }
     // Starší záznamy (dotažené nebo zapsané lokálně) snapshot neobsahuje — zachovat je
     const old=habitLogs.filter(l=>l&&!(l.date>=_hlCutoff));
     habitLogs=snap.docs.map(d=>({id:d.id,...d.data()})).concat(old);
@@ -1300,15 +1302,18 @@ function habitDayLabel(){
 function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return toDS(d);}
 // Pauzy návyku: rozsahy {from,to,reason}; pausedUntil zůstává synchronní s aktivní pauzou (čte ho server)
 function habitPauses(h){return Array.isArray(h?.pauses)?h.pauses.filter(p=>p&&typeof p.from==='string'&&typeof p.to==='string'):[];}
+// Dnešek a budoucnost rozhoduje pausedUntil (stejně jako server a starší klienti), minulost rozsahy v pauses
 function isHabitPausedOn(h,ds){
-  if(habitPauses(h).some(p=>p.from<=ds&&ds<=p.to)) return true;
-  return !!(h?.pausedUntil&&ds===toDS()&&h.pausedUntil>=ds); // legacy záloha pro dnešek
+  const today=toDS();
+  if(ds>=today){ const pu=h?.pausedUntil?String(h.pausedUntil).slice(0,10):''; return !!(pu&&pu>=today&&pu>=ds); }
+  return habitPauses(h).some(p=>p.from<=ds&&ds<=p.to);
 }
 // Aktivní pauza k danému dni (pro odznak „Pauza do …“)
 function habitPauseOn(h,ds){
+  if(!isHabitPausedOn(h,ds)) return null;
   const p=habitPauses(h).find(x=>x.from<=ds&&ds<=x.to);
-  if(p) return p;
-  return (h?.pausedUntil&&h.pausedUntil>=ds&&ds>=toDS())?{from:toDS(),to:h.pausedUntil,reason:'other'}:null;
+  if(ds<toDS()) return p||null;
+  return {...(p||{from:toDS(),reason:'other'}),to:String(h.pausedUntil).slice(0,10)};
 }
 // Den založení návyku (lokální čas), cache podle objektu návyku
 const _hStart=new WeakMap();
@@ -1368,7 +1373,7 @@ function habitDayCounts(h,ds,today=toDS()){ const st=habitDayState(h,ds,today); 
 
 // ── ŠTÍTY SÉRIE ❄️ (odvozené z logů, použitý štít = log {skipped,frozen,shield}) ──
 // Za každých 7 splněných dní v řadě 1 štít, max. 2 na návyk. Deterministicky z historie → stejné na všech zařízeních.
-const SHIELD_EVERY=7, SHIELD_MAX=2;
+const SHIELD_EVERY=7, SHIELD_MAX=2, SHIELD_DEPTH=14; // hloubka hledání mezery (dny)
 let _shCache=new Map();
 function shieldCacheReset(){ _shCache=new Map(); }
 // Stav štítů návyku k datu: {sh: počet, run: splněné dny v aktuálním běhu}
@@ -1395,13 +1400,20 @@ function gameAutoShield(){
   if(!CU||_accDeleting||_accDeleted) return;
   const today=toDS();
   if(_shieldDay===today) return;
+  migrateLegacyPauses();                    // dny v legacy pauze musí být neutrální dřív, než se hledá mezera
   _shieldDay=today;
-  const saved=[];
+  const saved=[], y=addDays(today,-1);
   for(const h of habits.filter(h=>!h.archived&&h.freq?.type!=='weekly')){
-    const gap=[]; let ds=addDays(today,-1);
-    while(gap.length<=SHIELD_MAX&&habitDayState(h,ds,today)==='miss'){ gap.push(ds); ds=addDays(ds,-1); }
-    if(!gap.length||gap.length>SHIELD_MAX) continue;
-    if(habitStreak(h.id,ds)<3||habitShields(h,ds)<gap.length) continue;
+    if(h.pausedUntil&&!Array.isArray(h.pauses)) continue;   // nepřevedená legacy pauza: radši nic
+    // Mezera: zmeškané dny od včerejška zpět k poslednímu splněnému, neutrální dny (mimo frekvenci, pauza, přeskočeno) se přeskočí
+    const gap=[]; let ds=y, base='';
+    for(let i=0;i<SHIELD_DEPTH;i++,ds=addDays(ds,-1)){
+      const st=habitDayState(h,ds,today);
+      if(st==='done'){ base=ds; break; }
+      if(st==='miss'&&gap.push(ds)>SHIELD_MAX) break;
+    }
+    if(!base||!gap.length||gap.length>SHIELD_MAX) continue;
+    if(habitStreak(h.id,base)<3||habitShields(h,y)<gap.length) continue;
     gap.forEach(d=>putHabitLog({id:h.id+'_'+d,habitId:h.id,date:d,skipped:true,frozen:true,shield:true},true).catch(e=>console.warn('[LP] štít:',e?.code||e?.name)));
     saved.push(h);
   }
@@ -2205,7 +2217,7 @@ window.pauseHabit=async(id,days)=>{
   if(!h)return;
   const today=toDS(), y=addDays(today,-1);
   let pauses=habitPauses(h).map(p=>({from:p.from.slice(0,10),to:p.to.slice(0,10),reason:PAUSE_REASONS.includes(p.reason)?p.reason:'other'}));
-  if(!pauses.length&&h.pausedUntil&&h.pausedUntil>=today) pauses=[{from:today,to:h.pausedUntil,reason:'other'}]; // legacy
+  if(!pauses.length&&h.pausedUntil&&h.pausedUntil>=today) pauses=[{from:legacyPauseFrom(h,today),to:String(h.pausedUntil).slice(0,10),reason:'other'}]; // legacy
   let pausedUntil=null;
   if(!days){
     // Ukončení: aktivní rozsah končí včera (dnešní začátek se smaže celý)
@@ -2226,7 +2238,14 @@ window.pauseHabit=async(id,days)=>{
   renderHabits();
   if(detailHabitId===id)renderHabitDetail(h);
 };
-// Legacy pausedUntil bez rozsahu → rozsah od dneška (jednou za relaci a návyk; starší dny zpětně zjistit nejde)
+// Začátek legacy pauzy: z pausedFrom/pausedAt, jinak včerejšek (včera nesmí spotřebovat štít ani přerušit sérii)
+function legacyPauseFrom(h,today=toDS()){
+  const raw=h?.pausedFrom||h?.pausedAt; let f='';
+  if(typeof raw==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(raw)) f=raw;
+  else if(raw){ const d=raw.toDate?raw.toDate():new Date(raw); if(!isNaN(d)) f=toDS(d); }
+  return f&&f<=today?f:addDays(today,-1);
+}
+// Legacy pausedUntil bez rozsahu → rozsah (jednou za relaci a návyk)
 const _pauseMigrated=new Set();
 function migrateLegacyPauses(){
   if(!CU) return;
@@ -2234,7 +2253,7 @@ function migrateLegacyPauses(){
   for(const h of habits){
     if(!h.pausedUntil||h.pausedUntil<today||Array.isArray(h.pauses)||_pauseMigrated.has(h.id)) continue;
     _pauseMigrated.add(h.id);
-    const pauses=[{from:today,to:String(h.pausedUntil).slice(0,10),reason:'other'}];
+    const pauses=[{from:legacyPauseFrom(h,today),to:String(h.pausedUntil).slice(0,10),reason:'other'}];
     h.pauses=pauses;
     updateDoc(doc(db,'users',CU.uid,'habits',h.id),{pauses}).catch(e=>console.warn('[LP] migrace pauzy:',e?.code||e?.name));
   }
