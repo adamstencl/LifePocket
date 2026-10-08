@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — LifePocket</title>
+  <meta name="description" content="How LifePocket collects, uses, shares and stores your personal data, and what rights you have under the GDPR.">
+  <style>
+    :root { --bg: #0f0f1a; --card: #1a1a2e; --accent: #f5c842; --text: #e8e8f0; --text2: #b0b0c8; --text3: #6a6a88; --border: #2a2a3e; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Georgia', serif; line-height: 1.7; padding: 24px 16px 60px; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; text-decoration: none; }
+    .logo-text { font-size: 22px; color: var(--accent); font-style: italic; font-weight: 700; }
+    h1 { font-size: 26px; color: var(--accent); margin-bottom: 6px; }
+    .date { font-size: 13px; color: var(--text3); margin-bottom: 32px; }
+    h2 { font-size: 18px; color: var(--text); margin: 32px 0 10px; border-left: 3px solid var(--accent); padding-left: 12px; }
+    p { color: var(--text2); margin-bottom: 12px; font-size: 15px; }
+    ul { color: var(--text2); margin: 8px 0 12px 20px; font-size: 15px; }
+    ul li { margin-bottom: 6px; }
+    a { color: var(--accent); }
+    code { overflow-wrap: anywhere; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 16px 0; }
+    .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text3); text-decoration: none; font-size: 14px; margin-bottom: 24px; }
+    .back:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">← Back to LifePocket</a>
+    <a class="back" href="privacy.html" lang="cs" hreflang="cs" style="margin-left:16px">Česká verze</a>
+    <div class="logo">
+      <span class="logo-text">✨ LifePocket</span>
+    </div>
+
+    <h1>Privacy Policy</h1>
+    <p class="date">Effective from: 8 October 2026 &nbsp;·&nbsp; Controller: Adam Štencl</p>
+
+    <p>This page explains what personal data LifePocket processes, why, who has access to it and how long we keep it. The app is free, has no ads and no tracking tools. We do not sell your data.</p>
+
+    <h2>1. Data controller</h2>
+    <div class="card">
+      <p><strong>Adam Štencl</strong><br>
+      Email: <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a><br>
+      Website: <a href="https://lifepocket.app">lifepocket.app</a></p>
+    </div>
+
+    <h2>2. Sign-in and your account</h2>
+    <p>You can sign in in two ways. Accounts are managed by <strong>Firebase Authentication</strong> (Google).</p>
+    <ul>
+      <li><strong>With a Google account</strong>: Firebase receives your email, name and a link to your profile photo from Google. The app only shows the photo in the header and does not store it in its database. The name from your Google account is used only if you have not set a nickname (for example, as your name in a group).</li>
+      <li><strong>With email and password</strong>: Firebase stores your email and password (the password in a secure form; we never see it). When you register, Firebase sends you an email to verify your address and, on request, an email to reset your password.</li>
+    </ul>
+
+    <h2>3. What data we store</h2>
+    <p>Everything you enter in the app is stored in the <strong>Firebase Firestore</strong> database (Google) under your account:</p>
+    <ul>
+      <li><strong>Profile</strong>: name or nickname, gender (only so that Czech words use the correct grammatical form, e.g. “splnil/splnila”, meaning “completed”), your chosen AI companion (avatar), the modules you selected and your starting template (Family, Student or Health), the date you last opened the app (see section 7), daily calorie goal, vision and life areas, weekly meal plan, daily focus and its history, custom event types, notification settings, group memberships</li>
+      <li>Goals and sub-goals</li>
+      <li>Habits and records of completing them</li>
+      <li>Journal entries (diary), including mood and photos</li>
+      <li>Checklists, including photos attached to items</li>
+      <li>Calendar events and birthdays (these may include names of other people that you enter)</li>
+      <li>Shopping list, recurring purchases, saved recipes and planned meals</li>
+      <li>Food logs (name, calories and nutrients) and health logs (mood, sleep, energy, stress, water, note)</li>
+      <li>Conversations with the AI companion: the last 30 messages and a summary of older conversations created by the AI (see section 4)</li>
+      <li>Reported AI responses, if you report any (see section 4)</li>
+      <li>Device tokens for push notifications (see section 6)</li>
+      <li>Technical error logs (see section 7)</li>
+    </ul>
+    <p><strong>Photos</strong> are resized on your phone and stored directly in the Firestore database with the journal entry or checklist item. We do not use any other file storage, and photos are never sent to the AI.</p>
+    <p>Some data stays only on your device (e.g. pantry items outside a group, favourite purchases, the water counter); see section 12.</p>
+
+    <h2>4. AI features</h2>
+    <p>AI features are provided by the <strong>Anthropic API</strong> (Anthropic PBC, USA). The app sends your request to our server (Firebase Cloud Functions, function <code>claudeProxy</code>, region europe-west1 in the EU), which simply passes it on to Anthropic. The server does not store the content of requests or responses and does not write it to logs. It only stores the number of AI requests per day (see section 7).</p>
+    <p>What is sent to the AI:</p>
+    <ul>
+      <li><strong>Chat with your companion</strong>: your message, the last 10 messages of the conversation, the summary of older conversations and an overview of your data from the modules (goals, habits, your last 5 journal entries in shortened form, mood over the past 7 days, checklists, shopping, calendar for the next 90 days, pantry, meal plan, recipes, food, health, focus, weekly report and groups). Group data is included in the overview as you see it in the group, i.e. including the group name, number of members and, for shared events, the name of the person who added them. Every 20 messages, the AI creates a summary of older messages, which is saved to your account.</li>
+      <li><strong>Saving a journal entry</strong>: if the entry text is longer than 20 characters, the app automatically sends it to the AI after saving so it can find planned meals and completed or new habits. If you do not choose a mood, the AI suggests one based on the text.</li>
+      <li><strong>Other AI features</strong> that you use or that run in the app: morning greeting and weekly report (habit completion including habit names, number of journal entries and mood, names of people celebrating birthdays), daily summary (your text, vision, goals and today’s habits), quote of the day, calorie estimate (name of the food), recipes and cooking instructions (name and ingredients), meal plan suggestion and shopping suggestion (recipe names and pantry).</li>
+    </ul>
+    <p>The AI also receives your name or nickname. We do not send it your email, password, device tokens, gender or photos. How long Anthropic keeps data is determined by that provider’s policies.</p>
+    <p><strong>Reporting an AI response</strong>: on every response from the AI companion you can tap “⚑ Report”. Your account (subcollection <code>aiReports</code>) then stores the reason you chose (inappropriate, untrue, offensive, other), your optional note (up to 500 characters), the text of the reported response (up to 2,000 characters), the time and the app version. Reports are used only to review and improve AI responses and to protect against inappropriate content. They are not sent anywhere else, not even to Anthropic. They are deleted together with your account.</p>
+
+    <h2>5. Groups (sharing with family and others)</h2>
+    <p>Anyone can create a group and invite other people to it. Group data is kept in a shared space in Firestore that only the group’s members can access.</p>
+    <p><strong>What other group members can see:</strong></p>
+    <ul>
+      <li>the group name and member list: your name or nickname, avatar, date you joined and role (founder / member)</li>
+      <li>depending on what the group has turned on: the shared shopping list, events you share with the group (including who added them), the group’s meal plan, the pantry (while you are in a group, your pantry is stored in the group) and checklists you mark as shared, including photos attached to items</li>
+      <li>notifications you send to other members (your name and a short message, e.g. about a change to the shopping list)</li>
+    </ul>
+    <p>Group members cannot see your personal data (journal entries, habits, goals, health, AI chat and so on).</p>
+    <p><strong>Invitation:</strong> each group has a code such as <code>WORD-K7M2QX</code> (older groups have a shorter code, e.g. <code>WORD-1234</code>). Anyone who knows the code or receives an invitation link (<code>lifepocket.app/?join=CODE</code>) can, after signing in, see the group name and member list and join the group. With a link, the app always asks before joining. The code is the group’s only protection, so share it only with people you trust. The group admin can generate a new code at any time: the group’s data and members move to the new code, and the old code and earlier invitation links stop working. Members who are offline at that moment may lose changes they have not yet sent. Any member can change the group’s sharing settings.</p>
+    <p><strong>Leaving a group:</strong> when you leave, your name, avatar and role are removed from the member list and the app stops showing you the group and its data. The same applies if another member removes you from the group: your app removes the group by itself the next time it loads. Content you added to the group (shopping items, events, checklists, etc.) stays in the group for the other members. The group itself cannot be deleted in the app, except when you delete your account (see <a href="#delete-account">section 10</a>): a group in which you are the only member is deleted entirely. You can ask us by email to delete a group or your data in it.</p>
+
+    <h2>6. Push notifications</h2>
+    <p>You receive notifications only if you allow them in your browser or on your phone. They are delivered by <strong>Firebase Cloud Messaging</strong> (Google) through the push service of your browser or operating system (e.g. Google, Apple, Mozilla).</p>
+    <ul>
+      <li>For each device we store a delivery token, the platform type, the date of the last update and a random device ID.</li>
+      <li>The token is deleted when you sign out, if the device is online. In addition, when sending notifications the server deletes tokens that the service marks as invalid and tokens older than 60 days, and keeps no more than the 10 most recent devices.</li>
+      <li>So that it can send you reminders, every 5 minutes the server reads from your account: your nickname, gender, notification settings, tokens, habits (name, emoji, reminder time), today’s habit completion records and events from your calendar and from your main group’s calendar (name, date, time, type). The notification text is put together from this data and sent; it is not stored or logged anywhere.</li>
+      <li>The “notify group” feature (<code>notifyFamily</code>) sends your nickname and a message (up to 200 characters) to the other members. The “test notifications” feature (<code>testPush</code>) sends a test notification only to you.</li>
+    </ul>
+    <p>You can turn notifications off at any time in the app settings or in your browser.</p>
+
+    <h2>7. Technical records</h2>
+    <ul>
+      <li><strong>Number of AI requests</strong>: to prevent abuse there is a limit of 50 AI requests per day (every AI call counts, including the automatic analysis of journal entries). The server stores only the date and the number of requests for that day. The day is based on Czech time, so the limit resets at midnight. The first request of the next day overwrites the record.</li>
+      <li><strong>Error logs</strong>: when a technical error occurs in the app, the following is saved to your account (subcollection <code>errorLogs</code>): the error message text, the location in the code, the beginning of the stack trace, the time, the app version and a shortened browser identifier. Before saving, we remove emails, web address parameters, group codes, identifiers and longer quoted texts from the text. At most 15 records are saved per app session, and only when you are signed in and online. They are used only to fix bugs.</li>
+      <li><strong>Server operation logs</strong>: the server functions write only technical information to Google Cloud logs (e.g. account ID, error code, number of notifications sent), not the content of your data or the text of notifications.</li>
+      <li><strong>Date last opened</strong>: when you open the app, we save the date you last opened it to your profile (at most once a day). Once a day, the server uses this to calculate only aggregated anonymous figures (e.g. how many people used the app in the past week, the number of groups and AI requests), without names, emails or the content of your entries.</li>
+      <li><strong>Hosting</strong>: the website runs on <strong>GitHub Pages</strong> (GitHub, Inc., USA). When the page loads, GitHub sees your IP address and browser information in its server logs.</li>
+    </ul>
+
+    <h2>8. Who is involved in processing</h2>
+    <ul>
+      <li><strong>Google</strong> (Firebase Authentication, Firestore, Cloud Functions, Cloud Messaging): sign-in, data storage, server functions, notifications. Firebase libraries and fonts (Google Fonts) are loaded from Google servers, which see your IP address when doing so.</li>
+      <li><strong>Anthropic</strong>: processing of AI requests (section 4).</li>
+      <li><strong>GitHub</strong>: website hosting (section 7).</li>
+      <li><strong>Formspree</strong> (Formspree, Inc., USA): when you send a message through the “Write to us” form, Formspree receives your email and the message text and delivers them to us.</li>
+      <li><strong>Voice input</strong>: dictation uses the speech recognition built into your browser. Some browsers (e.g. Chrome) send the audio to their maker’s servers for processing.</li>
+      <li><strong>Sharing a link</strong>: the “Share LifePocket” and “Send invitation” buttons open sharing directly on your device (or copy the text to the clipboard). You choose who you send the link to and how; nothing is sent to us or anyone else.</li>
+      <li><strong>Supporting the project</strong>: the Buy Me a Coffee link and QR code and the BTC Lightning QR code lead outside the app. The payment is processed by that service under its own terms; the app knows nothing about it and passes nothing to it. Project support is not shown in the app downloaded from Google Play.</li>
+    </ul>
+    <p>Anthropic, Google, GitHub and Formspree are US companies, so data may be transferred outside the EU. Such transfers are safeguarded by standard contractual clauses approved by the European Commission or by the EU-US Data Privacy Framework, depending on what the provider uses.</p>
+
+    <h2>9. Why we process data and on what legal basis</h2>
+    <ul>
+      <li><strong>Performance of a contract</strong> (Art. 6(1)(b) GDPR): your account, storing and syncing your data, AI features, groups. The app cannot work without this.</li>
+      <li><strong>Consent</strong> (Art. 6(1)(a) GDPR): push notifications. You give consent by allowing notifications and can withdraw it at any time by turning them off.</li>
+      <li><strong>Legitimate interest</strong> (Art. 6(1)(f) GDPR): error logs, the daily AI request limit, operation logs and protection against abuse, and replies to messages from the contact form.</li>
+    </ul>
+    <p>Journal entries, moods and health records may contain sensitive data. You enter them voluntarily, and we process them only to show them to you and so that the AI features you use can work with them.</p>
+
+    <h2>10. How long we keep data</h2>
+    <ul>
+      <li>We keep the data in your account for as long as the account exists.</li>
+      <li id="smazani-uctu"><span id="delete-account"></span><strong>Deleting your account</strong>: you can delete your account directly in the app (Settings → Account → Delete account). All data in your account (including error logs, AI reports and the AI request count record) is deleted immediately and permanently, the account itself is deleted and you leave all groups. A group in which you were the only member is deleted entirely. Content you added to a shared group (shopping items, events, checklists, etc.) remains available to the other members, including your name on those items (<code>addedByName</code>). If you were the group’s only admin, the member who has been in the group the longest takes over as admin. Before deleting, you can download a backup of your data (section 11). Alternatively, you can ask us by email to delete your account (section 11) and we will delete the data within 30 days.</li>
+      <li>We delete error logs older than 90 days manually during regular clean-ups (deletion is not automatic).</li>
+      <li>The AI request count record contains only the last date and count, and it is deleted together with your account.</li>
+      <li>Content you added to a group stays in the group even after you leave (section 5).</li>
+    </ul>
+
+    <h2>11. Your rights</h2>
+    <ul>
+      <li><strong>Access and data portability</strong>: a copy of all your data is available to you at any time; you can download it in the app (Settings → Account → Download my data) as a file in the machine-readable JSON format. For groups, the export contains only their code and name, not other members’ content. On request, we will also send you a copy of your data by email.</li>
+      <li><strong>Rectification</strong>: you can edit most data directly in the app; we will correct anything else on request.</li>
+      <li><strong>Erasure (right to erasure)</strong>: you can delete individual items in the app and delete your whole account yourself in Settings → Account (the data is deleted immediately; see <a href="#delete-account">section 10</a>). If you ask by email, we will delete your account within 30 days.</li>
+      <li><strong>Restriction of processing and objection</strong>: you can object to processing based on legitimate interest.</li>
+      <li><strong>Withdrawal of consent</strong>: by turning off notifications.</li>
+      <li><strong>Complaint</strong>: you can contact the supervisory authority, the Czech Office for Personal Data Protection (ÚOOÚ, <a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>). You can also contact the supervisory authority in the EU country where you live or work.</li>
+    </ul>
+    <p>To exercise your rights, write to <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>. We will reply within 30 days.</p>
+
+    <h2>12. Storage on your device and cookies</h2>
+    <p>LifePocket does not use advertising or tracking cookies. It stores in your browser only what it needs to work:</p>
+    <ul>
+      <li><strong>IndexedDB</strong>: Firebase sign-in and data for push notifications.</li>
+      <li><strong>sessionStorage</strong>: only while the app is running, the <code>lp_twa</code> flag indicating that the app from Google Play is running (used to hide project support).</li>
+      <li><strong>Cache (service worker)</strong>: app files for working offline and pending “Done” actions from notifications.</li>
+      <li><strong>localStorage</strong>:
+        <ul>
+          <li>app settings and state: theme <code>lp_theme</code>, notification settings <code>lp_notif</code>, random device ID <code>lp_device_id</code>, last version shown <code>lp_seen_version</code>, expanded groups in the menu <code>lp_open_groups</code>, last opened Meal plan tab <code>lp_meal_tab</code>, guided tour, hints and intro tips <code>lp_tour_done</code>, <code>lp_tour_pending</code>, <code>lp_hint_…</code>, <code>lp_qs_dismissed</code>, <code>lp_qs_done</code>, hidden “Invite family” cards in Shopping and Calendar <code>lp_ih_shop</code>, <code>lp_ih_cal</code>, dismissed installation guides <code>ios-dismissed</code> and <code>pwa-dismissed</code>, a pending group invitation <code>lp_pending_join</code> (valid for 7 days), a marker that the device has already launched the app from Google Play <code>lp_twa_seen</code>, and the identifier of the account the local data belongs to <code>lp_owner_uid</code> (the app also uses it to recognise that you have signed in here before and shows the sign-in screen straight away instead of the welcome page)</li>
+          <li>personal data only on this device: pantry outside a group <code>lp_pantry</code>, favourite purchases <code>lp_fav_shop</code>, today’s mood <code>lp_daily_mood</code>, daily focus and its history <code>lp_focus</code>, <code>lp_focus_next</code>, <code>lp_focus_history</code>, water counter <code>lp_water</code>, weekly report text <code>lp_weekly_report</code>, quote of the day <code>lp_daily_quote</code></li>
+          <li>markers so that reminders and greetings are not repeated: <code>lp_rex_greet</code>, <code>lp_last_remind</code>, <code>lp_sched_…</code>, <code>lp_hrnotif_…</code>, <code>lp_notif_…</code>, <code>lp_inactivity_shown_…</code></li>
+        </ul>
+      </li>
+    </ul>
+    <p>When a different account signs in on the same device, the previous account’s personal local data (pantry, favourite purchases, mood, focus, water counter, weekly report, quote of the day, the state of intro tips on the home screen and hidden “Invite family” cards) is deleted. If the same account signs out and back in, it is kept. After you delete your account in the app, all <code>lp_…</code> data is deleted from this device except the <code>lp_twa_seen</code> marker.</p>
+
+    <h2>13. Security</h2>
+    <ul>
+      <li>You can access your data only after signing in through Firebase Authentication.</li>
+      <li>Data under your account can be read and changed only by your account.</li>
+      <li>Group data can be read and changed only by its members. A specific group can be loaded only by its code; it is not possible to list all groups. A non-member can change a group only by adding themselves to it.</li>
+      <li>The server configuration (including the AI key) is not accessible from the app at all, and the key never leaves the server.</li>
+      <li>You can only read the AI request counter; only the server can change it.</li>
+      <li>Communication is encrypted (HTTPS).</li>
+    </ul>
+
+    <h2>14. Age</h2>
+    <p>The app is intended for people aged 15 and over (the age that applies in the Czech Republic). In other countries, local law may set a different minimum age for consent.</p>
+
+    <h2>15. Changes to this policy</h2>
+    <p>We will inform you of significant changes through the app (the What’s new section). The effective date is shown at the top of this document.</p>
+
+    <h2>16. Contact</h2>
+    <p>Do you have a question about how your data is processed? Write to us: <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a></p>
+
+    <p style="margin-top:32px;font-size:13px;color:var(--text3)">This translation is provided for convenience; in case of discrepancy, the Czech version prevails.</p>
+  </div>
+</body>
+</html>
