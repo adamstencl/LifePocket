@@ -125,6 +125,22 @@ try {
   }
 } catch (e) { fail('FAMILY_WORDS: ' + e.message); }
 
+console.log('FAMILY_WORDS a abeceda: functions/index.js vs. app.js');
+try {
+  const fn = read('functions/index.js');
+  const w = fn.match(/const\s+FAMILY_WORDS\s*=\s*\[([\s\S]*?)\]/);
+  const a = fn.match(/const\s+FAMILY_CODE_ALPHABET\s*=\s*'([^']+)'/);
+  const aw = appSrc.match(/const\s+FAMILY_WORDS\s*=\s*\[([\s\S]*?)\]/);
+  const aa = appSrc.match(/const\s+FAMILY_CODE_ALPHABET\s*=\s*'([^']+)'/);
+  if (!w || !a) throw new Error('FAMILY_WORDS nebo FAMILY_CODE_ALPHABET ve functions/index.js nenalezeno');
+  if (!aw || !aa) throw new Error('FAMILY_WORDS nebo FAMILY_CODE_ALPHABET v app.js nenalezeno');
+  const fw = stringLiterals(w[1]), apw = stringLiterals(aw[1]);
+  if (fw.join(',') !== apw.join(',')) fail('FAMILY_WORDS ve functions/index.js se liší od app.js');
+  else ok('FAMILY_WORDS ve functions shodné s app.js (' + fw.length + ' slov)');
+  if (a[1] !== aa[1]) fail('FAMILY_CODE_ALPHABET ve functions/index.js (' + a[1] + ') se liší od app.js (' + aa[1] + ')');
+  else ok('FAMILY_CODE_ALPHABET ve functions shodná s app.js');
+} catch (e) { fail('functions FAMILY_WORDS: ' + e.message); }
+
 console.log('CACHE v sw.js vs. změněné soubory');
 (function checkCacheBump() {
   const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js'];

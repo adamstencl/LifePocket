@@ -872,3 +872,164 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
   console.log(`[LP] deleteAccount uid=${uid} hotovo`);
   return {ok: true};
 });
+
+// ── Rotate Group Code — nový kód skupiny (jen správce) ───────────────────────
+// Kód = ID dokumentu, proto se skupina zkopíruje pod nové ID a stará se smaže.
+// Pořadí a selhání:
+//  (1) zámek ve staré skupině (codeRotation) – selže → nic se nezměnilo
+//  (2) nový dokument přes create() (unikátní ID) + kopie všech podkolekcí rekurzivně
+//      selže → nový strom se smaže, zámek se uvolní, stará skupina beze změny
+//  (3) profily členů (transakce): familyId / extraGroupIds stará → nová
+//      selže → profily se vrátí na starý kód, nový strom se smaže, zámek se uvolní
+//  (4) smazání starého dokumentu (tím starý kód okamžitě přestane platit), pak zbytek stromu
+//      nový kód už platí (profily přepnuté), proto se vždy vrátí {code}: smazání dokumentu se zkusí 3×,
+//      když ani tak neprojde, vrátí se oldRemoved:false a zaloguje se (starou skupinu smazat ručně);
+//      selže jen úklid podkolekcí → zbytky nejsou dostupné (pravidla chtějí rodičovský dokument), jen log
+// Zápisy do staré skupiny během kopírování (sekundy) se nepřenesou.
+// Logy jen technicky: krok, počty a kód chyby; žádné kódy skupin ani obsah.
+// Slova a abeceda musí odpovídat app.js a firestore.rules (hlídá .github/scripts/ci-check.js)
+const FAMILY_WORDS = ['ADAM','ANNA','BARA','DOMA','ELAN','FARA','HANA','JANA','KARA','LARA','MARA','NORA','PATA','RANA','SARA','TARA'];
+const FAMILY_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const ROTATE_LOCK_MS = 6 * 60 * 1000;      // déle než timeout funkce → zámek po pádu sám vyprší
+const ROTATE_COOLDOWN_MS = 2 * 60 * 1000;  // ochrana proti opakovanému klikání
+const COPY_BATCH = 400;
+const UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+function genGroupCode() {
+  const crypto = require('crypto');
+  let s = '';
+  for (let i = 0; i < 6; i++) s += FAMILY_CODE_ALPHABET[crypto.randomInt(FAMILY_CODE_ALPHABET.length)];
+  return FAMILY_WORDS[crypto.randomInt(FAMILY_WORDS.length)] + '-' + s;
+}
+
+// Zkopíruje všechny podkolekce src → dst (rekurzivně, i dokumenty bez dat s vnořenými kolekcemi)
+async function copySubcollections(srcRef, dstRef, stats) {
+  const cols = await srcRef.listCollections();
+  for (const col of cols) {
+    const refs = await col.listDocuments();
+    for (let i = 0; i < refs.length; i += COPY_BATCH) {
+      const chunk = refs.slice(i, i + COPY_BATCH);
+      const snaps = await db.getAll(...chunk);
+      const batch = db.batch();
+      let n = 0;
+      for (const s of snaps) {
+        if (!s.exists) continue;
+        batch.set(dstRef.collection(col.id).doc(s.id), s.data());
+        n++;
+      }
+      if (n) { await batch.commit(); stats.docs += n; }
+    }
+    for (const r of refs) await copySubcollections(r, dstRef.collection(col.id).doc(r.id), stats);
+  }
+}
+
+// Přepne skupinu v profilu člena (hlavní i vedlejší); transakce nepřepíše souběžné změny profilu
+async function swapGroupInProfile(uid, from, to) {
+  const ref = db.doc(`users/${uid}/profile/main`);
+  return db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) return false;
+    const p = s.data() || {};
+    const upd = {};
+    if (p.familyId === from) upd.familyId = to;
+    if (Array.isArray(p.extraGroupIds) && p.extraGroupIds.includes(from)) {
+      upd.extraGroupIds = [...new Set(p.extraGroupIds.map(g => g === from ? to : g))];
+    }
+    if (!Object.keys(upd).length) return false;
+    tx.update(ref, upd);
+    return true;
+  });
+}
+
+exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+  const gid = String((request.data || {}).gid || '');
+  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', 'Neplatný kód skupiny.');
+  const oldRef = db.doc(`families/${gid}`);
+
+  // (1) oprávnění + zámek v jedné transakci
+  const now = Date.now();
+  const src = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(oldRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
+    const d = snap.data() || {};
+    const me = d.members && d.members[uid];
+    if (!me || me.role !== 'admin') throw new HttpsError('permission-denied', 'Kód skupiny může změnit jen správce.');
+    const lockAt = Number(d.codeRotation && d.codeRotation.at);
+    if (Number.isFinite(lockAt) && now - lockAt < ROTATE_LOCK_MS) throw new HttpsError('aborted', 'Kód skupiny se právě mění, zkus to za chvíli.');
+    const lastAt = Date.parse(d.codeRotatedAt);
+    if (Number.isFinite(lastAt) && now - lastAt < ROTATE_COOLDOWN_MS) throw new HttpsError('resource-exhausted', 'Kód skupiny jde změnit nejvýš jednou za 2 minuty.');
+    tx.update(oldRef, {codeRotation: {at: now, by: uid}});
+    return d;
+  });
+
+  let step = '2';
+  let newCode = null, newRef = null;
+  const swapped = [];
+  const stats = {docs: 0};
+  try {
+    // (2) nový dokument s unikátním ID (create selže, když už existuje) + podkolekce
+    const data = {...src, codeRotatedAt: new Date(now).toISOString()};
+    delete data.codeRotation;
+    for (let i = 0; i < 5 && !newCode; i++) {
+      const code = genGroupCode();
+      if (code === gid) continue;
+      const ref = db.doc(`families/${code}`);
+      try {
+        await ref.create({...data, code});
+        newCode = code; newRef = ref;
+      } catch (e) {
+        if (!(e && (e.code === 6 || e.code === 'already-exists'))) throw e;
+      }
+    }
+    if (!newCode) throw Object.assign(new Error('no free code'), {code: 'no-free-code'});
+    await copySubcollections(oldRef, newRef, stats);
+
+    // Členové se mohli během kopie změnit (připojení / odchod) → seznam podle aktuálního stavu
+    const cur = await oldRef.get();
+    const curMembers = (cur.exists && cur.data().members) || src.members || {};
+    await newRef.update({members: curMembers});
+
+    // (3) profily členů
+    step = '3';
+    const uids = [...new Set([...Object.keys(src.members || {}), ...Object.keys(curMembers)])].filter(u => UID_RE.test(u));
+    for (const m of uids) {
+      if (await swapGroupInProfile(m, gid, newCode)) swapped.push(m);
+    }
+  } catch (e) {
+    // jen kód chyby: zpráva Firestore může obsahovat cestu s kódem skupiny
+    console.error(`[LP] rotateGroupCode uid=${uid} krok ${step} selhal: ${e && e.code || ''}`);
+    // Úklid: profily zpět, nový strom pryč, zámek pryč → stará skupina jako předtím
+    let cleanOk = true;
+    for (const m of swapped) {
+      try { await swapGroupInProfile(m, newCode, gid); }
+      catch (e2) { cleanOk = false; console.error(`[LP] rotateGroupCode úklid profilu selhal: ${e2 && e2.code || ''}`); }
+    }
+    if (newRef) {
+      try { await db.recursiveDelete(newRef); }
+      catch (e2) { cleanOk = false; console.error(`[LP] rotateGroupCode úklid nové skupiny selhal: ${e2 && e2.code || ''}`); }
+    }
+    try { await oldRef.update({codeRotation: FieldValue.delete()}); }
+    catch (e2) { console.error(`[LP] rotateGroupCode uvolnění zámku selhalo: ${e2 && e2.code || ''}`); } // vyprší sám
+    if (!cleanOk) console.error(`[LP] rotateGroupCode úklid neúplný`);
+    throw new HttpsError('internal', 'Kód se nepodařilo změnit, skupina zůstala beze změny. Zkus to prosím znovu.');
+  }
+
+  // (4) stará skupina: nejdřív dokument (starý kód hned neplatí), pak podkolekce
+  let oldRemoved = false;
+  for (let i = 0; i < 3 && !oldRemoved; i++) {
+    try { await oldRef.delete(); oldRemoved = true; }
+    catch (e) {
+      console.error(`[LP] rotateGroupCode uid=${uid} krok 4 pokus ${i + 1} selhal: ${e && e.code || ''}`);
+      if (i < 2) await new Promise(r => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  if (oldRemoved) {
+    try { await db.recursiveDelete(oldRef); }
+    catch (e) { console.error(`[LP] rotateGroupCode uid=${uid} úklid podkolekcí selhal: ${e && e.code || ''}`); }
+  }
+
+  console.log(`[LP] rotateGroupCode uid=${uid} hotovo: dokumentů ${stats.docs}, profilů ${swapped.length}, stará smazána ${oldRemoved}`);
+  return {code: newCode, oldRemoved};
+});

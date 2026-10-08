@@ -19,6 +19,8 @@ const claudeProxyFn=httpsCallable(functions,'claudeProxy');
 const notifyFamilyFn=httpsCallable(functions,'notifyFamily');
 const testPushFn=httpsCallable(functions,'testPush');
 const deleteAccountFn=httpsCallable(functions,'deleteAccount');
+// Kopie velké skupiny může trvat déle než výchozích 70 s (funkce má limit 300 s)
+const rotateGroupCodeFn=httpsCallable(functions,'rotateGroupCode',{timeout:300000});
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 // Mazání účtu: během něj neběží AI ani zápisy na pozadí (viz sekce ÚČET)
 let _accDeleting=false, _accDeleted=false, _accStopped=false; // _accStopped: listenery zastavené (po chybě obnoví reload)
@@ -39,8 +41,11 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.35';
+const APP_VERSION = '4.36';
 const CHANGELOG = [
+  { v:'4.36', items:[
+    '🔄 Správce skupiny může vygenerovat nový, bezpečnější kód'
+  ]},
   { v:'4.35', items:[
     '🗑️ Smazání účtu přímo v aplikaci (Nastavení → Účet)',
     '📥 Stažení všech tvých dat do souboru',
@@ -5299,7 +5304,8 @@ window.joinFamily = async (codeArg) => {
   if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return false; }
   try {
     const fSnap = await getDoc(doc(db,'families',code));
-    if(!fSnap.exists()) { toast('❌ Skupina nenalezena — zkontroluj kód'); return false; }
+    // Z odkazu (codeArg) = nejspíš změněný kód skupiny; z formuláře spíš překlep
+    if(!fSnap.exists()) { toast(typeof codeArg === 'string' ? '❌ Pozvánka už neplatí, požádej o novou' : '❌ Skupina nenalezena — zkontroluj kód (kód z pozvánky mohl správce změnit)', 4000); return false; }
     const fData = fSnap.data();
     if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return false; }
     // Přidej sebe do skupiny jen vlastním klíčem (celá mapa z paměti by přepsala souběžné změny)
@@ -5513,7 +5519,7 @@ function closeJoinInviteModal() { document.getElementById('join-invite-modal')?.
 function showJoinInviteModal(name) {
   closeJoinInviteModal();
   const body = name === null
-    ? '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">Skupina nenalezena. Požádej odesílatele o nový odkaz.</div>'
+    ? '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">Pozvánka už neplatí, požádej o novou.</div>'
       +'<button class="btn-p" onclick="cancelPendingJoin()">Zavřít</button>'
     : '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">Chceš se připojit do skupiny <b>'+esc(name)+'</b>?</div>'
       +'<div style="display:flex;gap:10px"><button class="btn-p" style="flex:1" onclick="confirmPendingJoin()">Připojit se</button>'
@@ -5648,7 +5654,7 @@ window.joinExtraGroup = async (codeArg) => {
   const prevIds = extraGroupIds;
   try {
     const fSnap = await getDoc(doc(db,'families',code));
-    if(!fSnap.exists()) { toast('❌ Skupina nenalezena'); return false; }
+    if(!fSnap.exists()) { toast(typeof codeArg === 'string' ? '❌ Pozvánka už neplatí, požádej o novou' : '❌ Skupina nenalezena — zkontroluj kód (kód z pozvánky mohl správce změnit)', 4000); return false; }
     const fData = fSnap.data();
     if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return false; }
     await updateDoc(doc(db,'families',code), {
@@ -5690,13 +5696,17 @@ window.leaveExtraGroup = async (gid) => {
   } finally { _leavingGids.delete(gid); }
 };
 
-// Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
-async function dropExtraGroupLocal(gid) {
+// Zruší odběry a data vedlejší skupiny jen v paměti (profil nemění)
+function forgetExtraGroupLocal(gid) {
   extraGroupIds = extraGroupIds.filter(id => id !== gid);
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
+}
+// Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
+async function dropExtraGroupLocal(gid) {
+  forgetExtraGroupLocal(gid);
   renderFamilySettings(); renderCal();
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
@@ -5726,6 +5736,144 @@ function isRemovedFromGroup(snap, gid) {
   return !!(m && typeof m === 'object' && !m[CU.uid]);
 }
 
+// ── Změna kódu skupiny (rotateGroupCode) ──
+// Server skupinu zkopíruje pod nový kód, přepíše profily členů a starou smaže.
+// Přepne lokální stav ze staré skupiny na novou (hlavní i vedlejší); opakované volání nic nedělá.
+function switchGroupLocal(oldGid, newGid) {
+  if(!okFamilyCode(newGid) || oldGid === newGid) return false;
+  let changed = false;
+  if(familyId === oldGid) {
+    resetFamilyLocal();
+    prof.familyId = newGid;
+    familyId = newGid;
+    subscribeFamily(); // znovu přihlásí i vedlejší skupiny z prof.extraGroupIds (běžící přeskočí)
+    initPantry(); // zásoby běžely na staré skupině (listener mohl po smazání skončit chybou)
+    changed = true;
+  }
+  if(extraGroupIds.includes(oldGid)) {
+    const ids = extraGroupIds.map(g => g === oldGid ? newGid : g).filter((g, i, a) => a.indexOf(g) === i && g !== familyId);
+    forgetExtraGroupLocal(oldGid);
+    extraGroupIds = ids; prof.extraGroupIds = ids;
+    for(const g of ids) subscribeExtraGroup(g);
+    changed = true;
+  }
+  if(selEvShareGroupId === oldGid) selEvShareGroupId = newGid;
+  if(changed) renderAfterFamilyChange();
+  return changed;
+}
+
+// Skupiny, jejichž kód právě mění tento klient (odpověď funkce přepne sám, snapshot nečeká)
+const _rotatingGids = new Set();
+const _groupGoneChecks = new Set();
+// Dokument skupiny zmizel (ze serveru): kód mohl změnit správce → profil už přepsal server.
+// Znovu načte profil; když v něm je jiná skupina, tiše se přepne. Jinak se nic nemění (jako dřív).
+async function checkGroupGone(snap, gid) {
+  if(!CU || snap.exists() || snap.metadata.fromCache || _rotatingGids.has(gid) || _leavingGids.has(gid) || _groupGoneChecks.has(gid)) return;
+  _groupGoneChecks.add(gid);
+  const uid = CU.uid;
+  try {
+    const ps = await getDoc(doc(db,'users',uid,'profile','main'));
+    if(CU?.uid !== uid || !ps.exists()) return;
+    const p = ps.data() || {};
+    const freshExtra = Array.isArray(p.extraGroupIds) ? p.extraGroupIds.filter(okFamilyCode) : [];
+    let newGid = null;
+    if(gid === familyId) {
+      if(okFamilyCode(p.familyId) && p.familyId !== gid) newGid = p.familyId;
+    } else if(extraGroupIds.includes(gid) && !freshExtra.includes(gid)) {
+      // nový kód = vedlejší skupina z profilu, kterou lokálně ještě nemám
+      const added = freshExtra.filter(g => !extraGroupIds.includes(g) && g !== familyId);
+      if(added.length === 1) newGid = added[0];
+    }
+    if(newGid && switchGroupLocal(gid, newGid)) toast('🔄 Kód skupiny se změnil');
+  } catch(e) { console.warn('[LP] kontrola změny kódu skupiny:', e?.code || e?.name); }
+  finally { _groupGoneChecks.delete(gid); }
+}
+
+let _rotateBusy = false;
+function rotSetStatus(txt, isErr) {
+  const st = document.getElementById('rotcode-st');
+  if(!st) return;
+  st.textContent = txt;
+  st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
+}
+window.closeRotateGroupCode = () => { if(_rotateBusy) return; document.getElementById('m-rotcode')?.remove(); };
+window.openRotateGroupCode = (gid) => {
+  if(!CU || _rotateBusy || !okFamilyCode(gid)) return;
+  const gData = gid === familyId ? familyData : extraGroupsData[gid];
+  if(gData?.members?.[CU.uid]?.role !== 'admin') return;
+  document.getElementById('m-rotcode')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-rotcode'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:440px">
+    <div class="mtitle">🔄 Nový kód skupiny</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.6">
+      <div style="margin-bottom:8px">Skupina <b>${esc(cutName(gData?.groupName,40) || 'Skupina')}</b> dostane nový kód.</div>
+      <ul style="margin:0 0 12px;padding-left:20px">
+        <li>Starý kód <b>${esc(gid)}</b> a všechny dřívější odkazy na pozvánku <b>přestanou platit</b>.</li>
+        <li>Členové ve skupině zůstanou a jejich aplikace se samy přepnou na nový kód.</li>
+        <li>Nákupy, události, jídelníček, checklisty i zásoby se přesunou pod nový kód.</li>
+      </ul>
+    </div>
+    <div id="rotcode-st" role="status" aria-live="polite" style="font-size:14px;margin-top:4px;min-height:1em"></div>
+    <div class="macts" id="rotcode-acts">
+      <button type="button" class="btn-s" id="rotcode-cancel" onclick="closeRotateGroupCode()">Zrušit</button>
+      <button type="button" class="btn-p" id="rotcode-btn" data-a0="${esc(gid)}" onclick="confirmRotateGroupCode(this.dataset.a0)">Vygenerovat nový kód</button>
+    </div>
+  </div>`;
+  // Klik vedle okna: během změny kódu nezavírat (globální handler .moverlay by okno jen skryl)
+  m.addEventListener('click', e => { if(e.target === m) { e.stopPropagation(); window.closeRotateGroupCode(); } });
+  // Skrytí zvenku (Zpět → cm()): během běhu vrátit, jinak zavřít celé
+  new MutationObserver(() => {
+    if(m.classList.contains('open') || !m.isConnected) return;
+    if(_rotateBusy) m.classList.add('open'); else window.closeRotateGroupCode();
+  }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  document.body.appendChild(m);
+};
+// Chybové hlášky funkce jsou česky pro uživatele; síť a přihlášení přes userErr
+const ROT_SERVER_ERRS = ['functions/permission-denied','functions/not-found','functions/aborted','functions/resource-exhausted','functions/internal','functions/invalid-argument'];
+window.confirmRotateGroupCode = async (gid) => {
+  if(!CU || _rotateBusy || !okFamilyCode(gid)) return;
+  const btn = document.getElementById('rotcode-btn'), cancel = document.getElementById('rotcode-cancel');
+  const busy = on => {
+    _rotateBusy = on;
+    if(btn) { btn.disabled = on; btn.textContent = on ? '⏳ Měním kód…' : 'Zkusit znovu'; }
+    if(cancel) cancel.disabled = on;
+    document.querySelectorAll('.rotcode-open').forEach(b => { b.disabled = on; });
+  };
+  busy(true);
+  _rotatingGids.add(gid);
+  let ok = false;
+  rotSetStatus('⏳ Přesouvám data skupiny pod nový kód, u velké skupiny to může trvat až minutu…');
+  try {
+    const res = await rotateGroupCodeFn({gid});
+    const code = String(res?.data?.code || '');
+    if(!okFamilyCode(code)) throw Object.assign(new Error(''), {code:'functions/internal'});
+    ok = true;
+    switchGroupLocal(gid, code);
+    busy(false);
+    const acts = document.getElementById('rotcode-acts');
+    rotSetStatus(res.data.oldRemoved === false ? '⚠️ Nový kód platí, starou skupinu se ale nepodařilo úplně zrušit. Dej nám prosím vědět.' : '✅ Hotovo. Pošli ostatním novou pozvánku.', res.data.oldRemoved === false);
+    if(acts) acts.outerHTML = `<div class="family-code-box" style="margin:12px 0">
+        <div class="family-code">${esc(code)}</div>
+        <div class="family-code-lbl">Nový kód skupiny</div>
+      </div>
+      <div class="macts">
+        <button type="button" class="btn-s" onclick="closeRotateGroupCode()">Zavřít</button>
+        <button type="button" class="btn-p" data-a0="${esc(code)}" onclick="shareGroupInvite(this.dataset.a0)">📤 Sdílet pozvánku</button>
+      </div>`;
+  } catch(e) {
+    busy(false);
+    console.warn('rotateGroupCode selhalo', e?.code || e?.name);
+    const txt = ROT_SERVER_ERRS.includes(e?.code) && e?.message ? String(e.message).slice(0,200) : userErr(e, 'změna kódu skupiny');
+    document.getElementById('m-rotcode')?.classList.add('open'); // mohlo se skrýt tlačítkem Zpět
+    rotSetStatus('⚠️ ' + txt, true);
+  } finally {
+    _rotatingGids.delete(gid);
+    // Odpověď se mohla ztratit (výpadek sítě), i když server kód změnil → ověřit podle profilu
+    if(!ok) getDoc(doc(db,'families',gid)).then(sn => checkGroupGone(sn, gid)).catch(() => {});
+  }
+};
+
 // gid: skupina, ze které se odebírá (karta vedlejší skupiny); bez něj hlavní skupina
 window.removeFamilyMember = async (uid, gid) => {
   const targetGid = gid || familyId;
@@ -5744,7 +5892,8 @@ window.removeFamilyMember = async (uid, gid) => {
 function subscribeExtraGroup(gid) {
   if (unsubExtraGroupDocs[gid]) return;
   unsubExtraGroupDocs[gid] = onSnapshot(doc(db,'families',gid), {includeMetadataChanges:true}, snap => {
-    if (!snap.exists()) return;
+    // Smazaný dokument: mohl se změnit kód skupiny → profil znovu načíst
+    if (!snap.exists()) { checkGroupGone(snap, gid); return; }
     // Byl jsem ze skupiny odebrán → uklidit profil i zobrazení
     if (isRemovedFromGroup(snap, gid)) {
       dropExtraGroupLocal(gid).catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
@@ -5772,7 +5921,8 @@ function subscribeFamily() {
   // Sleduj data skupiny (členové)
   const fid = familyId;
   unsubFamily = onSnapshot(doc(db,'families',fid), {includeMetadataChanges:true}, snap => {
-    if(!snap.exists()) return;
+    // Smazaný dokument: mohl se změnit kód skupiny → profil znovu načíst (jen aktuální listener)
+    if(!snap.exists()) { if(familyId === fid) checkGroupGone(snap, fid); return; }
     // Byl jsem ze skupiny odebrán → smazat familyId z vlastního profilu a nezobrazovat ji
     if(isRemovedFromGroup(snap, fid)) {
       // Starý listener (lokálně už jiná skupina) nesmí sahat na nový stav ani profil
@@ -5916,6 +6066,16 @@ function buildGroupCard(gid, gData, isPrimary) {
     : '<button data-gid="'+gidAttr+'" onclick="leaveExtraGroup(this.dataset.gid)" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">Opustit skupinu</button>';
   const nameLabel = esc(gData.groupName || 'Skupina') + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">⭐ hlavní</span>' : '');
   const renameBtn = isPrimary ? ' <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px">✏️</button>' : '';
+  // Nový kód smí vygenerovat jen správce; starý krátký kód (WORD-NNNN) se dá uhodnout → zvýraznit
+  const legacyCode = FAMILY_CODE_LEGACY_RE.test(gid);
+  const rotateBtn = isAdmin
+    ? '<button type="button" class="rotcode-open" data-gid="'+gidAttr+'" onclick="openRotateGroupCode(this.dataset.gid)"'+(_rotateBusy?' disabled':'')+' style="'
+      +(legacyCode ? 'background:var(--red);border:none;color:#fff;font-weight:700' : 'background:none;border:1px solid var(--border);color:var(--text2)')
+      +';border-radius:8px;padding:5px 14px;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">🔄 Nový kód</button>'
+    : '';
+  const legacyWarn = isAdmin && legacyCode
+    ? '<div role="note" style="font-size:13px;color:var(--red);margin-top:8px;line-height:1.4">⚠️ Tento kód je krátký a dá se uhodnout – doporučujeme vygenerovat nový</div>'
+    : '';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
     +'<div class="family-code-box" style="margin-bottom:12px">'
@@ -5924,7 +6084,8 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
     +'<button data-gid="'+gidAttr+'" onclick="copyFamilyCode(this.dataset.gid)" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">📋 Kopírovat</button>'
     +'<button data-gid="'+gidAttr+'" onclick="shareGroupInvite(this.dataset.gid)" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">📤 Sdílet</button>'
-    +'</div></div>'
+    +rotateBtn
+    +'</div>'+legacyWarn+'</div>'
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Členové ('+Object.keys(members).length+')</div>'
     +membersHtml
     +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">Sdílené moduly</div>'
