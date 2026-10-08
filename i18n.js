@@ -18,21 +18,24 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e
 function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function plural(lang) { try { return new Intl.PluralRules(lang); } catch (e) { return { select: n => (n === 1 ? 'one' : 'other') }; } }
 
-// Výslovná volba (odkaz ?lang= nebo přepínač): uloží se do zařízení a po přihlášení do profile.lang
-function rememberLang(l) {
+// Ruční přepínač v Nastavení: uloží se do zařízení a příznak lp_lang_sync zajistí zápis do profile.lang (i po offline přepnutí).
+// Odkaz ?lang= platí jen pro zařízení před přihlášením (bez příznaku), profil existujícího účtu nepřepisuje.
+function rememberLang(l, sync) {
   const okLs = lsSet('lp_lang', l);
-  lsSet('lp_lang_sync', '1');
+  if (sync) lsSet('lp_lang_sync', '1');
   return okLs;
 }
-// Čeká volba jazyka na zápis do profilu?
+// Čeká ruční volba jazyka na zápis do profilu?
 export const langSyncPending = () => lsGet('lp_lang_sync') === '1';
 export const clearLangSync = () => lsDel('lp_lang_sync');
+// Odhlášení: jazyk patří účtu, zařízení se vrací na výchozí volbu
+export function clearLangLocal() { lsDel('lp_lang_sync'); lsDel('lp_lang'); }
 
 // Pořadí: ?lang= → lp_lang (kopie profile.lang) → jazyk telefonu (až od fáze 7) → čeština
 export function resolveLang() {
   let q = null;
   try { q = new URLSearchParams(location.search).get('lang'); } catch (e) {}
-  if (SUPPORTED.includes(q)) { rememberLang(q); return q; }
+  if (SUPPORTED.includes(q)) { rememberLang(q, false); return q; }
   const ls = lsGet('lp_lang');
   if (SUPPORTED.includes(ls)) return ls;
   if (!AUTO_DETECT) return 'cs';
@@ -82,11 +85,11 @@ export function t(key, vars) {
   }
   return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : ''));
 }
-// tH(): do innerHTML; proměnné (kromě n a g) projdou escapováním, slovník je důvěryhodný
+// tH(): do innerHTML i atributů; všechny proměnné projdou escapováním, slovník je důvěryhodný (ci-check v něm zakazuje < a ")
 export function escH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
 export function tH(key, vars) {
   const o = {};
-  for (const [k, x] of Object.entries(vars || {})) o[k] = (k === 'n' || k === 'g') ? x : escH(x);
+  for (const [k, x] of Object.entries(vars || {})) o[k] = x == null ? x : escH(x);
   return t(key, o);
 }
 
@@ -112,7 +115,7 @@ export function applyI18n(root) {
 export function reloadWithLang(l) {
   if (!SUPPORTED.includes(l)) return;
   const u = urlWithoutLang();
-  if (!rememberLang(l)) u.searchParams.set('lang', l); // bez localStorage aspoň přes adresu
+  if (!rememberLang(l, true)) u.searchParams.set('lang', l); // bez localStorage aspoň přes adresu
   try { sessionStorage.setItem('lp_lang_reload', l); } catch (e) {}
   location.replace(u.href);
 }

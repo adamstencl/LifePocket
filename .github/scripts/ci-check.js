@@ -284,6 +284,20 @@ try {
     if ((typeof cs[k] === 'object') !== (typeof en[k] === 'object')) { fail('i18n: ' + k + ' je plurál jen v jednom jazyce'); badPl++; }
   }
   if (!badPl) ok('tvary plurálů v pořádku');
+  // Bezpečnost: hodnoty jdou do innerHTML i atributů (title="…", data-i18n-attr) → žádné < a ".
+  // Uvozovky jen u výslovně textových klíčů (jen textContent), ty se nesmí použít v atributu.
+  const QUOTE_TEXT_ONLY = new Set(['ios.s2b', 'dash.ev']);
+  let badChars = 0;
+  const attrKeys = new Set();
+  for (const m of read('index.html').matchAll(/data-i18n-attr="([^"]+)"/g)) m[1].split(';').forEach(x => attrKeys.add(x.slice(x.indexOf(':') + 1).trim()));
+  for (const [lang, d] of [['cs', cs], ['en', en]]) {
+    for (const [k, v] of Object.entries(d)) {
+      const txt = v && typeof v === 'object' ? Object.values(v).join(' ') : String(v);
+      if (txt.includes('<')) { fail('i18n/' + lang + '.js: ' + k + ' obsahuje „<“ (HTML do slovníku nepatří)'); badChars++; }
+      if (txt.includes('"') && (!QUOTE_TEXT_ONLY.has(base(k)) || attrKeys.has(base(k)))) { fail('i18n/' + lang + '.js: ' + k + ' obsahuje uvozovku " (použij „“ nebo “”)'); badChars++; }
+    }
+  }
+  if (!badChars) ok('slovníky bez < a " (mimo textové klíče ' + [...QUOTE_TEXT_ONLY].join(', ') + ')');
   // Stejné {proměnné} v obou jazycích (varianta #f musí mít stejné jako základní klíč)
   const vars = v => JSON.stringify([...new Set(String(v && typeof v === 'object' ? Object.values(v).join(' ') : v).match(/\{\w+\}/g) || [])].sort());
   let badVars = 0;

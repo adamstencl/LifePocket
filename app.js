@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,langSyncPending,clearLangSync,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -618,7 +618,7 @@ async function startSession(u){
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
   if(s.exists()){prof=s.data();
-    if(syncProfileLang(u.uid)) return; // jazyk přepnutý na jiném zařízení → reload
+    if(await syncProfileLang(u.uid)) return; // jazyk profilu se liší od zařízení → reload
     // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
     let migrated=false;
     if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
@@ -648,18 +648,24 @@ function touchLastSeen(uid){
   }catch(e){}
 }
 // Jazyk: profile.lang platí pro všechna zařízení (a později pro notifikace ze serveru), lp_lang je jeho kopie v zařízení.
-// Výslovná volba v zařízení (?lang= nebo přepínač, příznak lp_lang_sync) se zapíše do profilu; jinak se převezme jazyk z profilu.
+// Existující účet: vyhrává profile.lang; bez něj se zapíše 'cs' (výchozí stav). Odkaz ?lang= profil nepřepisuje.
+// Jen ruční přepínač (příznak lp_lang_sync, např. přepnuto offline) zapíše jazyk zařízení do profilu.
 // Vrací true, když se stránka znovu načítá kvůli jazyku.
-function syncProfileLang(uid){
+async function syncProfileLang(uid){
   if(_accDeleting||_accDeleted||_accStopped) return false;
-  if(!langSyncPending() && SUPPORTED.includes(prof.lang)){
-    return prof.lang!==LANG && reloadForProfileLang(prof.lang);
+  if(langSyncPending()){
+    if(prof.lang===LANG){ clearLangSync(); return false; }
+    prof.lang=LANG;
+    setDoc(doc(db,'users',uid,'profile','main'),{lang:LANG},{merge:true})
+      .then(()=>clearLangSync()).catch(e=>console.warn('[LP] jazyk profilu:',e?.code||e?.name));
+    return false;
   }
-  if(prof.lang===LANG){ clearLangSync(); return false; }
-  prof.lang=LANG;
-  setDoc(doc(db,'users',uid,'profile','main'),{lang:LANG},{merge:true})
-    .then(()=>clearLangSync()).catch(e=>console.warn('[LP] jazyk profilu:',e?.code||e?.name));
-  return false;
+  if(!SUPPORTED.includes(prof.lang)){
+    prof.lang='cs';
+    const w=setDoc(doc(db,'users',uid,'profile','main'),{lang:'cs'},{merge:true}).catch(e=>console.warn('[LP] jazyk profilu:',e?.code||e?.name));
+    if(LANG!=='cs') await Promise.race([w,new Promise(r=>setTimeout(r,1500))]); // zápis před reloadem
+  }
+  return prof.lang!==LANG && reloadForProfileLang(prof.lang);
 }
 // Přepínač jazyka v Nastavení: uložit do profilu (nejvýš 1,5 s čekání, offline se dopíše po startu) a načíst znovu
 let _langSwitching=false;
@@ -701,6 +707,7 @@ window.addEventListener('online',()=>{ if(CU&&document.getElementById('load-err'
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
   else{
+    if(CU) clearLangLocal(); // odhlášení (i z jiného místa): jazyk patří účtu; anonymní návštěva si ?lang= ponechá
     CU=null;
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
@@ -2894,7 +2901,7 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();location.reload();};
+window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();location.reload();};
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
