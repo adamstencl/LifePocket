@@ -47,8 +47,15 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.37';
+const APP_VERSION = '4.38';
 const CHANGELOG = [
+  { v:'4.38', items:[
+    '🔔 Upozornění na změny ve skupině – nastav si u každého modulu, kdy je chceš dostávat',
+    '🗞️ Nový přehled „Co je nového“ ve skupině: kdo co přidal, změnil nebo odškrtl za posledních 7 dní'
+  ], en:[
+    '🔔 Alerts about changes in your group – choose for each module when you want to get them',
+    '🗞️ New “What’s new” overview in the group: who added, changed or ticked off what in the last 7 days'
+  ]},
   { v:'4.37', items:[
     '🌍 Příprava anglické verze – náhled přes lifepocket.app/?lang=en'
   ], en:[
@@ -711,6 +718,9 @@ onAuthStateChanged(auth,async u=>{
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
+    stopAllGroupUnread(); _pendingGrpFeed = null;
+    for(const b of _gaBuf.values()) clearTimeout(b.timer);
+    _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
@@ -727,7 +737,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2098,6 +2108,7 @@ function subEvents(){
 
 
 function renderCal(){
+  updateGroupFeedBells();
   const lbl=document.getElementById('cal-month-lbl');
   if(!lbl)return;
   const d=new Date(calYear,calMonth,1);
@@ -3856,6 +3867,7 @@ function loadNotifSettings() {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
   });
+  renderGroupNotifSettings();
 }
 
 window.saveNotifSettings = () => {
@@ -4158,6 +4170,9 @@ function showForegroundPush(payload) {
   let actions = [];
   try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { actions = []; }
   const {tag, actions: _a, title, body, ...clickData} = d;
+  // Upozornění ze skupiny: klepnutí otevře feed (data.open='grpfeed', gid, module → sw.js notificationclick);
+  // když je feed téže skupiny právě otevřený, jen ho obnovíme
+  if (d.open === 'grpfeed' && d.gid && d.gid === _gf.gid && document.getElementById('m-grpfeed')?.classList.contains('open')) loadGroupFeed(d.gid);
   sendNotif(n.title || title || 'LifePocket', n.body || body || '', '🔔', clickData, Array.isArray(actions) ? actions : [], tag || '');
 }
 
@@ -6003,6 +6018,7 @@ function subscribeExtraGroup(gid) {
       return;
     }
     extraGroupsData[gid] = snap.data();
+    if (!_gfUnsub[gid]) startGroupUnread(gid);
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap2 => {
@@ -6038,6 +6054,7 @@ function subscribeFamily() {
       return;
     }
     familyData = snap.data();
+    if(!_gfUnsub[fid]) startGroupUnread(fid);
     renderFamilySettings();
     renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
     // Přihlásit se k sdíleným datům
@@ -6141,12 +6158,14 @@ function buildGroupCard(gid, gData, isPrimary) {
   const members = gData.members || {};
   const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
   const isAdmin = members[CU?.uid]?.role === 'admin';
+  // Emoji jako v hlavičkách modulů (🧺 nákupy, 🗓️ kalendář). Doplňkové skupiny sdílí jen kalendář,
+  // ostatní přepínače by tam nic nedělaly → jen u hlavní skupiny
   const shareModules = [
-    {key:'shareShop', emoji:'🛒', label:'Nákupy', val: !!gData.shareShop},
-    {key:'shareCal',  emoji:'📅', label:'Kalendář', val: !!gData.shareCal},
+    {key:'shareShop', emoji:'🧺', label:'Nákupy', val: !!gData.shareShop},
+    {key:'shareCal',  emoji:'🗓️', label:'Kalendář', val: !!gData.shareCal},
     {key:'shareMeal', emoji:'🥗', label:'Jídelníček', val: !!gData.shareMeal},
     {key:'shareChecklist', emoji:'📋', label:'Checklist', val: gData.shareChecklist !== false && !!gData.shareChecklist},
-  ];
+  ].filter(m => isPrimary || m.key === 'shareCal');
   // gid jde do HTML jen přes data-gid (esc), v JS se čte přes dataset
   const gidAttr = esc(gid);
   const membersHtml = Object.entries(members).map(([uid,m])=>
@@ -6181,8 +6200,14 @@ function buildGroupCard(gid, gData, isPrimary) {
   const legacyWarn = isAdmin && legacyCode
     ? '<div role="note" style="font-size:13px;color:var(--red);margin-top:8px;line-height:1.4">⚠️ Tento kód je krátký a dá se uhodnout – doporučujeme vygenerovat nový</div>'
     : '';
+  // „Co je nového“ se štítkem nepřečtených (počet doplňuje updateGroupFeedBadges)
+  const unreadN = _gfUnread[gid]?.total || 0;
+  const feedBtn = '<button type="button" class="gf-open" data-gid="'+gidAttr+'" onclick="openGroupFeed(this.dataset.gid)">'
+    +'<span aria-hidden="true">🔔</span> '+tH('gf.title')
+    +'<span class="gf-count" data-gf-count data-gid="'+gidAttr+'"'+(unreadN?'':' hidden')+'>'+(unreadN>9?'9+':unreadN)+'</span></button>';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
+    +feedBtn
     +'<div class="family-code-box" style="margin-bottom:12px">'
     +'<div class="family-code">'+esc(gid)+'</div>'
     +'<div class="family-code-lbl">Pošli tento kód nebo odkaz ostatním členům</div>'
@@ -6213,6 +6238,7 @@ function renderFamilySettings() {
     // Hide extra groups section
     const eg = document.getElementById('family-extra-groups');
     if(eg) eg.innerHTML = '';
+    if(!timePickerOpen()) renderGroupNotifSettings();
     return;
   }
   if(noGroup) noGroup.style.display = 'none';
@@ -6242,6 +6268,8 @@ function renderFamilySettings() {
     +'<button onclick="showExtraGroupForm()" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:\'Crimson Pro\',serif;font-size:14px;cursor:pointer">➕ Přidat skupinu</button>';
 
   eg.innerHTML = html;
+  updateGroupFeedBadges();
+  if(!timePickerOpen()) renderGroupNotifSettings(); // sdílené moduly se mohly změnit
 }
 
 window.renameFamilyGroup = async () => {
@@ -6356,6 +6384,310 @@ function flushAllGroupActivity() { for(const k of [..._gaBuf.keys()]) flushGroup
 addEventListener('pagehide', flushAllGroupActivity);
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushAllGroupActivity(); });
 
+// ── CO JE NOVÉHO VE SKUPINĚ (feed, nepřečtené, odkaz z notifikace) ──
+const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊'};
+// Akce, které klient zapisuje (popisky gf.a.<modul>.<akce>); ostatní = obecný popisek
+const GF_ACTS = {shop:['add','edit','del','done','clear'], cal:['add','edit','del'], meal:['edit','del','plan'],
+  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del']};
+const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping'};
+const _gfUnsub = {};   // gid → odhlášení listeneru nepřečtených
+const _gfUnread = {};  // gid → {total, mods:{shop:n,…}}
+let _gf = {gid:null, mod:null, items:null, err:false, prevSeen:0, token:0};
+let _pendingGrpFeed = null; // {gid, m} z odkazu notifikace, otevře se po načtení appky
+
+function gfModName(m) { return t('gn.mod.' + m); }
+function myGroupIds() {
+  return [familyId, ...extraGroupIds].filter((g, i, a) => g && okFamilyCode(g) && a.indexOf(g) === i);
+}
+function groupDataOf(gid) { return gid === familyId ? familyData : extraGroupsData[gid]; }
+function groupFeedSeen(gid) { const v = prof?.groupFeedSeen?.[gid]; return Number.isFinite(v) ? v : 0; }
+
+// Nepřečtené: jeden listener na skupinu (od posledního otevření feedu, nejvýš 7 dní), jen změny ostatních
+function startGroupUnread(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  if(_gfUnsub[gid]) { _gfUnsub[gid](); delete _gfUnsub[gid]; }
+  const since = Math.max(groupFeedSeen(gid), Date.now() - GA_TTL_MS);
+  _gfUnsub[gid] = onSnapshot(
+    query(collection(db,'families',gid,'activity'), where('ts','>',Timestamp.fromMillis(since)), orderBy('ts','desc'), limit(20)),
+    snap => {
+      const mods = {}; let total = 0;
+      snap.docs.forEach(d => {
+        const a = d.data();
+        if(a.uid === CU?.uid || !GA_MODS.includes(a.module)) return;
+        mods[a.module] = (mods[a.module] || 0) + 1; total++;
+      });
+      _gfUnread[gid] = {total, mods};
+      updateGroupFeedBadges();
+    }, familyListenErr);
+}
+function stopGroupUnread(gid) {
+  if(!gid) return;
+  if(_gfUnsub[gid]) { _gfUnsub[gid](); delete _gfUnsub[gid]; }
+  delete _gfUnread[gid];
+  updateGroupFeedBadges();
+}
+function stopAllGroupUnread() { Object.keys(_gfUnsub).forEach(stopGroupUnread); }
+
+// Štítky počtu na kartách skupin + tečky u 🔔 v hlavičkách modulů
+function updateGroupFeedBadges() {
+  document.querySelectorAll('[data-gf-count]').forEach(el => {
+    const n = _gfUnread[el.dataset.gid]?.total || 0;
+    el.textContent = n > 9 ? '9+' : String(n);
+    el.hidden = !n;
+  });
+  updateGroupFeedBells();
+}
+function updateGroupFeedBells() {
+  let checkFam = false;
+  try {
+    const allCl = [...checklists, ...familyChecklists];
+    const l = allCl.find(c => c.id === activeChecklist) || allCl[0];
+    checkFam = !!(l?._family && familyId);
+  } catch(e) {}
+  const show = {shop: isShopShared(), cal: isCalShared(), meal: isMealShared(), check: checkFam};
+  for(const m of Object.keys(show)) {
+    const btn = document.getElementById('gf-bell-' + m);
+    if(!btn) continue;
+    btn.hidden = !show[m];
+    const n = myGroupIds().reduce((s, g) => s + (groupModShared(g, m) ? (_gfUnread[g]?.mods?.[m] || 0) : 0), 0);
+    btn.toggleAttribute('data-dot', n > 0);
+    btn.setAttribute('aria-label', n ? t('gf.bellAriaN', {n}) : t('gf.bellAria'));
+  }
+}
+
+// Otevře feed; gid null = první skupina, kde je modul sdílený (přednost má ta s nepřečtenými)
+window.openGroupFeed = (gid, mod) => {
+  if(!CU) return;
+  const gids = myGroupIds();
+  if(!gids.length) { toast(t('gf.noGroup')); return; }
+  mod = GA_MODS.includes(mod) ? mod : null;
+  if(!gids.includes(gid)) {
+    const cand = mod ? gids.filter(g => groupModShared(g, mod)) : gids;
+    gid = cand.find(g => _gfUnread[g]?.mods?.[mod || ''] || (!mod && _gfUnread[g]?.total)) || cand[0] || gids[0];
+  }
+  _gf.mod = mod;
+  const ov = document.getElementById('m-grpfeed');
+  if(ov && !ov.classList.contains('open')) om('m-grpfeed');
+  loadGroupFeed(gid);
+};
+window.gfPickGroup = gid => { if(myGroupIds().includes(gid) && gid !== _gf.gid) loadGroupFeed(gid); };
+window.gfPickMod = m => { _gf.mod = GA_MODS.includes(m) ? m : null; renderGroupFeed(); };
+window.gfOpenModule = m => {
+  if(!GF_PAGE[m] || !(prof?.modules || []).includes(GF_PAGE[m])) return;
+  cm('m-grpfeed');
+  sp(GF_PAGE[m]);
+  if(m === 'pantry') window.switchShopTab?.('pantry');
+};
+
+async function loadGroupFeed(gid) {
+  const tok = ++_gf.token;
+  _gf.gid = gid; _gf.items = null; _gf.err = false; _gf.prevSeen = groupFeedSeen(gid);
+  renderGroupFeed();
+  try {
+    const snap = await getDocs(query(collection(db,'families',gid,'activity'),
+      where('ts','>',Timestamp.fromMillis(Date.now() - GA_TTL_MS)), orderBy('ts','desc'), limit(100)));
+    if(tok !== _gf.token) return;
+    _gf.items = snap.docs.map(d => d.data({serverTimestamps:'estimate'}))
+      .filter(a => GA_MODS.includes(a.module) && typeof a.ts?.toMillis === 'function')
+      .map(a => ({...a, _ts: a.ts.toMillis()}));
+  } catch(e) {
+    if(tok !== _gf.token) return;
+    _gf.items = []; _gf.err = true;
+    console.warn('[LP] feed skupiny', e?.code || e?.name);
+  }
+  renderGroupFeed();
+  if(!_gf.err) markGroupFeedSeen(gid);
+}
+// Přečteno = otevření feedu; přesné pole groupFeedSeen.<gid> (merge), synchronizuje se mezi zařízeními
+function markGroupFeedSeen(gid) {
+  if(!CU || !prof || !okFamilyCode(gid)) return;
+  const now = Date.now();
+  prof.groupFeedSeen = {...(prof.groupFeedSeen || {}), [gid]: now};
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {groupFeedSeen: {[gid]: now}}, {merge:true})
+    .catch(e => console.warn('[LP] groupFeedSeen', e?.code || e?.name));
+  startGroupUnread(gid); // listener znovu od nového času
+}
+
+let _gfTimeFmt = null;
+function gfTime(ms) {
+  const min = Math.floor((Date.now() - ms) / 60000);
+  if(min < 60) return t('gf.minAgo', {n: Math.max(1, min)});
+  if(!_gfTimeFmt) _gfTimeFmt = new Intl.DateTimeFormat(LOCALE, {hour:'2-digit', minute:'2-digit'});
+  return _gfTimeFmt.format(new Date(ms));
+}
+function gfDayLabel(ds) {
+  const today = toDS(), y = new Date(); y.setDate(y.getDate() - 1);
+  if(ds === today) return t('gf.today');
+  if(ds === toDS(y)) return t('gf.yesterday');
+  return fmtDate(ds, 'wdm');
+}
+// Text záznamu (neosobní, bez rodu): „Přidáno do nákupu: banány, mléko a 3 další“
+function gfWhat(a) {
+  const key = (GF_ACTS[a.module] || []).includes(a.action) ? 'gf.a.' + a.module + '.' + a.action : 'gf.a.other';
+  let s = t(key);
+  const count = Number.isInteger(a.count) && a.count > 0 ? a.count : 1;
+  const title = typeof a.title === 'string' ? a.title.trim() : '';
+  if(a.action === 'clear') return count > 1 ? s + ' (' + count + ')' : s;
+  if(a.action === 'plan' || !title) return count > 1 ? s + ' (' + count + ')' : s;
+  const shown = Number.isInteger(a.n) && a.n > 0 ? a.n : 1;
+  const more = Math.max(0, count - shown);
+  return s + ': ' + title + (more ? ' ' + t('gf.more', {n: more}) : '');
+}
+function renderGroupFeed() {
+  const gid = _gf.gid;
+  const gids = myGroupIds();
+  const gEl = document.getElementById('gf-groups'), cEl = document.getElementById('gf-chips'), lEl = document.getElementById('gf-list');
+  if(!gEl || !cEl || !lEl) return;
+  // Výběr skupiny jen při více skupinách
+  gEl.innerHTML = gids.length > 1
+    ? `<div class="seg seg--block gf-groups" role="group" aria-label="${tH('gf.pickGroup')}">${gids.map(g =>
+        `<button type="button" class="seg-btn${g === gid ? ' active' : ''}" aria-pressed="${g === gid}" data-a0="${esc(g)}" onclick="gfPickGroup(this.dataset.a0)">${esc(cutName(groupDataOf(g)?.groupName, 20) || t('gf.group'))}</button>`).join('')}</div>`
+    : '';
+  // Čipy: sdílené moduly skupiny + moduly, které ve feedu jsou
+  const items = _gf.items || [];
+  const mods = GA_MODS.filter(m => groupModShared(gid, m) || items.some(a => a.module === m) || m === _gf.mod);
+  cEl.setAttribute('aria-label', t('gf.filter'));
+  cEl.innerHTML = `<button type="button" class="gf-chip${!_gf.mod ? ' active' : ''}" aria-pressed="${!_gf.mod}" data-a0="" onclick="gfPickMod(this.dataset.a0)">${tH('gf.all')}</button>`
+    + mods.map(m => `<button type="button" class="gf-chip${_gf.mod === m ? ' active' : ''}" aria-pressed="${_gf.mod === m}" aria-label="${esc(gfModName(m))}" title="${esc(gfModName(m))}" data-a0="${m}" onclick="gfPickMod(this.dataset.a0)">${GF_EMOJI[m]}</button>`).join('');
+  if(_gf.items === null) { lEl.innerHTML = `<div class="gf-empty">${tH('gf.loading')}</div>`; return; }
+  if(_gf.err) { lEl.innerHTML = `<div class="gf-empty">${tH('gf.err')}</div>`; return; }
+  const list = _gf.mod ? items.filter(a => a.module === _gf.mod) : items;
+  if(!list.length) {
+    lEl.innerHTML = _gf.mod
+      ? `<div class="gf-empty">${tH('gf.emptyMod', {mod: gfModName(_gf.mod)})}</div>`
+      : `<div class="gf-empty"><div class="gf-empty-em" aria-hidden="true">🌿</div><div class="gf-empty-t">${tH('gf.emptyT')}</div><div>${tH('gf.emptyD')}</div></div>`;
+    return;
+  }
+  const members = groupDataOf(gid)?.members || {};
+  let html = '', lastDay = '';
+  for(const a of list) {
+    const ds = toDS(new Date(a._ts));
+    if(ds !== lastDay) { html += `<div class="gf-day">${esc(gfDayLabel(ds))}</div>`; lastDay = ds; }
+    const mine = a.uid === CU?.uid;
+    const who = mine ? t('gf.you') : (cutName(members[a.uid]?.name, 40) || cutName(a.name, 40) || t('gf.someone'));
+    const unread = !mine && a._ts > _gf.prevSeen;
+    html += `<div class="gf-item${unread ? ' unread' : ''}">
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${GF_EMOJI[a.module]}</button>
+      <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
+      <div class="gf-what">${esc(gfWhat(a))}</div></div>
+    </div>`;
+  }
+  lEl.innerHTML = html;
+}
+
+// Odkaz z notifikace: nové okno (?open=grpfeed&gid=…&m=…) nebo zpráva od SW, když appka už běží
+function captureGrpFeedLink() {
+  try {
+    const u = new URL(location.href);
+    if(u.searchParams.get('open') !== 'grpfeed') return;
+    const gid = String(u.searchParams.get('gid') ?? '').trim().slice(0, 20).toUpperCase();
+    const m = String(u.searchParams.get('m') ?? '');
+    ['open','gid','m'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    if(okFamilyCode(gid)) _pendingGrpFeed = {gid, m: GA_MODS.includes(m) ? m : null};
+  } catch(e) {}
+}
+captureGrpFeedLink();
+function consumePendingGrpFeed() {
+  const p = _pendingGrpFeed;
+  if(!p || !CU || !prof) return;
+  if(!myGroupIds().includes(p.gid)) return; // skupiny se ještě načítají, nebo v ní už nejsem
+  _pendingGrpFeed = null;
+  window.openGroupFeed(p.gid, p.m);
+}
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  const d = ev.data;
+  if(!d || d.type !== 'OPEN_GRPFEED') return;
+  const gid = String(d.gid ?? '').slice(0, 20);
+  if(!okFamilyCode(gid)) return;
+  _pendingGrpFeed = {gid, m: GA_MODS.includes(d.module) ? d.module : null};
+  if(document.getElementById('app')?.classList.contains('active')) consumePendingGrpFeed();
+});
+
+// ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
+// Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
+const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
+  quiet:{from:'22:00', to:'07:00'}, notifyChecked:false};
+const GN_OPTS = ['instant','q15','evening','off'];
+// Preference s výchozími hodnotami; neplatné hodnoty = výchozí (stejně jako server)
+function groupNotifPrefs() {
+  const raw = (prof?.groupNotif && typeof prof.groupNotif === 'object') ? prof.groupNotif : {};
+  const gp = {};
+  for(const k of GA_MODS) gp[k] = GN_OPTS.includes(raw[k]) ? raw[k] : GROUP_NOTIF_DEFAULTS[k];
+  if(raw.quiet === null) gp.quiet = null;
+  else if(raw.quiet && TP_RE.test(raw.quiet.from) && TP_RE.test(raw.quiet.to)) gp.quiet = {from: raw.quiet.from, to: raw.quiet.to};
+  else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
+  gp.notifyChecked = raw.notifyChecked === true;
+  return gp;
+}
+function renderGroupNotifSettings() {
+  const box = document.getElementById('gn-box'); if(!box) return;
+  const gids = myGroupIds();
+  const inGroup = gids.length || prof?.familyId || prof?.extraGroupIds?.length;
+  box.hidden = !inGroup;
+  if(!inGroup) { box.innerHTML = ''; return; }
+  const gp = groupNotifPrefs();
+  // Jen moduly sdílené aspoň v jedné skupině (dokud se skupiny načítají, všechny)
+  let mods = GA_MODS.filter(m => gids.some(g => groupModShared(g, m)));
+  if(!mods.length) mods = GA_MODS;
+  const tpStyle = 'background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:\'Crimson Pro\',serif;font-size:15px;outline:none;width:7.5em';
+  box.innerHTML = `<div class="gn-h">👨‍👩‍👧 ${tH('gn.title')}</div>
+    <div class="gn-d">${tH('gn.desc')}</div>
+    ${mods.map(k => `<div class="gn-row"><div class="gn-lbl" id="gn-lbl-${k}">${GF_EMOJI[k]} ${tH('gn.mod.' + k)}</div>
+      <div class="seg seg--block" role="radiogroup" aria-labelledby="gn-lbl-${k}">${GN_OPTS.map(v =>
+        `<button type="button" class="seg-btn${gp[k] === v ? ' active' : ''}" role="radio" aria-checked="${gp[k] === v}" data-a0="${k}" data-a1="${v}" onclick="setGroupNotif(this.dataset.a0,this.dataset.a1)">${tH('gn.opt.' + v)}</button>`).join('')}</div></div>`).join('')}
+    <label class="gn-check"><input type="checkbox" id="gn-checked"${gp.notifyChecked ? ' checked' : ''} onchange="setGroupNotif('notifyChecked',this.checked)"><span>${tH('gn.checked')}</span></label>
+    <label class="gn-check"><input type="checkbox" id="gn-quiet-on"${gp.quiet ? ' checked' : ''} onchange="setGroupQuiet()"><span>🌙 ${tH('gn.quiet')}</span></label>
+    <div class="setrow" id="gn-quiet-times" style="gap:12px;flex-wrap:wrap"${gp.quiet ? '' : ' hidden'}>
+      <div class="fg"><label class="flbl" for="gn-quiet-from">${tH('gn.from')}</label>
+        <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-from" value="${esc(gp.quiet?.from || GROUP_NOTIF_DEFAULTS.quiet.from)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
+      <div class="fg"><label class="flbl" for="gn-quiet-to">${tH('gn.to')}</label>
+        <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-to" value="${esc(gp.quiet?.to || GROUP_NOTIF_DEFAULTS.quiet.to)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
+    </div>
+    <div class="gn-hint">${tH('gn.quietHint')}</div>
+    <div class="gn-hint">💡 ${tH('gn.hint')}</div>`;
+}
+function saveGroupNotif(patch) {
+  if(!CU || !prof) return;
+  prof.groupNotif = {...(prof.groupNotif || {}), ...patch};
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {groupNotif: patch}, {merge:true})
+    .then(() => toast(t('gn.saved')))
+    .catch(e => toast('❌ ' + userErr(e)));
+  renderGroupNotifSettings();
+}
+window.setGroupNotif = (key, val) => {
+  const ok = key === 'notifyChecked' ? typeof val === 'boolean' : (GA_MODS.includes(key) && GN_OPTS.includes(val));
+  if(!ok) return;
+  saveGroupNotif({[key]: val});
+};
+window.setGroupQuiet = () => {
+  const on = !!document.getElementById('gn-quiet-on')?.checked;
+  const f = document.getElementById('gn-quiet-from')?.value || '', to = document.getElementById('gn-quiet-to')?.value || '';
+  const q = on ? {from: TP_RE.test(f) ? f : GROUP_NOTIF_DEFAULTS.quiet.from, to: TP_RE.test(to) ? to : GROUP_NOTIF_DEFAULTS.quiet.to} : null;
+  saveGroupNotif({quiet: q});
+};
+window.openGroupNotifSettings = () => {
+  cm('m-grpfeed');
+  sp('settings');
+  setTimeout(() => document.getElementById('gn-box')?.scrollIntoView({block:'start', behavior:'smooth'}), 200);
+};
+
+// Jednorázová karta na Domů: představí upozornění ze skupin (zavření se pamatuje v lp_gn_intro)
+function groupNotifIntroHTML() {
+  if(lsGet('lp_gn_intro') || !(familyId || prof?.familyId || extraGroupIds.length || prof?.extraGroupIds?.length)) return '';
+  return `<div class="invite-hint gn-intro" id="gn-intro-card" role="region" aria-label="${tH('gn.intro.t')}">
+    <span class="invite-hint-em" aria-hidden="true">🔔</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${tH('gn.intro.t')}</div>
+      <div class="invite-hint-d">${tH('gn.intro.d')}</div>
+      <button type="button" class="invite-hint-btn" onclick="gnIntroSettings()">${tH('gn.intro.btn')}</button>
+    </div>
+    <button type="button" class="invite-hint-x" aria-label="${tH('common.hide')}" onclick="dismissGnIntro()">×</button>
+  </div>`;
+}
+window.dismissGnIntro = () => { lsSave('lp_gn_intro', 1); document.getElementById('gn-intro-card')?.remove(); };
+window.gnIntroSettings = () => { window.dismissGnIntro(); window.openGroupNotifSettings(); };
+
 // ── JÍDELNÍČEK ────────────────────────────────────────
 const DAYS_CS = ['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'];
 const MEALS_CS = ['Snídaně','Oběd','Večeře'];
@@ -6391,6 +6723,7 @@ window.switchMealTab = (tab) => {
 };
 
 function renderMealPlan() {
+  updateGroupFeedBells();
   renderKcalToday();
   const el = document.getElementById('mealplan-content');
   if(!el) return;
@@ -7061,6 +7394,7 @@ async function saveChecklistDoc(list) {
 
 
 function renderChecklist() {
+  updateGroupFeedBells();
   const el = document.getElementById('checklist-content');
   if (!el) return;
 
@@ -7357,6 +7691,8 @@ async function initApp(){
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
   else if(prof.extraGroupIds?.length){extraGroupIds=prof.extraGroupIds;for(const gid of extraGroupIds)subscribeExtraGroup(gid);}
+  // Klepnutí na upozornění ze skupiny (appka byla zavřená) → feed „Co je nového“
+  consumePendingGrpFeed();
   // Průvodce pro uživatele, kteří ho ještě neviděli (po onboardingu ho spouští finishOnboard)
   maybeStartTourOnInit();
   // Pozvánka do skupiny odkazem (?join=) – po changelogu, jen dotaz, nikdy automaticky
@@ -7510,6 +7846,8 @@ function rDash(){
   let html=focusWidgetHTML();
   // Quick Start karta pro nové uživatele
   html+=quickStartHTML();
+  // Jednorázová karta: upozornění ze skupin (novinka 4.38)
+  html+=groupNotifIntroHTML();
 
   // Mini Rex energy widget
   const rexEn = getRexEnergy();

@@ -42,7 +42,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v31';
+const CACHE = 'lifepocket-v32';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -110,6 +110,19 @@ self.addEventListener('notificationclick', e => {
             c.put('pending-action', new Response(JSON.stringify(msg)))
           );
         }
+      })
+    );
+  } else if (data.open === 'grpfeed' && typeof data.gid === 'string' && /^[A-Z]{3,8}-[A-Z0-9]{4,8}$/.test(data.gid)) {
+    // Upozornění ze skupiny → „Co je nového“: otevřené okno dostane zprávu, jinak se otevře s parametry v URL
+    const mod = ['shop', 'cal', 'meal', 'check', 'pantry'].includes(data.module) ? data.module : '';
+    const msg = {type: 'OPEN_GRPFEED', gid: data.gid, module: mod};
+    e.waitUntil(
+      self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
+        if (clients.length > 0) {
+          clients[0].postMessage(msg);
+          return clients[0].focus();
+        }
+        return self.clients.openWindow('/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : ''));
       })
     );
   } else {

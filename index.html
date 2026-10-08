@@ -436,7 +436,10 @@
     <div class="page" id="p-calendar">
       <div class="gh">
         <div style="display:flex;align-items:center;gap:10px"><span style="font-size:26px">🗓️</span><div class="ptitle">Kalendář</div></div>
-        <button class="btn-p" style="width:auto;padding:9px 18px;font-size:15px" onclick="openEvModal()">+ Přidat událost</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="gf-bell" id="gf-bell-cal" hidden data-a0="cal" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
+          <button class="btn-p" style="width:auto;padding:9px 18px;font-size:15px" onclick="openEvModal()">+ Přidat událost</button>
+        </div>
       </div>
       <div class="cal-layout">
         <div class="cal-left">
@@ -636,7 +639,8 @@
     <div class="page" id="p-shopping">
       <div class="gh">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle">Nákupy</div><div class="seg" id="shop-view-toggle" role="group" aria-label="Čí seznam zobrazit" hidden><button class="seg-btn" data-mode="shared" onclick="setShopView(this.dataset.mode)">Rodina</button><button class="seg-btn" data-mode="personal" onclick="setShopView(this.dataset.mode)">Moje</button></div></div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="gf-bell" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
           <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()">📤 Sdílet</button>
           <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()">✓ Vymazat splněné</button>
         </div>
@@ -805,6 +809,7 @@
     <div class="page" id="p-mealplan">
       <div class="gh">
         <div class="mp-head"><span class="mp-head-em" aria-hidden="true">🥗</span><div class="ptitle">Jídelníček</div></div>
+        <button type="button" class="gf-bell" id="gf-bell-meal" hidden data-a0="meal" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
       </div>
       <div class="cook-tabs" role="tablist">
         <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" aria-controls="mp-section-plan" onclick="switchMealTab('plan')">📅 Plán týdne</button>
@@ -832,7 +837,7 @@
 
     <!-- CHECKLIST -->
     <div class="page" id="p-checklist">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle">Checklist</div></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle">Checklist</div><span style="margin-left:auto"></span><button type="button" class="gf-bell" id="gf-bell-check" hidden data-a0="check" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button></div>
       <div id="checklist-content"></div>
     </div>
 
@@ -949,6 +954,9 @@
 
             </div>
           </div>
+
+          <!-- Upozornění ze skupin (vykresluje renderGroupNotifSettings) -->
+          <div id="gn-box" class="gn-box" hidden></div>
 
           <div style="margin-top:12px;font-size:13px;color:var(--text3)" data-i18n="set.notif.hint">
             💡 Připomínky návyků nastavíš u každého návyku zvlášť. Narozeniny dostaneš automaticky 7 dní předem a ráno v den události. Události s nastaveným časem tě upozorní hodinu předem.
@@ -1124,6 +1132,20 @@
     <div class="fg"><label class="flbl">Popis <span style="color:var(--text3);font-weight:400">(volitelné)</span></label><textarea class="finp" id="sg-desc" rows="2" placeholder="Co konkrétně chceš dosáhnout…" style="resize:none;font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5"></textarea></div>
     <div class="fg"><label class="flbl">Deadline <span style="color:var(--text3);font-weight:400">(volitelné — přidá se do kalendáře)</span></label><input class="finp" type="date" id="sg-dl"></div>
     <div class="macts"><button class="btn-s" onclick="cm('m-subgoal')" data-i18n="common.cancel">Zrušit</button><button class="btn-p" onclick="saveSubG()">Uložit podcíl</button></div>
+  </div>
+</div>
+
+<!-- Co je nového ve skupině (obsah vykresluje renderGroupFeed) -->
+<div class="moverlay" id="m-grpfeed">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="gf-title">
+    <div class="gf-head">
+      <div class="mtitle" id="gf-title"><span aria-hidden="true">🔔</span> <span data-i18n="gf.title">Co je nového</span></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-grpfeed&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="gf-groups"></div>
+    <div class="gf-chips" id="gf-chips" role="group"></div>
+    <div id="gf-list" aria-live="polite"></div>
+    <div class="gf-foot" data-i18n="gf.foot">Ukazujeme posledních 7 dní.</div>
   </div>
 </div>
 
