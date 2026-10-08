@@ -119,9 +119,12 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['ts', 'uid', 'name', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.ts == request.time
-        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react']
-        && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak']
-        // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série, to + em = reakce,
+        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react']
+        && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak', 'progress']
+        // Cíl: jen mezník (progress, val 25/50/75) a splnění (done); progress nepatří jinému modulu
+        && (request.resource.data.module != 'goal' || request.resource.data.action in ['progress', 'done'])
+        && (request.resource.data.action != 'progress' || request.resource.data.module == 'goal')
+        // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série / mezník cíle v %, to + em = reakce,
         // rid = ID komentáře (text se sem nekopíruje, čte se z reactions → smazaný komentář zmizí všude)
         && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref.size() <= 200))
         && (!('val' in request.resource.data) || (request.resource.data.val is int && request.resource.data.val >= 0 && request.resource.data.val <= 1000))
@@ -142,8 +145,8 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isFamAdmin(familyId));
     }
 
-    // Sdílené položky (zrcadlo osobního návyku): sid = type_uid_itemId, čte člen, píše jen vlastník.
-    // Zatím jen návyky (type 'h'); jen souhrnná pole, žádné logy ani poznámky.
+    // Sdílené položky (zrcadlo osobního návyku 'h' nebo cíle 'g'): sid = type_uid_itemId, čte člen, píše jen vlastník.
+    // Jen souhrnná pole, žádné logy, poznámky, popisy ani názvy podcílů.
     function validHabitMirror(fid, sid) {
       let d = request.resource.data;
       return isFamMember(fid)
@@ -172,10 +175,45 @@ service cloud.firestore {
         && (!('last7' in d) || (d.last7 is string && d.last7.size() <= 7))
         && (!('ms' in d) || (d.ms is map && d.ms.keys().hasOnly(['v', 'd']) && d.ms.v is int && d.ms.d is string && d.ms.d.size() <= 10));
     }
+    // Cíl (4.42): název, ikona, barva, pokrok %, termín, den splnění, mezníky, počet podcílů (sd/sn),
+    // u měřitelného cíle start / cíl / aktuální hodnota a jednotka
+    function validGoalMirror(fid, sid) {
+      let d = request.resource.data;
+      return isFamMember(fid)
+        && d.ownerUid == request.auth.uid
+        && d.type == 'g'
+        && d.itemId is string && d.itemId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && sid == d.type + '_' + request.auth.uid + '_' + d.itemId
+        && d.updatedAt == request.time
+        && d.keys().hasOnly(['type', 'ownerUid', 'itemId', 'updatedAt', 'arch', 'name', 'emoji', 'color', 'progress',
+             'deadline', 'doneAt', 'msHit', 'sd', 'sn', 'metric'])
+        && d.keys().hasAll(['type', 'ownerUid', 'itemId', 'updatedAt', 'name', 'progress'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 60
+        && (!('emoji' in d) || (d.emoji is string && d.emoji.size() <= 16))
+        && (!('arch' in d) || d.arch is bool)
+        && (!('color' in d) || (d.color is string && d.color.matches('^#[0-9A-Fa-f]{3,8}$')))
+        && d.progress is int && d.progress >= 0 && d.progress <= 100
+        && (!('deadline' in d) || (d.deadline is string && d.deadline.size() <= 10))
+        && (!('doneAt' in d) || (d.doneAt is string && d.doneAt.size() <= 10))
+        && (!('msHit' in d) || (d.msHit is list && d.msHit.size() <= 4 && d.msHit.hasOnly([25, 50, 75, 100])))
+        && (!('sn' in d) || (d.sn is int && d.sn >= 0 && d.sn <= 1000))
+        && (!('sd' in d) || (d.sd is int && d.sd >= 0 && 'sn' in d && d.sd <= d.sn))
+        && (!('metric' in d) || (d.metric is map
+             && d.metric.keys().hasOnly(['start', 'target', 'cur', 'unit'])
+             && d.metric.keys().hasAll(['start', 'target', 'cur'])
+             && d.metric.start is number && d.metric.start >= -1000000000 && d.metric.start <= 1000000000
+             && d.metric.target is number && d.metric.target >= -1000000000 && d.metric.target <= 1000000000
+             && d.metric.cur is number && d.metric.cur >= -1000000000 && d.metric.cur <= 1000000000
+             && (!('unit' in d.metric) || (d.metric.unit is string && d.metric.unit.size() <= 8))));
+    }
+    function validMirror(fid, sid) {
+      return (request.resource.data.type == 'h' && validHabitMirror(fid, sid))
+        || (request.resource.data.type == 'g' && validGoalMirror(fid, sid));
+    }
     match /families/{familyId}/shared/{sid} {
       allow read: if isFamMember(familyId);
-      allow create: if validHabitMirror(familyId, sid);
-      allow update: if resource.data.ownerUid == request.auth.uid && validHabitMirror(familyId, sid);
+      allow create: if validMirror(familyId, sid);
+      allow update: if resource.data.ownerUid == request.auth.uid && validMirror(familyId, sid);
       // Vlastník i po odchodu nebo odebrání (úklid), správce kvůli odebraným členům
       allow delete: if request.auth != null
         && (resource.data.ownerUid == request.auth.uid || isFamAdmin(familyId));
