@@ -624,7 +624,7 @@
 
     <div class="page" id="p-shopping">
       <div class="gh">
-        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:26px">🧺</span><div class="ptitle">Nákupy</div><div class="shared-badge" id="shop-shared-badge" style="display:none">👨‍👩‍👧 sdíleno</div><div id="shop-view-toggle" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:24px;padding:3px;gap:2px" class="shop-seg"><button id="shop-toggle-shared" onclick="setShopView('shared')" class="shop-seg-btn">Rodina</button><button id="shop-toggle-personal" onclick="setShopView('personal')" class="shop-seg-btn">Moje</button></div></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle">Nákupy</div><div class="seg" id="shop-view-toggle" role="group" aria-label="Čí seznam zobrazit" hidden><button class="seg-btn" data-mode="shared" onclick="setShopView(this.dataset.mode)">Rodina</button><button class="seg-btn" data-mode="personal" onclick="setShopView(this.dataset.mode)">Moje</button></div></div>
         <div style="display:flex;gap:8px">
           <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()">📤 Sdílet</button>
           <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()">✓ Vymazat splněné</button>
@@ -795,26 +795,30 @@
     <!-- JÍDELNÍČEK (sdílený) -->
     <div class="page" id="p-mealplan">
       <div class="gh">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-size:26px">🥗</span><div class="ptitle">Jídelníček</div>
-          <div class="shared-badge" id="meal-shared-badge" style="display:none">👨‍👩‍👧 sdíleno</div>
-          <div id="meal-view-toggle" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px;display:flex;gap:2px">
-            <button id="meal-toggle-shared" onclick="setMealView('shared')" style="border:none;border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .2s">👨‍👩‍👧 Rodina</button>
-            <button id="meal-toggle-personal" onclick="setMealView('personal')" style="border:none;border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .2s">👤 Moje</button>
-          </div>
+        <div class="mp-head"><span class="mp-head-em" aria-hidden="true">🥗</span><div class="ptitle">Jídelníček</div></div>
+      </div>
+      <div class="cook-tabs" role="tablist">
+        <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" onclick="switchMealTab('plan')">📅 Plán týdne</button>
+        <button class="cook-tab" id="mp-tab-kcal" role="tab" aria-selected="false" onclick="switchMealTab('kcal')">🔥 Kalorie dnes</button>
+      </div>
+
+      <div id="mp-section-plan">
+        <div class="seg seg--block" id="meal-view-toggle" role="group" aria-label="Čí jídelníček zobrazit" hidden>
+          <button class="seg-btn" data-mode="shared" onclick="setMealView(this.dataset.mode)">Rodina</button>
+          <button class="seg-btn" data-mode="personal" onclick="setMealView(this.dataset.mode)">Moje</button>
         </div>
-        <button class="btn-p" style="width:auto;padding:8px 16px;font-size:14px;white-space:nowrap" onclick="mealplanToShopping()">🛒 Přidat do nákupu</button>
+        <p class="mp-note" id="mp-readonly-note" hidden>👀 Rodinný jídelníček upravuje správce skupiny. Svůj vlastní si můžeš vést v „Moje“.</p>
+        <div class="mp-actions">
+          <button class="btn-s mp-act" id="mp-ai-btn" onclick="generateMealPlanAI()">✨ Navrhnout AI</button>
+          <button class="btn-s mp-act" onclick="mealplanToShopping()">🛒 Do nákupu</button>
+        </div>
+        <div id="mealplan-content"></div>
       </div>
-      <!-- KALORICKÝ CÍL -->
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-        <span style="font-size:13px;color:var(--text3)">🔥 Denní kcal cíl:</span>
-        <input type="number" id="set-kcalgoal" min="500" max="9999" placeholder="2000"
-          style="width:70px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;text-align:center;outline:none">
-        <button onclick="saveKcalGoal()" style="background:var(--accent);border:none;border-radius:8px;padding:4px 12px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">Uložit</button>
-      </div>
+
       <!-- KALORICKÝ PŘEHLED DNES -->
-      <div id="kcal-today-section" style="margin-bottom:14px"></div>
-      <div id="mealplan-content"></div>
+      <div id="mp-section-kcal" hidden>
+        <div id="kcal-today-section"></div>
+      </div>
     </div>
 
     <!-- CHECKLIST -->

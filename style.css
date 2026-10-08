@@ -758,10 +758,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .hd-stat-num{font-size:22px}
   .hd-stat-lbl{font-size:10px}
 
-  /* ── VIEW TOGGLES — shop/meal ── */
-  #shop-view-toggle,#meal-view-toggle{padding:2px;gap:1px}
-  #shop-toggle-shared,#shop-toggle-personal,
-  #meal-toggle-shared,#meal-toggle-personal{padding:3px 8px;font-size:11px}
+  /* ── PŘEPÍNAČ Rodina/Moje — užší na mobilu, výška 44 px zůstává ── */
+  .seg .seg-btn{padding:0 14px}
 
   /* ── DOTYKOVÁ ZÓNA — datum/čas inputy ── */
   input[type="date"].finp,input[type="time"].finp,.finp[data-time-picker]{min-height:44px}
@@ -1129,10 +1127,14 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .cook-recipe-name{font-size:19px}
 }
 
-/* SHOP SEGMENT TOGGLE */
-.shop-seg{display:flex}
-.shop-seg-btn{border:none;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;font-family:'Crimson Pro',serif;cursor:pointer;transition:all .2s;background:transparent;color:var(--text3);letter-spacing:.02em}
-.shop-seg-btn.active{background:var(--accent);color:#1a1a1a}
+/* SEGMENTOVÝ PŘEPÍNAČ (Rodina / Moje) – Nákupy, Jídelníček */
+.seg{display:inline-flex;gap:2px;padding:3px;background:var(--card2);border:1px solid var(--border);border-radius:24px}
+.seg[hidden]{display:none}
+.seg--block{display:flex;width:100%;margin-bottom:12px}
+.seg--block .seg-btn{flex:1}
+.seg-btn{min-height:44px;padding:0 18px;border:none;border-radius:21px;background:transparent;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s,color .2s;-webkit-tap-highlight-color:transparent}
+.seg-btn.active{background:var(--accent);color:var(--on-accent)}
+.seg-btn:not(.active):hover{color:var(--text)}
 
 /* SHOPPING */
 .shop-add-row{display:flex;gap:8px;margin-bottom:16px}
@@ -1177,6 +1179,76 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cook-tabs{display:flex;gap:0;margin-bottom:16px;background:var(--card2);border-radius:12px;padding:3px;border:1px solid var(--border)}
 .cook-tab{flex:1;background:none;border:none;border-radius:9px;padding:8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text3);font-family:'Crimson Pro',serif;transition:all .2s}
 .cook-tab.active{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+/* dotykové plochy záložek všude (Vaření, Nákupy, Jídelníček) */
+.cook-tab{min-height:44px}
+
+/* JÍDELNÍČEK */
+.mp-head{display:flex;align-items:center;gap:10px}
+.mp-head-em{font-size:26px}
+.mp-note{margin:0 0 12px;padding:10px 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px;font-size:15px;line-height:1.4;color:var(--text2)}
+.mp-note[hidden],#mp-section-kcal[hidden],#mp-section-plan[hidden]{display:none}
+.mp-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.mp-actions--one{grid-template-columns:1fr}
+.mp-act{min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;color:var(--text);font-weight:600;white-space:nowrap}
+.mp-act[hidden]{display:none}
+.mp-empty{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center}
+.mp-empty-em{font-size:36px;margin-bottom:8px}
+.mp-empty-h{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px}
+.mp-empty-t{font-size:15px;color:var(--text2);margin-bottom:14px}
+.mp-empty-btn{min-height:44px;padding:0 22px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
+.mp-day{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin-bottom:10px;scroll-margin-top:70px}
+.mp-day--today{border:2px solid var(--accent);padding:11px}
+.mp-day-h{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--text)}
+.mp-today{font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;padding:2px 10px;border-radius:12px;background:var(--accent);color:var(--on-accent)}
+.mp-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mp-row:last-child{margin-bottom:0}
+.mp-slot-l{width:76px;flex-shrink:0;font-size:14px;color:var(--text2);white-space:nowrap}
+.mp-slot{flex:1;min-width:0;min-height:48px;display:flex;align-items:center;padding:8px 12px;text-align:left;background:var(--card2);border:1px solid var(--border);border-radius:10px;font-family:'Crimson Pro',serif;font-size:16px;color:var(--text);cursor:pointer;overflow-wrap:anywhere}
+.mp-slot.is-empty{background:transparent;border:1px dashed var(--border2);color:var(--text2);font-weight:600}
+.mp-slot--ro{cursor:default}
+.mp-slot--ro.is-empty{border-style:solid;font-weight:400;font-style:italic}
+.mp-slot:not(.mp-slot--ro):active{border-color:var(--accent)}
+@media(hover:hover){.mp-slot:not(.mp-slot--ro):hover{border-color:var(--accent)}}
+.mp-del{width:44px;height:44px;flex-shrink:0;background:none;border:none;border-radius:10px;color:var(--text2);font-size:16px;cursor:pointer}
+.mp-del:active{background:var(--card2)}
+
+/* KALORIE DNES */
+.kc-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:18px 16px;box-shadow:var(--shadow);font-variant-numeric:tabular-nums}
+.kc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.kc-big{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;font-size:40px;line-height:1;color:var(--text)}
+.kc-big span{font-family:'Crimson Pro',serif;font-style:normal;font-weight:400;font-size:16px;color:var(--text2);margin-left:6px}
+.kc-sub{font-size:15px;color:var(--text2);margin-top:4px}
+.kc-pill{flex-shrink:0;padding:6px 12px;border-radius:20px;background:var(--card2);border:1px solid var(--border);font-size:15px;font-weight:700;color:var(--text);white-space:nowrap}
+.kc-pill--over{color:var(--red);border-color:var(--red)}
+.kc-bar{display:block;height:8px;background:var(--card3,var(--card2));border-radius:6px;overflow:hidden}
+.kc-bar--main{height:10px;margin-bottom:12px}
+.kc-bar-fill{display:block;height:100%;border-radius:inherit;transition:width .5s ease}
+.kc-gold{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.kc-red{background:var(--red)}.kc-blue{background:var(--blue)}.kc-orange{background:var(--accent2)}.kc-green{background:var(--green)}
+.kc-goal{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin-bottom:10px;font-size:15px;color:var(--text2)}
+.kc-goal-edit{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--text2)}
+.kc-goal-edit .finp{width:96px;font-size:16px;text-align:center;min-height:44px}
+.kc-link,.kc-save{min-height:44px;padding:0 14px}
+.kc-link{background:none;border:none;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.kc-macro{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;gap:10px;margin-bottom:10px}
+.kc-macro-l{font-size:15px;color:var(--text2);white-space:nowrap}
+.kc-macro-v{font-size:15px;font-weight:700;color:var(--text);text-align:right}
+.kc-h{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--text);margin:18px 0 8px}
+.kc-logs{list-style:none;margin:0 0 10px;padding:0}
+.kc-log{display:flex;align-items:center;gap:8px;min-height:48px;border-bottom:1px solid var(--border)}
+.kc-log-name{flex:1;min-width:0;font-size:16px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kc-log-time{flex:none;margin-left:6px;font-size:13px;color:var(--text2)}
+.kc-log-kcal{font-size:15px;font-weight:700;color:var(--text);white-space:nowrap}
+.kc-del{width:44px;height:44px;flex-shrink:0;background:none;border:none;color:var(--text2);font-size:16px;cursor:pointer;border-radius:10px}
+.kc-del:active{background:var(--card2)}
+.kc-empty{font-size:15px;color:var(--text2);margin:0 0 10px}
+.kc-add{width:100%;min-height:48px;border-style:dashed;color:var(--text);font-weight:600}
+/* modal Přidat jídlo */
+.fl-lbl{font-size:15px;color:var(--text2);margin-bottom:8px}
+.fl-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.fl-grid label{display:block;font-size:14px;color:var(--text2)}
+.fl-grid input,.fl-name{width:100%;min-height:44px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;margin-top:4px}
+.fl-name{margin:0 0 10px}
 
 /* PANTRY */
 .pantry-alert{background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.35);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--text);margin-bottom:12px}

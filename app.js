@@ -21,8 +21,16 @@ const testPushFn=httpsCallable(functions,'testPush');
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 
 
-const APP_VERSION = '4.32';
+const APP_VERSION = '4.33';
 const CHANGELOG = [
+  { v:'4.33', items:[
+    '🥗 Jídelníček: záložky Plán týdne a Kalorie dnes, aplikace si pamatuje poslední',
+    '👨‍👩‍👧 Jednotný přepínač Rodina/Moje v Jídelníčku i Nákupech, větší a čitelnější',
+    '📅 Dnešní den je v plánu zvýrazněný a appka na něj rovnou posune',
+    '🔥 Přehlednější karta kalorií, cíl změníš přímo v ní',
+    '🛡️ Rodinný jídelníček mění jen správce, recept z Vaření jde uložit i do „Moje“',
+    '🛒 „Do nákupu“ a „Z dnešního plánu“ berou právě zobrazený jídelníček'
+  ]},
   { v:'4.32', items:[
     '🍳 Vaření: přehlednější pole a filtry, nic se nezalamuje ani neusekává',
     '🏷️ Filtry receptů mají jasné popisky Styl a Typ jídla, čipy jdou posouvat do strany',
@@ -509,6 +517,8 @@ function userErr(e, ctx = '') {
   else if (navigator.onLine === false || ['unavailable', 'network-request-failed', 'deadline-exceeded'].includes(code) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
     txt = 'Nejsi připojený k internetu – zkus to znovu, až budeš online.';
   else if (full === 'functions/resource-exhausted') txt = 'Dnešní limit AI dotazů je vyčerpaný. Obnoví se o půlnoci.';
+  // Proxy odmítla dotaz (česká hláška ze serveru); není to chyba appky, nelogovat
+  else if (full === 'functions/failed-precondition') txt = msg.slice(0, 200) || 'AI na tento dotaz nemůže odpovědět. Zkus ho formulovat jinak.';
   else if (full.startsWith('functions/') && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
     txt = 'AI je teď přetížená, zkus to za minutku.';
   else if (code === 'resource-exhausted') txt = 'Služba je přetížená, zkus to za chvíli.';
@@ -618,7 +628,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal'];
 // Při přihlášení: lp_owner_uid chybí → jen ho nastaví (stávající data patří tomuto uživateli);
 // je jiný → smaže osobní lokální klíče předchozího uživatele. Nikdy nezablokuje přihlášení.
 function claimLocalDataOwner(uid){
@@ -4756,9 +4766,20 @@ let unsubFamilyCal = null;
 let familyShopItems = [];
 let familyMealPlan = {};
 let mealViewMode = 'shared'; // 'shared' | 'personal'
-window.setMealView = (mode) => { mealViewMode = mode; renderMealPlan(); };
+window.setMealView = (mode) => { mealViewMode = mode === 'personal' ? 'personal' : 'shared'; renderMealPlan(); };
 let shopViewMode = 'shared'; // 'shared' | 'personal'
-window.setShopView = (mode) => { shopViewMode = mode; renderShop(); };
+window.setShopView = (mode) => { shopViewMode = mode === 'personal' ? 'personal' : 'shared'; renderShop(); };
+// Segmentový přepínač: zobrazí/skryje a označí aktivní volbu (bez inline stylů)
+function syncSeg(id, show, mode) {
+  const w = document.getElementById(id);
+  if(!w) return;
+  w.hidden = !show;
+  w.querySelectorAll('.seg-btn').forEach(b => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
 function isShopShared() { return !!(familyId && familyData?.shareShop && shopViewMode === 'shared'); }
 function isCalShared() {
   return !!(familyId && familyData?.shareCal) ||
@@ -5135,14 +5156,28 @@ function showJoinInviteModal(name) {
     +body+'</div></div>');
 }
 // Po přihlášení a načtení profilu (volá initApp): zjistí název skupiny a zeptá se
-let _pendingJoinTimer = null;
+let _pendingJoinTimer = null, _pendingJoinWait = 0, _pendingJoinBusy = false;
+const PENDING_JOIN_MAX_WAIT = 10 * 60 * 1000; // déle se na průvodce nečeká, dotaz pak spustí jeho konec
+// Po zavření průvodce zkusit pozvánku hned (i když už vypršel strop čekání)
+function resumePendingJoin() {
+  clearTimeout(_pendingJoinTimer); _pendingJoinWait = 0;
+  _pendingJoinTimer = setTimeout(checkPendingJoin, 600);
+}
 async function checkPendingJoin() {
+  if(_pendingJoinBusy) return;
+  _pendingJoinBusy = true;
   try {
     if(!CU || !prof || document.getElementById('join-invite-modal')) return;
     const p = readPendingJoin();
     if(!p) return;
     // Průvodce (naplánovaný nebo otevřený) má přednost, dotaz na pozvánku počká, až skončí
-    if(tourActive()) { clearTimeout(_pendingJoinTimer); _pendingJoinTimer = setTimeout(checkPendingJoin, 1500); return; }
+    if(tourActive()) {
+      clearTimeout(_pendingJoinTimer);
+      if(!_pendingJoinWait) _pendingJoinWait = Date.now();
+      if(Date.now() - _pendingJoinWait < PENDING_JOIN_MAX_WAIT) _pendingJoinTimer = setTimeout(checkPendingJoin, 1500);
+      return;
+    }
+    _pendingJoinWait = 0;
     if(p.code === familyId || p.code === prof.familyId || (prof.extraGroupIds||[]).includes(p.code) || extraGroupIds.includes(p.code)) {
       clearPendingJoin(); toast('Už jsi v této skupině'); return;
     }
@@ -5151,6 +5186,7 @@ async function checkPendingJoin() {
     if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); return; }
     showJoinInviteModal(cutName(snap.data().groupName,40) || 'Skupina');
   } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště
+  finally { _pendingJoinBusy = false; }
 }
 window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); };
 window.confirmPendingJoin = async () => {
@@ -5626,89 +5662,106 @@ const MEALS_CS = ['Snídaně','Oběd','Večeře'];
 // Zobrazený jídelníček je sdílený rodinný (ne osobní)?
 function isMealShared() { return !!(familyId && familyData?.shareMeal) && mealViewMode === 'shared'; }
 // Sdílený jídelníček smí měnit jen admin skupiny, osobní vždy vlastník
-function canEditMealPlan() { return !isMealShared() || familyData?.members?.[CU?.uid]?.role === 'admin'; }
+function isMealAdmin() { return familyData?.members?.[CU?.uid]?.role === 'admin'; }
+function canEditMealPlan() { return !isMealShared() || isMealAdmin(); }
+
+// Jeden zdroj pravdy: právě zobrazený plán (rodinný, nebo osobní)
+function currentMealPlan() { return isMealShared() ? familyMealPlan : (prof.mealPlan || {}); }
+function mealPlanHasAny(plan) {
+  return Object.values(plan || {}).some(day =>
+    day && typeof day === 'object' && Object.values(day).some(v => typeof v === 'string' && v.trim()));
+}
+// Index dnešního dne v plánu: 0 = pondělí (lokální čas)
+function mealTodayIdx() { return (new Date().getDay() + 6) % 7; }
+
+// Záložky Plán týdne / Kalorie dnes (poslední volba se pamatuje)
+function getMealTab() {
+  try { return localStorage.getItem('lp_meal_tab') === 'kcal' ? 'kcal' : 'plan'; } catch(e) { return 'plan'; }
+}
+window.switchMealTab = (tab) => {
+  tab = tab === 'kcal' ? 'kcal' : 'plan';
+  const tp = document.getElementById('mp-tab-plan'), tk = document.getElementById('mp-tab-kcal');
+  if(tp) { tp.classList.toggle('active', tab === 'plan'); tp.setAttribute('aria-selected', tab === 'plan' ? 'true' : 'false'); }
+  if(tk) { tk.classList.toggle('active', tab === 'kcal'); tk.setAttribute('aria-selected', tab === 'kcal' ? 'true' : 'false'); }
+  const ps = document.getElementById('mp-section-plan'), ks = document.getElementById('mp-section-kcal');
+  if(ps) ps.hidden = tab !== 'plan';
+  if(ks) ks.hidden = tab !== 'kcal';
+  try { localStorage.setItem('lp_meal_tab', tab); } catch(e) {}
+};
 
 function renderMealPlan() {
   renderKcalToday();
-  const kg = document.getElementById('set-kcalgoal');
-  if(kg) kg.value = prof.kcalGoal || 2000;
   const el = document.getElementById('mealplan-content');
   if(!el) return;
 
   const canShareMeal = !!(familyId && familyData?.shareMeal);
-  const badge = document.getElementById('meal-shared-badge');
-  const toggle = document.getElementById('meal-view-toggle');
+  syncSeg('meal-view-toggle', canShareMeal, mealViewMode);
 
-  if(canShareMeal) {
-    if(badge) badge.style.display = 'none';
-    if(toggle) {
-      toggle.style.display = 'flex';
-      const btnShared = document.getElementById('meal-toggle-shared');
-      const btnPersonal = document.getElementById('meal-toggle-personal');
-      const selStyle = 'background:var(--accent);color:var(--tc);font-weight:600';
-      const defStyle = 'background:transparent;color:var(--text2)';
-      if(btnShared) btnShared.style.cssText = mealViewMode==='shared' ? selStyle : defStyle;
-      if(btnPersonal) btnPersonal.style.cssText = mealViewMode==='personal' ? selStyle : defStyle;
-    }
-  } else {
-    if(badge) badge.style.display = 'none';
-    if(toggle) toggle.style.display = 'none';
+  const isShared = isMealShared();
+  const plan = currentMealPlan();
+  const canEdit = canEditMealPlan();
+  const hasAnyMeal = mealPlanHasAny(plan);
+
+  const note = document.getElementById('mp-readonly-note');
+  if(note) note.hidden = !(isShared && !canEdit);
+  const aiBtn = document.getElementById('mp-ai-btn');
+  if(aiBtn) {
+    aiBtn.hidden = !canEdit || !hasAnyMeal; // prázdný plán má AI v uvítací kartě
+    aiBtn.parentElement?.classList.toggle('mp-actions--one', aiBtn.hidden);
   }
 
-  const isShared = canShareMeal && mealViewMode === 'shared';
-  const plan = isShared ? familyMealPlan : (prof.mealPlan || {});
-
-  const canEdit = canEditMealPlan();
-
-  // Zjisti jestli je plán úplně prázdný
-  const hasAnyMeal = Object.values(plan).some(day =>
-    typeof day === 'object' && Object.values(day).some(v => v && v.trim())
-  );
   const welcomeBanner = !hasAnyMeal && canEdit ? `
-    <div style="background:linear-gradient(135deg,rgba(245,200,66,.08),rgba(224,149,74,.06));border:1px solid rgba(245,200,66,.2);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center">
-      <div style="font-size:36px;margin-bottom:8px">🗓️</div>
-      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:var(--accent);margin-bottom:6px">Jídelníček je prázdný</div>
-      <div style="font-size:14px;color:var(--text3);margin-bottom:14px">Naplň ho ručně nebo nech AI navrhnout celý týden</div>
-      <button class="btn-p" style="width:auto;padding:9px 22px;font-size:14px" onclick="generateMealPlanAI()">✨ Navrhnout AI jídelníček</button>
+    <div class="mp-empty">
+      <div class="mp-empty-em" aria-hidden="true">🗓️</div>
+      <div class="mp-empty-h">Jídelníček je prázdný</div>
+      <div class="mp-empty-t">Naplň ho ručně nebo nech AI navrhnout celý týden</div>
+      <button class="mp-empty-btn" onclick="generateMealPlanAI()">✨ Navrhnout AI jídelníček</button>
     </div>` : '';
 
-  el.innerHTML = welcomeBanner + DAYS_CS.map((day,di) => {
-    const dayKey = 'd'+di;
-    const dayData = plan[dayKey] || {};
-    return `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px">
-      <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--accent);margin-bottom:10px">${day}</div>
-      ${MEALS_CS.map((meal,mi) => {
+  const todayIdx = mealTodayIdx();
+  const MEAL_EMOJI = ['🌅','☀️','🌙'];
+  const MEAL_ACC = ['snídani','oběd','večeři'];
+  el.innerHTML = welcomeBanner + DAYS_CS.map((day, di) => {
+    const dayKey = 'd'+di, dayData = plan[dayKey] || {}, isToday = di === todayIdx;
+    return `<section class="mp-day${isToday?' mp-day--today':''}"${isToday?' id="mp-today"':''}>
+      <h3 class="mp-day-h">${day}${isToday?'<span class="mp-today">Dnes</span>':''}</h3>
+      ${MEALS_CS.map((meal, mi) => {
         const mealKey = 'm'+mi;
-        const val = dayData[mealKey] || '';
-        const mealEmoji = ['🌅','☀️','🌙'][mi];
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
-          <div style="font-size:11px;color:var(--text3);min-width:58px;font-weight:600">${mealEmoji} ${meal}</div>
-          <div ${canEdit?`onclick="openMealPicker('${dayKey}','${mealKey}','${day}','${meal}')"`:``}
-            style="flex:1;background:var(--card3,var(--bg));border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:${val?'var(--text)':'var(--text3)'};font-family:'Crimson Pro',serif;font-size:14px;cursor:${canEdit?'pointer':'default'};min-height:34px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s"
-            ${canEdit?`onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"`:``}>
-            <span>${esc(val) || (canEdit ? 'Klikni pro výběr…' : '—')}</span>
-            ${val && canEdit ? `<span onclick="event.stopPropagation();saveMealPlanItem('${dayKey}','${mealKey}','')" style="color:var(--text3);font-size:12px;padding:2px 4px;border-radius:4px" title="Smazat">✕</span>` : (canEdit && !val ? '<span style="font-size:11px;color:var(--accent);opacity:.6">+</span>' : '')}
-          </div>
-        </div>`;
+        const val = (typeof dayData[mealKey] === 'string' ? dayData[mealKey] : '').trim();
+        const label = `<span class="mp-slot-l">${MEAL_EMOJI[mi]} ${meal}</span>`;
+        if(!canEdit) return `<div class="mp-row">${label}<div class="mp-slot mp-slot--ro${val?'':' is-empty'}">${val?esc(val):'Zatím nic'}</div></div>`;
+        return `<div class="mp-row">${label}<button class="mp-slot${val?'':' is-empty'}" data-a0="${dayKey}" data-a1="${mealKey}" onclick="openMealPicker(this.dataset.a0,this.dataset.a1)">${val ? esc(val) : `+ Přidat ${MEAL_ACC[mi]}`}</button>${val ? `<button class="mp-del" data-a0="${dayKey}" data-a1="${mealKey}" onclick="clearMealSlot(this.dataset.a0,this.dataset.a1)" aria-label="Smazat ${meal}: ${esc(val)}">✕</button>` : ''}</div>`;
       }).join('')}
-    </div>`;
-  }).join('') + (!hasAnyMeal || !canEdit ? '' : `<button class="btn-p" style="margin-top:6px" onclick="generateMealPlanAI()">✨ Navrhnout jídelníček pomocí AI</button>`);
+    </section>`;
+  }).join('');
 }
 
-window.saveMealPlanItem = async (dayKey, mealKey, val) => {
-  if(!CU) return;
-  if(familyId && familyData?.shareMeal && mealViewMode === 'shared') {
-    // Uložit do rodinného prostoru
+// Zápis jednoho jídla. target: 'shared' | 'personal' (výchozí = zobrazený plán).
+// Rodinný plán smí měnit jen správce (hlídá aplikace, pravidla zápis členům povolují).
+// Zápis bez await: offline by Promise čekal na server; rodinný plán překreslí snapshot.
+window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
+  if(!CU) return false;
+  if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return false;
+  val = String(val || '').slice(0, 200);
+  const canShare = !!(familyId && familyData?.shareMeal);
+  const shared = target ? (target === 'shared' && canShare) : isMealShared();
+  if(shared) {
+    if(!isMealAdmin()) { toast('⚠️ Rodinný jídelníček upravuje správce. Ulož si jídlo do „Moje“.'); return false; }
     // Vnořená mapa (setDoc s merge bere tečku v klíči jako součást názvu pole)
     const update = {[dayKey]: {[mealKey]: val}};
-    await setDoc(doc(db,'families',familyId,'mealplan','week'), update, {merge:true});
+    setDoc(doc(db,'families',familyId,'mealplan','week'), update, {merge:true})
+      .catch(e => toast('❌ '+userErr(e,'jídelníček')));
   } else {
-    // Lokální profil
     if(!prof.mealPlan) prof.mealPlan = {};
     if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
     prof.mealPlan[dayKey][mealKey] = val;
-    await setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: prof.mealPlan}, {merge:true});
+    setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: {[dayKey]: {[mealKey]: val}}}, {merge:true})
+      .catch(e => toast('❌ '+userErr(e,'jídelníček')));
   }
+  return true;
+};
+window.clearMealSlot = (dayKey, mealKey) => {
+  if(saveMealPlanItem(dayKey, mealKey, '')) renderMealPlan();
 };
 
 let _mealAiBusy = false;
@@ -5716,6 +5769,7 @@ window.generateMealPlanAI = async () => {
   // Člen bez práv nesmí přepsat rodinný jídelníček
   if(!canEditMealPlan()) { toast('⚠️ Sdílený jídelníček může měnit jen správce skupiny'); return; }
   if(_mealAiBusy) return;
+  if(mealPlanHasAny(currentMealPlan()) && !confirm('AI přepíše celý týden. Pokračovat?')) return;
   _mealAiBusy = true;
   // Cíl se určí předem – přepnutí pohledu během generování nesmí změnit, kam se plán zapíše
   const shared = isMealShared();
@@ -5758,88 +5812,108 @@ function subFoodLogs() {
   );
 }
 
+// Řádek s cílem kcal: text, nebo editace (editVal !== null)
+function kcalGoalRowInner(goal, editVal) {
+  if(editVal === null) return `<span>🎯 Cíl ${Math.round(goal).toLocaleString('cs-CZ')} kcal</span>
+    <button class="kc-link" onclick="editKcalGoal()">Změnit</button>`;
+  return `<label class="kc-goal-edit">🎯 Cíl
+      <input id="set-kcalgoal" class="finp" type="number" inputmode="numeric" min="500" max="9999" value="${esc(String(editVal))}"> kcal</label>
+    <button class="btn-s kc-save" onclick="saveKcalGoal(this)">Uložit</button>`;
+}
+
 window.renderKcalToday = async () => {
   const sec = document.getElementById('kcal-today-section');
   if(!sec) return;
+  // Rozepsaný cíl nesmí přepsat překreslení ze snapshotu
+  const editInp = sec.querySelector('#set-kcalgoal');
+  const editVal = editInp ? editInp.value : null;
+  const hadFocus = !!editInp && document.activeElement === editInp;
+
   const today = toDS();
   const todayLogs = foodLogs.filter(l=>l.date===today);
-  const goal = prof.kcalGoal || 2000;
-  const totalKcal = todayLogs.reduce((s,l)=>s+(l.kcal||0),0);
-  const totalP = todayLogs.reduce((s,l)=>s+(l.protein||0),0);
-  const totalC = todayLogs.reduce((s,l)=>s+(l.carbs||0),0);
-  const totalF = todayLogs.reduce((s,l)=>s+(l.fat||0),0);
+  const goal = Number(prof.kcalGoal) || 2000;
+  const num = v => Number(v) || 0;
+  const totalKcal = todayLogs.reduce((s,l)=>s+num(l.kcal),0);
+  const totalP = todayLogs.reduce((s,l)=>s+num(l.protein),0);
+  const totalC = todayLogs.reduce((s,l)=>s+num(l.carbs),0);
+  const totalF = todayLogs.reduce((s,l)=>s+num(l.fat),0);
   const pct = Math.min(Math.round(totalKcal/goal*100),100);
   const remaining = Math.max(goal-totalKcal,0);
   const over = totalKcal > goal;
 
-  const chipsHtml = todayLogs.map(l=>`
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-      ${esc(l.name)}
-      <span style="font-size:11px;color:var(--accent);font-weight:600">${Number(l.kcal)||0} kcal</span>
-      <span data-a0="${esc(l.id)}" onclick="deleteFoodLog(this.dataset.a0)" style="color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px" title="Smazat">×</span>
-    </div>`).join('');
+  const fmt = n => Math.round(n).toLocaleString('cs-CZ');
+  const pctRaw = Math.round(totalKcal / goal * 100);
+  const pill = over
+    ? `<span class="kc-pill kc-pill--over">+${fmt(totalKcal - goal)} kcal</span>`
+    : `<span class="kc-pill">${pctRaw} %</span>`;
+  const sub = over
+    ? `Cíl ${fmt(goal)} kcal je překročený`
+    : `z ${fmt(goal)} kcal · zbývá ${fmt(remaining)} kcal`;
+  const macro = (emoji, label, val, max, cls) => `
+    <div class="kc-macro">
+      <span class="kc-macro-l">${emoji} ${label}</span>
+      <span class="kc-bar"><span class="kc-bar-fill ${cls}" style="width:${Math.min(Math.round(val/max*100),100)}%"></span></span>
+      <span class="kc-macro-v">${fmt(val)} g</span>
+    </div>`;
+  const rows = todayLogs.slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||''))).map(l => `
+    <li class="kc-log">
+      <span class="kc-log-name">${esc(l.name)}</span>${l.time ? `<small class="kc-log-time">${esc(l.time)}</small>` : ''}
+      <span class="kc-log-kcal">${fmt(num(l.kcal))} kcal</span>
+      <button class="kc-del" data-a0="${esc(l.id)}" onclick="deleteFoodLog(this.dataset.a0)" aria-label="Smazat ${esc(l.name)}">✕</button>
+    </li>`).join('');
 
   sec.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px 22px;box-shadow:var(--shadow)">
-      <!-- Hlavička -->
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px">
-        <div style="font-family:'Playfair Display',serif;font-style:italic">
-          <div style="font-size:42px;color:var(--text);line-height:1">${totalKcal.toLocaleString('cs-CZ')}<span style="font-size:15px;color:var(--text3);margin-left:4px">kcal</span></div>
-          <div style="font-size:13px;color:var(--text2);margin-top:2px">${over?'⚠️ Překročen cíl o '+(totalKcal-goal)+' kcal':'z cíle '+goal.toLocaleString('cs-CZ')+' kcal · zbývá '+remaining}</div>
-        </div>
-        <div style="background:${over?'rgba(var(--red-rgb,198,40,40),.12)':'rgba(61,214,140,.12)'};border:1px solid ${over?'rgba(198,40,40,.3)':'rgba(61,214,140,.3)'};border-radius:20px;padding:6px 14px;font-size:12px;color:${over?'var(--red)':'var(--green)'};font-family:monospace;white-space:nowrap">${pct} % splněno</div>
-      </div>
+  <div class="kc-card">
+    <div class="kc-top">
+      <div><div class="kc-big">${fmt(totalKcal)}<span>kcal</span></div><div class="kc-sub">${sub}</div></div>
+      ${pill}
+    </div>
+    <div class="kc-bar kc-bar--main" role="progressbar" aria-valuemin="0" aria-valuemax="${goal}" aria-valuenow="${Math.round(totalKcal)}" aria-label="Snědeno kcal">
+      <span class="kc-bar-fill ${over?'kc-red':'kc-gold'}" style="width:${pct}%"></span>
+    </div>
+    <div class="kc-goal" id="kc-goal-row">${kcalGoalRowInner(goal, editVal)}</div>
+    ${macro('💪','Bílkoviny',totalP,150,'kc-blue')}
+    ${macro('🍞','Sacharidy',totalC,250,'kc-orange')}
+    ${macro('🥑','Tuky',totalF,80,'kc-green')}
+    <h3 class="kc-h">Dnešní jídla</h3>
+    ${rows ? `<ul class="kc-logs">${rows}</ul>` : `<p class="kc-empty">Zatím nic. Přidej první jídlo, třeba z dnešního plánu.</p>`}
+    <button class="btn-s kc-add" onclick="openAddFoodLog()">+ Přidat jídlo</button>
+  </div>`;
+  if(hadFocus) document.getElementById('set-kcalgoal')?.focus();
+};
 
-      <!-- Hlavní progress bar -->
-      <div style="height:10px;background:var(--card2);border-radius:10px;margin-bottom:6px;overflow:hidden">
-        <div style="height:100%;border-radius:10px;background:linear-gradient(90deg,var(--accent),var(--accent2));width:${pct}%;box-shadow:0 0 8px rgba(245,200,66,.25);transition:width .6s ease"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:18px;font-family:monospace">
-        <span>0</span><span>${Math.round(goal*0.25)}</span><span>${Math.round(goal*0.5)}</span><span>${Math.round(goal*0.75)}</span><span>${goal}</span>
-      </div>
-
-      <!-- Makra -->
-      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px">
-        <div style="display:grid;grid-template-columns:90px 1fr 55px;align-items:center;gap:12px">
-          <div style="font-size:13px;color:var(--text2)">💪 Bílkoviny</div>
-          <div style="height:7px;background:var(--card2);border-radius:6px;overflow:hidden"><div style="height:100%;border-radius:6px;background:var(--blue);width:${Math.min(Math.round(totalP/150*100),100)}%"></div></div>
-          <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--blue);text-align:right">${totalP} g</div>
-        </div>
-        <div style="display:grid;grid-template-columns:90px 1fr 55px;align-items:center;gap:12px">
-          <div style="font-size:13px;color:var(--text2)">🍞 Sacharidy</div>
-          <div style="height:7px;background:var(--card2);border-radius:6px;overflow:hidden"><div style="height:100%;border-radius:6px;background:var(--accent2);width:${Math.min(Math.round(totalC/250*100),100)}%"></div></div>
-          <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--accent2);text-align:right">${totalC} g</div>
-        </div>
-        <div style="display:grid;grid-template-columns:90px 1fr 55px;align-items:center;gap:12px">
-          <div style="font-size:13px;color:var(--text2)">🥑 Tuky</div>
-          <div style="height:7px;background:var(--card2);border-radius:6px;overflow:hidden"><div style="height:100%;border-radius:6px;background:var(--green);width:${Math.min(Math.round(totalF/80*100),100)}%"></div></div>
-          <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--green);text-align:right">${totalF} g</div>
-        </div>
-      </div>
-
-      <!-- Dnešní jídla (chipy) -->
-      <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px">
-        <div style="font-size:11px;color:var(--text3);font-family:monospace;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Dnešní jídla</div>
-        <div style="display:flex;flex-wrap:wrap;gap:7px">
-          ${chipsHtml}
-          <div onclick="openAddFoodLog()" style="background:transparent;border:1px dashed var(--border2);border-radius:20px;padding:5px 13px;font-size:13px;color:var(--text3);cursor:pointer;font-style:italic;transition:border-color .2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">+ přidat jídlo</div>
-        </div>
-      </div>
-    </div>`;
+window.editKcalGoal = () => {
+  const row = document.getElementById('kc-goal-row');
+  if(!row) return;
+  row.innerHTML = kcalGoalRowInner(Number(prof.kcalGoal) || 2000, Number(prof.kcalGoal) || 2000);
+  document.getElementById('set-kcalgoal')?.focus();
+};
+window.saveKcalGoal = async (btn) => {
+  const v = parseInt(document.getElementById('set-kcalgoal')?.value, 10);
+  if(!v || v < 500 || v > 9999) { toast('⚠️ Zadej cíl mezi 500 a 9 999 kcal'); return; }
+  if(!CU) return;
+  if(btn) btn.disabled = true;
+  const prev = prof.kcalGoal;
+  prof.kcalGoal = v;
+  // Řádek zpět do textu; zápis bez await (offline by Promise čekal na server)
+  const row = document.getElementById('kc-goal-row');
+  if(row) row.innerHTML = kcalGoalRowInner(v, null);
+  renderKcalToday();
+  toast('✓ Cíl uložen');
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {kcalGoal:v}, {merge:true})
+    .catch(e => { prof.kcalGoal = prev; renderKcalToday(); toast('❌ '+userErr(e,'cíl kalorií')); });
 };
 
 window.openAddFoodLog = () => {
   // Nabídni dnešní plán z jídelníčku jako rychlé přidání
-  const today = new Date();
-  const di = today.getDay() === 0 ? 6 : today.getDay()-1; // 0=Po
-  const plan = prof.mealPlan || {};
-  const dayData = plan['d'+di] || {};
-  const planned = ['m0','m1','m2'].map((k,i)=>dayData[k]?{key:k,name:dayData[k],emoji:['🌅','☀️','🌙'][i]}:null).filter(Boolean);
+  const plan = currentMealPlan();
+  const dayData = plan['d'+mealTodayIdx()] || {};
+  const planned = ['m0','m1','m2'].map((k,i)=>(typeof dayData[k]==='string' && dayData[k].trim())?{key:k,name:dayData[k].trim(),emoji:['🌅','☀️','🌙'][i]}:null).filter(Boolean);
 
   const plannedBtns = planned.length ? `
-    <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:monospace;letter-spacing:.5px;text-transform:uppercase">Z dnešního plánu</div>
+    <div class="fl-lbl">Z dnešního plánu</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-      ${planned.map(p=>`<button data-a0="${esc(p.name)}" data-a1="${esc(p.key)}" onclick="addFoodFromPlan(this.dataset.a0,this.dataset.a1,this)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
+      ${planned.map(p=>`<button data-a0="${esc(p.name)}" data-a1="${esc(p.key)}" onclick="addFoodFromPlan(this.dataset.a0,this.dataset.a1,this)" style="min-height:44px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:15px;color:var(--text);cursor:pointer;font-family:'Crimson Pro',serif">${p.emoji} ${esc(p.name)}</button>`).join('')}
     </div>` : '';
 
   document.getElementById('foodlog-modal')?.remove();
@@ -5850,18 +5924,18 @@ window.openAddFoodLog = () => {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:20px 20px 16px 16px;padding:24px;width:100%;max-width:420px;box-shadow:0 -8px 40px rgba(0,0,0,.3)">
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--accent);margin-bottom:16px">🍽️ Přidat jídlo</div>
       ${plannedBtns}
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:monospace;letter-spacing:.5px;text-transform:uppercase">Zadat ručně</div>
-      <input id="fl-name" type="text" placeholder="Název jídla…" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;margin-bottom:10px;outline:none">
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">kcal</div><input id="fl-kcal" type="number" placeholder="380" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;outline:none"></div>
-        <div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Bílkoviny g</div><input id="fl-p" type="number" placeholder="25" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;outline:none"></div>
-        <div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Sacharidy g</div><input id="fl-c" type="number" placeholder="45" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;outline:none"></div>
-        <div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Tuky g</div><input id="fl-f" type="number" placeholder="12" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;outline:none"></div>
+      <div class="fl-lbl">Zadat ručně</div>
+      <input id="fl-name" class="fl-name" type="text" placeholder="Název jídla…" aria-label="Název jídla">
+      <div class="fl-grid">
+        <label>kcal<input id="fl-kcal" type="number" inputmode="numeric" min="0" placeholder="380"></label>
+        <label>Bílkoviny g<input id="fl-p" type="number" inputmode="numeric" min="0" placeholder="25"></label>
+        <label>Sacharidy g<input id="fl-c" type="number" inputmode="numeric" min="0" placeholder="45"></label>
+        <label>Tuky g<input id="fl-f" type="number" inputmode="numeric" min="0" placeholder="12"></label>
       </div>
       <button onclick="aiEstimateFoodLog()" style="width:100%;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--accent);cursor:pointer;margin-bottom:8px">✨ AI odhadne kalorie z názvu</button>
       <div style="display:flex;gap:8px">
         <button onclick="closeFoodLogModal()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer">Zrušit</button>
-        <button onclick="saveFoodLog(this)" style="flex:2;background:var(--accent);border:none;border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer">Přidat</button>
+        <button onclick="saveFoodLog(this)" style="flex:2;min-height:44px;background:var(--accent);border:none;border-radius:12px;padding:12px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--on-accent);font-weight:700;cursor:pointer">Přidat</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -5952,14 +6026,13 @@ window.deleteFoodLog = async (id) => {
 
 window.mealplanToShopping = async () => {
   if(!CU){ toast('Musíš být přihlášen'); return; }
-  const isShared = !!(familyId && familyData?.shareMeal);
-  const plan = isShared ? familyMealPlan : (prof.mealPlan || {});
+  const plan = currentMealPlan();
 
   const mealNames = [];
   DAYS_CS.forEach((_,di) => {
     const dayData = plan['d'+di] || {};
     MEALS_CS.forEach((_,mi) => {
-      const val = (dayData['m'+mi] || '').trim();
+      const val = (typeof dayData['m'+mi] === 'string' ? dayData['m'+mi] : '').trim();
       if(val) mealNames.push(val);
     });
   });
@@ -6031,7 +6104,10 @@ window.mealplanToShopping = async () => {
   }
 };
 
-window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
+window.openMealPicker = (dayKey, mealKey) => {
+  if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return;
+  if(!canEditMealPlan()) { toast('⚠️ Rodinný jídelníček upravuje správce skupiny'); return; }
+  const dayLabel = DAYS_CS[+dayKey[1]], mealLabel = MEALS_CS[+mealKey[1]];
   const existing = document.getElementById('meal-picker-modal');
   if(existing) existing.remove();
 
@@ -6068,8 +6144,8 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
         <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:8px">Nebo napiš ručně:</div>
         <div style="display:flex;gap:8px">
           <input id="meal-picker-manual" class="finp" placeholder="Název jídla…" style="flex:1;min-width:0"
-            onkeydown="if(event.key==='Enter')pickMealManual('${dayKey}','${mealKey}')">
-          <button onclick="pickMealManual('${dayKey}','${mealKey}')" class="btn-p" style="width:auto;padding:10px 16px">✅ Přidat</button>
+            data-a0="${dayKey}" data-a1="${mealKey}" onkeydown="if(event.key==='Enter')pickMealManual(this.dataset.a0,this.dataset.a1)">
+          <button data-a0="${dayKey}" data-a1="${mealKey}" onclick="pickMealManual(this.dataset.a0,this.dataset.a1)" class="btn-p" style="width:auto;padding:10px 16px">✅ Přidat</button>
         </div>
       </div>
     </div>`;
@@ -6079,7 +6155,7 @@ window.openMealPicker = (dayKey, mealKey, dayLabel, mealLabel) => {
 };
 
 window.pickMeal = async (dayKey, mealKey, name, el) => {
-  await saveMealPlanItem(dayKey, mealKey, name);
+  if(!saveMealPlanItem(dayKey, mealKey, name)) return;
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
   toast(`✅ Přidáno: ${name}`);
@@ -6088,8 +6164,9 @@ window.pickMeal = async (dayKey, mealKey, name, el) => {
 window.pickMealManual = async (dayKey, mealKey) => {
   const val = document.getElementById('meal-picker-manual')?.value.trim();
   if(!val){ toast('Napiš název jídla'); return; }
-  await saveMealPlanItem(dayKey, mealKey, val);
+  if(!saveMealPlanItem(dayKey, mealKey, val)) return;
   document.getElementById('meal-picker-modal')?.remove();
+  renderMealPlan();
   toast(`✅ Přidáno: ${val}`);
 };
 
@@ -6097,13 +6174,21 @@ window.openAddToMealplan = () => {
   if(!lastRecipe){ toast('Nejprve nechej Rexe navrhnout recept'); return; }
   const existing = document.getElementById('add-to-mealplan-modal');
   if(existing) existing.remove();
+  // Ve skupině volba cíle: neadmin výchozí „Moje“ (rodinný plán mění jen správce)
+  const canShare = !!(familyId && familyData?.shareMeal);
+  _mealplanTarget = canShare && isMealAdmin() && mealViewMode === 'shared' ? 'shared' : 'personal';
+  const targetSeg = canShare ? `
+      <div class="seg seg--block" id="mp-target-seg" role="group" aria-label="Do kterého jídelníčku">
+        <button class="seg-btn" data-mode="shared" onclick="selectMealplanTarget(this.dataset.mode)">Rodina</button>
+        <button class="seg-btn" data-mode="personal" onclick="selectMealplanTarget(this.dataset.mode)">Moje</button>
+      </div>` : '';
   const modal = document.createElement('div');
   modal.id = 'add-to-mealplan-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto">
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--accent);margin-bottom:4px;font-weight:700">📅 Přidat do jídelníčku</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${esc(lastRecipe.name)}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${esc(lastRecipe.name)}</div>${targetSeg}
       <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Vyber den:</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
         ${DAYS_CS.map((d,i)=>`<button onclick="selectMealplanDay(${i},this)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);cursor:pointer" data-day="${i}">${d}</button>`).join('')}
@@ -6114,14 +6199,21 @@ window.openAddToMealplan = () => {
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('add-to-mealplan-modal').remove()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer">Zrušit</button>
-        <button onclick="confirmAddToMealplan()" style="flex:2;background:var(--accent);border:none;border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer">✅ Přidat</button>
+        <button onclick="confirmAddToMealplan()" style="flex:2;background:var(--accent);border:none;border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--on-accent);font-weight:700;cursor:pointer">✅ Přidat</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  if(canShare) syncSeg('mp-target-seg', true, _mealplanTarget);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
-let _mealplanSelDay = 0, _mealplanSelMeal = 1;
+let _mealplanSelDay = 0, _mealplanSelMeal = 1, _mealplanTarget = 'personal';
+window.selectMealplanTarget = (mode) => {
+  mode = mode === 'shared' ? 'shared' : 'personal';
+  if(mode === 'shared' && !isMealAdmin()) { toast('⚠️ Rodinný jídelníček upravuje správce. Ulož si jídlo do „Moje“.'); return; }
+  _mealplanTarget = mode;
+  syncSeg('mp-target-seg', true, mode);
+};
 window.selectMealplanDay = (i, btn) => {
   _mealplanSelDay = i;
   document.querySelectorAll('#add-to-mealplan-modal [data-day]').forEach(b => b.style.borderColor = 'var(--border)');
@@ -6134,10 +6226,14 @@ window.selectMealplanMeal = (i, btn) => {
 };
 window.confirmAddToMealplan = async () => {
   if(!lastRecipe) return;
-  await saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name);
+  const canShare = !!(familyId && familyData?.shareMeal);
+  const target = canShare ? _mealplanTarget : 'personal';
+  if(!saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name, target)) return;
   document.getElementById('add-to-mealplan-modal')?.remove();
+  // Jídelníček ukáže plán, kam se jídlo uložilo
+  if(canShare) mealViewMode = target;
   renderMealPlan();
-  toast(`✅ Přidáno do jídelníčku — ${DAYS_CS[_mealplanSelDay]}, ${MEALS_CS[_mealplanSelMeal]}`);
+  toast(`✅ Přidáno do jídelníčku${canShare ? (target === 'shared' ? ' (Rodina)' : ' (Moje)') : ''} — ${DAYS_CS[_mealplanSelDay]}, ${MEALS_CS[_mealplanSelMeal]}`);
 };
 
 // ── STATISTIKY ────────────────────────────────────────
@@ -6517,6 +6613,8 @@ async function initApp(){
   // Rodinná skupina
   if(prof.familyId){familyId=prof.familyId;subscribeFamily();}
   else if(prof.extraGroupIds?.length){extraGroupIds=prof.extraGroupIds;for(const gid of extraGroupIds)subscribeExtraGroup(gid);}
+  // Průvodce pro uživatele, kteří ho ještě neviděli (po onboardingu ho spouští finishOnboard)
+  maybeStartTourOnInit();
   // Pozvánka do skupiny odkazem (?join=) – po changelogu, jen dotaz, nikdy automaticky
   setTimeout(checkPendingJoin,2200);
 }
@@ -6559,7 +6657,15 @@ window.sp=id=>{
   document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
   if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();}
   if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();}
-  if(id==='mealplan')renderMealPlan();
+  if(id==='mealplan'){
+    const tab=getMealTab();
+    switchMealTab(tab);renderMealPlan();
+    // Jednorázový posun na dnešek (Po a Út jsou nahoře)
+    if(tab==='plan'&&mealTodayIdx()>1){
+      const smooth=!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      requestAnimationFrame(()=>document.getElementById('mp-today')?.scrollIntoView({block:'start',behavior:smooth?'smooth':'auto'}));
+    }
+  }
   if(id==='settings')renderFamilySettings();
   if(id==='calendar'){renderCal();}
   if(id==='habits')renderHabits();
@@ -7529,7 +7635,6 @@ window.togModSet=async(id,on)=>{
   }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e,'moduly'));}
 };
 window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast('⚠️ Zadej jméno');return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast('✓ Jméno uloženo');};
-window.saveKcalGoal=async()=>{const v=parseInt(document.getElementById('set-kcalgoal').value);if(!v||v<500||v>9999){toast('⚠️ Zadej cíl 500–9999 kcal');return;}prof.kcalGoal=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{kcalGoal:v},{merge:true});toast('✓ Kalorický cíl uložen');renderMealPlan();};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
 window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast('✓ Společník změněn');};
 
@@ -8089,21 +8194,7 @@ function renderShop(){
   const empty=document.getElementById('shop-empty');
   if(!list||!empty)return;
   const canShareShop = !!(familyId && familyData?.shareShop);
-  const shopToggle = document.getElementById('shop-view-toggle');
-  const badge = document.getElementById('shop-shared-badge');
-  if(canShareShop) {
-    if(badge) badge.style.display = 'none';
-    if(shopToggle) {
-      shopToggle.style.display = 'flex';
-      const btnS = document.getElementById('shop-toggle-shared');
-      const btnP = document.getElementById('shop-toggle-personal');
-      if(btnS) btnS.classList.toggle('active', shopViewMode==='shared');
-      if(btnP) btnP.classList.toggle('active', shopViewMode==='personal');
-    }
-  } else {
-    if(badge) badge.style.display = 'none';
-    if(shopToggle) shopToggle.style.display = 'none';
-  }
+  syncSeg('shop-view-toggle', canShareShop, shopViewMode);
   const isShared = isShopShared();
   const activeItems = isShared ? familyShopItems : shopItems;
   renderInviteHint('shop'); // i u prázdného seznamu
@@ -9885,7 +9976,7 @@ const TOUR_MODULES = {
 
 // Spustit uvítací tour pro nového uživatele
 // Průvodce je naplánovaný nebo běží (uvítání, kroky, závěrečné okno) → nepřekrývat ho dalšími okny
-let _tourPlanned = false;
+let _tourPlanned = false, _tourFromOnboard = false;
 function tourActive() {
   return _tourPlanned || !!document.querySelector('#tour-welcome,#tour-step,#tour-overlay,#tour-done');
 }
@@ -9981,7 +10072,7 @@ window.nextTourStep = () => {
 function finishTour() {
   document.getElementById('tour-step')?.remove();
   document.getElementById('tour-overlay')?.remove();
-  localStorage.setItem('lp_tour_done', '1');
+  try { localStorage.setItem('lp_tour_done', '1'); localStorage.removeItem('lp_tour_pending'); } catch(e) {}
   sp('dashboard');
 
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
@@ -9996,20 +10087,25 @@ function finishTour() {
         <div style="font-size:48px;margin-bottom:12px">🎉</div>
         <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">To je vše, ${esc(name)}!</div>
         <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px">Teď víš co LifePocket umí. Kdykoliv budeš chtít průvodce znovu, najdeš ho v ⚙️ Nastavení.</div>
-        <button onclick="document.getElementById('tour-done')?.remove()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
+        <button onclick="closeTourDone()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
           Jdeme na to! 💪
         </button>
       </div>`;
     document.body.appendChild(done);
-    done.addEventListener('click', e => { if(e.target===done) done.remove(); });
+    done.addEventListener('click', e => { if(e.target===done) closeTourDone(); });
   }, 300);
 }
+window.closeTourDone = () => {
+  document.getElementById('tour-done')?.remove();
+  resumePendingJoin();
+};
 
 window.dismissTour = () => {
   document.getElementById('tour-welcome')?.remove();
   document.getElementById('tour-step')?.remove();
   document.getElementById('tour-overlay')?.remove();
-  localStorage.setItem('lp_tour_done', '1');
+  try { localStorage.setItem('lp_tour_done', '1'); localStorage.removeItem('lp_tour_pending'); } catch(e) {}
+  resumePendingJoin();
 };
 
 // Kontextové nápovědy při první návštěvě modulu
@@ -10044,21 +10140,26 @@ function showModuleHint(moduleId) {
 const _origFinishOnboard = window.finishOnboard;
 window.finishOnboard = async () => {
   if(_onbBusy) return; // dvojklik
+  _tourFromOnboard = true;
   try { localStorage.setItem('lp_tour_pending', '1'); } catch(e) {}
   const ok = await _origFinishOnboard();
   if(ok) { _tourPlanned = true; setTimeout(startWelcomeTour, 1000); }
-  else { try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} }
+  else { _tourFromOnboard = false; try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} }
 };
 
-// Pro existující uživatele kteří tour ještě neviděli (ne nové registrace)
-const _origInitApp = initApp;
-window.initApp = function(){
-  _origInitApp();
-  if(!localStorage.getItem('lp_tour_done') && !localStorage.getItem('lp_tour_pending') && prof?.createdAt) {
-    _tourPlanned = true;
-    setTimeout(startWelcomeTour, 2000);
-  }
-  localStorage.removeItem('lp_tour_pending');
+// Průvodce při startu appky (volá initApp): uživatel, který ho ještě nedokončil ani nezavřel.
+// lp_tour_pending = onboarding hotový, průvodce ještě neproběhl (např. appka zavřená dřív).
+// Během onboardingu ho spouští finishOnboard (_tourFromOnboard), proto se tu nespustí podruhé.
+function maybeStartTourOnInit() {
+  if(_tourFromOnboard || tourActive()) return;
+  let done = false, pending = false;
+  try { done = !!localStorage.getItem('lp_tour_done'); pending = !!localStorage.getItem('lp_tour_pending'); } catch(e) { return; }
+  if(done) { if(pending) { try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} } return; }
+  // Existující účet na novém zařízení průvodce nedostane: jen čekající, nebo účet mladší 7 dní
+  const created = prof?.createdAt ? new Date(prof.createdAt).getTime() : NaN;
+  const isNew = Number.isFinite(created) && Date.now() - created < 7 * 86400000;
+  if(pending || isNew) { _tourPlanned = true; setTimeout(startWelcomeTour, 2000); }
+  else { try { localStorage.setItem('lp_tour_done', '1'); } catch(e) {} }
 }
 
 // Přidat hint do sp() pro první návštěvy

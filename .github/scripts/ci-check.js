@@ -168,7 +168,7 @@ console.log('Zakázané vzory (app.js)');
 const FORBIDDEN = [
   { name: 'toISOString() pro datum (použij toDS())', allow: 0,
     re: /toISOString\(\)\s*\.\s*(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\)\s*\[\s*0\s*\])/g },
-  { name: "interpolace '${…}' v inline handleru (použij data-aN)", allow: 18,
+  { name: "interpolace '${…}' v inline handleru (použij data-aN)", allow: 14,
     re: /\bon\w+=\\?"[^"]*'\$\{/g },
 ];
 for (const f of FORBIDDEN) {
