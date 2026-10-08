@@ -798,11 +798,11 @@
         <div class="mp-head"><span class="mp-head-em" aria-hidden="true">🥗</span><div class="ptitle">Jídelníček</div></div>
       </div>
       <div class="cook-tabs" role="tablist">
-        <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" onclick="switchMealTab('plan')">📅 Plán týdne</button>
-        <button class="cook-tab" id="mp-tab-kcal" role="tab" aria-selected="false" onclick="switchMealTab('kcal')">🔥 Kalorie dnes</button>
+        <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" aria-controls="mp-section-plan" onclick="switchMealTab('plan')">📅 Plán týdne</button>
+        <button class="cook-tab" id="mp-tab-kcal" role="tab" aria-selected="false" aria-controls="mp-section-kcal" onclick="switchMealTab('kcal')">🔥 Kalorie dnes</button>
       </div>
 
-      <div id="mp-section-plan">
+      <div id="mp-section-plan" role="tabpanel" aria-labelledby="mp-tab-plan">
         <div class="seg seg--block" id="meal-view-toggle" role="group" aria-label="Čí jídelníček zobrazit" hidden>
           <button class="seg-btn" data-mode="shared" onclick="setMealView(this.dataset.mode)">Rodina</button>
           <button class="seg-btn" data-mode="personal" onclick="setMealView(this.dataset.mode)">Moje</button>
@@ -816,7 +816,7 @@
       </div>
 
       <!-- KALORICKÝ PŘEHLED DNES -->
-      <div id="mp-section-kcal" hidden>
+      <div id="mp-section-kcal" role="tabpanel" aria-labelledby="mp-tab-kcal" hidden>
         <div id="kcal-today-section"></div>
       </div>
     </div>

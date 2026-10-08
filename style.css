@@ -1225,10 +1225,11 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .kc-bar-fill{display:block;height:100%;border-radius:inherit;transition:width .5s ease}
 .kc-gold{background:linear-gradient(90deg,var(--accent),var(--accent2))}
 .kc-red{background:var(--red)}.kc-blue{background:var(--blue)}.kc-orange{background:var(--accent2)}.kc-green{background:var(--green)}
-.kc-goal{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin-bottom:10px;font-size:15px;color:var(--text2)}
+.kc-goal{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-height:44px;margin-bottom:10px;font-size:15px;color:var(--text2)}
 .kc-goal-edit{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--text2)}
 .kc-goal-edit .finp{width:96px;font-size:16px;text-align:center;min-height:44px}
 .kc-link,.kc-save{min-height:44px;padding:0 14px}
+.kc-goal-btns{display:flex;align-items:center;gap:4px;margin-left:auto}
 .kc-link{background:none;border:none;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .kc-macro{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;gap:10px;margin-bottom:10px}
 .kc-macro-l{font-size:15px;color:var(--text2);white-space:nowrap}
@@ -1564,7 +1565,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cl-item-open{background:var(--card2);border-radius:12px;padding:10px 10px 10px 8px !important;border:1px solid var(--border)}
 .cl-item-edit-inp{width:100%;background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;outline:none;resize:none;box-sizing:border-box;line-height:1.4}
 .cl-item-edit-actions{display:flex;gap:6px;margin-top:6px}
-.cl-edit-save{background:var(--accent);color:var(--tc);border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif}
+.cl-edit-save{background:var(--accent);color:var(--on-accent);border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif}
 .cl-edit-cancel{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif}
 .cl-edit-del{background:none;border:none;padding:6px 8px;font-size:13px;color:var(--text3);cursor:pointer;margin-left:auto;font-family:'Crimson Pro',serif}
 .cl-photos-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
