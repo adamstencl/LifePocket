@@ -1,0 +1,2 @@
+# GitHub Pages (Jekyll): zveřejnit .well-known/assetlinks.json pro Google Play (TWA)
+include: [.well-known]
