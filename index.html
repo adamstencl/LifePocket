@@ -276,6 +276,7 @@
         <div style="flex:1">
           <div class="avsnm" id="d-avnm"></div>
           <div class="avtxt" id="d-avtxt"></div>
+          <div class="avlvl" id="d-avlvl"></div>
         </div>
         <div style="color:var(--text3);font-size:12px">→</div>
       </div>
@@ -762,6 +763,7 @@
             </div>
             <div class="av-chat-info">
               <div class="av-chat-name" id="av-nm">Společník</div>
+              <div id="av-lvl"></div>
               <div class="av-chat-status">● Online</div>
               <div class="av-chat-msg" id="av-msg">Vítej! Jsem tady pro tebe každý den.</div>
               <div id="av-energy" style="padding:0 4px"></div>
@@ -886,6 +888,8 @@
             <div style="color:#7a4d26;font-size:12px;margin-top:3px" data-i18n="set.theme.orangeSub">Šťavnatý režim</div>
           </div>
         </div>
+        <!-- Body a úrovně (vykresluje renderGameSetting) -->
+        <div id="set-game" style="margin-top:12px"></div>
       </div>
 
 
@@ -1114,7 +1118,8 @@
           <div class="cpbtn" data-c="#ff9f0a" style="background:#ff9f0a" onclick="sGC(&#39;#ff9f0a&#39;,this)"></div>
         </div></div>
     </div>
-    <div class="fg"><label class="flbl">Počáteční progres: <span id="g-pval">0%</span></label>
+    <div class="fg" id="g-metric-wrap"></div>
+    <div class="fg" id="g-prog-wrap"><label class="flbl">Počáteční progres: <span id="g-pval">0%</span></label>
       <input class="finp" type="range" id="g-prog" min="0" max="100" value="0" oninput="document.getElementById(&#39;g-pval&#39;).textContent=this.value+&#39;%&#39;" style="accent-color:var(--accent);padding:6px 0"></div>
     <div class="fg">
       <label class="flbl">Priorita</label>
@@ -1176,6 +1181,38 @@
     <div id="rx-list" aria-live="polite"></div>
     <div class="rx-form" id="rx-form"></div>
     <div class="rx-cnt" id="rx-cnt" aria-live="polite"></div>
+  </div>
+</div>
+
+<!-- Gamifikace 4.40: Můj růst, nová úroveň, splněný cíl, zápis hodnoty cíle (obsah vykresluje app.js) -->
+<div class="moverlay" id="m-game">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="game-title">
+    <div class="gf-head">
+      <div class="mtitle" id="game-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-game&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="game-body"></div>
+  </div>
+</div>
+<div class="moverlay" id="m-lvlup">
+  <div class="modal lu-modal" role="dialog" aria-modal="true" aria-labelledby="lvlup-title">
+    <div class="gf-head lu-head"><span></span><button type="button" class="gf-x" onclick="cm(&#39;m-lvlup&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button></div>
+    <div id="lvlup-body"></div>
+  </div>
+</div>
+<div class="moverlay" id="m-gwin">
+  <div class="modal lu-modal" role="dialog" aria-modal="true" aria-labelledby="gwin-title">
+    <div class="gf-head lu-head"><span></span><button type="button" class="gf-x" onclick="cm(&#39;m-gwin&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button></div>
+    <div id="gwin-body"></div>
+  </div>
+</div>
+<div class="moverlay" id="m-gval">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="gval-title">
+    <div class="gf-head">
+      <div class="mtitle" id="gval-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-gval&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="gval-body"></div>
   </div>
 </div>
 
@@ -1245,7 +1282,7 @@
 <div class="av-reaction" id="av-reaction">
   <div class="av-reaction-em" id="av-r-em">⭐</div>
   <div class="av-reaction-txt"><strong id="av-r-title"></strong><span id="av-r-msg"></span></div>
-  <button class="av-reaction-close" onclick="hideAvReaction()">×</button>
+  <button class="av-reaction-close" onclick="hideAvReaction()" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">×</button>
 </div>
 
 </body></html>

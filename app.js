@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,weekdayNames,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,fmtNum,weekdayNames,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -728,6 +728,7 @@ onAuthStateChanged(auth,async u=>{
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
+    clearTimeout(_gTimer); game=null; _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
@@ -742,7 +743,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -1258,6 +1259,7 @@ function subHabits(){
     shieldCacheReset();
     renderHabits();
     hOk=true;if(lOk)markReady();
+    gameKick();
   });
   _hlCutoff=hlCutoffDS();
   unsubLogs=onSnapshot(query(collection(db,'users',CU.uid,'habitLogs'),where('date','>=',_hlCutoff)),snap=>{
@@ -1411,7 +1413,6 @@ function habitShieldSectionHTML(h){
     </div>`;
 }
 
-function gameKick(){} // GAMIFIKACE: doplní se (WIP)
 function buildHabitCard(h){
   const logId=h.id+'_'+habitDay;
   const log=hLog(logId);
@@ -1922,6 +1923,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
   } else if(currentState==='failed'){
     await delHabitLog(logId);
   } else {
+    xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
   }
@@ -1935,6 +1937,7 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   const ex=habitLogs.find(l=>l.id===logId);
   const cur=ex?ex.value:0;
   const newVal=Math.max(0,cur+delta);
+  if(delta>0 && newVal>=goal && cur<goal) xpPop(hid, XP.habit);
   if(newVal===0){
     await delHabitLog(logId);
   } else {
@@ -3097,7 +3100,7 @@ const EXPORT_COLS = [
   ['profile','profil'], ['entries','poznámky'], ['habits','návyky'], ['habitLogs','záznamy návyků'],
   ['events','kalendář'], ['goals','cíle'], ['shopItems','nákupy'], ['recurringShop','pravidelné nákupy'],
   ['savedRecipes','recepty'], ['foodLogs','jídlo'], ['healthLogs','zdraví'], ['checklists','checklisty'],
-  ['chatMemory','chat s AI'], ['aiReports','nahlášení AI'], ['errorLogs','technické chyby']
+  ['chatMemory','chat s AI'], ['aiReports','nahlášení AI'], ['errorLogs','technické chyby'], ['game','body a odznaky']
 ];
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
@@ -3747,8 +3750,8 @@ function rAvPage(){
   const el_cwem=document.getElementById('cwem');
   const el_cwtitle=document.getElementById('cwtitle');
   const el_moods=document.getElementById('av-moods');
-  if(el_em)el_em.textContent=av.emoji;
   if(el_nm)el_nm.textContent=av.name;
+  gameRenderUI(); // emoji nebo kruh úrovně v hlavičce
   if(el_msg)el_msg.textContent=msg;
   // av-msg already updated above
   if(el_cwem)el_cwem.textContent=av.emoji;
@@ -5252,6 +5255,485 @@ window.dismissQS = () => {
   document.getElementById('qs-card')?.remove();
 };
 
+// ── GAMIFIKACE: body (XP) a úrovně v users/{uid}/game/main (docs/NAVRH-GAMIFIKACE.md, F1) ──
+// Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
+// mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
+const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
+  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,bonusCap:200};
+const GAME_MAX_LVL=50;
+const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
+function levelOf(xp){ let L=1; while(L<GAME_MAX_LVL&&xp>=lvlXP(L+1)) L++; return L; }
+// Názvy úrovní (růst rostliny, bez rodu): mění se každých 5 úrovní
+const LVL_KEYS=['seed','sprout','shoot','bud','blossom','sapling','tree','mighty','grove','forest','legend'];
+const LVL_EM=['🌱','🌿','🍃','🌷','🌸','🌲','🌳','🌳','🏞️','🌲','✨'];
+const lvlIdx=L=>Math.min(LVL_KEYS.length-1,Math.floor(L/5));
+const lvlName=L=>LVL_EM[lvlIdx(L)]+' '+t('game.lvl.'+LVL_KEYS[lvlIdx(L)]);
+// Doplňky a barvy kruhu (vše se odemyká úrovní, nic se nekupuje)
+const GAME_ACC=[{id:'scarf',em:'🧣',lvl:5},{id:'glasses',em:'🕶️',lvl:15},{id:'headphones',em:'🎧',lvl:25},
+  {id:'cap',em:'🎓',lvl:35},{id:'star',em:'🌟',lvl:45},{id:'crown',em:'👑',lvl:50}];
+const GAME_RINGS=[{id:'accent',lvl:1},{id:'mint',lvl:10},{id:'lavender',lvl:20},{id:'aurora',lvl:30},{id:'gold',lvl:40},{id:'legend',lvl:50}];
+const ringTier=L=>1+(L>=10)+(L>=20)+(L>=30)+(L>=40);
+
+let game=null, _gTimer=0, _gameLoadP=null, _gameFailAt=0, _goalsOk=false, _gameDay='';
+const gameRef=()=>doc(db,'users',CU.uid,'game','main');
+// Body a úrovně viditelné (načtené a nevypnuté v Nastavení)
+function gameOn(){ return !!game&&!game.off; }
+function gameNormalize(g){
+  g=g&&typeof g==='object'?g:{};
+  const obj=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
+  return {v:1,off:!!g.off,base:Math.max(0,Number(g.base)||0),days:{...obj(g.days)},once:{...obj(g.once)},
+    lvlSeen:Math.max(1,Math.min(GAME_MAX_LVL,Number(g.lvlSeen)||1)),xp:Number(g.xp)||0,
+    rex:{acc:typeof obj(g.rex).acc==='string'?g.rex.acc:'',ring:typeof obj(g.rex).ring==='string'?g.rex.ring:''},
+    share:{lvl:!!obj(g.share).lvl,wins:!!obj(g.share).wins}};
+}
+function gameTotal(g=game){
+  if(!g) return 0;
+  let x=Number(g.base)||0;
+  for(const v of Object.values(g.days||{})) x+=Number(v)||0;
+  for(const o of Object.values(g.once||{})) x+=Number(o&&o.x)||0;
+  return Math.max(0,Math.round(x));
+}
+// Zobrazená úroveň nikdy neklesne pod už oslavenou (odškrtnutí jen vrátí lištu)
+function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)||1); }
+// Den: splněné návyky (max. 10) + perfektní den (všechny denní návyky na řadě, aspoň 2). Týdenní se do perfektního dne nepočítají.
+function isPerfectDay(ds){
+  const due=habits.filter(h=>!h.archived&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral');
+  return due.length>=2&&due.every(h=>hDone(h.id,ds));
+}
+function dayXP(ds){
+  const done=habits.filter(h=>!h.archived&&hDone(h.id,ds)).length;
+  return Math.min(done,XP.habitCap)*XP.habit+(isPerfectDay(ds)?XP.perfect:0);
+}
+// Bonusy dnes (podcíle, úkoly, mezníky a hodnoty cílů) – strop proti „farmení“ zakládáním cílů
+const GAME_CAPPED=/^(sg|tk|gm|mv)_/;
+function bonusToday(){ const d=toDS(); let x=0; for(const [k,o] of Object.entries(game?.once||{})) if(o&&o.d===d&&GAME_CAPPED.test(k)) x+=Number(o.x)||0; return x; }
+function gameWriteErr(e){
+  if(e?.code==='not-found'&&game&&CU){ setDoc(gameRef(),gameDocData(game),{merge:true}).catch(x=>console.warn('[LP] game:',x?.code||x?.name)); return; }
+  console.warn('[LP] game:',e?.code||e?.name);
+}
+function gameWrite(patch){
+  if(!CU||_accDeleting||_accDeleted) return;
+  updateDoc(gameRef(),patch).catch(gameWriteErr); // bez await: offline se odešle později, ztracené dny dopočítá další gameSync
+}
+function gameDocData(g){ return {v:1,off:!!g.off,base:g.base,days:g.days,once:g.once,lvlSeen:g.lvlSeen,xp:gameTotal(g),rex:g.rex,share:g.share}; }
+// Jednorázová odměna s pevným klíčem; vrací true jen poprvé (dvě zařízení zapíšou totéž)
+function gameAward(key,x){
+  if(!game||!CU||game.once[key]) return false;
+  const today=toDS();
+  if(GAME_CAPPED.test(key)) x=Math.max(0,Math.min(x,XP.bonusCap-bonusToday()));
+  if(key.startsWith('tk_')&&Object.entries(game.once).filter(([k,o])=>k.startsWith('tk_')&&o?.d===today).length>=XP.taskCap) x=0;
+  const before=gameTotal();
+  game.once[key]={d:today,x:Math.max(0,Math.round(Number(x)||0))};
+  game.xp=gameTotal();
+  gameWrite({['once.'+key]:game.once[key],xp:game.xp});
+  gameAfter(before,game.xp);
+  return true;
+}
+// Přepočet dneška a včerejška + milníky série (idempotentní: zaškrtnout, odškrtnout, zaškrtnout = stejné XP)
+function gameSync(){
+  if(!CU||!game||_accDeleting||_accDeleted) return;
+  const patch={}, today=toDS(), before=gameTotal();
+  for(const ds of [addDays(today,-1),today]){
+    const v=dayXP(ds);
+    if((Number(game.days[ds])||0)!==v){
+      if(v){ game.days[ds]=v; patch['days.'+ds]=v; } else { delete game.days[ds]; patch['days.'+ds]=deleteField(); }
+    }
+  }
+  if(Object.keys(patch).length){ game.xp=gameTotal(); patch.xp=game.xp; gameWrite(patch); }
+  // Milník série 7/30/100/365: klíč s datem dosažení → 1× za běh série
+  for(const h of habits){
+    if(h.archived||!hDone(h.id,today)) continue;
+    const s=habitStreak(h.id,today);
+    if(XP.streak[s]) gameAward('st_'+h.id+'_'+s+'_'+today,XP.streak[s]);
+  }
+  gameAfter(before,gameTotal());
+}
+function gameQueue(){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,800); }
+// Po změně XP: překreslit kruh a lištu, případně oslavit novou úroveň (jen jednou, lvlSeen se hned zapíše)
+function gameAfter(before,after){
+  gameRenderUI();
+  if(!game) return;
+  const L=levelOf(after), seen=Number(game.lvlSeen)||1;
+  if(L<=seen) return;
+  game.lvlSeen=L;
+  gameWrite({lvlSeen:L});
+  if(!game.off) celebrateLevel(seen,L);
+}
+// Spouštěč: záznamy návyků ze serveru (snapshot), návyky, cíle, nový den
+function gameKick(){
+  if(!CU||!_hlServerOk) return;
+  if(_habitsSnapOk) gameAutoShield();      // štíty fungují i s vypnutými body
+  if(!game){ if(_goalsOk&&_habitsSnapOk) gameLoad(); return; }
+  gameQueue();
+}
+// Načtení (1 čtení při přihlášení); chybí v → dopočet z historie (400 dní) bez oslav
+function gameLoad(){
+  if(!CU||game||_gameLoadP||Date.now()-_gameFailAt<60000) return _gameLoadP;
+  const uid=CU.uid;
+  _gameLoadP=(async()=>{
+    try{
+      const snap=await getDoc(doc(db,'users',uid,'game','main'));
+      if(CU?.uid!==uid||game) return;
+      const raw=snap.exists()?snap.data():null;
+      if(!raw||!raw.v){
+        game=gameBackfill(raw);
+        setDoc(gameRef(),gameDocData(game),{merge:true}).catch(gameWriteErr);
+      } else {
+        game=gameNormalize(raw);
+        // Zhuštění: dny starší než okno logů se už nepřepočítávají → do base
+        const patch={};
+        for(const [k,v] of Object.entries(game.days)) if(_hlCutoff&&k<_hlCutoff){ game.base+=Number(v)||0; delete game.days[k]; patch['days.'+k]=deleteField(); }
+        if(Object.keys(patch).length) patch.base=game.base;
+        if(gameTotal()!==Number(raw.xp)){ patch.xp=gameTotal(); }
+        game.xp=gameTotal();
+        if(Object.keys(patch).length) gameWrite(patch);
+      }
+      _gameDay=toDS();
+      gameRenderUI();
+      rDash();
+      gameKick();
+    }catch(e){ _gameFailAt=Date.now(); console.warn('[LP] game:',e?.code||e?.name); }
+    finally{ _gameLoadP=null; }
+  })();
+  return _gameLoadP;
+}
+// Dopočet z historie: dny z logů (400 dní), mezníky cílů podle aktuálního pokroku (potichu), lvlSeen = výsledná úroveň
+function gameBackfill(prev){
+  const g=gameNormalize(prev);
+  g.days={};
+  const today=toDS(), dates=new Set();
+  for(const l of habitLogs) if(l&&l.done&&typeof l.date==='string'&&l.date>=_hlCutoff&&l.date<=today) dates.add(l.date);
+  for(const ds of dates){ const v=dayXP(ds); if(v) g.days[ds]=v; }
+  for(const gl of goals){
+    if(!gl||!gl.id) continue;
+    const p=Number(gl.progress)||0, hit=Array.isArray(gl.msHit)?gl.msHit:[];
+    const fresh=GOAL_MS.filter(m=>p>=m&&!hit.includes(m));
+    if(fresh.length){
+      gl.msHit=[...hit,...fresh];
+      updateDoc(doc(db,'users',CU.uid,'goals',gl.id),{msHit:arrayUnion(...fresh)}).catch(e=>console.warn('[LP] msHit:',e?.code||e?.name));
+    }
+    if(!goalOldEnough(gl)) continue;
+    const cd=gl.createdAt?toDS(new Date(gl.createdAt)):'2000-01-01';
+    for(const m of GOAL_MS) if(p>=m&&!g.once['gm_'+gl.id+'_'+m]) g.once['gm_'+gl.id+'_'+m]={d:cd,x:XP.gms[m]};
+  }
+  g.xp=gameTotal(g);
+  g.lvlSeen=levelOf(g.xp);
+  return g;
+}
+// Pochvala druhému: první reakce nebo komentář na cizí položku za den, max. 3 různé položky (body dávají, ne dostávají)
+function gamePraise(target){
+  if(!game||!CU||typeof target!=='string') return;
+  const today=toDS();
+  let st=lsGet('lp_praise',null);
+  if(!st||st.d!==today||!Array.isArray(st.t)) st={d:today,t:[]};
+  if(!st.t.includes(target)&&st.t.length<XP.praiseCap) st.t.push(target);
+  lsSave('lp_praise',st);
+  const key='pr_'+today, prev=game.once[key];
+  const n=Math.min(XP.praiseCap,Math.max(st.t.length,Number(prev?.n)||0));   // nikdy neklesá
+  if(prev&&Number(prev.n)>=n) return;
+  const before=gameTotal();
+  game.once[key]={d:today,x:n*XP.praise,n};
+  game.xp=gameTotal();
+  gameWrite({['once.'+key]:game.once[key],xp:game.xp});
+  gameAfter(before,game.xp);
+}
+// Nový den (appka otevřená přes půlnoc nebo vrácená z pozadí): štíty a přepočet
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!CU) return;
+  if(_gameDay&&_gameDay!==toDS()){ _gameDay=toDS(); gameKick(); rDash(); }
+});
+
+// ── Gamifikace: UI ──
+function gameRingSel(L){
+  const ch=GAME_RINGS.find(r=>r.id===game?.rex?.ring&&r.lvl<=L);
+  return ch?ch.id:[...GAME_RINGS].reverse().find(r=>r.lvl<=L).id;   // bez volby: nejnovější odemčená barva
+}
+function gameAccSel(L){ return GAME_ACC.find(a=>a.id===game?.rex?.acc&&a.lvl<=L)||null; }
+// Kruh kolem avatara = podíl XP do další úrovně, číslo úrovně a doplněk
+function gameRingHTML(sz){
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const L=gameLevel(), acc=gameAccSel(L);
+  return `<span class="gring gr-${gameRingSel(L)} gt-${ringTier(L)}" style="--sz:${sz}px;--p:${gameProgress().pct}" aria-hidden="true"><span class="gring-em">${av.emoji}</span>${acc?`<span class="gring-acc ga-${acc.id}">${acc.em}</span>`:''}<span class="gring-lvl">${L}</span></span>`;
+}
+function gameProgress(){
+  const xp=gameTotal(), L=gameLevel();
+  if(L>=GAME_MAX_LVL) return {L,cur:xp-lvlXP(L),max:xp-lvlXP(L),pct:100,left:0};
+  const lo=lvlXP(L), hi=lvlXP(L+1), cur=Math.max(0,xp-lo), max=hi-lo;
+  return {L,cur,max,pct:Math.max(0,Math.min(100,Math.round(cur/max*100))),left:Math.max(0,hi-xp)};
+}
+function gameBarHTML(){
+  const p=gameProgress();
+  return `<div class="gbar-row"><div class="gbar" role="progressbar" aria-valuemin="0" aria-valuemax="${p.max}" aria-valuenow="${p.cur}" aria-label="${tH('game.xp',{cur:p.cur,max:p.max})}"><span style="width:${p.pct}%"></span></div><span class="gbar-txt">${tH('game.xp',{cur:p.cur,max:p.max})}</span></div>`;
+}
+// Překreslí banner na Domů, hlavičku avatara a otevřený sheet
+function gameRenderUI(){
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], on=gameOn();
+  const dem=document.getElementById('d-avem');
+  if(dem){ if(on){ dem.innerHTML=gameRingHTML(64); dem.classList.add('has-ring'); } else { dem.textContent=av.emoji; dem.classList.remove('has-ring'); } }
+  const dl=document.getElementById('d-avlvl');
+  if(dl) dl.innerHTML=on?`<div class="avlvl-name">${tH('game.lvl',{n:gameLevel()})} · ${esc(lvlName(gameLevel()))}</div>${gameBarHTML()}`:'';
+  const aem=document.getElementById('av-em');
+  if(aem){ if(on){ aem.innerHTML=gameRingHTML(56); aem.classList.add('has-ring'); } else { aem.textContent=av.emoji; aem.classList.remove('has-ring'); } }
+  const al=document.getElementById('av-lvl');
+  if(al) al.innerHTML=on?`<div class="av-lvl-line">${tH('game.lvl',{n:gameLevel()})} · ${esc(lvlName(gameLevel()))}</div><button type="button" class="btn-s av-grow-btn" onclick="openGame()">${tH('game.growth')}</button>`:'';
+  if(document.getElementById('m-game')?.classList.contains('open')) renderGameSheet();
+  renderGameSetting();
+}
+// Odezva „+10“ nad tlačítkem návyku (jen vizuální, nic neukládá)
+function xpPop(hid,x){
+  if(!gameOn()) return;
+  const el=[...document.querySelectorAll('.habit-check,.cnt-btn')].find(b=>b.dataset.a0===hid&&b.offsetParent);
+  if(!el) return;
+  const r=el.getBoundingClientRect(), p=document.createElement('div');
+  p.className='xp-pop'; p.setAttribute('aria-hidden','true'); p.textContent='+'+x;
+  p.style.left=Math.round(r.left+r.width/2)+'px'; p.style.top=Math.round(r.top)+'px';
+  document.body.appendChild(p);
+  setTimeout(()=>p.remove(),950);
+}
+// Sheet „Můj růst“
+window.openGame=()=>{ if(!gameOn()) return; renderGameSheet(); om('m-game'); };
+function renderGameSheet(){
+  const body=document.getElementById('game-body'), tt=document.getElementById('game-title');
+  if(tt) tt.textContent=t('game.growth');
+  if(!body||!game) return;
+  const p=gameProgress(), L=p.L, today=toDS();
+  const mon=addDays(today,-((new Date(today+'T12:00:00').getDay()+6)%7));
+  let wx=0, perf=0;
+  for(let ds=mon;ds<=today;ds=addDays(ds,1)){ wx+=Number(game.days[ds])||0; if(isPerfectDay(ds)) perf++; }
+  for(const o of Object.values(game.once)) if(o&&o.d>=mon&&o.d<=today) wx+=Number(o.x)||0;
+  const accBtn=a=>{
+    const lock=a.lvl>L, sel=game.rex.acc===a.id&&!lock, nm=t('game.acc.'+a.id);
+    return `<button type="button" class="gw-btn${sel?' sel':''}${lock?' locked':''}" ${lock?'disabled':''} aria-pressed="${sel}" aria-label="${esc(lock?nm+', '+t('game.locked',{n:a.lvl}):nm)}" data-a0="${a.id}" onclick="gameWear(this.dataset.a0)"><span class="gw-em">${a.em}</span><span class="gw-l">${lock?tH('game.from',{n:a.lvl}):esc(nm)}</span></button>`;
+  };
+  const curRing=gameRingSel(L);
+  const ringBtn=r=>{
+    const lock=r.lvl>L, sel=curRing===r.id&&!lock, nm=t('game.ring.'+r.id);
+    return `<button type="button" class="gw-btn${sel?' sel':''}${lock?' locked':''}" ${lock?'disabled':''} aria-pressed="${sel}" aria-label="${esc(lock?nm+', '+t('game.locked',{n:r.lvl}):nm)}" data-a0="${r.id}" onclick="gameRing(this.dataset.a0)"><span class="gw-sw gr-${r.id}"></span><span class="gw-l">${lock?tH('game.from',{n:r.lvl}):esc(nm)}</span></button>`;
+  };
+  body.innerHTML=`<div class="gs-top">${gameRingHTML(96)}
+      <div class="gs-lvl">${tH('game.lvl',{n:L})} · ${esc(lvlName(L))}</div>
+      ${gameBarHTML()}
+      <div class="gs-next">${L>=GAME_MAX_LVL?tH('game.max'):tH('game.toNext',{n:L+1,xp:p.left})}</div></div>
+    <div class="gs-sec">${tH('game.week')}</div>
+    <div class="gs-tiles"><div class="sth-card"><div class="gs-num">+${wx}</div><div class="gs-lbl">${tH('game.weekXp')}</div></div>
+      <div class="sth-card"><div class="gs-num">⭐ ${perf}</div><div class="gs-lbl">${tH('game.weekPerfect',{n:perf})}</div></div></div>
+    <div class="gs-sec">${tH('game.wardrobe')}</div>
+    <div class="gw-grid">${GAME_ACC.map(accBtn).join('')}</div>
+    <div class="gs-sec">${tH('game.ring')}</div>
+    <div class="gw-grid">${GAME_RINGS.map(ringBtn).join('')}</div>
+    <details class="gs-how"><summary>${tH('game.how')}</summary>
+      <ul><li>${tH('game.how.habit')}</li><li>${tH('game.how.perfect')}</li><li>${tH('game.how.streak')}</li><li>${tH('game.how.goal')}</li><li>${tH('game.how.sub')}</li><li>${tH('game.how.praise')}</li><li>${tH('game.how.shield')}</li></ul>
+    </details>`;
+}
+window.gameWear=id=>{
+  if(!game||!GAME_ACC.some(a=>a.id===id&&a.lvl<=gameLevel())) return;
+  game.rex.acc=game.rex.acc===id?'':id;
+  gameWrite({rex:{...game.rex}});
+  gameRenderUI();
+  if(document.getElementById('m-lvlup')?.classList.contains('open')) cm('m-lvlup');
+};
+window.gameRing=id=>{
+  if(!game||!GAME_RINGS.some(r=>r.id===id&&r.lvl<=gameLevel())) return;
+  game.rex.ring=id;
+  gameWrite({rex:{...game.rex}});
+  gameRenderUI();
+};
+// Oslava nové úrovně: modal (fokus na „Super!“), když už nějaký modal oslavy běží, jen bublina
+function celebModalOpen(){ return ['m-lvlup','m-gwin'].some(id=>document.getElementById(id)?.classList.contains('open')); }
+function celebrateLevel(from,L){
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  if(celebModalOpen()){ showAvReaction(av.emoji,t('game.lvlUp.title',{n:L}),lvlName(L),true); return; }
+  const unl=[...GAME_ACC.filter(a=>a.lvl>from&&a.lvl<=L).map(a=>({a,nm:t('game.acc.'+a.id)})),
+    ...GAME_RINGS.filter(r=>r.lvl>from&&r.lvl<=L).map(r=>({r,nm:t('game.ring.'+r.id)}))];
+  const body=document.getElementById('lvlup-body');
+  if(!body) return;
+  body.innerHTML=`<div class="gs-top">${gameRingHTML(96)}
+      <div class="lu-title" id="lvlup-title">${tH('game.lvlUp.title',{n:L})}</div>
+      <div class="gs-lvl">${esc(lvlName(L))}</div>
+      <div class="lu-say">„${tH('game.say.lvl.'+av.id)}“ — ${esc(av.name)}</div></div>
+    ${unl.length?`<div class="lu-unl"><div class="gs-sec" style="margin-top:0">${tH('game.unlocked')}</div>${unl.map(u=>u.a
+      ?`<div class="lu-row"><span>${u.a.em} ${esc(u.nm)}</span><button type="button" class="btn-s" data-a0="${u.a.id}" onclick="gameWear(this.dataset.a0)">${tH('game.wear')}</button></div>`
+      :`<div class="lu-row"><span><span class="gw-sw gr-${u.r.id}" aria-hidden="true"></span> ${esc(u.nm)}</span><button type="button" class="btn-s" data-a0="${u.r.id}" onclick="gameRing(this.dataset.a0);cm('m-lvlup')">${tH('game.wear')}</button></div>`).join('')}</div>`:''}
+    <button type="button" class="btn-p lu-ok" id="lvlup-ok" onclick="cm('m-lvlup')">${tH('game.lvlUp.ok')}</button>`;
+  om('m-lvlup');
+  spawnConfetti();
+  setTimeout(()=>document.getElementById('lvlup-ok')?.focus(),50);
+}
+// Esc zavře modaly gamifikace a cílů
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  for(const id of ['m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ cm(id); break; }
+});
+// Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
+function renderGameSetting(){
+  const el=document.getElementById('set-game');
+  if(!el) return;
+  el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('game.set.toggle')}</div><div class="togds">${tH('game.set.desc')}</div></div>
+    <label class="togswitch"><input type="checkbox" ${gameOn()?'checked':''} ${game?'':'disabled'} aria-label="${tH('game.set.toggle')}" onchange="setGameOn(this.checked)"><span class="togsl"></span></label></div>`;
+}
+window.setGameOn=on=>{
+  if(!game) return;
+  game.off=!on;
+  const patch={off:game.off};
+  // Po zapnutí žádná vlna oslav: dosažená úroveň se vezme jako už viděná
+  if(on){ const L=levelOf(gameTotal()); if(L>game.lvlSeen){ game.lvlSeen=L; patch.lvlSeen=L; } }
+  gameWrite(patch);
+  gameRenderUI(); rDash();
+};
+// Úvodní karta po prvním spuštění (jednou na zařízení, bez oslav)
+function gameIntroHTML(){
+  if(!gameOn()||lsGet('lp_game_intro')) return '';
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  let n=0; const today=toDS();
+  for(const l of habitLogs) if(l&&l.done&&l.date>=_hlCutoff&&l.date<=today) n++;
+  return `<div class="invite-hint gn-intro" id="game-intro-card" role="region" aria-label="${tH('game.intro.title',{av:av.name})}">
+    <span class="invite-hint-em" aria-hidden="true">${av.emoji}</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${tH('game.intro.title',{av:av.name})}</div>
+      <div class="invite-hint-d">${n?tH('game.intro.text',{n,lvl:gameLevel()})+' ':''}${tH('game.intro.how')}</div>
+      <div class="gi-btns"><button type="button" class="invite-hint-btn" onclick="gameIntroOpen()">${tH('game.intro.show')}</button>
+      <button type="button" class="btn-s gi-later" onclick="dismissGameIntro()">${tH('game.intro.later')}</button></div>
+    </div>
+  </div>`;
+}
+window.dismissGameIntro=()=>{ lsSave('lp_game_intro',1); document.getElementById('game-intro-card')?.remove(); };
+window.gameIntroOpen=()=>{ window.dismissGameIntro(); window.openGame(); };
+
+// ── CÍLE: měřitelná hodnota a mezníky 25/50/75/100 % (msHit jen přibývá → oslava jen jednou i napříč zařízeními) ──
+const GOAL_MS=[25,50,75,100];
+const goalUnits=()=>t('game.goal.units').split('·').map(x=>x.trim()).filter(Boolean);
+const goalOldEnough=g=>!!g&&!!g.createdAt&&Date.now()-Date.parse(g.createdAt)>864e5;  // XP za mezníky až u cíle staršího 24 h
+// Číslo z pole (čárka i tečka)
+const parseNum=v=>{ const x=parseFloat(String(v??'').trim().replace(/\s/g,'').replace(',','.')); return Number.isFinite(x)?x:NaN; };
+// Platná měřitelná hodnota cíle, jinak null
+function goalMetric(g){
+  const m=g&&g.metric;
+  if(!m||typeof m!=='object') return null;
+  const start=Number(m.start), target=Number(m.target), cur=Number(m.cur);
+  if(!Number.isFinite(start)||!Number.isFinite(target)||start===target) return null;
+  return {start,target,cur:Number.isFinite(cur)?cur:start,unit:cutName(m.unit||'',8)};
+}
+// Pokrok 0–100 z hodnoty (směr dolů i nahoru)
+const goalPct=m=>Math.round(Math.max(0,Math.min(1,(m.cur-m.start)/(m.target-m.start)))*100);
+const fmtVal=v=>fmtNum(Math.round(Number(v)*100)/100);
+// Změna pokroku cíle: nové mezníky (jen přibývají), XP a oslava nejvyššího nového mezníku
+function goalProgressChanged(g,newP,silent=false){
+  if(!g||!CU||!g.id) return;
+  const hit=Array.isArray(g.msHit)?g.msHit:[];
+  const fresh=GOAL_MS.filter(m=>newP>=m&&!hit.includes(m));
+  if(!fresh.length) return;
+  g.msHit=[...hit,...fresh];
+  updateDoc(doc(db,'users',CU.uid,'goals',g.id),{msHit:arrayUnion(...fresh)}).catch(e=>console.warn('[LP] msHit:',e?.code||e?.name));
+  if(silent) return;
+  if(goalOldEnough(g)) fresh.forEach(m=>gameAward('gm_'+g.id+'_'+m,XP.gms[m]));
+  celebrateGoal(g,Math.max(...fresh));
+}
+// Oslava mezníku: 25/50/75 bublina společníka, 100 % modal (konfety respektují prefers-reduced-motion)
+function celebrateGoal(g,m){
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const say=av.name+': '+t('game.say.goal.'+av.id);
+  if(m<100||celebModalOpen()){ showAvReaction('🎯',m<100?t('game.goal.ms.'+m):t('game.goal.done'),(g.emoji||'🎯')+' '+cutName(g.name,40)+' · '+say,true); return; }
+  const body=document.getElementById('gwin-body');
+  if(!body) return;
+  body.innerHTML=`<div class="gs-top"><div class="gwin-em" aria-hidden="true">🏆</div>
+      <div class="lu-title" id="gwin-title">${tH('game.goal.done')}</div>
+      <div class="gs-lvl">${esc((g.emoji||'🎯')+' '+g.name)}</div>
+      <div class="lu-say">„${tH('game.say.goal.'+av.id)}“ — ${esc(av.name)}</div></div>
+    <div class="gwin-btns">${g.archivedGoal?'':`<button type="button" class="btn-s" data-a0="${esc(g.id)}" onclick="cm('m-gwin');archiveGoal(this.dataset.a0)">${tH('game.goal.archive')}</button>`}
+      <button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
+  om('m-gwin');
+  spawnConfetti();
+  setTimeout(()=>document.getElementById('gwin-ok')?.focus(),50);
+}
+// Karta měřitelného cíle: start → cíl, aktuální hodnota, mezníky, tlačítko Zapsat hodnotu
+function goalMetricHTML(g){
+  const m=goalMetric(g);
+  if(!m) return '';
+  const p=goalPct(m), hit=Array.isArray(g.msHit)?g.msHit:[], u=m.unit?' '+esc(m.unit):'';
+  const ms=GOAL_MS.map(x=>`<span class="gms${hit.includes(x)?' hit':''}">${hit.includes(x)?'◆':'◇'}${x===100?'🏆':x}</span>`).join('');
+  const msAria=t('game.goal.msAria',{list:hit.length?hit.map(x=>x+' %').join(', '):'0'});
+  return `<div class="gmet">
+      <div class="gmet-row"><span>${esc(fmtVal(m.start))}${u}</span><div class="gpbar gmet-bar"><div class="gpfill" style="width:${p}%;background:${esc(g.color||'#f5c842')}"></div></div><span>${esc(fmtVal(m.target))}${u}</span></div>
+      <div class="gmet-now"><span>${tH('game.goal.now',{v:fmtVal(m.cur),unit:m.unit,pct:p})}</span><span class="gms-row" role="img" aria-label="${esc(msAria)}">${ms}</span></div>
+      <button type="button" class="btn-s gmet-log" data-a0="${esc(g.id)}" onclick="event.stopPropagation();openGoalVal(this.dataset.a0)">${tH('game.goal.log')}</button>
+    </div>`;
+}
+// Modal cíle: volba Procenta | Hodnota
+let gMode='pct';
+function renderGoalMetricForm(g){
+  const wrap=document.getElementById('g-metric-wrap');
+  if(!wrap) return;
+  const m=goalMetric(g)||{start:'',target:'',unit:''};
+  wrap.innerHTML=`<label class="flbl">${tH('game.goal.how')}</label>
+    <div class="seg seg--block" role="group">
+      <button type="button" class="seg-btn${gMode==='pct'?' active':''}" aria-pressed="${gMode==='pct'}" onclick="setGoalMode('pct')">${tH('game.goal.pct')}</button>
+      <button type="button" class="seg-btn${gMode==='val'?' active':''}" aria-pressed="${gMode==='val'}" onclick="setGoalMode('val')">${tH('game.goal.val')}</button>
+    </div>
+    <div id="g-val-fields" ${gMode==='val'?'':'hidden'}>
+      <div class="gmf-row">
+        <div class="fg"><label class="flbl" for="g-ms">${tH('game.goal.start')}</label><input class="finp" id="g-ms" type="text" inputmode="decimal" autocomplete="off" value="${esc(m.start)}"></div>
+        <div class="fg"><label class="flbl" for="g-mt">${tH('game.goal.target')}</label><input class="finp" id="g-mt" type="text" inputmode="decimal" autocomplete="off" value="${esc(m.target)}"></div>
+        <div class="fg"><label class="flbl" for="g-mu">${tH('game.goal.unit')}</label><input class="finp" id="g-mu" type="text" maxlength="8" autocomplete="off" value="${esc(m.unit)}"></div>
+      </div>
+      <div class="gmf-chips">${goalUnits().map(u=>`<button type="button" class="gf-chip" data-a0="${esc(u)}" onclick="document.getElementById('g-mu').value=this.dataset.a0">${esc(u)}</button>`).join('')}</div>
+    </div>`;
+  const pw=document.getElementById('g-prog-wrap');
+  if(pw) pw.hidden=gMode==='val';
+}
+window.setGoalMode=mode=>{
+  // Zachovat rozepsané hodnoty při přepnutí
+  const keep={start:document.getElementById('g-ms')?.value??'',target:document.getElementById('g-mt')?.value??'',unit:document.getElementById('g-mu')?.value??''};
+  gMode=mode==='val'?'val':'pct';
+  renderGoalMetricForm({metric:keep});
+  const ms=document.getElementById('g-ms'), mt=document.getElementById('g-mt'), mu=document.getElementById('g-mu');
+  if(ms) ms.value=keep.start; if(mt) mt.value=keep.target; if(mu) mu.value=keep.unit;
+};
+// Zapsat hodnotu (sheet)
+let _gvGid=null, _gvDay=0;
+window.openGoalVal=gid=>{
+  const g=goals.find(x=>x.id===gid), m=goalMetric(g);
+  if(!g||!m) return;
+  _gvGid=gid; _gvDay=0;
+  renderGoalVal();
+  om('m-gval');
+  setTimeout(()=>document.getElementById('gv-inp')?.focus(),80);
+};
+function renderGoalVal(){
+  const g=goals.find(x=>x.id===_gvGid), m=goalMetric(g), body=document.getElementById('gval-body');
+  if(!g||!m||!body) return;
+  const keep=document.getElementById('gv-inp')?.value;
+  const tt=document.getElementById('gval-title'); if(tt) tt.textContent=t('game.goal.log');
+  body.innerHTML=`<div class="gv-name">${esc((g.emoji||'🎯')+' '+g.name)}</div>
+    <div class="gv-row"><input class="finp gv-inp" id="gv-inp" type="text" inputmode="decimal" autocomplete="off" aria-label="${tH('game.goal.valAria')}" value="${esc(keep??fmtVal(m.cur))}" onkeydown="if(event.key==='Enter'){event.preventDefault();saveGoalVal()}"><span class="gv-unit">${esc(m.unit)}</span></div>
+    <label class="flbl">${tH('game.goal.date')}</label>
+    <div class="seg seg--block" role="group">
+      <button type="button" class="seg-btn${_gvDay===0?' active':''}" aria-pressed="${_gvDay===0}" onclick="setGoalValDay(0)">${tH('hp.today')}</button>
+      <button type="button" class="seg-btn${_gvDay===1?' active':''}" aria-pressed="${_gvDay===1}" onclick="setGoalValDay(1)">${tH('hp.yesterday')}</button>
+    </div>
+    <button type="button" class="btn-p gv-save" onclick="saveGoalVal()">${tH('common.save')}</button>`;
+}
+window.setGoalValDay=d=>{ _gvDay=d?1:0; renderGoalVal(); };
+window.saveGoalVal=async()=>{
+  const g=goals.find(x=>x.id===_gvGid), m=goalMetric(g);
+  if(!CU||!g||!m) return;
+  const v=parseNum(document.getElementById('gv-inp')?.value);
+  if(!Number.isFinite(v)||Math.abs(v)>1e9){ toast(t('game.goal.badNum')); return; }
+  const date=_gvDay?addDays(toDS(),-1):toDS();
+  let mlog=(Array.isArray(g.mlog)?g.mlog:[]).filter(e=>e&&typeof e.d==='string'&&Number.isFinite(Number(e.v))&&e.d!==date);
+  mlog.push({d:date,v});
+  mlog.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  mlog=mlog.slice(-60);
+  const metric={start:m.start,target:m.target,unit:m.unit,cur:Number(mlog[mlog.length-1].v)};
+  const progress=goalPct(metric);
+  g.metric=metric; g.mlog=mlog; g.progress=progress;
+  cm('m-gval');
+  const w=updateDoc(doc(db,'users',CU.uid,'goals',g.id),{metric,mlog,progress,updatedAt:new Date().toISOString()});
+  gameAward('mv_'+g.id+'_'+date,XP.metric);
+  goalProgressChanged(g,progress);
+  rGoals();
+  try{ await w; toast(t('game.goal.saved')); }catch(e){ toast('❌ '+userErr(e,'goal value')); }
+};
+
 // ── AVATAR REAKCE ─────────────────────────────────────
 let avReactionTimer = null;
 
@@ -5276,6 +5758,7 @@ window.hideAvReaction = () => {
 };
 
 function spawnConfetti() {
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return; // bez pohybu
   const emojis = ['🎉','⭐','✨','🏆','🔥','💪'];
   for(let i=0; i<8; i++) {
     setTimeout(() => {
@@ -5302,10 +5785,14 @@ function checkAvatarReactions(hid, date, justCompleted) {
   // Streak milník
   const streak = getStreak(hid);
   const h = habits.find(x=>x.id===hid);
-  const hname = h ? `${h.emoji} ${h.name}` : 'návyk';
+  // Každá oslava jen jednou za den (odškrtnutí a nové zaškrtnutí ji nezopakuje)
+  const seen = (() => { const v = lsGet('lp_avr', null); return v && v.d === today && Array.isArray(v.k) ? v : {d: today, k: []}; })();
+  const once = k => { if(seen.k.includes(k)) return false; seen.k.push(k); lsSave('lp_avr', seen); return true; };
+  if([3,7,14,30].includes(streak) && !once(hid + '_' + streak)) return;
 
   if(streak === 7) {
-    showAvReaction('🔥', `7 dní v řadě!`, `${av.name}: Týden bez přerušení u „${h?.name}"! ${name ? name+', jsi' : 'Jsi'} neporazitelný! 💪`, true);
+    const shieldMsg = h && h.freq?.type !== 'weekly' && habitShields(h) > 0 ? ' ' + t('game.shield.earned') : '';
+    showAvReaction('🔥', `7 dní v řadě!`, `${av.name}: Týden bez přerušení u „${h?.name}"! ${name ? name+', jsi' : 'Jsi'} neporazitelný! 💪` + shieldMsg, true);
     return;
   }
   if(streak === 14) {
@@ -5323,7 +5810,8 @@ function checkAvatarReactions(hid, date, justCompleted) {
     const doneToday = habits.filter(hh =>
       hDone(hh.id,today)
     ).length;
-    if(doneToday === totalH) {
+    if(doneToday === totalH && lsGet('lp_perfect_day', '') !== today) {
+      lsSave('lp_perfect_day', today);
       const msgs = {
         rex: `Všechno splněno! Makáš jak stroj. ${name}, to je výkon! 💪`,
         sage: `Vše splněno. ${name}, věnuji ti okamžik ticha a úcty. 🌿`,
@@ -6330,7 +6818,7 @@ window.toggleChecklistShare = async function(listId) {
 
 function buildGroupCard(gid, gData, isPrimary) {
   const members = gData.members || {};
-  const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+  const avs = MEMBER_AV;
   const isAdmin = members[CU?.uid]?.role === 'admin';
   // Emoji jako v hlavičkách modulů (🧺 nákupy, 🗓️ kalendář). Doplňkové skupiny sdílí jen kalendář,
   // ostatní přepínače by tam nic nedělaly → jen u hlavní skupiny
@@ -6401,7 +6889,7 @@ function buildGroupCard(gid, gData, isPrimary) {
 function renderFamilySettings() {
   const section = document.getElementById('family-section');
   if(!section) return;
-  const avs = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+  const avs = MEMBER_AV;
 
   const noGroup = document.getElementById('family-no-group');
   const groupView = document.getElementById('family-group-view');
@@ -6602,7 +7090,7 @@ const RX_EM = Object.fromEntries(RX);
 const RX_TTL_MS = 30*86400000;               // reakce a komentáře mizí po 30 dnech (TTL expireAt)
 const RX_MAX_LEN = 200;
 const RX_CID_RE = /^c_[A-Za-z0-9]{1,40}$/;   // ID komentáře (emoji reakce mají tvar target_uid_em)
-const MEMBER_AV = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+const MEMBER_AV = Object.fromEntries(AVS.map(a => [a.id, a.emoji])); // stejná emoji jako AVS (4.40)
 const mySharedIn = new Map();                // 'h_<habitId>' → Set(gid)
 const myMirrors = {};                        // gid → Map('h_<habitId>' → moje zrcadlo)
 const sharedByGroup = {};                    // gid → [zrcadla ostatních členů]
@@ -7026,7 +7514,7 @@ window.toggleReaction = (gid, target, to, em, title, btn) => {
     list.push({_id: rid, kind: 'e', target, to, uid: CU.uid, em});
     // Aktivita (a push) až po zápisu reakce; mezitím zrušená reakce se neohlásí
     setDoc(ref, {kind: 'e', target, to, uid: CU.uid, em, ts: serverTimestamp(), expireAt: Timestamp.fromMillis(now + RX_TTL_MS)})
-      .then(() => { if((rxByGroup[gid] || []).some(r => r._id === rid)) logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, em}); })
+      .then(() => { if((rxByGroup[gid] || []).some(r => r._id === rid)) { logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, em}); gamePraise(gid + '|' + target); } })
       .catch(e => { console.warn('[LP] reakce', e?.code || e?.name); rxDropLocal(gid, rid); });
   }
   refreshRxUI(gid);
@@ -7095,7 +7583,7 @@ window.sendRxComment = () => {
   (rxByGroup[gid] || (rxByGroup[gid] = [])).push({...data, ts: Timestamp.fromMillis(now), _id: rid});
   // Aktivita nese jen rid (text čte feed i server z reakce), posílá se až po úspěšném zápisu
   setDoc(ref, data)
-    .then(() => { if((rxByGroup[gid] || []).some(r => r._id === rid)) logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, rid}); })
+    .then(() => { if((rxByGroup[gid] || []).some(r => r._id === rid)) { logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, rid}); gamePraise(gid + '|' + target); } })
     .catch(e => { console.warn('[LP] komentar', e?.code || e?.name); toast('❌ ' + userErr(e)); rxDropLocal(gid, rid); });
   inp.value = ''; window.rxCount();
   refreshRxUI(gid);
@@ -8563,8 +9051,8 @@ function rDash(){
     const upImg=up.querySelector('img');
     if(upImg) upImg.addEventListener('error',()=>{const d=document.createElement('div');d.style.cssText=uCircle;d.textContent=uInit;upImg.replaceWith(d);});
   }
-  const dem=document.getElementById('d-avem'); if(dem) dem.textContent=av.emoji;
   const dnm=document.getElementById('d-avnm'); if(dnm) dnm.textContent=av.name;
+  gameRenderUI(); // emoji nebo kruh úrovně v banneru
   // Dynamická Rex zpráva podle skutečného stavu
   const today_r=toDS();
   const h_r=new Date().getHours();
@@ -8610,6 +9098,8 @@ function rDash(){
   html+=quickStartHTML();
   // Jednorázová karta: upozornění ze skupin (novinka 4.38)
   html+=groupNotifIntroHTML();
+  // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
+  html+=gameIntroHTML();
 
   // Mini Rex energy widget
   const rexEn = getRexEnergy();
@@ -9022,6 +9512,7 @@ function subGoals(){
     // Chybný cíl zůstane bez podcílů (příští snapshot to zkusí znovu), ostatní se vykreslí
     missing.forEach((g,i)=>{ const r=loaded[i]; if(r.status==='fulfilled'&&!subs[g.id]) subs[g.id]=r.value.docs.map(d=>({id:d.id,...d.data()})); });
     rGoals();rAvPage();rDash();
+    _goalsOk=true; gameKick();
   });
 }
 
@@ -9037,10 +9528,14 @@ async function syncGoalToCalendar(eventId, name, date) {
 }
 
 async function updateGoalProgress(gid) {
+  const g=goals.find(x=>x.id===gid);
+  if(g&&goalMetric(g)) return; // měřitelný cíl: pokrok jen z hodnoty, podcíle jsou checklist
   const arr=subs[gid]||[];
   if(!arr.length) return;
   const pct=Math.round(arr.filter(s=>s.done).length/arr.length*100);
-  await updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});
+  const w=updateDoc(doc(db,'users',CU.uid,'goals',gid),{progress:pct});
+  if(g){ g.progress=pct; goalProgressChanged(g,pct); } // oslava z lokálního stavu, ne z potvrzení serveru
+  await w;
 }
 
 window.openGM=(gid=null)=>{
@@ -9055,6 +9550,7 @@ window.openGM=(gid=null)=>{
     document.getElementById('g-prog').value=g.progress||0;
     document.getElementById('g-pval').textContent=(g.progress||0)+'%';
     sGE(g.emoji||'🌟',null);sGC(g.color||'#f5c842',null);sGP(g.priority||2,null);
+    gMode=goalMetric(g)?'val':'pct'; renderGoalMetricForm(g);
   } else {
     document.getElementById('g-name').value='';
     document.getElementById('g-desc').value='';
@@ -9063,6 +9559,7 @@ window.openGM=(gid=null)=>{
     document.getElementById('g-prog').value=0;
     document.getElementById('g-pval').textContent='0%';
     sGE('🌟',null);sGC('#f5c842',null);sGP(2,null);
+    gMode='pct'; renderGoalMetricForm(null);
   }
   om('m-goal');
 };
@@ -9076,12 +9573,23 @@ window.saveG=async()=>{
   const desc=document.getElementById('g-desc').value.trim();
   const deadline=document.getElementById('g-dl').value;
   const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,priority:gPriority,updatedAt:new Date().toISOString()};
+  const prevG=editGId?goals.find(x=>x.id===editGId):null;
+  // Měřitelný cíl: pokrok z hodnoty (start → cíl), aktuální hodnota a historie zápisů zůstávají
+  if(gMode==='val'){
+    const start=parseNum(document.getElementById('g-ms')?.value), target=parseNum(document.getElementById('g-mt')?.value);
+    if(!Number.isFinite(start)||!Number.isFinite(target)||start===target||Math.abs(start)>1e9||Math.abs(target)>1e9){toast(t('game.goal.badRange'));return;}
+    const pm=goalMetric(prevG);
+    d.metric={start,target,unit:cutName(document.getElementById('g-mu')?.value||'',8).trim(),cur:pm?pm.cur:start};
+    d.progress=goalPct(d.metric);
+  } else if(goalMetric(prevG)) d.metric=deleteField();
   let gid=editGId;
   if(editGId){
     await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
+    if(prevG){ if(gMode==='val') prevG.metric=d.metric; else delete prevG.metric; prevG.progress=d.progress; goalProgressChanged(prevG,d.progress); }
     toast('✓ Cíl upraven');
   } else {
     d.createdAt=new Date().toISOString();
+    d.msHit=GOAL_MS.filter(m=>d.progress>=m); // nový cíl: dosažené mezníky potichu, bez oslavy a bez XP
     const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);
     subs[r.id]=[];
     gid=r.id;
@@ -9162,6 +9670,7 @@ window.togSubDone=async(gid,sid)=>{
   const s=subs[gid]?.find(x=>x.id===sid);
   if(!s)return;
   s.done=!s.done;
+  if(s.done) gameAward('sg_'+sid, XP.sub);
   await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});
   await updateGoalProgress(gid);
   rGoals();
@@ -9196,6 +9705,7 @@ window.togTask=async(gid,sid,tid)=>{
   const t=sg.tasks?.find(x=>x.id===tid);
   if(!t)return;
   t.done=!t.done;
+  if(t.done) gameAward('tk_'+tid, XP.task);
   await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
   rGoals();
 };
@@ -9310,10 +9820,10 @@ function buildGoalCard(g, openSet, doneToday) {
     +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="delG(this.dataset.a0)">🗑️</button>'
     +     '</div>'
     +   '</div>'
-    +   '<div class="ghdr-r2">'
+    +   (goalMetric(g) ? goalMetricHTML(g) : '<div class="ghdr-r2">'
     +     '<div class="gpbar"><div class="gpfill" style="width:' + (g.progress||0) + '%;background:' + (g.color||'#f5c842') + '"></div></div>'
     +     '<span class="gpct" style="color:' + (g.color||'#f5c842') + '">' + (g.progress||0) + '%</span>'
-    +   '</div>'
+    +   '</div>')
     +   '<div class="ghdr-r3">' + tagsRow + '</div>'
     + '</div>'
     + '<div class="gsubs' + (io?' open':'') + '" id="gs-' + g.id + '">'
@@ -9396,6 +9906,7 @@ function initSet(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   document.getElementById('set-avem').textContent=av.emoji;
   document.getElementById('set-avnm').textContent=av.name;
+  renderGameSetting(); // přepínač Body a úrovně (4.40)
   document.getElementById('set-avsub').textContent=prof.nickname||'';
   renderLangSwitch();
 }
@@ -11744,7 +12255,7 @@ const TOUR_MODULES = {
   },
 
   avatar: {
-    title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex 🐺';}catch(e){return 'Tvůj společník ⭐';}})()}`,
+    title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return 'Tvůj společník ⭐';}})()}`,
     text: 'Tady si promluvíme. Zeptej se mě na cokoliv — cíle, recepty, jak se ti daří. Čím víc mi řekneš, tím lépe ti poradím. Můžeš i nahrát hlasový vzkaz.'
   }
 };
