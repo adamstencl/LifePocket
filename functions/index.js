@@ -423,8 +423,8 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
 // ── Upozornění ze skupin: preference a texty ─────────────────────────────────
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS v app.js
 const GROUP_NOTIF_DEFAULTS = {shop: 'instant', cal: 'instant', meal: 'evening', check: 'evening', pantry: 'evening',
-  habit: 'evening', react: 'instant', quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
-const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react'];
+  habit: 'evening', goal: 'evening', react: 'instant', quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
+const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'];
 const GN_MODES = ['instant', 'q15', 'evening'];       // + 'off' (nic)
 const INSTANT_SETTLE = 2 * 60000;                     // „Hned“: 2 min bez další změny…
 const INSTANT_MAX_WAIT = 10 * 60000;                  // …ale nejdéle 10 min od první neodeslané změny
@@ -449,8 +449,8 @@ function groupNotifPrefs(prof) {
   gp.msInstant = raw.msInstant !== false;
   return gp;
 }
-// Milník (série návyku) přijde při „Milníky hned“ okamžitě i v režimu Večer / 15 min; „Vypnuto“ platí vždy
-const gnIsMs = (a) => a.module === 'habit' && a.action === 'streak';
+// Milník (série návyku, mezník cíle 25/50/75/100 %) přijde při „Milníky hned“ okamžitě i v režimu Večer / 15 min; „Vypnuto“ platí vždy
+const gnIsMs = (a) => (a.module === 'habit' && a.action === 'streak') || (a.module === 'goal' && (a.action === 'progress' || a.action === 'done'));
 const gnModeOf = (a, gp) => gp[a.module] === 'off' ? 'off' : (gnIsMs(a) && gp.msInstant ? 'instant' : gp[a.module]);
 
 // Je pražský čas h:m v nočním klidu? Rozsah může přecházet přes půlnoc (22:00–07:00)
@@ -465,8 +465,8 @@ function inQuiet(h, m, q) {
 const czPlural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
 const dalsi = (k) => `a ${k} ${k >= 5 ? 'dalších' : 'další'}`;
 const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby'],
-  habit: ['🔥', 'Návyky'], react: ['👏', 'Reakce']};
-const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách', habit: 'v návycích', react: ''};
+  habit: ['🔥', 'Návyky'], goal: ['🎯', 'Cíle'], react: ['👏', 'Reakce']};
+const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách', habit: 'v návycích', goal: 'v cílech', react: ''};
 // [sloveso, zbytek]; ženský tvar = první slovo slovesa + 'a' („začal sdílet“ → „začala sdílet“)
 const GN_VERB = {
   shop:   {add: ['přidal', 'do nákupu'], edit: ['upravil', 'v nákupu'], del: ['smazal', 'z nákupu'], done: ['koupil', ''], clear: ['vyčistil', 'koupené položky']},
@@ -475,6 +475,7 @@ const GN_VERB = {
   check:  {add: ['přidal', 'do checklistu'], edit: ['upravil', 'v checklistu'], del: ['smazal', 'z checklistu'], done: ['odškrtl', ''], clear: ['vyčistil', 'hotové položky'], share: ['začal sdílet', 'checklist']},
   pantry: {add: ['přidal', 'do zásob'], edit: ['upravil', 'zásoby'], del: ['smazal', 'ze zásob']},
   habit:  {done: ['splnil', '']},
+  goal:   {progress: ['posunul', 'cíl'], done: ['splnil', 'cíl']},
 };
 const RX_EM = {clap: '👏', fire: '🔥', heart: '❤️', strong: '💪'};
 // Titulek reakce podle prvního emoji (ženský tvar se tu nemění: „ti tleská“ platí pro oba)
@@ -482,10 +483,18 @@ const RX_TITLE = {clap: 'ti tleská', fire: 'ti posílá 🔥', heart: 'ti posí
 const gnEms = (a) => String(a.em || '').split(',').filter(k => RX_EM[k]);
 const gnRef = (a) => (typeof a.title === 'string' ? a.title.slice(0, 60).trim() : '');
 
-// Milník série: vlastní push (titulek podle délky série)
+// Milník série / mezník cíle: vlastní push (titulek podle délky série nebo mezníku)
 function gnMilestonePush(a, fam) {
   const name = gnAuthorName(fam, a), v = Number.isInteger(a.val) ? a.val : 0;
   const what = gnRef(a);
+  if (a.module === 'goal') {
+    const jemu = a.g === 'f' ? 'jí' : 'mu';
+    if (a.action === 'done' || v >= 100) {
+      return [`🏆 ${name} ${a.g === 'f' ? 'splnila' : 'splnil'} cíl!`, `${what ? what + ' 🎉 ' : '🎉 '}Pogratuluj ${jemu}.`.slice(0, GN_BODY_MAX)];
+    }
+    const phrase = v === 25 ? 'čtvrtina hotová' : v === 50 ? 'půlka hotová' : v === 75 ? 'tři čtvrtiny hotové, cíl je na dohled' : `${v} % hotovo`;
+    return [`🎯 ${name}: ${v} % cíle!`, `${what ? what + ' – ' : ''}${phrase}. Pošli ${jemu} 👏`.slice(0, GN_BODY_MAX)];
+  }
   const [title, phrase] = v === 7 ? [`🔥 ${name}: týden v řadě!`, 'celý týden bez přerušení']
     : v === 30 ? [`🎉 ${name}: 30 dní v řadě!`, 'celý měsíc bez přerušení']
     : v === 100 ? [`👑 ${name}: 100 dní v řadě!`, 'sto dní bez přerušení']
@@ -619,6 +628,13 @@ function gnEveningBody(byModule) {
       if (nDone) sub.push(`${nDone} ${czPlural(nDone, 'splněný návyk', 'splněné návyky', 'splněných návyků')}`);
       if (nMs) sub.push(`🎉 ${nMs} ${czPlural(nMs, 'milník', 'milníky', 'milníků')}`);
       if (people > 1) sub.push(`od ${people} ${czPlural(people, 'člověka', 'lidí', 'lidí')}`);
+    } else if (mod === 'goal') {
+      // Jen mezníky: počty, ne názvy
+      const nDone = acts.filter(a => a.action === 'done').length;
+      const nMs = acts.filter(a => a.action === 'progress').length;
+      if (nDone) sub.push(`${nDone} ${czPlural(nDone, 'splněný cíl', 'splněné cíle', 'splněných cílů')}`);
+      if (nMs) sub.push(`${nMs} ${czPlural(nMs, 'mezník cíle', 'mezníky cílů', 'mezníků cílů')}`);
+      if (!sub.length) sub.push(`${acts.length} ${czPlural(acts.length, 'změna', 'změny', 'změn')}`);
     } else if (mod === 'react') {
       const n = acts.length;
       sub.push(`${n} ${czPlural(n, 'reakce na tebe', 'reakce na tebe', 'reakcí na tebe')}`);
@@ -823,16 +839,16 @@ exports.sendScheduledNotifications = onSchedule(
           // Sdílení modulů jako v klientu: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
           // podle shareShop / shareMeal / shareChecklist (checklist sdílený, dokud není false), zásoby vždy
           const isMain = gid === prof.familyId;
-          // Osobní moduly (sdílené návyky, reakce) v každé skupině
+          // Osobní moduly (sdílené návyky a cíle, reakce) v každé skupině
           const shared = {cal: !!fam.shareCal, shop: isMain && !!fam.shareShop, meal: isMain && !!fam.shareMeal,
-            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, react: true};
+            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
           // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
           for (const mode of GN_MODES) if (typeof cur[mode] !== 'number' || !Number.isFinite(cur[mode])) updates.push([gid, mode, upperMs]);
           const from = {};
           const modes = new Set(mods.map(k => gp[k]));
-          if (gp.msInstant && mods.includes('habit')) modes.add('instant'); // milníky hned
+          if (gp.msInstant && (mods.includes('habit') || mods.includes('goal'))) modes.add('instant'); // milníky hned
           for (const mode of modes) {
             const c = cur[mode];
             if (typeof c === 'number' && Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
@@ -879,7 +895,7 @@ exports.sendScheduledNotifications = onSchedule(
                   pushes.push([title, body, `grp-${gid}-react`, {data: {open: 'grpfeed', gid, module: mod}}]);
                   continue;
                 }
-                // Milník má vlastní tag (další souhrn návyků ho nepřepíše)
+                // Milník má vlastní tag (další souhrn návyků ho nepřepíše; další mezník téhož cíle předchozí nahradí)
                 const rest = la.filter(a => !gnIsMs(a));
                 for (const a of la.filter(gnIsMs)) {
                   const [title, body] = gnMilestonePush(a, fam);
