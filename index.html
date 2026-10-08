@@ -402,6 +402,9 @@
       <!-- Habits list -->
       <div id="habits-list"></div>
 
+      <!-- Sdílené návyky ostatních členů skupiny (renderSharedHabits) -->
+      <div id="habits-shared"></div>
+
       <!-- Archived habits -->
       <div id="habits-archived" style="display:none;margin-top:16px">
         <div style="font-size:13px;color:var(--text3);margin-bottom:10px;padding:0 4px;display:flex;align-items:center;gap:8px">
@@ -1146,6 +1149,33 @@
     <div class="gf-chips" id="gf-chips" role="group"></div>
     <div id="gf-list" aria-live="polite"></div>
     <div class="gf-foot" data-i18n="gf.foot">Ukazujeme posledních 7 dní.</div>
+  </div>
+</div>
+
+<!-- Sdílet návyk se skupinou (obsah vykresluje renderShareSheet) -->
+<div class="moverlay" id="m-share">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title">
+    <div class="gf-head">
+      <div class="mtitle" id="sh-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-share&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div class="sh-item" id="sh-item"></div>
+    <div id="sh-groups"></div>
+    <p class="sh-note" id="sh-note"></p>
+    <button type="button" class="btn-p" style="min-height:48px" onclick="cm(&#39;m-share&#39;)" data-i18n="sh.done">Hotovo</button>
+  </div>
+</div>
+
+<!-- Reakce a komentáře u sdílené položky (renderRxList, openReactions) -->
+<div class="moverlay" id="m-rx">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="rx-title">
+    <div class="gf-head">
+      <div class="mtitle" id="rx-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-rx&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="rx-list" aria-live="polite"></div>
+    <div class="rx-form" id="rx-form"></div>
+    <div class="rx-cnt" id="rx-cnt" aria-live="polite"></div>
   </div>
 </div>
 

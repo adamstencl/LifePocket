@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,weekdayNames,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -1211,16 +1211,37 @@ function loadOldHabitLogs(){
 }
 function resetHabitLogCache(){ _hlOldAll=false; _hlOldLoading=null; _hlOldHabits.clear(); }
 
+// Zápis a mazání záznamu návyku – jediné místo (zrcadlo sdíleného návyku ve skupině musí sedět).
+// Po zápisu doplní cache v paměti a ohlásí změnu (onHabitLogChanged → zrcadlo, aktivita, milník).
+async function putHabitLog(log,merge=false){
+  const wasDone=!!hLog(log.id)?.done;
+  const ref=doc(db,'users',CU.uid,'habitLogs',log.id);
+  await (merge?setDoc(ref,log,{merge:true}):setDoc(ref,log));
+  const ex=hLog(log.id);
+  if(ex)Object.assign(ex,log); else habitLogs.push(log);
+  onHabitLogChanged(log.habitId,log.date,wasDone,!!log.done);
+}
+// silent: hromadné mazání (smazání návyku), zrcadlo se ruší zvlášť
+async function delHabitLog(logId,silent=false){
+  const prev=hLog(logId);
+  await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+  habitLogs=habitLogs.filter(l=>l.id!==logId);
+  if(!silent&&prev) onHabitLogChanged(prev.habitId,prev.date,!!prev.done,false);
+}
+
 // Splní se po prvním snapshotu návyků i záznamů (akce "Splněno" z notifikace na nich závisí)
 let habitsReady=Promise.resolve();
+let _habitsSnapOk=false; // návyky už přišly ze snapshotu (bez nich nejde poznat smazaný návyk)
 function subHabits(){
   if(!CU)return;
   if(unsubHabits)unsubHabits();
   if(unsubLogs)unsubLogs();
   let hOk=false,lOk=false,markReady;
   habitsReady=new Promise(r=>{markReady=r;});
+  _habitsSnapOk=false;
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),snap=>{
     habits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    _habitsSnapOk=true;
     renderHabits();
     hOk=true;if(lOk)markReady();
   });
@@ -1245,6 +1266,20 @@ function habitDayLabel(){
   return new Date(habitDay+'T12:00:00').toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'});
 }
 
+// Série návyku k danému dni: přeskočené dny (skipped) sérii nepřeruší ani nepřičtou.
+// Jediná logika pro kartu, avatara i zrcadlo ve skupině (jinak by „7 dní“ nesedělo).
+function habitStreak(hid,ds){
+  let streak=0;
+  const sd=new Date(ds+'T12:00:00');
+  for(let i=0;i<365;i++){
+    const l=hLog(hid+'_'+toDS(sd));
+    if(l&&l.done) streak++;
+    else if(!(l&&l.skipped)) break;
+    sd.setDate(sd.getDate()-1);
+  }
+  return streak;
+}
+
 function buildHabitCard(h){
   const logId=h.id+'_'+habitDay;
   const log=hLog(logId);
@@ -1258,16 +1293,7 @@ function buildHabitCard(h){
   const isPaused=h.pausedUntil&&h.pausedUntil>=habitDay;
 
   // Streak
-  let streak=0;
-  let sd=new Date(habitDay+'T12:00:00');
-  for(let i=0;i<365;i++){
-    const ds=toDS(sd);
-    const l=hLog(h.id+'_'+ds);
-    if(l&&l.done)streak++;
-    else if(l&&l.skipped){sd.setDate(sd.getDate()-1);continue;}
-    else break;
-    sd.setDate(sd.getDate()-1);
-  }
+  const streak=habitStreak(h.id,habitDay);
 
   // Weekly completion
   let weeklyStatus='';
@@ -1387,7 +1413,7 @@ function buildHabitCard(h){
       </div>
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="Zobrazit historii">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
-        <div class="habit-name">${esc(h.name)}</div>
+        <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">⏸ Pauza do ${new Date(h.pausedUntil+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</div>`:''}
         <div class="habit-streak">${streakHtml}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
@@ -1415,6 +1441,7 @@ function buildHabitCard(h){
 }
 
 function renderHabits(){
+  renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
   const scrollEl=document.getElementById('abody');
   const savedScroll=scrollEl?scrollEl.scrollTop:0;
   const lbl=document.getElementById('habit-day-lbl');
@@ -1530,15 +1557,8 @@ function renderHabitDetail(h) {
   const logs = habitLogs.filter(l => l.habitId === h.id && l.done);
   const totalDone = logs.length;
 
-  // Current streak
-  let curStreak = 0;
-  let sd = new Date(today + 'T12:00:00');
-  for (let i = 0; i < 365; i++) {
-    const ds = toDS(sd);
-    if (hDone(h.id,ds)) curStreak++;
-    else break;
-    sd.setDate(sd.getDate() - 1);
-  }
+  // Current streak (stejná logika jako karta a skupina)
+  const curStreak = habitStreak(h.id, today);
 
   // Best streak
   let bestStreak = 0, tmpStreak = 0;
@@ -1723,6 +1743,8 @@ function renderHabitDetail(h) {
       }
     </div>
 
+    <div id="hd-share"></div>
+
     <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn-s" style="flex:1;min-width:120px" data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
@@ -1737,6 +1759,7 @@ function renderHabitDetail(h) {
       </div>
     </div>
   `;
+  refreshHabitShareUI(); // sekce Sdílení (čip + reakce), překresluje se i po změně zrcadel
 }
 
 window.saveHabitReminder = async (hid, time) => {
@@ -1773,18 +1796,11 @@ window.toggleHabit=async(hid,date,currentState)=>{
   if(!CU)return;
   const logId=hid+'_'+date;
   if(currentState==='done'){
-    const log={id:logId,habitId:hid,date,done:false,failed:true,value:0};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    const ex=habitLogs.find(l=>l.id===logId);
-    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
   } else if(currentState==='failed'){
-    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    await delHabitLog(logId);
   } else {
-    const log={id:logId,habitId:hid,date,done:true,failed:false,value:1};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    const ex=habitLogs.find(l=>l.id===logId);
-    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
   }
   renderHabits();
@@ -1798,12 +1814,9 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   const cur=ex?ex.value:0;
   const newVal=Math.max(0,cur+delta);
   if(newVal===0){
-    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    await delHabitLog(logId);
   } else {
-    const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
   }
   renderHabits();
   // Reakce avatara pokud byl právě splněn cíl (done přešlo na true)
@@ -1848,17 +1861,11 @@ window.toggleHabitDay=async(hid,date)=>{
   // If skipped, treat as empty → mark done
   const curState=existing?(existing.skipped?'empty':existing.done?'done':'failed'):'empty';
   if(curState==='done'){
-    const log={id:logId,habitId:hid,date,done:false,failed:true,value:0};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    if(existing)Object.assign(existing,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
   } else if(curState==='failed'){
-    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    await delHabitLog(logId);
   } else {
-    const log={id:logId,habitId:hid,date,done:true,failed:false,value:1};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    const ex=habitLogs.find(l=>l.id===logId);
-    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
   }
   renderHabits();
 };
@@ -1868,13 +1875,10 @@ window.skipHabitDay=async(hid,date)=>{
   const logId=hid+'_'+date;
   const existing=habitLogs.find(l=>l.id===logId);
   if(existing?.skipped){
-    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    await delHabitLog(logId);
     toast('↩ Přeskočení zrušeno');
   } else {
-    const log={id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    if(existing)Object.assign(existing,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0});
     toast('⏭ Den přeskočen');
   }
   renderHabits();
@@ -1975,18 +1979,14 @@ window.directInput=async(hid,date,curVal,goal)=>{
     const newVal = parseInt(inp.value);
     modal.remove();
     if(isNaN(newVal)||newVal<0){toast('⚠️ Zadej platné číslo');return;}
-    const log={id:logId,habitId:hid,date,done:newVal>=goal,value:newVal};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId),log);
-    const ex=habitLogs.find(l=>l.id===logId);
-    if(ex)Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
     renderHabits();
     toast(newVal===0?'✓ Zaznamenáno: 0':`✓ Zaznamenáno: ${newVal}`);
   };
 
   const clear = async () => {
     modal.remove();
-    await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
-    habitLogs=habitLogs.filter(l=>l.id!==logId);
+    await delHabitLog(logId);
     renderHabits();
     toast('✕ Záznam smazán');
   };
@@ -2005,13 +2005,14 @@ window.showDeleteHabitConfirm=(id,btn)=>{
 
 window.deleteHabit=async(id)=>{
   if(!CU)return;
+  unshareAll('h',id); // zrcadla ve skupinách pryč dřív, než návyk zmizí
   await deleteDoc(doc(db,'users',CU.uid,'habits',id));
   habits=habits.filter(h=>h.id!==id);
   // Listener drží jen posledních HL_WINDOW dní → smazat i starší záznamy (offline aspoň ty v paměti)
   const delIds=new Set(habitLogs.filter(l=>l.habitId===id).map(l=>l.id));
   try{ (await getDocs(query(collection(db,'users',CU.uid,'habitLogs'),where('habitId','==',id)))).docs.forEach(d=>delIds.add(d.id)); }
   catch(e){ console.warn('[LP] mazání historie návyku:',e?.code||e?.name); }
-  for(const lid of delIds) await deleteDoc(doc(db,'users',CU.uid,'habitLogs',lid));
+  for(const lid of delIds) await delHabitLog(lid,true);
   habitLogs=habitLogs.filter(l=>l.habitId!==id);
   renderHabits(); toast('Návyk smazán');
   window.closeHabitDetail();
@@ -2028,6 +2029,7 @@ window.archiveHabit = async (id) => {
   if (!confirm(msg)) return;
   await updateDoc(doc(db, 'users', CU.uid, 'habits', id), { archived: !isArchived });
   h.archived = !isArchived;
+  syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
   toast(isArchived ? '✅ Návyk obnoven' : '📦 Návyk archivován');
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
@@ -2048,6 +2050,7 @@ window.pauseHabit=async(id,days)=>{
     h.pausedUntil=untilStr;
     toast(`⏸ Pauza do ${until.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}`);
   }
+  syncShared('h', id);
   renderHabits();
   if(detailHabitId===id)renderHabitDetail(h);
 };
@@ -4121,14 +4124,13 @@ async function handleNotifHabitDone(data) {
     } else {
       const log = {id: logId, habitId: data.habitId, date, done: true, value: 1};
       try {
-        await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log, {merge:true});
+        await putHabitLog(log, true);
       } catch(e) {
         // Trvalá chyba (oprávnění, neplatná data) → zahodit, ať nevzniká "poison pill"; dočasná (offline) → nechat na příště
         const perm = ['permission-denied','invalid-argument','failed-precondition','not-found','out-of-range'].includes(e && e.code);
         console.warn('[LP] Splnění návyku z notifikace selhalo:', e && e.code || '');
         return perm;
       }
-      if (existing) Object.assign(existing, log); else habitLogs.push(log);
       renderHabits();
       rDash();
       toast(`✅ ${habit.emoji} ${habit.name} — splněno!`);
@@ -5122,17 +5124,7 @@ function spawnConfetti() {
   }
 }
 
-function getStreak(hid) {
-  let streak = 0;
-  const d = new Date();
-  for(let i=0; i<365; i++) {
-    const ds = toDS(d);
-    if(hDone(hid,ds)) streak++;
-    else break;
-    d.setDate(d.getDate()-1);
-  }
-  return streak;
-}
+function getStreak(hid) { return habitStreak(hid, toDS()); }
 
 function checkAvatarReactions(hid, date, justCompleted) {
   if(!justCompleted) return; // jen při splnění, ne při odškrtnutí
@@ -5503,6 +5495,7 @@ window.leaveFamily = async () => {
     // setDoc s merge vnořenou mapu jen slučuje, klíč je nutné smazat přes deleteField()
     const fSnap = await getDoc(doc(db,'families',fid));
     if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
+      await unshareAllInGroup(fid); // sdílené návyky ze skupiny pryč, dokud jsem člen
       await updateDoc(doc(db,'families',fid), {[`members.${CU.uid}`]: deleteField()});
     }
     // Ze skupiny už jsem venku – lokální stav uklidit i když úklid profilu selže
@@ -5778,6 +5771,7 @@ window.leaveExtraGroup = async (gid) => {
     // Nejdřív odebrat ze skupiny (deleteField – merge by klíč nesmazal), pak profil
     const fSnap = await getDoc(doc(db,'families',gid));
     if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
+      await unshareAllInGroup(gid); // sdílené návyky ze skupiny pryč, dokud jsem člen
       await updateDoc(doc(db,'families',gid), {[`members.${CU.uid}`]: deleteField()});
     }
   } catch(e){ _leavingGids.delete(gid); toast('❌ Nepodařilo se opustit skupinu, zkus to znovu'); return; }
@@ -6003,6 +5997,11 @@ window.removeFamilyMember = async (uid, gid) => {
     // deleteField – merge vnořené mapy by klíč nesmazal. Profil odebraného si uklidí jeho klient sám.
     await updateDoc(doc(db,'families',targetGid), {[`members.${uid}`]: deleteField()});
     toast('✓ Člen odebrán');
+    // Sdílené návyky odebraného ze skupiny pryč (pravidlo to správci povolí); selhání nevadí, čtenáři je filtrují
+    getDocs(query(collection(db,'families',targetGid,'shared'), where('ownerUid','==',uid))).then(sn => {
+      if(!sn.docs.length) return;
+      const b = writeBatch(db); sn.docs.forEach(d => b.delete(d.ref)); return b.commit();
+    }).catch(e => console.warn('[LP] zrcadla odebraneho', e?.code || e?.name));
   } catch(e) { toast('❌ Člena se nepodařilo odebrat'); }
 };
 
@@ -6013,12 +6012,14 @@ function subscribeExtraGroup(gid) {
     if (!snap.exists()) { checkGroupGone(snap, gid); return; }
     // Byl jsem ze skupiny odebrán → uklidit profil i zobrazení
     if (isRemovedFromGroup(snap, gid)) {
+      dropMyMirrorsAfterRemoval(gid);
       dropExtraGroupLocal(gid).catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
       toast('Byl jsi odebrán ze skupiny');
       return;
     }
     extraGroupsData[gid] = snap.data();
     if (!_gfUnsub[gid]) startGroupUnread(gid);
+    startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
@@ -6046,6 +6047,7 @@ function subscribeFamily() {
     if(isRemovedFromGroup(snap, fid)) {
       // Starý listener (lokálně už jiná skupina) nesmí sahat na nový stav ani profil
       if(familyId !== fid) return;
+      dropMyMirrorsAfterRemoval(fid);
       resetFamilyLocal();
       if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
       clearProfileFamilyIdIf(fid)
@@ -6056,6 +6058,7 @@ function subscribeFamily() {
     }
     familyData = snap.data();
     if(!_gfUnsub[fid]) startGroupUnread(fid);
+    startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     renderFamilySettings();
     renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
@@ -6315,14 +6318,18 @@ async function deleteFamilyShopItem(id) {
 
 // ── AKTIVITA SKUPINY (feed „Co je nového“ + push ostatním přes cron) ──
 // Záznam families/{gid}/activity: ts (server), uid, name, g, module, action, title ≤ 60, n, count, expireAt (+7 dní, TTL).
+// Osobní moduly navíc: ref (zrcadlo / cíl reakce), val (série), to + em / msg (reakce).
 // Rychlé změny se slučují: stejná skupina+modul+akce do 4 s od poslední, nejdéle 20 s od první → 1 záznam.
-const GA_MODS = ['shop','cal','meal','check','pantry'];
-const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share']);
+// Milník (streak) se neslučuje (klíč i s ref), reakce se slučují podle adresáta, komentář jde hned.
+const GA_MODS = ['shop','cal','meal','check','pantry','habit','react'];
+const GA_PERSONAL = ['habit','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
+const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak']);
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
 const _gaBuf = new Map();
 // Je modul ve skupině sdílený? Stejně jako server: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
 function groupModShared(gid, module) {
   if(!gid) return false;
+  if(GA_PERSONAL.includes(module)) return gid === familyId || extraGroupIds.includes(gid);
   if(gid === familyId) {
     const fd = familyData || {};
     if(module === 'cal') return !!fd.shareCal;
@@ -6344,31 +6351,49 @@ function gaTitle(main, suffix = '') {
 function gaCheck(list, action, text, count = 1) {
   if(list?._family && familyId) logGroupActivity(familyId, 'check', action, gaTitle(text, list.name || ''), count);
 }
-function logGroupActivity(gid, module, action, title = '', count = 1) {
+// Klíč bufferu: milník zvlášť pro každou položku, reakce podle adresáta, komentář vždy samostatně
+let _gaSeq = 0;
+function gaKey(gid, module, action, x) {
+  let key = gid+'|'+module+'|'+action;
+  if(action === 'streak') key += '|'+(x?.ref || '');
+  if(module === 'react') key += '|'+(x?.to || '') + (x?.msg ? '|c'+(++_gaSeq) : '');
+  return key;
+}
+function logGroupActivity(gid, module, action, title = '', count = 1, x = null) {
   if(!CU || !okFamilyCode(gid) || !GA_MODS.includes(module) || !GA_ACTS.has(action)) return;
   if(_accDeleting || _accDeleted || !groupModShared(gid, module)) return;
-  const key = gid+'|'+module+'|'+action;
+  const key = gaKey(gid, module, action, x);
   let b = _gaBuf.get(key);
-  if(!b) { b = {gid, module, action, titles:[], occ:new Map(), noTitle:false, count:0, t0:Date.now(), timer:0}; _gaBuf.set(key, b); }
+  if(!b) { b = {gid, module, action, titles:[], occ:new Map(), noTitle:false, count:0, t0:Date.now(), timer:0, ems:[]}; _gaBuf.set(key, b); }
+  if(x) {
+    if(typeof x.ref === 'string' && x.ref && !b.ref) b.ref = x.ref.slice(0, 200); // sloučený záznam = první položka
+    if(Number.isInteger(x.val)) b.val = x.val;
+    if(typeof x.to === 'string' && x.to) b.to = x.to.slice(0, 128);
+    if(typeof x.em === 'string' && RX_EM[x.em] && !b.ems.includes(x.em)) b.ems.push(x.em);
+    if(typeof x.msg === 'string' && x.msg) b.msg = x.msg.slice(0, 200);
+  }
   const tt = cutName(title, 60);
   if(tt) { if(!b.titles.includes(tt)) b.titles.push(tt); b.occ.set(tt, (b.occ.get(tt) || 0) + 1); }
   else b.noTitle = true;
   b.count += Math.max(1, count|0);
   clearTimeout(b.timer);
+  if(b.msg) { flushGroupActivity(key); return; } // komentář hned
   b.timer = setTimeout(() => flushGroupActivity(key), Math.max(0, Math.min(GA_DEBOUNCE, GA_MAX_WAIT - (Date.now() - b.t0))));
 }
-// Zpětné vzetí (odškrtnutí → hned zrušení): vyjmout z čekajícího záznamu; už odeslaný záznam zůstává
-function unlogGroupActivity(gid, module, action, title = '') {
-  const key = gid+'|'+module+'|'+action;
-  const b = _gaBuf.get(key); if(!b) return;
+// Zpětné vzetí (odškrtnutí → hned zrušení): vyjmout z čekajícího záznamu; už odeslaný záznam zůstává.
+// Vrací true, když se záznam z bufferu opravdu vyjmul.
+function unlogGroupActivity(gid, module, action, title = '', x = null) {
+  const key = gaKey(gid, module, action, x);
+  const b = _gaBuf.get(key); if(!b) return false;
   const tt = cutName(title, 60), k = b.occ.get(tt) || 0;
-  if(!tt || !k) return; // bez názvu nebo nenalezeno → nic neměnit
+  if(!tt || !k) return false; // bez názvu nebo nenalezeno → nic neměnit
   // Duplicitní jména: odebrat jen jeden výskyt
   if(k > 1) b.occ.set(tt, k - 1);
   else { b.occ.delete(tt); b.titles.splice(b.titles.indexOf(tt), 1); }
   b.count--;
   // Prázdný buffer zrušit bez zápisu (žádný záznam s n=0 a prázdným názvem)
   if(b.count <= 0 || (!b.titles.length && !b.noTitle)) { clearTimeout(b.timer); _gaBuf.delete(key); }
+  return true;
 }
 function flushGroupActivity(key) {
   const b = _gaBuf.get(key);
@@ -6384,6 +6409,11 @@ function flushGroupActivity(key) {
     expireAt: Timestamp.fromMillis(Date.now() + GA_TTL_MS)
   };
   if(prof?.gender === 'f') data.g = 'f';
+  if(b.ref) data.ref = b.ref;
+  if(Number.isInteger(b.val) && b.val >= 0 && b.val <= 1000) data.val = b.val;
+  if(b.to) data.to = b.to;
+  if(b.ems.length) data.em = b.ems.join(',');
+  if(b.msg) data.msg = b.msg;
   // Bez await: funguje i offline, serverTimestamp se doplní při odeslání. Obsah se neloguje.
   addDoc(collection(db,'families',b.gid,'activity'), data)
     .catch(e => console.warn('[LP] aktivita skupiny', e?.code || e?.name));
@@ -6392,12 +6422,514 @@ function flushAllGroupActivity() { for(const k of [..._gaBuf.keys()]) flushGroup
 addEventListener('pagehide', flushAllGroupActivity);
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushAllGroupActivity(); });
 
+// ── SDÍLENÍ NÁVYKŮ VE SKUPINĚ (zrcadlo families/{gid}/shared) A REAKCE (families/{gid}/reactions) ──
+// Zrcadlo h_<uid>_<habitId> nese jen souhrn (název, frekvence, dnešek, série, 7 dní), píše ho jen vlastník.
+// Zdroj pravdy o tom, co sdílím, je zrcadlo samo: mySharedIn plní listener shared každé skupiny.
+const SH_MS = [7, 30, 100];                  // milníky série (aktivita habit/streak)
+const RX = [['clap','👏'],['fire','🔥'],['heart','❤️'],['strong','💪']];
+const RX_EM = Object.fromEntries(RX);
+const RX_TTL_MS = 30*86400000;               // reakce a komentáře mizí po 30 dnech (TTL expireAt)
+const RX_MAX_LEN = 200;
+const MEMBER_AV = {rex:'🐺',sage:'🦉',ash:'🔥',nora:'🌸',rio:'🌊'};
+const mySharedIn = new Map();                // 'h_<habitId>' → Set(gid)
+const myMirrors = {};                        // gid → Map('h_<habitId>' → moje zrcadlo)
+const sharedByGroup = {};                    // gid → [zrcadla ostatních členů]
+const rxByGroup = {};                        // gid → [reakce a komentáře za 30 dní]
+const _shUnsub = {}, _rxUnsub = {};
+const _shTimers = new Map();
+const _shMs = new Map();                     // 'gid|sid' → poslední ohlášený milník {v,d} (než ho vrátí snapshot)
+const shSid = (type, itemId) => `${type}_${CU.uid}_${itemId}`;
+function sharedGids(type, itemId) { return [...(mySharedIn.get(type+'_'+itemId) || [])].filter(g => myGroupIds().includes(g)); }
+function clampInt(v, lo, hi) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; }
+function groupLabel(gid) { return cutName(groupDataOf(gid)?.groupName, 30) || t('gf.group'); }
+function memberName(gid, uid) {
+  if(uid === CU?.uid) return t('gf.you');
+  return cutName(groupDataOf(gid)?.members?.[uid]?.name, 40) || t('gf.someone');
+}
+
+// Listenery skupiny: zrcadla (návyky) + reakce. Spouští se spolu s nepřečtenými, končí ve stopGroupUnread.
+function startGroupSocial(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  const uid = CU.uid;
+  if(!_shUnsub[gid]) _shUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'shared'), where('type','==','h')), snap => {
+    const mine = new Map(), others = [];
+    snap.docs.forEach(d => {
+      const m = d.data({serverTimestamps:'estimate'});
+      if(m.ownerUid === uid) mine.set('h_' + m.itemId, m);
+      else others.push({...m, _sid: d.id});
+    });
+    for(const [k, set] of mySharedIn) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
+    for(const k of mine.keys()) { if(!mySharedIn.has(k)) mySharedIn.set(k, new Set()); mySharedIn.get(k).add(gid); }
+    myMirrors[gid] = mine;
+    sharedByGroup[gid] = others;
+    if(!snap.metadata.fromCache) shDailyResync(gid);
+    refreshShareUI();
+  }, e => { delete _shUnsub[gid]; familyListenErr(e); });
+  if(!_rxUnsub[gid]) _rxUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'reactions'),
+      where('ts','>',Timestamp.fromMillis(Date.now() - RX_TTL_MS)), limit(500)), snap => {
+    rxByGroup[gid] = snap.docs.map(d => ({...d.data({serverTimestamps:'estimate'}), _id: d.id}));
+    refreshRxUI(gid);
+  }, e => { delete _rxUnsub[gid]; familyListenErr(e); });
+}
+function stopGroupSocial(gid) {
+  if(!gid) return;
+  if(_shUnsub[gid]) { _shUnsub[gid](); delete _shUnsub[gid]; }
+  if(_rxUnsub[gid]) { _rxUnsub[gid](); delete _rxUnsub[gid]; }
+  for(const [k, set] of mySharedIn) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
+  delete myMirrors[gid]; delete sharedByGroup[gid]; delete rxByGroup[gid];
+  refreshShareUI();
+}
+function resetSocialLocal() {
+  Object.keys({..._shUnsub, ..._rxUnsub}).forEach(stopGroupSocial);
+  for(const tm of _shTimers.values()) clearTimeout(tm);
+  _shTimers.clear(); _shMs.clear(); mySharedIn.clear();
+}
+// Překreslení po změně zrcadel: karty návyků (odznak), sekce sdílených, detail a sheet sdílení
+function refreshShareUI() {
+  try { renderHabits(); } catch(e) {}
+  refreshHabitShareUI();
+  if(document.getElementById('m-share')?.classList.contains('open')) renderShareSheet();
+}
+function refreshRxUI(gid) {
+  renderSharedHabits();
+  refreshHabitShareUI();
+  if(_gf.gid === gid && document.getElementById('m-grpfeed')?.classList.contains('open')) renderGroupFeed();
+  if(_rx?.gid === gid && document.getElementById('m-rx')?.classList.contains('open')) renderRxList();
+}
+
+// Souhrn návyku pro ostatní (jen nutná pole, žádné logy ani poznámky)
+function buildHabitMirror(hid) {
+  const h = habits.find(x => x.id === hid);
+  if(!h) return null;
+  const today = toDS(), base = new Date(today + 'T12:00:00');
+  const dayAt = i => { const x = new Date(base); x.setDate(base.getDate() - i); return x; };
+  const fr = (h.freq && typeof h.freq === 'object') ? h.freq : {type:'daily'};
+  const freq = {type: ['daily','weekly','days'].includes(fr.type) ? fr.type : 'daily'};
+  if(freq.type === 'weekly') freq.times = clampInt(fr.times || 3, 1, 7);
+  if(freq.type === 'days') freq.days = [...new Set((Array.isArray(fr.days) ? fr.days : []).map(Number))].filter(x => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);
+  // 7 dní, nejstarší → dnes: 1 splněno, 0 ne, - přeskočeno / neaktivní den
+  let last7 = '';
+  for(let i = 6; i >= 0; i--) {
+    const x = dayAt(i), ds = toDS(x), l = hLog(hid + '_' + ds);
+    const off = freq.type === 'days' && !freq.days.includes(x.getDay());
+    last7 += hDone(hid, ds) ? '1' : (l?.skipped || off) ? '-' : '0';
+  }
+  let doneDate = '';
+  for(let i = 0; i < 60 && !doneDate; i++) { const ds = toDS(dayAt(i)); if(hDone(hid, ds)) doneDate = ds; }
+  const streak = doneDate ? habitStreak(hid, doneDate) : 0;
+  // Nejlepší série z načtených záznamů (po sobě jdoucí splněné dny)
+  const dates = [...new Set(habitLogs.filter(l => l && l.habitId === hid && l.done && typeof l.date === 'string').map(l => l.date))].sort();
+  let best = 0, run = 0, prev = '';
+  for(const ds of dates) {
+    let next = '';
+    if(prev) { const x = new Date(prev + 'T12:00:00'); x.setDate(x.getDate() + 1); next = toDS(x); }
+    run = ds === next ? run + 1 : 1; prev = ds;
+    if(run > best) best = run;
+  }
+  const tl = hLog(hid + '_' + today);
+  return {
+    name: cutName(h.name, 60), emoji: cutName(h.emoji || '🎯', 16), freq,
+    htype: h.type === 'count' ? 'count' : 'check', goal: clampInt(h.goal || 1, 1, 100000),
+    doneDate, value: clampInt(tl?.value || 0, 0, 100000), streak: clampInt(streak, 0, 100000),
+    best: clampInt(Math.max(best, streak), 0, 100000), last7,
+    paused: !!(h.pausedUntil && h.pausedUntil >= today), arch: !!h.archived
+  };
+}
+// Zápis zrcadla do skupin (onlyGid = jen jedna skupina). Celý setDoc bez merge: deterministické ID, opraví se samo.
+function writeMirror(type, itemId, onlyGid) {
+  if(type !== 'h' || !CU || _accDeleting || _accDeleted) return;
+  const gids = onlyGid ? [onlyGid] : sharedGids(type, itemId);
+  if(!gids.length) return;
+  const base = buildHabitMirror(itemId);
+  if(!base && !_habitsSnapOk) return; // návyky ještě nejsou načtené → nic nemazat
+  const key = type + '_' + itemId, sid = shSid(type, itemId);
+  for(const gid of gids) {
+    if(!base) { unshareItem(type, itemId, gid); continue; }
+    const prevM = myMirrors[gid]?.get(key);
+    const ms = _shMs.get(gid + '|' + sid) || prevM?.ms;
+    const data = {...base, best: Math.max(base.best, clampInt(prevM?.best || 0, 0, 100000)),
+      type, ownerUid: CU.uid, itemId, updatedAt: serverTimestamp()};
+    if(ms && Number.isInteger(ms.v) && typeof ms.d === 'string') data.ms = {v: ms.v, d: ms.d.slice(0, 10)};
+    // Bez await (offline se odešle později); obsah se neloguje
+    setDoc(doc(db,'families',gid,'shared',sid), data)
+      .catch(e => console.warn('[LP] zrcadlo', e?.code || e?.name));
+  }
+}
+// Debounce 1,5 s: tlačítka +/− nepíšou zrcadlo 10×
+function syncShared(type, itemId) {
+  if(!CU || !sharedGids(type, itemId).length) return;
+  const k = type + '_' + itemId;
+  clearTimeout(_shTimers.get(k));
+  _shTimers.set(k, setTimeout(() => { _shTimers.delete(k); writeMirror(type, itemId); }, 1500));
+}
+// Po zápisu záznamu návyku: zrcadlo + aktivita „splněno“ + milník série (jen dnešek)
+function onHabitLogChanged(hid, date, wasDone, isDone) {
+  if(!CU || !hid) return;
+  const gids = sharedGids('h', hid);
+  if(!gids.length) return;
+  const h = habits.find(x => x.id === hid);
+  const today = toDS();
+  if(h && date === today && wasDone !== isDone) {
+    const sid = shSid('h', hid), name = cutName(h.name, 60);
+    const s = isDone ? habitStreak(hid, today) : 0;
+    for(const gid of gids) {
+      const mk = gid + '|' + sid;
+      if(isDone) {
+        logGroupActivity(gid, 'habit', 'done', name, 1, {ref: sid});
+        const prev = _shMs.get(mk) || myMirrors[gid]?.get('h_' + hid)?.ms;
+        if(SH_MS.includes(s) && !(prev && prev.v === s && prev.d === today)) {
+          _shMs.set(mk, {v: s, d: today});
+          logGroupActivity(gid, 'habit', 'streak', name, 1, {ref: sid, val: s});
+        }
+      } else {
+        unlogGroupActivity(gid, 'habit', 'done', name);
+        // Milník, který ještě neodešel, se se zrušením splnění vezme zpět
+        if(unlogGroupActivity(gid, 'habit', 'streak', name, {ref: sid})) _shMs.delete(mk);
+      }
+    }
+  }
+  syncShared('h', hid);
+}
+// Jednou denně (a skupinu) při startu přepsat zrcadla: po půlnoci jinak zůstane včerejší stav
+function shDailyResync(gid) {
+  const today = toDS(), st = lsGet('lp_sh_day', {}) || {};
+  if(st[gid] === today || !myMirrors[gid]?.size) return;
+  habitsReady.then(() => {
+    if(!_shUnsub[gid] || !_habitsSnapOk || !myMirrors[gid]) return;
+    for(const k of myMirrors[gid].keys()) if(k.startsWith('h_')) writeMirror('h', k.slice(2), gid);
+    lsSave('lp_sh_day', {...(lsGet('lp_sh_day', {}) || {}), [gid]: today});
+  });
+}
+
+// Zrušení sdílení: zrcadlo pryč + vlastní aktivita k položce a reakce na ni (feed pak neukazuje mrtvé odkazy)
+function unshareItem(type, itemId, gid) {
+  if(!CU) return;
+  const key = type + '_' + itemId, sid = shSid(type, itemId), uid = CU.uid;
+  const set = mySharedIn.get(key);
+  if(set) { set.delete(gid); if(!set.size) mySharedIn.delete(key); }
+  myMirrors[gid]?.delete(key);
+  deleteDoc(doc(db,'families',gid,'shared',sid)).catch(e => console.warn('[LP] zruseni sdileni', e?.code || e?.name));
+  (async () => {
+    const acts = await getDocs(query(collection(db,'families',gid,'activity'), where('uid','==',uid), where('ref','==',sid)));
+    const actIds = new Set(acts.docs.map(d => 'a_' + d.id));
+    const rx = await getDocs(query(collection(db,'families',gid,'reactions'), where('to','==',uid)));
+    const dels = [...acts.docs, ...rx.docs.filter(d => { const tg = d.data().target; return tg === 's_' + sid || actIds.has(tg); })];
+    for(let i = 0; i < dels.length; i += 400) {
+      const b = writeBatch(db);
+      dels.slice(i, i + 400).forEach(d => b.delete(d.ref));
+      await b.commit();
+    }
+  })().catch(e => console.warn('[LP] uklid sdileni', e?.code || e?.name));
+}
+function unshareAll(type, itemId) { for(const gid of sharedGids(type, itemId)) unshareItem(type, itemId, gid); }
+// Odchod ze skupiny: smazat všechna moje zrcadla (dokud jsem člen, smím je vypsat)
+async function unshareAllInGroup(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  const uid = CU.uid, ids = new Set([...(myMirrors[gid]?.keys() || [])].map(k => k[0] + '_' + uid + '_' + k.slice(2)));
+  try {
+    (await getDocs(query(collection(db,'families',gid,'shared'), where('ownerUid','==',uid)))).docs.forEach(d => ids.add(d.id));
+  } catch(e) { console.warn('[LP] zrcadla pri odchodu', e?.code || e?.name); }
+  const b = writeBatch(db);
+  ids.forEach(id => b.delete(doc(db,'families',gid,'shared',id)));
+  if(ids.size) await b.commit().catch(e => console.warn('[LP] zrcadla pri odchodu', e?.code || e?.name));
+}
+// Odebrán ze skupiny: listovat už nesmím, ale vlastník smí mazat podle známých ID z paměti
+function dropMyMirrorsAfterRemoval(gid) {
+  if(!CU) return;
+  const uid = CU.uid;
+  for(const k of myMirrors[gid]?.keys() || []) {
+    deleteDoc(doc(db,'families',gid,'shared',k[0] + '_' + uid + '_' + k.slice(2))).catch(() => {});
+  }
+}
+
+// ── Sheet „Sdílet se skupinou“ ──
+let _shItem = null; // {type, id}
+function shBadgeHTML(type, id) {
+  const gids = sharedGids(type, id);
+  if(!gids.length) return '';
+  return ` <span class="sh-badge" role="img" aria-label="${esc(t('sh.badgeAria', {g: gids.map(groupLabel).join(', ')}))}">👨‍👩‍👧</span>`;
+}
+function shareChipHTML(type, id) {
+  const gids = sharedGids(type, id);
+  const label = gids.length
+    ? '👨‍👩‍👧 <span class="sc-nm">' + esc(groupLabel(gids[0])) + '</span>' + (gids.length > 1 ? ' +' + (gids.length - 1) : '')
+    : '🔒 <span class="sc-nm">' + tH('sh.private') + '</span>';
+  return `<button type="button" class="share-chip${gids.length ? ' on' : ''}" aria-haspopup="dialog" data-a0="${esc(id)}" onclick="openShareSheet(this.dataset.a0)">${label} <span aria-hidden="true">›</span></button>`;
+}
+// Sekce „Sdílení“ v detailu návyku (bez skupiny se nezobrazí vůbec)
+function habitShareHTML(h) {
+  if(!h || !myGroupIds().length) return '';
+  const sid = CU ? shSid('h', h.id) : '';
+  const sums = sharedGids('h', h.id).map(gid => rxSumHTML(gid, 's_' + sid, h.name, true)).join('');
+  return `<div class="hd-section-title" style="margin-top:20px">👨‍👩‍👧 ${tH('sh.section')}</div>
+    ${shareChipHTML('h', h.id)}${sums}`;
+}
+function refreshHabitShareUI() {
+  const box = document.getElementById('hd-share');
+  if(!box || !detailHabitId) return;
+  const h = habits.find(x => x.id === detailHabitId);
+  box.innerHTML = h ? habitShareHTML(h) : '';
+}
+window.openShareSheet = hid => {
+  const h = habits.find(x => x.id === hid);
+  if(!CU || !h) return;
+  if(!myGroupIds().length) { toast(t('gf.noGroup')); return; }
+  _shItem = {type: 'h', id: hid};
+  renderShareSheet();
+  om('m-share');
+};
+function renderShareSheet() {
+  const tEl = document.getElementById('sh-title'), iEl = document.getElementById('sh-item'), gEl = document.getElementById('sh-groups'), nEl = document.getElementById('sh-note');
+  if(!tEl || !iEl || !gEl || !nEl || !_shItem) return;
+  const h = habits.find(x => x.id === _shItem.id);
+  if(!h) { cm('m-share'); return; }
+  const on = new Set(sharedGids('h', h.id));
+  tEl.textContent = '👨‍👩‍👧 ' + t('sh.titleHabit');
+  iEl.textContent = (h.emoji || '🎯') + ' ' + h.name;
+  gEl.innerHTML = myGroupIds().map(gid => {
+    const n = Object.keys(groupDataOf(gid)?.members || {}).length;
+    const isOn = on.has(gid);
+    return `<div class="fshare-mod-row" role="switch" tabindex="0" aria-checked="${isOn}" data-a0="${esc(gid)}" onclick="toggleItemShare(this.dataset.a0)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleItemShare(this.dataset.a0)}" style="min-height:52px;cursor:pointer">
+      <span style="font-size:18px" aria-hidden="true">👨‍👩‍👧</span>
+      <span style="flex:1;font-size:15px;color:var(--text)">${esc(groupLabel(gid))}${n ? ` <span class="sh-cnt">· ${esc(t('sh.members', {n}))}</span>` : ''}</span>
+      <div class="fshare-toggle${isOn ? ' on' : ''}"><div class="fshare-thumb"></div></div></div>`;
+  }).join('');
+  nEl.textContent = '👀 ' + t('sh.noteHabit');
+}
+window.toggleItemShare = gid => {
+  if(!CU || !_shItem || !myGroupIds().includes(gid)) return;
+  const {type, id} = _shItem;
+  const key = type + '_' + id, g = groupLabel(gid);
+  if(sharedGids(type, id).includes(gid)) {
+    unshareItem(type, id, gid);
+    toast(t('sh.offToast', {g}));
+  } else {
+    if(!buildHabitMirror(id)) return;
+    // Hned do mapy (listener to potvrdí); zápis bez await, chyba vrátí stav zpět
+    if(!mySharedIn.has(key)) mySharedIn.set(key, new Set());
+    mySharedIn.get(key).add(gid);
+    const sid = shSid(type, id), data = {...buildHabitMirror(id), type, ownerUid: CU.uid, itemId: id, updatedAt: serverTimestamp()};
+    setDoc(doc(db,'families',gid,'shared',sid), data).catch(e => {
+      console.warn('[LP] sdileni navyku', e?.code || e?.name);
+      mySharedIn.get(key)?.delete(gid);
+      toast('❌ ' + userErr(e));
+      refreshShareUI();
+    });
+    toast(t('sh.onToast', {g}));
+  }
+  refreshShareUI();
+};
+
+// ── Sekce „Sdíleno ve skupině“ v Návycích (jen dnešek: zrcadlo zná dnešek a 7 dní) ──
+function shFreqLabel(fr) {
+  if(fr?.type === 'weekly') return t('sh.freq.weekly', {n: clampInt(fr.times || 3, 1, 7)});
+  if(fr?.type === 'days' && Array.isArray(fr.days)) {
+    const wd = weekdayNames('short');
+    return fr.days.filter(d => Number.isInteger(d) && d >= 0 && d <= 6).map(d => wd[(d + 6) % 7]).join(', ');
+  }
+  return t('sh.freq.daily');
+}
+function sharedHabitCardHTML(gid, m) {
+  const today = toDS(), y = new Date(); y.setDate(y.getDate() - 1);
+  const yest = toDS(y);
+  const doneDate = typeof m.doneDate === 'string' ? m.doneDate : '';
+  const upd = typeof m.updatedAt?.toDate === 'function' ? toDS(m.updatedAt.toDate()) : today;
+  const sameDay = upd === today;
+  const done = doneDate === today;
+  const goal = clampInt(m.goal || 1, 1, 100000), val = sameDay ? clampInt(m.value || 0, 0, 100000) : 0;
+  const streak = clampInt(m.streak || 0, 0, 100000);
+  let st, stCls = '';
+  if(done) { st = '✓ ' + t('sh.doneToday'); stCls = ' done'; }
+  else if(m.paused) st = '⏸ ' + t('sh.paused');
+  else if(m.htype === 'count' && val > 0) st = val + ' / ' + goal;
+  else st = t('sh.notYet');
+  const meta = [shFreqLabel(m.freq)];
+  if(m.htype === 'count') meta.push(t('sh.goal', {n: goal}));
+  if(streak > 0 && doneDate >= yest) meta.push('🔥 ' + t('sh.streak', {n: streak}));
+  else if(doneDate) meta.push(t('sh.lastDone', {d: fmtDate(doneDate, 'dm')}));
+  // last7 platí k datu zápisu → posunout o dny od té doby (chybějící dny = nesplněno)
+  let last7 = typeof m.last7 === 'string' ? m.last7.slice(0, 7).padStart(7, '0') : '0000000';
+  const shift = Math.max(0, Math.min(7, Math.round((new Date(today + 'T12:00:00') - new Date(upd + 'T12:00:00')) / 86400000)));
+  if(shift) last7 = (last7.slice(shift) + '0'.repeat(shift)).slice(0, 7);
+  const nOn = [...last7].filter(c => c === '1').length;
+  const week = [...last7].map(c => `<i${c === '1' ? ' class="on"' : c === '-' ? ' class="off"' : ''}></i>`).join('');
+  const owner = memberName(gid, m.ownerUid);
+  return `<article class="shc" aria-label="${esc(t('sh.cardAria', {who: owner, name: m.name || ''}))}">
+    <div class="shc-top"><span class="shc-em" aria-hidden="true">${esc(m.emoji || '🎯')}</span>
+      <div class="shc-nm">${esc(m.name || '')}</div><span class="shc-st${stCls}">${esc(st)}</span></div>
+    <div class="shc-meta">${esc(meta.join(' · '))}</div>
+    <div class="shc-week" role="img" aria-label="${esc(t('sh.weekAria', {n: nOn}))}">${week}</div>
+    ${rxBarHTML(gid, 's_' + m._sid, m.ownerUid, m.name || '')}
+  </article>`;
+}
+function renderSharedHabits() {
+  const box = document.getElementById('habits-shared');
+  if(!box) return;
+  const gids = myGroupIds();
+  // Jen dnes; zrcadla bývalých členů (ještě neuklizená) se nezobrazí
+  const parts = habitDay !== toDS() ? [] : gids.map(gid => {
+    const members = groupDataOf(gid)?.members || {};
+    const list = (sharedByGroup[gid] || []).filter(m => members[m.ownerUid] && !m.arch)
+      .sort((a, b) => memberName(gid, a.ownerUid).localeCompare(memberName(gid, b.ownerUid), LOCALE) || String(a.ownerUid).localeCompare(String(b.ownerUid)) || String(a.name || '').localeCompare(String(b.name || ''), LOCALE));
+    return {gid, list};
+  }).filter(p => p.list.length);
+  if(!parts.length) { box.innerHTML = ''; return; }
+  const open = !lsGet('lp_sh_closed', false);
+  let html = `<button type="button" class="shc-sec" aria-expanded="${open}" onclick="toggleSharedHabits()">👨‍👩‍👧 ${tH('sh.sectionShared')} <span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`;
+  if(open) for(const {gid, list} of parts) {
+    if(parts.length > 1) html += `<div class="shc-grp">${esc(groupLabel(gid))}</div>`;
+    let lastOwner = null;
+    for(const m of list) {
+      if(m.ownerUid !== lastOwner) {
+        lastOwner = m.ownerUid;
+        const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[m.ownerUid]?.avatar, '👤');
+        html += `<div class="shc-owner"><span aria-hidden="true">${av}</span> ${esc(memberName(gid, m.ownerUid))}</div>`;
+      }
+      html += sharedHabitCardHTML(gid, m);
+    }
+  }
+  box.innerHTML = html;
+}
+window.toggleSharedHabits = () => { lsSave('lp_sh_closed', !lsGet('lp_sh_closed', false)); renderSharedHabits(); };
+
+// ── Reakce (👏 🔥 ❤️ 💪) a komentáře ──
+// Emoji: rid = target_uid_em (přepínač set/delete), komentář: autoId. target = s_<sid> (zrcadlo) | a_<activityId> (feed).
+function rxIndex(gid, target) {
+  const me = CU?.uid, out = {c: 0};
+  for(const r of rxByGroup[gid] || []) {
+    if(r.target !== target) continue;
+    if(r.kind === 'c') { out.c++; continue; }
+    if(!RX_EM[r.em]) continue;
+    const o = out[r.em] || (out[r.em] = {n: 0, me: false});
+    o.n++; if(r.uid === me) o.me = true;
+  }
+  return out;
+}
+function rxBarHTML(gid, target, to, title) {
+  if(!CU || to === CU.uid) return rxSumHTML(gid, target, title);
+  const ix = rxIndex(gid, target), tt = cutName(title, 60);
+  return `<div class="rx-bar">${RX.map(([k, e]) => {
+      const r = ix[k] || {n: 0};
+      return `<button type="button" class="rx-btn${r.me ? ' on' : ''}" aria-pressed="${!!r.me}" aria-label="${esc(t('rx.' + k))}${r.n ? ' (' + r.n + ')' : ''}"
+        data-a0="${esc(gid)}" data-a1="${esc(target)}" data-a2="${esc(to)}" data-a3="${k}" data-a4="${esc(tt)}"
+        onclick="toggleReaction(this.dataset.a0,this.dataset.a1,this.dataset.a2,this.dataset.a3,this.dataset.a4,this)">${e}${r.n ? `<span>${r.n}</span>` : ''}</button>`;
+    }).join('')}<button type="button" class="rx-btn rx-c" aria-label="${esc(t('rx.comments', {n: ix.c}))}" data-a0="${esc(gid)}" data-a1="${esc(target)}" data-a2="${esc(to)}" data-a3="${esc(tt)}"
+      onclick="openReactions(this.dataset.a0,this.dataset.a1,this.dataset.a2,this.dataset.a3)">💬${ix.c ? `<span>${ix.c}</span>` : ''}</button></div>`;
+}
+// Vlastní položka: jen souhrn „👏 Adam, Jana · 💬 1“ (otevře seznam); withGroup = název skupiny (detail návyku)
+function rxSumHTML(gid, target, title, withGroup = false) {
+  const list = (rxByGroup[gid] || []).filter(r => r.target === target);
+  if(!list.length || !CU) return '';
+  const ems = [...new Set(list.filter(r => r.kind === 'e' && RX_EM[r.em]).map(r => RX_EM[r.em]))].join('');
+  const names = [...new Set(list.map(r => memberName(gid, r.uid)))].slice(0, 3);
+  const c = list.filter(r => r.kind === 'c').length;
+  const txt = (withGroup ? groupLabel(gid) + ': ' : '') + (ems ? ems + ' ' : '') + names.join(', ') + (c ? ' · 💬 ' + c : '');
+  return `<div><button type="button" class="rx-sum" data-a0="${esc(gid)}" data-a1="${esc(target)}" data-a2="${esc(CU.uid)}" data-a3="${esc(cutName(title, 60))}"
+    onclick="openReactions(this.dataset.a0,this.dataset.a1,this.dataset.a2,this.dataset.a3)">${esc(txt)}</button></div>`;
+}
+const _rxTimes = [];
+let _rxLastComment = 0;
+const RX_TARGET_RE = /^(a|s)_[A-Za-z0-9_-]{1,200}$/;
+window.toggleReaction = (gid, target, to, em, title, btn) => {
+  if(!CU || !myGroupIds().includes(gid) || !RX_EM[em] || !RX_TARGET_RE.test(target) || !to || to === CU.uid) return;
+  const now = Date.now();
+  while(_rxTimes.length && now - _rxTimes[0] > 60000) _rxTimes.shift();
+  if(_rxTimes.length >= 20) { toast(t('rx.slow')); return; }
+  _rxTimes.push(now);
+  if(btn && !matchMedia('(prefers-reduced-motion: reduce)').matches) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
+  const rid = target + '_' + CU.uid + '_' + em;
+  const ref = doc(db,'families',gid,'reactions',rid);
+  const list = rxByGroup[gid] || (rxByGroup[gid] = []);
+  const i = list.findIndex(r => r._id === rid);
+  if(i >= 0) {
+    list.splice(i, 1);
+    deleteDoc(ref).catch(e => console.warn('[LP] reakce', e?.code || e?.name));
+  } else {
+    // Hned do paměti (snapshot to potvrdí), zápis bez await
+    list.push({_id: rid, kind: 'e', target, to, uid: CU.uid, em});
+    setDoc(ref, {kind: 'e', target, to, uid: CU.uid, em, ts: serverTimestamp(), expireAt: Timestamp.fromMillis(now + RX_TTL_MS)})
+      .catch(e => console.warn('[LP] reakce', e?.code || e?.name));
+    logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, em});
+  }
+  refreshRxUI(gid);
+};
+
+// Sheet reakcí a komentářů
+let _rx = null; // {gid, target, to, title}
+window.openReactions = (gid, target, to, title) => {
+  if(!CU || !myGroupIds().includes(gid) || !RX_TARGET_RE.test(target)) return;
+  _rx = {gid, target, to, title: cutName(title, 60)};
+  const tEl = document.getElementById('rx-title'), fEl = document.getElementById('rx-form');
+  if(tEl) tEl.textContent = '💬 ' + _rx.title + (to && to !== CU.uid ? ' · ' + memberName(gid, to) : '');
+  // Na vlastní položku psát nejde (pravidlo to != uid) → formulář jen u cizí
+  if(fEl) fEl.innerHTML = to && to !== CU.uid
+    ? `<input id="rx-inp" type="text" maxlength="${RX_MAX_LEN}" autocomplete="off" placeholder="${tH('rx.placeholder')}" aria-label="${tH('rx.placeholder')}" oninput="rxCount()" onkeydown="if(event.key==='Enter'){event.preventDefault();sendRxComment()}">
+       <button type="button" class="btn-p" style="width:auto;min-height:44px;padding:0 16px" onclick="sendRxComment()">${tH('rx.send')}</button>`
+    : '';
+  const cEl = document.getElementById('rx-cnt'); if(cEl) cEl.textContent = '';
+  renderRxList();
+  om('m-rx');
+};
+function renderRxList() {
+  const el = document.getElementById('rx-list');
+  if(!el || !_rx) return;
+  const {gid, target} = _rx, me = CU?.uid;
+  const list = (rxByGroup[gid] || []).filter(r => r.target === target);
+  const ems = list.filter(r => r.kind === 'e' && RX_EM[r.em]);
+  const ms = r => typeof r.ts?.toMillis === 'function' ? r.ts.toMillis() : Date.now();
+  const cms = list.filter(r => r.kind === 'c' && typeof r.text === 'string').sort((a, b) => ms(a) - ms(b));
+  let html = ems.length ? `<div class="rx-who">${ems.map(r => `<span>${RX_EM[r.em]} ${esc(memberName(gid, r.uid))}</span>`).join('')}</div>` : '';
+  if(!cms.length) html += `<div class="gf-empty">${tH('rx.empty')}</div>`;
+  else html += cms.map(r => {
+    const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[r.uid]?.avatar, '👤');
+    const canDel = r.uid === me || r.to === me;
+    return `<div class="rx-cm"><span aria-hidden="true">${av}</span><div style="flex:1;min-width:0">
+      <div class="gf-who"><b>${esc(memberName(gid, r.uid))}</b> · ${esc(gfTime(ms(r)))}</div>
+      <div class="rx-cm-t">${esc(r.text.slice(0, RX_MAX_LEN))}</div></div>
+      ${canDel ? `<button type="button" class="sh-x" aria-label="${tH('rx.del')}" data-a0="${esc(r._id)}" onclick="delRxComment(this.dataset.a0)">✕</button>` : ''}</div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+window.rxCount = () => {
+  const inp = document.getElementById('rx-inp'), c = document.getElementById('rx-cnt');
+  if(!inp || !c) return;
+  const n = inp.value.length;
+  c.textContent = n >= 160 ? n + ' / ' + RX_MAX_LEN : '';
+};
+window.sendRxComment = () => {
+  const inp = document.getElementById('rx-inp');
+  if(!CU || !_rx || !inp) return;
+  const {gid, target, to, title} = _rx;
+  const text = inp.value.trim().slice(0, RX_MAX_LEN);
+  if(!text || !to || to === CU.uid || !myGroupIds().includes(gid)) return;
+  const now = Date.now();
+  if(now - _rxLastComment < 3000) { toast(t('rx.slow')); return; }
+  _rxLastComment = now;
+  const ref = doc(collection(db,'families',gid,'reactions'));
+  const data = {kind: 'c', target, to, uid: CU.uid, text, ts: serverTimestamp(), expireAt: Timestamp.fromMillis(now + RX_TTL_MS)};
+  (rxByGroup[gid] || (rxByGroup[gid] = [])).push({...data, ts: Timestamp.fromMillis(now), _id: ref.id});
+  setDoc(ref, data).catch(e => { console.warn('[LP] komentar', e?.code || e?.name); toast('❌ ' + userErr(e)); });
+  logGroupActivity(gid, 'react', 'add', title, 1, {ref: target, to, msg: text});
+  inp.value = ''; window.rxCount();
+  refreshRxUI(gid);
+};
+window.delRxComment = rid => {
+  if(!CU || !_rx || typeof rid !== 'string' || !rid) return;
+  const {gid} = _rx, list = rxByGroup[gid] || [];
+  const i = list.findIndex(r => r._id === rid);
+  if(i < 0 || !(list[i].uid === CU.uid || list[i].to === CU.uid)) return;
+  if(!confirm(t('rx.delConfirm'))) return;
+  list.splice(i, 1);
+  deleteDoc(doc(db,'families',gid,'reactions',rid)).catch(e => console.warn('[LP] komentar', e?.code || e?.name));
+  refreshRxUI(gid);
+};
+
 // ── CO JE NOVÉHO VE SKUPINĚ (feed, nepřečtené, odkaz z notifikace) ──
-const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊'};
+const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', react:'👏'};
 // Akce, které klient zapisuje (popisky gf.a.<modul>.<akce>); ostatní = obecný popisek
 const GF_ACTS = {shop:['add','edit','del','done','clear'], cal:['add','edit','del'], meal:['edit','del','plan'],
-  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del']};
-const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping'};
+  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], react:['add']};
+const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', react:'habits'};
 const _gfUnsub = {};   // gid → odhlášení listeneru nepřečtených
 const _gfUnread = {};  // gid → {total, mods:{shop:n,…}}
 let _gf = {gid:null, mod:null, items:null, err:false, prevSeen:0, token:0};
@@ -6410,6 +6942,8 @@ function myGroupIds() {
 function groupDataOf(gid) { return gid === familyId ? familyData : extraGroupsData[gid]; }
 // Modul ve feedu/nepřečtených: hlavní skupina vše, vedlejší jen sdílené moduly (jako server)
 function gfModVisible(gid, m) { return GA_MODS.includes(m) && (gid === familyId || groupModShared(gid, m)); }
+// Záznam ve feedu a v nepřečtených: reakce vidí jen adresát (reakce mezi ostatními by byly šum)
+function gfShow(gid, a) { return gfModVisible(gid, a.module) && (a.module !== 'react' || a.to === CU?.uid); }
 function groupFeedSeen(gid) { const v = prof?.groupFeedSeen?.[gid]; return Number.isFinite(v) ? v : 0; }
 
 // Nepřečtené: jeden listener na skupinu (od posledního otevření feedu, nejvýš 7 dní), jen změny ostatních
@@ -6423,20 +6957,22 @@ function startGroupUnread(gid) {
       const mods = {}; let total = 0;
       snap.docs.forEach(d => {
         const a = d.data();
-        if(a.uid === CU?.uid || !gfModVisible(gid, a.module)) return;
+        if(a.uid === CU?.uid || !gfShow(gid, a)) return;
         mods[a.module] = (mods[a.module] || 0) + 1; total++;
       });
       _gfUnread[gid] = {total, mods};
       updateGroupFeedBadges();
     }, e => { delete _gfUnsub[gid]; familyListenErr(e); }); // po chybě jde listener spustit znovu
 }
+// Konec odběrů skupiny (odchod, odebrání, odhlášení): nepřečtené + sdílené návyky a reakce
 function stopGroupUnread(gid) {
   if(!gid) return;
   if(_gfUnsub[gid]) { _gfUnsub[gid](); delete _gfUnsub[gid]; }
   delete _gfUnread[gid];
+  stopGroupSocial(gid);
   updateGroupFeedBadges();
 }
-function stopAllGroupUnread() { Object.keys(_gfUnsub).forEach(stopGroupUnread); }
+function stopAllGroupUnread() { Object.keys(_gfUnsub).forEach(stopGroupUnread); resetSocialLocal(); }
 
 // Štítky počtu na kartách skupin + tečky u 🔔 v hlavičkách modulů
 function updateGroupFeedBadges() {
@@ -6497,8 +7033,8 @@ async function loadGroupFeed(gid) {
     const snap = await getDocs(query(collection(db,'families',gid,'activity'),
       where('ts','>',Timestamp.fromMillis(Date.now() - GA_TTL_MS)), orderBy('ts','desc'), limit(100)));
     if(tok !== _gf.token) return;
-    _gf.items = snap.docs.map(d => d.data({serverTimestamps:'estimate'}))
-      .filter(a => gfModVisible(gid, a.module) && typeof a.ts?.toMillis === 'function')
+    _gf.items = snap.docs.map(d => ({...d.data({serverTimestamps:'estimate'}), _id: d.id}))
+      .filter(a => gfShow(gid, a) && typeof a.ts?.toMillis === 'function')
       .map(a => ({...a, _ts: a.ts.toMillis()}));
   } catch(e) {
     if(tok !== _gf.token) return;
@@ -6539,6 +7075,12 @@ function gfWhat(a) {
   let s = t(key);
   const count = Number.isInteger(a.count) && a.count > 0 ? a.count : 1;
   const title = typeof a.title === 'string' ? a.title.trim() : '';
+  if(a.module === 'habit' && a.action === 'streak') return t('gf.a.habit.streak', {n: Number.isInteger(a.val) ? a.val : 0}) + (title ? ': ' + title : '');
+  if(a.module === 'react') {
+    const ems = String(a.em || '').split(',').map(k => RX_EM[k] || '').join('');
+    const msg = typeof a.msg === 'string' ? a.msg.trim().slice(0, 200) : '';
+    return msg ? '💬 „' + msg + '“ · ' + t('gf.a.react.to', {title}) : (ems ? ems + ' ' : '') + t('gf.a.react.to', {title});
+  }
   if(a.action === 'clear') return count > 1 ? s + ' (' + count + ')' : s;
   if(a.action === 'plan' || !title) return count > 1 ? s + ' (' + count + ')' : s;
   const shown = Number.isInteger(a.n) && a.n > 0 ? a.n : 1;
@@ -6558,9 +7100,12 @@ function renderGroupFeed() {
   // Čipy: sdílené moduly skupiny + moduly, které ve feedu jsou
   const items = _gf.items || [];
   if(_gf.mod && gid !== familyId && !gfModVisible(gid, _gf.mod)) _gf.mod = null;
-  const mods = GA_MODS.filter(m => gid === familyId
-    ? (groupModShared(gid, m) || items.some(a => a.module === m) || m === _gf.mod)
-    : gfModVisible(gid, m));
+  // Osobní moduly (návyky, reakce) jen když ve feedu jsou; jsou vlevo (častější)
+  const mods = [...GA_PERSONAL, ...GA_MODS.filter(m => !GA_PERSONAL.includes(m))].filter(m => GA_PERSONAL.includes(m)
+    ? (items.some(a => a.module === m) || m === _gf.mod)
+    : gid === familyId
+      ? (groupModShared(gid, m) || items.some(a => a.module === m) || m === _gf.mod)
+      : gfModVisible(gid, m));
   cEl.setAttribute('aria-label', t('gf.filter'));
   cEl.innerHTML = `<button type="button" class="gf-chip${!_gf.mod ? ' active' : ''}" aria-pressed="${!_gf.mod}" data-a0="" onclick="gfPickMod(this.dataset.a0)">${tH('gf.all')}</button>`
     + mods.map(m => `<button type="button" class="gf-chip${_gf.mod === m ? ' active' : ''}" aria-pressed="${_gf.mod === m}" aria-label="${esc(gfModName(m))}" title="${esc(gfModName(m))}" data-a0="${m}" onclick="gfPickMod(this.dataset.a0)">${GF_EMOJI[m]}</button>`).join('');
@@ -6581,10 +7126,15 @@ function renderGroupFeed() {
     const mine = a.uid === CU?.uid;
     const who = mine ? t('gf.you') : (cutName(members[a.uid]?.name, 40) || cutName(a.name, 40) || t('gf.someone'));
     const unread = !mine && a._ts > _gf.prevSeen;
-    html += `<div class="gf-item${unread ? ' unread' : ''}">
-      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${GF_EMOJI[a.module]}</button>
+    const ms = a.module === 'habit' && a.action === 'streak';
+    // Pod řádkem návyku reakce (cíl a_<id>); u vlastního řádku jen souhrn, na sebe reagovat nejde
+    const rx = a.module === 'habit' && a._id
+      ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
+      : '';
+    html += `<div class="gf-item${unread ? ' unread' : ''}${ms ? ' ms' : ''}">
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${ms ? '🎉' : GF_EMOJI[a.module]}</button>
       <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
-      <div class="gf-what">${esc(gfWhat(a))}</div></div>
+      <div class="gf-what">${esc(gfWhat(a))}</div>${rx}</div>
     </div>`;
   }
   lEl.innerHTML = html;
@@ -6622,7 +7172,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 // ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
 const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
-  quiet:{from:'22:00', to:'07:00'}, notifyChecked:false};
+  habit:'evening', react:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
 const GN_OPTS = ['instant','q15','evening','off'];
 // Preference s výchozími hodnotami; neplatné hodnoty = výchozí (stejně jako server)
 function groupNotifPrefs() {
@@ -6633,6 +7183,7 @@ function groupNotifPrefs() {
   else if(raw.quiet && TP_RE.test(raw.quiet.from) && TP_RE.test(raw.quiet.to)) gp.quiet = {from: raw.quiet.from, to: raw.quiet.to};
   else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
   gp.notifyChecked = raw.notifyChecked === true;
+  gp.msInstant = raw.msInstant !== false; // milníky (série 7/30/100) hned i při „Večer“
   return gp;
 }
 function renderGroupNotifSettings() {
@@ -6642,16 +7193,21 @@ function renderGroupNotifSettings() {
   box.hidden = !inGroup;
   if(!inGroup) { box.innerHTML = ''; return; }
   const gp = groupNotifPrefs();
-  // Jen moduly sdílené aspoň v jedné skupině (dokud se skupiny načítají, všechny)
-  let mods = GA_MODS.filter(m => gids.some(g => groupModShared(g, m)));
-  if(!mods.length) mods = GA_MODS;
+  // Jen moduly sdílené aspoň v jedné skupině (dokud se skupiny načítají, všechny); osobní moduly zvlášť
+  const shMods = GA_MODS.filter(m => !GA_PERSONAL.includes(m));
+  let mods = shMods.filter(m => gids.some(g => groupModShared(g, m)));
+  if(!mods.length) mods = shMods;
+  const row = k => `<div class="gn-row"><div class="gn-lbl" id="gn-lbl-${k}">${GF_EMOJI[k]} ${tH('gn.mod.' + k)}</div>
+      <div class="seg seg--block" role="radiogroup" aria-labelledby="gn-lbl-${k}">${GN_OPTS.map(v =>
+        `<button type="button" class="seg-btn${gp[k] === v ? ' active' : ''}" role="radio" aria-checked="${gp[k] === v}" data-a0="${k}" data-a1="${v}" onclick="setGroupNotif(this.dataset.a0,this.dataset.a1)">${tH('gn.opt.' + v)}</button>`).join('')}</div></div>`;
   const tpStyle = 'background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:\'Crimson Pro\',serif;font-size:15px;outline:none;width:7.5em';
   box.innerHTML = `<div class="gn-h">👨‍👩‍👧 ${tH('gn.title')}</div>
     <div class="gn-d">${tH('gn.desc')}</div>
-    ${mods.map(k => `<div class="gn-row"><div class="gn-lbl" id="gn-lbl-${k}">${GF_EMOJI[k]} ${tH('gn.mod.' + k)}</div>
-      <div class="seg seg--block" role="radiogroup" aria-labelledby="gn-lbl-${k}">${GN_OPTS.map(v =>
-        `<button type="button" class="seg-btn${gp[k] === v ? ' active' : ''}" role="radio" aria-checked="${gp[k] === v}" data-a0="${k}" data-a1="${v}" onclick="setGroupNotif(this.dataset.a0,this.dataset.a1)">${tH('gn.opt.' + v)}</button>`).join('')}</div></div>`).join('')}
+    ${mods.map(row).join('')}
     <label class="gn-check"><input type="checkbox" id="gn-checked"${gp.notifyChecked ? ' checked' : ''} onchange="setGroupNotif('notifyChecked',this.checked)"><span>${tH('gn.checked')}</span></label>
+    <div class="gf-day">${tH('gn.personal')}</div>
+    ${GA_PERSONAL.map(row).join('')}
+    <label class="gn-check"><input type="checkbox" id="gn-ms"${gp.msInstant ? ' checked' : ''} onchange="setGroupNotif('msInstant',this.checked)"><span>🎉 ${tH('gn.msInstant')}</span></label>
     <label class="gn-check"><input type="checkbox" id="gn-quiet-on"${gp.quiet ? ' checked' : ''} onchange="setGroupQuiet()"><span>🌙 ${tH('gn.quiet')}</span></label>
     ${gp.quiet ? `<div class="setrow" id="gn-quiet-times" style="gap:12px">
       <div class="fg"><label class="flbl" for="gn-quiet-from">${tH('gn.from')}</label>
@@ -6672,7 +7228,7 @@ function saveGroupNotif(patch) {
   renderGroupNotifSettings();
 }
 window.setGroupNotif = (key, val) => {
-  const ok = key === 'notifyChecked' ? typeof val === 'boolean' : (GA_MODS.includes(key) && GN_OPTS.includes(val));
+  const ok = (key === 'notifyChecked' || key === 'msInstant') ? typeof val === 'boolean' : (GA_MODS.includes(key) && GN_OPTS.includes(val));
   if(!ok) return;
   saveGroupNotif({[key]: val});
 };
@@ -10874,10 +11430,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     const logId = existingHabitId + '_' + today;
     const value = aiGoal(item.count);
     const goal = Math.max(1, Math.floor(Number(habit.goal))||1);
-    const log = {id:logId, habitId:existingHabitId, date:today, done:value>=goal, value};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
-    const ex = habitLogs.find(l=>l.id===logId);
-    if(ex) Object.assign(ex,log); else habitLogs.push(log);
+    await putHabitLog({id:logId, habitId:existingHabitId, date:today, done:value>=goal, value});
     document.getElementById('habit-detect-banner')?.remove();
     toast(`✅ "${habit.name}" zaznamenáno${item.count?' ('+item.count+'×)':''}!`);
     renderHabits();
@@ -10895,10 +11448,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     newH.id = ref.id;
     // Zaznamenat dnešní splnění
     const logId = ref.id + '_' + today;
-    const log = {id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',logId), log);
-    const exL = habitLogs.find(l=>l.id===logId);
-    if (exL) Object.assign(exL, log); else habitLogs.push(log);
+    await putHabitLog({id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)});
     document.getElementById('habit-detect-banner')?.remove();
     toast(`✅ Návyk "${item.activity}" vytvořen a zaznamenán!`);
   }
@@ -10919,10 +11469,7 @@ window.createHabitFromEntry = async (dataEnc) => {
   // Zaznamenat dnešní splnění pokud je k dispozici
   if (h.logToday) {
     const lId = newRef.id + '_' + toDS();
-    const lg = {id:lId, habitId:newRef.id, date:toDS(), done:true, value:1};
-    await setDoc(doc(db,'users',CU.uid,'habitLogs',lId), lg);
-    const exLg = habitLogs.find(l=>l.id===lId);
-    if (exLg) Object.assign(exLg, lg); else habitLogs.push(lg);
+    await putHabitLog({id:lId, habitId:newRef.id, date:toDS(), done:true, value:1});
   }
   // Odstraň tuto kartu z banneru
   document.getElementById('habit-detect-banner')?.remove();
