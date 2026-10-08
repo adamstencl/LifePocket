@@ -746,7 +746,7 @@ onAuthStateChanged(auth,async u=>{
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
-    clearTimeout(_gTimer); game=null; _bdCtx=null; _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
+    clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
@@ -1392,8 +1392,8 @@ function habitDayCounts(h,ds,today=toDS()){ const st=habitDayState(h,ds,today); 
 // ── ŠTÍTY SÉRIE ❄️ (odvozené z logů, použitý štít = log {skipped,frozen,shield}) ──
 // Za každých 7 splněných dní v řadě 1 štít, max. 2 na návyk. Deterministicky z historie → stejné na všech zařízeních.
 const SHIELD_EVERY=7, SHIELD_MAX=2, SHIELD_DEPTH=14; // hloubka hledání mezery (dny)
-let _shCache=new Map(), _bdCtx=null; // _bdCtx: cache podkladů pro odznaky (stejný reset jako štíty)
-function shieldCacheReset(){ _shCache=new Map(); _bdCtx=null; }
+let _shCache=new Map(), _bdCtx=null, _wkCache=new Map(); // _bdCtx: podklady pro odznaky, _wkCache: týdenní souhrny (stejný reset jako štíty)
+function shieldCacheReset(){ _shCache=new Map(); _bdCtx=null; _wkCache=new Map(); }
 // Stav štítů návyku k datu: {sh: počet, run: splněné dny v aktuálním běhu}
 function habitShieldState(h,upTo=toDS()){
   const key=h.id+'|'+upTo;
@@ -5346,8 +5346,9 @@ function gameTotal(g=game){
 function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)||1); }
 // Den: splněné návyky (max. 10) + perfektní den (všechny denní návyky na řadě, aspoň 2). Týdenní se do perfektního dne nepočítají.
 // Archivovaný návyk splněný v ten den se počítá dál (archivace body neubere)
+function perfDue(ds){ return habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
 function isPerfectDay(ds){
-  const due=habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral');
+  const due=perfDue(ds);
   return due.length>=2&&due.every(h=>hDone(h.id,ds));
 }
 function dayXP(ds){
@@ -5556,7 +5557,7 @@ function renderGameSheet(){
   const mon=addDays(today,-((new Date(today+'T12:00:00').getDay()+6)%7));
   let wx=0, perf=0;
   for(let ds=mon;ds<=today;ds=addDays(ds,1)){ wx+=Number(game.days[ds])||0; if(isPerfectDay(ds)) perf++; }
-  for(const o of Object.values(game.once)) if(o&&o.d>=mon&&o.d<=today) wx+=Number(o.x)||0;
+  for(const o of Object.values(game.once)) if(o&&!o.s&&o.d>=mon&&o.d<=today) wx+=Number(o.x)||0;   // bez tichých odměn z historie
   const accBtn=a=>{
     const lock=a.lvl>L, sel=game.rex.acc===a.id&&!lock, nm=t('game.acc.'+a.id);
     return `<button type="button" class="gw-btn${sel?' sel':''}${lock?' locked':''}" ${lock?'disabled':''} aria-pressed="${sel}" aria-label="${esc(lock?nm+', '+t('game.locked',{n:a.lvl}):nm)}" data-a0="${a.id}" onclick="gameWear(this.dataset.a0)"><span class="gw-em">${a.em}</span><span class="gw-l">${lock?tH('game.from',{n:a.lvl}):esc(nm)}</span></button>`;
@@ -5694,11 +5695,13 @@ function badgeLogCtx(){
   // Návrat: splnění po aspoň 7 dnech bez jediného splnění (napříč návyky)
   let comeback=false;
   for(let i=1;i<dates.length&&!comeback;i++) if(dsDiff(dates[i-1],dates[i])>COMEBACK_GAP) comeback=true;
-  // Perfektní dny a nejdelší řada perfektních dní (po sobě jdoucí kalendářní dny)
-  let perfN=0, perfRun=0, run=0, prev='';
-  for(const ds of dates){
-    if(!isPerfectDay(ds)){ run=0; prev=''; continue; }
-    perfN++; run=(prev&&addDays(prev,1)===ds)?run+1:1; prev=ds; if(run>perfRun) perfRun=run;
+  // Perfektní dny a nejdelší řada (kalendářní dny; den bez denního návyku na řadě řadu nepřeruší ani nepřičte)
+  let perfN=0, perfRun=0, run=0;
+  if(dates.length) for(let ds=dates[0];ds<=today;ds=addDays(ds,1)){
+    const due=perfDue(ds);
+    if(!due.length) continue;
+    if(due.length>=2&&due.every(h=>hDone(h.id,ds))){ perfN++; if(++run>perfRun) perfRun=run; }
+    else if(ds<today) run=0;   // dnešek ještě běží
   }
   let best=0;
   for(const h of habits) if(h&&h.freq?.type!=='weekly'){ const b=calcBestStreak(h); if(b>best) best=b; }
@@ -5728,18 +5731,23 @@ function badgeState(b,c){
 }
 // Vyhodnocení v gameSync: nové odznaky se zapíšou přepisem pevných klíčů (badges.<id>, once.bd_<id>) → idempotentní.
 // První vyhodnocení (bdv chybí) proběhne potichu: odznaky z dosavadní historie bez vlny oslav.
+// Tiché odznaky mají v once.bd_<id> příznak s:1 → týdenní souhrn je nebere jako nové ani do XP a úrovně týdne.
 function gameBadges(){
   if(!game||!CU||_accDeleting||_accDeleted) return [];
-  const c=badgeCtx(), today=toDS(), fresh=[];
-  for(const b of BADGES){ if(game.badges[b.id]) continue; const st=badgeState(b,c); if(st.cur>=st.max) fresh.push(b); }
-  const silent=!game.bdv;
-  if(!fresh.length&&!silent) return [];
-  const before=gameTotal(), patch={};
-  for(const b of fresh){
-    game.badges[b.id]=today; patch['badges.'+b.id]=today;
-    const k='bd_'+b.id;
-    if(!game.once[k]){ game.once[k]={d:today,x:XP.badge}; patch['once.'+k]=game.once[k]; }
+  const today=toDS(), fresh=[], silent=!game.bdv, before=gameTotal(), patch={};
+  // Tichý průchod opakuje vyhodnocení, dokud přibývají (odznaky za úroveň díky XP z jiných odznaků)
+  for(let i=0;i<BADGES.length;i++){
+    const c=badgeCtx(), add=[];
+    for(const b of BADGES){ if(game.badges[b.id]) continue; const st=badgeState(b,c); if(st.cur>=st.max) add.push(b); }
+    for(const b of add){
+      game.badges[b.id]=today; patch['badges.'+b.id]=today;
+      const k='bd_'+b.id;
+      if(!game.once[k]){ game.once[k]=silent?{d:today,x:XP.badge,s:1}:{d:today,x:XP.badge}; patch['once.'+k]=game.once[k]; }
+    }
+    fresh.push(...add);
+    if(!silent||!add.length) break;
   }
+  if(!fresh.length&&!silent) return [];
   if(silent){ game.bdv=1; patch.bdv=1; }
   game.xp=gameTotal(); patch.xp=game.xp;
   if(silent){ const L=levelOf(game.xp); if(L>game.lvlSeen){ game.lvlSeen=L; patch.lvlSeen=L; } }
@@ -5832,26 +5840,26 @@ async function drawShareCard(spec){
   c.fillStyle=lg; c.font='italic 700 44px '+PF; c.textAlign='left'; c.fillText('LifePocket',172,118);
   if(spec.range){ c.fillStyle=SC.text2; c.textAlign='right'; scFit(c,spec.range,'600 {s}px '+CP,32,420); c.fillText(spec.range,1000,118); }
   c.textAlign='center';
-  // Kruh s emoji (avatar nebo odznak)
-  const compact=!!(spec.bars&&spec.bars.length), r=compact?110:170, cy=compact?330:450;
+  // Kruh s emoji (avatar nebo odznak). Týden (compact): menší kruh, číslo a mezery, aby se sloupce i dlaždice vešly i se jménem
+  const compact=!!(spec.bars&&spec.bars.length), r=compact?90:170, cy=compact?280:450;
   c.beginPath(); c.arc(540,cy,r,0,Math.PI*2); c.fillStyle=SC.card; c.fill();
   c.lineWidth=compact?4:6; c.strokeStyle=SC.gold; c.stroke();
   c.fillStyle=SC.text; c.font=Math.round(r*1.05)+'px '+SC_EMOJI; c.fillText(spec.em||'⭐',540,cy+8);
-  let y=cy+r+(compact?70:100);
-  c.fillStyle=SC.text; scFit(c,spec.title||'','italic 700 {s}px '+PF,compact?56:76,940); c.fillText(spec.title||'',540,y); y+=compact?52:72;
+  let y=cy+r+(compact?60:100);
+  c.fillStyle=SC.text; scFit(c,spec.title||'','italic 700 {s}px '+PF,compact?56:76,940); c.fillText(spec.title||'',540,y); y+=compact?50:72;
   if(spec.sub){ c.fillStyle=SC.gold; scFit(c,spec.sub,'600 {s}px '+CP,40,940); c.fillText(spec.sub,540,y); y+=56; }
-  if(spec.name){ c.fillStyle=SC.text2; scFit(c,spec.name,'600 {s}px '+CP,36,800); c.fillText(spec.name,540,y); y+=50; }
-  if(spec.big){ y+=78; c.fillStyle=SC.gold; scFit(c,spec.big,'700 {s}px '+PF,170,940); c.fillText(spec.big,540,y); y+=100;
-    if(spec.bigLbl){ c.fillStyle=SC.text2; c.font='600 40px '+CP; c.fillText(spec.bigLbl,540,y); y+=60; } }
-  if(spec.quote){ c.fillStyle=SC.text; scFit(c,spec.quote,'italic 400 {s}px '+CP,38,960); c.fillText(spec.quote,540,y); y+=56; }
-  if(spec.line){ c.fillStyle=SC.text2; scFit(c,spec.line,'600 {s}px '+CP,34,940); c.fillText(spec.line,540,y); y+=56; }
-  // Sloupce po dnech (procenta, null = nic na řadě)
+  if(spec.name){ c.fillStyle=SC.text2; scFit(c,spec.name,'600 {s}px '+CP,36,800); c.fillText(spec.name,540,y); y+=compact?46:50; }
+  if(spec.big){ y+=compact?62:78; c.fillStyle=SC.gold; scFit(c,spec.big,'700 {s}px '+PF,compact?130:170,940); c.fillText(spec.big,540,y); y+=compact?92:100;
+    if(spec.bigLbl){ c.fillStyle=SC.text2; c.font='600 40px '+CP; c.fillText(spec.bigLbl,540,y); y+=compact?52:60; } }
+  if(spec.quote){ c.fillStyle=SC.text; scFit(c,spec.quote,'italic 400 {s}px '+CP,38,960); c.fillText(spec.quote,540,y); y+=compact?50:56; }
+  if(spec.line){ c.fillStyle=SC.text2; scFit(c,spec.line,'600 {s}px '+CP,34,940); c.fillText(spec.line,540,y); y+=compact?50:56; }
+  // Sloupce po dnech (procenta, null = nic na řadě): 10 px pod textem, výška max. 110, popisky 34 pod nimi
   if(compact){
-    const bottom=y+120;
+    const bottom=y+130;
     spec.bars.forEach((b,i)=>{ const x=180+i*120, p=b.p, h=p==null?6:Math.max(8,p/100*110);
       c.fillStyle=p==null?SC.line:p>=80?SC.green:p>=50?SC.gold:SC.gold2; scRound(c,x-30,bottom-h,60,h,10); c.fill();
       c.fillStyle=SC.text2; c.font='600 30px '+CP; c.fillText(b.lbl,x,bottom+34); });
-    y=bottom+70;
+    y=bottom+74;   // popisek dní končí na bottom+49
   }
   // Dlaždice
   const tiles=(spec.tiles||[]).slice(0,3);
@@ -5943,6 +5951,13 @@ window.shareBadge=id=>{ if(!game?.badges?.[id]) return; cm('m-badge'); openShare
 // ── TÝDENNÍ SOUHRN OD SPOLEČNÍKA (karta na Domů v pondělí a úterý, za minulý týden po–ne, lokální čas) ──
 const weekStartDS=ds=>addDays(ds,-((new Date(ds+'T12:00:00').getDay()+6)%7));   // pondělí týdne
 function calcWeekSummary(mon){
+  const key=toDS()+'|'+gameTotal()+'|'+Object.keys(game?.badges||{}).length+'|'+habits.length, hit=_wkCache.get(mon);
+  if(hit&&hit.key===key) return hit.S;
+  const S=calcWeekSummaryRaw(mon);
+  _wkCache.set(mon,{key,S});
+  return S;
+}
+function calcWeekSummaryRaw(mon){
   const sun=addDays(mon,6), today=toDS(), days=[];
   for(let i=0;i<7;i++) days.push(addDays(mon,i));
   const inW=d=>typeof d==='string'&&d>=mon&&d<=sun;
@@ -5968,16 +5983,17 @@ function calcWeekSummary(mon){
   let completions=0, shields=0;
   for(const l of habitLogs){ if(!l||!inW(l.date)) continue; if(l.done) completions++; else if(l.shield) shields++; }
   const perfect=days.filter(ds=>ds<=today&&isPerfectDay(ds)).length;
-  // Body týdne a úroveň na začátku a konci týdne (z dnů a jednorázových odměn s datem)
+  // Body týdne a úroveň na začátku a konci týdne (z dnů a jednorázových odměn s datem).
+  // Tiché odměny (s:1, odznaky z historie) se berou jako body už před týdnem: nejsou v XP týdne ani v nové úrovni.
   let xp=0, after=0, praise=0;
   for(const [ds,v] of Object.entries(game?.days||{})){ if(inW(ds)) xp+=Number(v)||0; else if(ds>sun) after+=Number(v)||0; }
   for(const [k,o] of Object.entries(game?.once||{})){
     if(!o) continue;
-    if(inW(o.d)){ xp+=Number(o.x)||0; if(k.startsWith('pr_')) praise+=Number(o.n)||0; }
+    if(inW(o.d)){ if(!o.s) xp+=Number(o.x)||0; if(k.startsWith('pr_')) praise+=Number(o.n)||0; }
     else if(o.d>sun) after+=Number(o.x)||0;
   }
   const endXP=Math.max(0,gameTotal()-after), lvlEnd=levelOf(endXP), lvlStart=levelOf(Math.max(0,endXP-xp));
-  const badges=BADGES.filter(b=>inW(game?.badges?.[b.id]));
+  const badges=BADGES.filter(b=>inW(game?.badges?.[b.id])&&!game?.once?.['bd_'+b.id]?.s);
   let best=0;
   for(const h of habits) if(h&&!h.archived&&h.freq?.type!=='weekly'){ const n=habitStreak(h.id,sun>today?today:sun); if(n>best) best=n; }
   return {mon,sun,days,perDay,pct:due?Math.round(done/due*100):0,hasData:due>0||completions>0,completions,shields,perfect,
