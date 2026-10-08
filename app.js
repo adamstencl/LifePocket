@@ -741,7 +741,7 @@ onAuthStateChanged(auth,async u=>{
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
-    clearTimeout(_gTimer); game=null; _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
+    clearTimeout(_gTimer); game=null; _bdCtx=null; _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
@@ -756,7 +756,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -1233,7 +1233,12 @@ function resetHabitLogCache(){ _hlOldAll=false; _hlOldLoading=null; _hlOldHabits
 // Zápis a mazání záznamu návyku – jediné místo (zrcadlo sdíleného návyku ve skupině musí sedět).
 // Po zápisu doplní cache v paměti a ohlásí změnu (onHabitLogChanged → zrcadlo, aktivita, milník).
 async function putHabitLog(log,merge=false){
-  const wasDone=!!hLog(log.id)?.done;
+  const prevLog=hLog(log.id), wasDone=!!prevLog?.done;
+  // Čas splnění (odznak „Ranní ptáče“): jen nové splnění dneška; u už splněného záznamu se převezme, zpětně se nedopočítává
+  if(log.done&&log.date===toDS()&&!log.at){
+    const at=wasDone?prevLog.at:new Date().toTimeString().slice(0,5);
+    if(typeof at==='string'&&/^\d\d:\d\d$/.test(at)) log={...log,at};
+  }
   const ref=doc(db,'users',CU.uid,'habitLogs',log.id);
   await (merge?setDoc(ref,log,{merge:true}):setDoc(ref,log));
   const ex=hLog(log.id);
@@ -1376,8 +1381,8 @@ function habitDayCounts(h,ds,today=toDS()){ const st=habitDayState(h,ds,today); 
 // ── ŠTÍTY SÉRIE ❄️ (odvozené z logů, použitý štít = log {skipped,frozen,shield}) ──
 // Za každých 7 splněných dní v řadě 1 štít, max. 2 na návyk. Deterministicky z historie → stejné na všech zařízeních.
 const SHIELD_EVERY=7, SHIELD_MAX=2, SHIELD_DEPTH=14; // hloubka hledání mezery (dny)
-let _shCache=new Map();
-function shieldCacheReset(){ _shCache=new Map(); }
+let _shCache=new Map(), _bdCtx=null; // _bdCtx: cache podkladů pro odznaky (stejný reset jako štíty)
+function shieldCacheReset(){ _shCache=new Map(); _bdCtx=null; }
 // Stav štítů návyku k datu: {sh: počet, run: splněné dny v aktuálním běhu}
 function habitShieldState(h,upTo=toDS()){
   const key=h.id+'|'+upTo;
@@ -5291,7 +5296,7 @@ window.dismissQS = () => {
 // Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
 // mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
 const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
-  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,bonusCap:200};
+  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,bonusCap:200};
 const GAME_MAX_LVL=50;
 const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
 function levelOf(xp){ let L=1; while(L<GAME_MAX_LVL&&xp>=lvlXP(L+1)) L++; return L; }
@@ -5316,7 +5321,8 @@ function gameNormalize(g){
   return {v:1,off:!!g.off,base:Math.max(0,Number(g.base)||0),days:{...obj(g.days)},once:{...obj(g.once)},
     lvlSeen:Math.max(1,Math.min(GAME_MAX_LVL,Number(g.lvlSeen)||1)),xp:Number(g.xp)||0,
     rex:{acc:typeof obj(g.rex).acc==='string'?g.rex.acc:'',ring:typeof obj(g.rex).ring==='string'?g.rex.ring:''},
-    share:{lvl:!!obj(g.share).lvl,wins:!!obj(g.share).wins}};
+    share:{lvl:!!obj(g.share).lvl,wins:!!obj(g.share).wins},
+    badges:Object.fromEntries(Object.entries(obj(g.badges)).filter(([k,v])=>typeof v==='string')),bdv:Number(g.bdv)||0};
 }
 function gameTotal(g=game){
   if(!g) return 0;
@@ -5348,7 +5354,7 @@ function gameWrite(patch){
   if(!CU||_accDeleting||_accDeleted) return;
   updateDoc(gameRef(),patch).catch(gameWriteErr); // bez await: offline se odešle později, ztracené dny dopočítá další gameSync
 }
-function gameDocData(g){ return {v:1,off:!!g.off,base:g.base,days:g.days,once:g.once,lvlSeen:g.lvlSeen,xp:gameTotal(g),rex:g.rex,share:g.share}; }
+function gameDocData(g){ return {v:1,off:!!g.off,base:g.base,days:g.days,once:g.once,lvlSeen:g.lvlSeen,xp:gameTotal(g),rex:g.rex,share:g.share,badges:g.badges||{},bdv:g.bdv||0}; }
 // Jednorázová odměna s pevným klíčem; vrací true jen poprvé (dvě zařízení zapíšou totéž)
 function gameAward(key,x){
   if(!game||!CU||game.once[key]) return false;
@@ -5360,6 +5366,7 @@ function gameAward(key,x){
   game.xp=gameTotal();
   gameWrite({['once.'+key]:game.once[key],xp:game.xp});
   gameAfter(before,game.xp);
+  if(!key.startsWith('bd_')) gameQueue(); // odznaky (mezník cíle, výzva) se vyhodnotí v dalším gameSync
   return true;
 }
 // Přepočet dneška a včerejška + milníky série (idempotentní: zaškrtnout, odškrtnout, zaškrtnout = stejné XP)
@@ -5380,6 +5387,7 @@ function gameSync(){
     if(XP.streak[s]) gameAward('st_'+h.id+'_'+s+'_'+today,XP.streak[s]);
   }
   gameAfter(before,gameTotal());
+  gameBadges();
 }
 function gameQueue(){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,800); }
 // Po změně XP: překreslit kruh a lištu, případně oslavit novou úroveň (jen jednou, lvlSeen se hned zapíše)
@@ -5469,6 +5477,7 @@ function gamePraise(target){
   game.xp=gameTotal();
   gameWrite({['once.'+key]:game.once[key],xp:game.xp});
   gameAfter(before,game.xp);
+  gameQueue();
 }
 // Nový den (appka otevřená přes půlnoc nebo vrácená z pozadí): štíty a přepočet
 document.addEventListener('visibilitychange',()=>{
@@ -5524,11 +5533,13 @@ function xpPop(hid,x){
   setTimeout(()=>p.remove(),950);
 }
 // Sheet „Můj růst“
-window.openGame=()=>{ if(!gameOn()) return; renderGameSheet(); om('m-game'); };
+window.openGame=(tab)=>{ if(!gameOn()) return; _gameTab=tab==='badges'?'badges':'grow'; _bdgSeen=null; renderGameSheet(); om('m-game'); };
 function renderGameSheet(){
   const body=document.getElementById('game-body'), tt=document.getElementById('game-title');
   if(tt) tt.textContent=t('game.growth');
   if(!body||!game) return;
+  const tabs=`<div class="seg seg--block" role="group" aria-label="${tH('game.growth')}">${[['grow','game.tab.grow'],['badges','game.tab.badges']].map(([v,k])=>`<button type="button" class="seg-btn${_gameTab===v?' active':''}" aria-pressed="${_gameTab===v}" data-a0="${v}" onclick="gameTab(this.dataset.a0)">${tH(k)}</button>`).join('')}</div>`;
+  if(_gameTab==='badges'){ body.innerHTML=tabs+badgesHTML(); return; }
   const p=gameProgress(), L=p.L, today=toDS();
   const mon=addDays(today,-((new Date(today+'T12:00:00').getDay()+6)%7));
   let wx=0, perf=0;
@@ -5543,7 +5554,7 @@ function renderGameSheet(){
     const lock=r.lvl>L, sel=curRing===r.id&&!lock, nm=t('game.ring.'+r.id);
     return `<button type="button" class="gw-btn${sel?' sel':''}${lock?' locked':''}" ${lock?'disabled':''} aria-pressed="${sel}" aria-label="${esc(lock?nm+', '+t('game.locked',{n:r.lvl}):nm)}" data-a0="${r.id}" onclick="gameRing(this.dataset.a0)"><span class="gw-sw gr-${r.id}"></span><span class="gw-l">${lock?tH('game.from',{n:r.lvl}):esc(nm)}</span></button>`;
   };
-  body.innerHTML=`<div class="gs-top">${gameRingHTML(96)}
+  body.innerHTML=tabs+`<div class="gs-top">${gameRingHTML(96)}
       <div class="gs-lvl">${tH('game.lvl',{n:L})} · ${esc(lvlName(L))}</div>
       ${gameBarHTML()}
       <div class="gs-next">${L>=GAME_MAX_LVL?tH('game.max'):tH('game.toNext',{n:L+1,xp:p.left})}</div></div>
@@ -5595,7 +5606,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ cm(id); break; }
+  for(const id of ['m-share','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -5631,6 +5642,144 @@ function gameIntroHTML(){
 }
 window.dismissGameIntro=()=>{ lsSave('lp_game_intro',1); document.getElementById('game-intro-card')?.remove(); };
 window.gameIntroOpen=()=>{ window.dismissGameIntro(); window.openGame(); };
+
+// ── GAMIFIKACE F2: sbírka odznaků (badges.<id> = datum, odměna once.bd_<id>; jen přibývají, přepis pevných klíčů) ──
+// Podmínka vrací {cur, max}; získáno = cur >= max. Žádné tajné odznaky, zamčené ukazují postup.
+const BADGES=[
+  {id:'first_step',em:'🌱',f:c=>({cur:Math.min(1,c.doneN),max:1})},
+  {id:'first_week',em:'📅',f:c=>({cur:c.best,max:7})},
+  {id:'month',em:'🔥',f:c=>({cur:c.best,max:30})},
+  {id:'hundred',em:'💯',f:c=>({cur:c.best,max:100})},
+  {id:'perfect',em:'⭐',f:c=>({cur:Math.min(1,c.perfN),max:1})},
+  {id:'perfect_week',em:'🌟',f:c=>({cur:c.perfRun,max:7})},
+  {id:'early_bird',em:'🐦',f:c=>({cur:c.early,max:10})},
+  {id:'shield',em:'❄️',f:c=>({cur:Math.min(1,c.shieldN),max:1})},
+  {id:'comeback',em:'🔁',f:c=>({cur:c.comeback?1:0,max:1})},
+  {id:'half_goal',em:'🏁',f:c=>({cur:Math.min(1,c.g50),max:1})},
+  {id:'goal_done',em:'🏆',f:c=>({cur:Math.min(1,c.g100),max:1})},
+  {id:'goals_3',em:'🎯',f:c=>({cur:c.g100,max:3})},
+  {id:'team_support',em:'🤝',f:c=>({cur:c.praise,max:10})},
+  {id:'team_player',em:'🧩',f:c=>({cur:Math.min(1,c.chN),max:1})},
+  {id:'writer',em:'📒',f:c=>({cur:c.notes,max:10})},
+  {id:'lvl_10',em:'🍃',f:c=>({cur:c.lvl,max:10})},
+  {id:'lvl_25',em:'🌲',f:c=>({cur:c.lvl,max:25})},
+  {id:'lvl_50',em:'✨',f:c=>({cur:c.lvl,max:50})},
+];
+const EARLY_BEFORE='09:00', COMEBACK_GAP=7;
+// Rozdíl dní mezi dvěma 'YYYY-MM-DD' (poledne → změna času nevadí)
+const dsDiff=(a,b)=>Math.round((Date.parse(b+'T12:00:00')-Date.parse(a+'T12:00:00'))/864e5);
+// Podklady z logů (dražší část, cache do další změny logů nebo návyků a do dalšího dne)
+function badgeLogCtx(){
+  const today=toDS();
+  if(_bdCtx&&_bdCtx.today===today) return _bdCtx;
+  const doneDates=new Set(), earlyDates=new Set(); let shieldN=0, doneN=0;
+  for(const l of habitLogs){
+    if(!l||typeof l.date!=='string'||l.date>today) continue;
+    if(l.done){ doneN++; doneDates.add(l.date); if(typeof l.at==='string'&&l.at<EARLY_BEFORE) earlyDates.add(l.date); }
+    else if(l.shield) shieldN++;
+  }
+  const dates=[...doneDates].sort();
+  // Návrat: splnění po aspoň 7 dnech bez jediného splnění (napříč návyky)
+  let comeback=false;
+  for(let i=1;i<dates.length&&!comeback;i++) if(dsDiff(dates[i-1],dates[i])>COMEBACK_GAP) comeback=true;
+  // Perfektní dny a nejdelší řada perfektních dní (po sobě jdoucí kalendářní dny)
+  let perfN=0, perfRun=0, run=0, prev='';
+  for(const ds of dates){
+    if(!isPerfectDay(ds)){ run=0; prev=''; continue; }
+    perfN++; run=(prev&&addDays(prev,1)===ds)?run+1:1; prev=ds; if(run>perfRun) perfRun=run;
+  }
+  let best=0;
+  for(const h of habits) if(h&&h.freq?.type!=='weekly'){ const b=calcBestStreak(h); if(b>best) best=b; }
+  _bdCtx={today,doneN,early:earlyDates.size,shieldN,comeback,perfN,perfRun,best};
+  return _bdCtx;
+}
+// Kontext pro podmínky: logy (cache) + cíle, pochvaly, výzvy, poznámky a úroveň (levné, vždy čerstvé)
+function badgeCtx(){
+  const c={...badgeLogCtx()};
+  const g50=new Set(), g100=new Set();
+  for(const gl of goals){ if(!gl||!gl.id||!Array.isArray(gl.msHit)) continue; if(gl.msHit.includes(50)) g50.add(gl.id); if(gl.msHit.includes(100)) g100.add(gl.id); }
+  let praise=0, chN=0;
+  for(const [k,o] of Object.entries(game?.once||{})){
+    const m=/^gm_(.+)_(50|100)$/.exec(k);
+    if(m) (m[2]==='50'?g50:g100).add(m[1]);
+    if(k.startsWith('pr_')) praise+=Number(o?.n)||0;
+    if(k.startsWith('ch_')) chN++;
+  }
+  // Splněný cíl je i na půli cesty
+  for(const id of g100) g50.add(id);
+  Object.assign(c,{g50:g50.size,g100:g100.size,praise,chN,notes:Array.isArray(entries)?entries.length:0,lvl:gameLevel()});
+  return c;
+}
+function badgeState(b,c){
+  const r=b.f(c), max=r.max, cur=Math.max(0,Math.min(max,Number(r.cur)||0));
+  return {cur,max,done:!!game?.badges?.[b.id]||cur>=max,got:game?.badges?.[b.id]||''};
+}
+// Vyhodnocení v gameSync: nové odznaky se zapíšou přepisem pevných klíčů (badges.<id>, once.bd_<id>) → idempotentní.
+// První vyhodnocení (bdv chybí) proběhne potichu: odznaky z dosavadní historie bez vlny oslav.
+function gameBadges(){
+  if(!game||!CU||_accDeleting||_accDeleted) return [];
+  const c=badgeCtx(), today=toDS(), fresh=[];
+  for(const b of BADGES){ if(game.badges[b.id]) continue; const st=badgeState(b,c); if(st.cur>=st.max) fresh.push(b); }
+  const silent=!game.bdv;
+  if(!fresh.length&&!silent) return [];
+  const before=gameTotal(), patch={};
+  for(const b of fresh){
+    game.badges[b.id]=today; patch['badges.'+b.id]=today;
+    const k='bd_'+b.id;
+    if(!game.once[k]){ game.once[k]={d:today,x:XP.badge}; patch['once.'+k]=game.once[k]; }
+  }
+  if(silent){ game.bdv=1; patch.bdv=1; }
+  game.xp=gameTotal(); patch.xp=game.xp;
+  if(silent){ const L=levelOf(game.xp); if(L>game.lvlSeen){ game.lvlSeen=L; patch.lvlSeen=L; } }
+  gameWrite(patch);
+  if(silent){ gameRenderUI(); return fresh; }
+  gameAfter(before,game.xp);
+  // Odznaky za úroveň mohou přibýt až po připsání bodů za jiné odznaky
+  if(fresh.some(b=>!b.id.startsWith('lvl_'))) gameQueue();
+  if(gameOn()) celebrateBadges(fresh);
+  return fresh;
+}
+function celebrateBadges(list){
+  if(!list.length) return;
+  const nm=list.map(b=>b.em+' '+t('game.badge.'+b.id)).join(', ');
+  showAvReaction(list[0].em,t('game.badge.new',{n:list.length}),nm,true);
+}
+// Odznaky: mřížka 3×N v sheetu „Můj růst“
+let _gameTab='grow', _bdgSeen=null; // _bdgSeen: odznaky viděné před otevřením záložky (zvýraznění nových vydrží do zavření)
+window.gameTab=id=>{ _gameTab=id==='badges'?'badges':'grow'; _bdgSeen=null; renderGameSheet(); };
+function badgesHTML(){
+  const c=badgeCtx();
+  if(!_bdgSeen){ const v=lsGet('lp_bdg_seen',[]); _bdgSeen=Array.isArray(v)?v:[]; }
+  const seenA=_bdgSeen;
+  let n=0;
+  const tiles=BADGES.map(b=>{
+    const st=badgeState(b,c), nm=t('game.badge.'+b.id);
+    if(st.done) n++;
+    const isNew=st.done&&!seenA.includes(b.id);
+    const sub=st.done?'':(st.max>1?`${st.cur}/${st.max}`:'');
+    const aria=st.done?nm+', '+t('game.badge.got',{date:st.got?fmtDate(st.got,'dmy'):''}):nm+', '+t('game.badge.lockedAria')+(sub?' '+sub:'');
+    return `<button type="button" class="bdg${st.done?'':' locked'}${isNew?' bdg-new':''}" aria-label="${esc(aria)}" data-a0="${b.id}" onclick="openBadge(this.dataset.a0)"><span class="bdg-em" aria-hidden="true">${b.em}</span><span class="bdg-nm">${esc(nm)}</span>${sub?`<span class="bdg-sub" aria-hidden="true">${esc(sub)}</span>`:''}</button>`;
+  }).join('');
+  // Prohlédnuté → příště bez zvýraznění
+  lsSave('lp_bdg_seen',BADGES.filter(b=>game?.badges?.[b.id]).map(b=>b.id));
+  return `<div class="gs-sec" style="margin-top:4px">${tH('game.badges.count',{n,total:BADGES.length})}</div><div class="bdg-grid">${tiles}</div>`;
+}
+// Detail odznaku: popis, datum získání nebo postup s nápovědou, sdílení obrázku (jen získané)
+window.openBadge=id=>{
+  const b=BADGES.find(x=>x.id===id), body=document.getElementById('badge-body');
+  if(!b||!body||!game) return;
+  const st=badgeState(b,badgeCtx()), pct=Math.round(st.cur/st.max*100);
+  body.innerHTML=`<div class="gs-top"><div class="bdd-em${st.done?'':' locked'}" aria-hidden="true">${b.em}</div>
+      <div class="lu-title" id="badge-title">${tH('game.badge.'+b.id)}</div>
+      <div class="lu-say">${tH('game.badge.'+b.id+'.d')}</div>
+      ${st.done?`<div class="gs-lvl">${tH('game.badge.got',{date:st.got?fmtDate(st.got,'dmy'):''})}</div>`
+        :`<div class="gbar-row" style="width:100%;max-width:320px"><div class="gbar" role="progressbar" aria-valuemin="0" aria-valuemax="${st.max}" aria-valuenow="${st.cur}" aria-label="${tH('game.badge.progress',{cur:st.cur,max:st.max})}"><span style="width:${pct}%"></span></div><span class="gbar-txt">${tH('game.badge.progress',{cur:st.cur,max:st.max})}</span></div>
+          <div class="gs-next">${tH('game.badge.'+b.id+'.tip')}</div>`}</div>
+    <div class="gwin-btns bdd-btns">${st.done?`<button type="button" class="btn-p" data-a0="${b.id}" onclick="shareBadge(this.dataset.a0)">${tH('game.badge.share')}</button>`:''}
+      <button type="button" class="btn-s" id="badge-ok" onclick="cm('m-badge')">${tH('common.close')}</button></div>`;
+  om('m-badge');
+  setTimeout(()=>document.getElementById('badge-ok')?.focus(),50);
+};
 
 // ── CÍLE: měřitelná hodnota a mezníky 25/50/75/100 % (msHit jen přibývá → oslava jen jednou i napříč zařízeními) ──
 const GOAL_MS=[25,50,75,100];

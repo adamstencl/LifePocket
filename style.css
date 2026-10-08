@@ -1804,3 +1804,27 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 @media(max-width:400px){.gmf-row{grid-template-columns:1fr 1fr}.gw-grid{grid-template-columns:repeat(3,1fr)}}
 .avbanner>div{min-width:0}
 @media(max-width:400px){.avbanner{padding:16px;gap:14px}}
+/* ── Gamifikace F2: odznaky, karta ke sdílení, týdenní souhrn ── */
+.bdg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.bdg{min-height:104px;padding:10px 6px;border-radius:14px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'Crimson Pro',serif;font-size:13px;line-height:1.25;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;min-width:0;overflow-wrap:anywhere;-webkit-tap-highlight-color:transparent}
+.bdg-em{font-size:32px;line-height:1}
+.bdg.locked{color:var(--text2)}
+.bdg.locked .bdg-em,.bdd-em.locked{filter:grayscale(1);opacity:.45}
+.bdg-sub{font-size:12px;color:var(--text2)}
+.bdg-new{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent)}
+.bdg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bdd-em{font-size:72px;line-height:1;margin-top:4px}
+.bdd-btns{flex-direction:column}
+.bdd-btns>*{width:100%}
+.sc-prev{display:block;width:100%;aspect-ratio:4/5;border-radius:14px;background:#0f0f12;border:1px solid var(--border);margin-bottom:12px;object-fit:contain}
+label.sc-tog{cursor:pointer;min-height:48px}
+.sc-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.sc-actions .btn-s,.sc-actions .btn-p{min-height:48px;width:100%}
+.sc-actions .btn-p:disabled{opacity:.6;cursor:default}
+.wk-card{cursor:default}
+.wk-say{font-family:'Crimson Pro',serif;font-style:italic;font-size:15px;color:var(--text2);line-height:1.45;margin:6px 0 10px}
+.wk-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wk-tiles .sth-card{padding:10px 8px}.wk-tiles .sth-card:hover{transform:none}
+.wk-line{font-size:14px;color:var(--text);margin-top:8px;line-height:1.4;overflow-wrap:anywhere}
+.wk-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.wk-btns>button{flex:1 1 140px;min-height:44px}
