@@ -3,6 +3,7 @@ const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue, FieldPath} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
+const {getAuth} = require('firebase-admin/auth');
 
 initializeApp();
 const db = getFirestore();
@@ -735,7 +736,6 @@ exports.dailyStats = onSchedule(
     // 2) Profil bez createdAt (starší účty, nedokončený onboarding) → datum vytvoření z Firebase Auth
     if (missingCreated.size) {
       try {
-        const {getAuth} = require('firebase-admin/auth');
         let pageToken;
         do {
           const page = await getAuth().listUsers(1000, pageToken);
@@ -787,3 +787,88 @@ exports.dailyStats = onSchedule(
       + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors}`);
   }
 );
+
+// ── Delete Account — smazání účtu z aplikace ─────────────────────────────────
+// Maže jen účet volajícího. Pořadí: skupiny → users/{uid} → rateLimits → Auth.
+// Když selže krok před Auth, účet zůstane a akci jde zopakovat (idempotentní).
+// Logy jen technicky: krok a kód chyby, žádná jména ani obsah.
+const DELETE_REAUTH_SEC = 10 * 60;
+const GROUP_ID_RE = /^[A-Z]{2,12}-[A-Z0-9]{4,8}$/;
+
+// Odebere uid ze skupiny; jediný člen → smaže celou skupinu, správce → předá roli
+async function leaveGroupForDelete(gid, uid) {
+  const ref = db.doc(`families/${gid}`);
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return 'missing'; // případný zbytek podkolekcí uklidí recursiveDelete níže
+    const members = snap.data().members || {};
+    if (!Object.prototype.hasOwnProperty.call(members, uid)) return 'notMember';
+    const others = Object.keys(members).filter(id => id !== uid);
+    // jediný člen: dokument smazat hned v transakci (nikdo se už nepřipojí), podkolekce po ní
+    if (!others.length) { tx.delete(ref); return 'sole'; }
+    const args = [new FieldPath('members', uid), FieldValue.delete()];
+    const wasAdmin = members[uid] && members[uid].role === 'admin';
+    const adminLeft = others.some(id => members[id] && members[id].role === 'admin');
+    if (wasAdmin && !adminLeft) {
+      const ts = (id) => { const t = Date.parse(members[id] && members[id].joinedAt); return Number.isFinite(t) ? t : Infinity; };
+      const heir = others.slice().sort((a, b) => ts(a) - ts(b) || (a < b ? -1 : 1))[0];
+      args.push(new FieldPath('members', heir, 'role'), 'admin');
+    }
+    tx.update(ref, ...args);
+    return wasAdmin && !adminLeft ? 'leftHandover' : 'left';
+  });
+  // 'missing' po dřívějším přerušeném běhu: dokument je pryč, podkolekce mohly zůstat
+  if (outcome === 'sole' || outcome === 'missing') await db.recursiveDelete(ref);
+  return outcome;
+}
+
+exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  if (data.confirm !== 'SMAZAT') throw new HttpsError('invalid-argument', 'Chybí potvrzení smazání účtu.');
+  const authTime = Number(request.auth.token && request.auth.token.auth_time);
+  if (!Number.isFinite(authTime) || Date.now() / 1000 - authTime > DELETE_REAUTH_SEC) {
+    throw new HttpsError('failed-precondition', 'Z bezpečnostních důvodů se znovu přihlas a zkus to hned potom.');
+  }
+
+  let step = 'a';
+  try {
+    // (a) skupiny z profilu (profil píše klient → ID ověřit formátem)
+    const profSnap = await db.doc(`users/${uid}/profile/main`).get();
+    const prof = profSnap.exists ? (profSnap.data() || {}) : {};
+    const gids = new Set([prof.familyId, ...(Array.isArray(prof.extraGroupIds) ? prof.extraGroupIds : [])]
+      .filter(g => typeof g === 'string' && GROUP_ID_RE.test(g)));
+    // + skupiny, kde je v members, ale profil o nich neví (automatický single-field index)
+    const memberSnap = await db.collection('families')
+      .where(new FieldPath('members', uid, 'role'), 'in', ['admin', 'member']).get();
+    memberSnap.forEach(d => gids.add(d.id));
+    // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5)
+    step = 'b';
+    for (const gid of gids) {
+      const outcome = await leaveGroupForDelete(gid, uid);
+      console.log(`[LP] deleteAccount uid=${uid} skupina: ${outcome}`);
+    }
+    // (c) osobní data včetně všech podkolekcí
+    step = 'c';
+    await db.recursiveDelete(db.doc(`users/${uid}`));
+    // (d) limit AI
+    step = 'd';
+    await db.doc(`rateLimits/${uid}`).delete();
+  } catch (e) {
+    console.error(`[LP] deleteAccount uid=${uid} krok ${step} selhal: ${e && e.code || ''} ${e && e.message || ''}`);
+    throw new HttpsError('internal', 'Smazání účtu se nepodařilo dokončit. Zkus to prosím znovu.');
+  }
+
+  // (e) Auth účet až nakonec; už smazaný = hotovo (opakované volání)
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (e) {
+    if (!(e && e.code === 'auth/user-not-found')) {
+      console.error(`[LP] deleteAccount uid=${uid} krok e selhal: ${e && e.code || ''}`);
+      throw new HttpsError('internal', 'Data jsou smazaná, ale účet se nepodařilo odstranit. Zkus to prosím znovu.');
+    }
+  }
+  console.log(`[LP] deleteAccount uid=${uid} hotovo`);
+  return {ok: true};
+});
