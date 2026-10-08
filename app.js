@@ -7116,8 +7116,8 @@ function gfWhat(a, gid) {
   if(a.module === 'habit' && a.action === 'streak') return t('gf.a.habit.streak', {n: Number.isInteger(a.val) ? a.val : 0}) + (title ? ': ' + title : '');
   if(a.module === 'react') {
     const ems = String(a.em || '').split(',').map(k => RX_EM[k] || '').join('');
-    // Text komentáře z načtených reakcí; smazaný (nebo starší než načtené) = bez textu
-    const cm = typeof a.rid === 'string' ? (rxByGroup[gid] || []).find(r => r._id === a.rid && r.kind === 'c') : null;
+    // Text komentáře z načtených reakcí (jen od autora aktivity); smazaný (nebo starší než načtené) = bez textu
+    const cm = typeof a.rid === 'string' ? (rxByGroup[gid] || []).find(r => r._id === a.rid && r.kind === 'c' && r.uid === a.uid) : null;
     const msg = typeof cm?.text === 'string' ? cm.text.trim().slice(0, RX_MAX_LEN) : '';
     if(!msg && a.rid) return '💬 ' + t('gf.a.react.to', {title});
     return msg ? '💬 „' + msg + '“ · ' + t('gf.a.react.to', {title}) : (ems ? ems + ' ' : '') + t('gf.a.react.to', {title});
