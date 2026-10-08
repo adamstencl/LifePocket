@@ -7189,7 +7189,7 @@ function buildHabitMirror(hid) {
   for(let i = 6; i >= 0; i--) {
     const x = dayAt(i), ds = toDS(x), l = hLog(hid + '_' + ds);
     const off = freq.type === 'days' && !freq.days.includes(x.getDay());
-    last7 += hDone(hid, ds) ? '1' : (l?.skipped || off) ? '-' : '0';
+    last7 += hDone(hid, ds) ? '1' : (l?.skipped || off || isHabitPausedOn(h, ds)) ? '-' : '0';
   }
   let doneDate = '';
   for(let i = 0; i < 60 && !doneDate; i++) { const ds = toDS(dayAt(i)); if(hDone(hid, ds)) doneDate = ds; }
