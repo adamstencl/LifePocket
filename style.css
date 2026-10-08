@@ -1802,3 +1802,5 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .gv-unit{font-size:18px;color:var(--text2);min-width:24px}
 .gv-save{width:100%;min-height:48px;margin-top:4px}
 @media(max-width:400px){.gmf-row{grid-template-columns:1fr 1fr}.gw-grid{grid-template-columns:repeat(3,1fr)}}
+.avbanner>div{min-width:0}
+@media(max-width:400px){.avbanner{padding:16px;gap:14px}}

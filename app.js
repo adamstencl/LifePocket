@@ -1263,7 +1263,7 @@ function subHabits(){
   // includeMetadataChanges: přechod cache → server přijde i beze změny dat (jinak by _habitsSnapOk zůstal false)
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),{includeMetadataChanges:true},snap=>{
     // Offline start (data z cache) ještě neznamená úplný seznam návyků
-    if(!snap.metadata.fromCache&&!_habitsSnapOk){_habitsSnapOk=true;Object.keys(_shUnsub).forEach(shDailyResync);}
+    if(!snap.metadata.fromCache&&!_habitsSnapOk){_habitsSnapOk=true;Object.keys(_shUnsub).forEach(shDailyResync);setTimeout(gameKick,0);}
     if(hOk&&!snap.docChanges().length)return; // jen změna metadat: nepřekreslovat
     habits=snap.docs.map(d=>({id:d.id,...d.data()}));
     migrateLegacyPauses();
@@ -5615,7 +5615,11 @@ const GOAL_MS=[25,50,75,100];
 const goalUnits=()=>t('game.goal.units').split('·').map(x=>x.trim()).filter(Boolean);
 const goalOldEnough=g=>!!g&&!!g.createdAt&&Date.now()-Date.parse(g.createdAt)>864e5;  // XP za mezníky až u cíle staršího 24 h
 // Číslo z pole (čárka i tečka)
-const parseNum=v=>{ const x=parseFloat(String(v??'').trim().replace(/\s/g,'').replace(',','.')); return Number.isFinite(x)?x:NaN; };
+const parseNum=v=>{
+  let s=String(v??'').replace(/\s/g,'');
+  s=s.includes(',')&&s.includes('.')?s.replace(/,/g,''):s.replace(',','.');  // 1,234.5 i 87,5
+  const x=/^[-+]?\d*\.?\d+$/.test(s)?parseFloat(s):NaN; return Number.isFinite(x)?x:NaN;
+};
 // Platná měřitelná hodnota cíle, jinak null
 function goalMetric(g){
   const m=g&&g.metric;
@@ -5715,7 +5719,7 @@ function renderGoalVal(){
   const keep=document.getElementById('gv-inp')?.value;
   const tt=document.getElementById('gval-title'); if(tt) tt.textContent=t('game.goal.log');
   body.innerHTML=`<div class="gv-name">${esc((g.emoji||'🎯')+' '+g.name)}</div>
-    <div class="gv-row"><input class="finp gv-inp" id="gv-inp" type="text" inputmode="decimal" autocomplete="off" aria-label="${tH('game.goal.valAria')}" value="${esc(keep??fmtVal(m.cur))}" onkeydown="if(event.key==='Enter'){event.preventDefault();saveGoalVal()}"><span class="gv-unit">${esc(m.unit)}</span></div>
+    <div class="gv-row"><input class="finp gv-inp" id="gv-inp" type="text" inputmode="decimal" autocomplete="off" aria-label="${tH('game.goal.valAria')}" value="${esc(keep??String(m.cur))}" onkeydown="if(event.key==='Enter'){event.preventDefault();saveGoalVal()}"><span class="gv-unit">${esc(m.unit)}</span></div>
     <label class="flbl">${tH('game.goal.date')}</label>
     <div class="seg seg--block" role="group">
       <button type="button" class="seg-btn${_gvDay===0?' active':''}" aria-pressed="${_gvDay===0}" onclick="setGoalValDay(0)">${tH('hp.today')}</button>
