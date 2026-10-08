@@ -431,6 +431,8 @@ const INSTANT_MAX_WAIT = 10 * 60000;                  // …ale nejdéle 10 min 
 const CRON_STEP_MS = 5 * 60000;                       // cron běží po 5 min
 const GN_BACKLOG_MAX = 24 * 3600000;                  // starý kurzor (přepnutý režim) = nejvýš den zpětně
 const GN_QUERY_LIMIT = 200;
+const GN_MAX_PAGES = 5;                              // až 1 000 změn na režim a běh
+const GN_UPPER_LAG = 10000;                           // horní hranice dotazů i kurzorů = teď − 10 s
 const GN_BODY_MAX = 180;
 const GN_MAX_GROUPS = 10;
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -592,7 +594,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
     const fn = rs.exists ? (rs.data() || {}).famNotify : null;
     const last = fn && typeof fn === 'object' ? Number(fn[familyId]) : NaN;
     if (Number.isFinite(last) && last <= nowMs && nowMs - last < FAM_NOTIFY_INTERVAL) {
-      throw new HttpsError('resource-exhausted', 'Upozornění jde poslat nejvýš jednou za 2 minuty.');
+      throw new HttpsError('resource-exhausted', 'Upozornění už bylo odesláno, zkus to za chvíli');
     }
     tx.set(rateRef, {famNotify: {[familyId]: nowMs}}, {merge: true});
   });
@@ -684,16 +686,45 @@ exports.sendScheduledNotifications = onSchedule(
     };
 
     // ── Upozornění ze skupin ──
-    // Okamžik běhu pro kurzory a dotazy (všichni uživatelé stejný)
+    // Horní hranice dotazů i kurzorů = 10 s před během: zápis s ts těsně před „teď“ ještě nemusí být vidět
     const nowMs = Date.now();
-    const nowTs = Timestamp.fromMillis(nowMs);
+    const upperMs = nowMs - GN_UPPER_LAG;
+    const upperTs = Timestamp.fromMillis(upperMs);
     const actCol = (fid) => db.collection(`families/${fid}/activity`);
     // Nejnovější aktivita skupiny: 1 čtení na skupinu a běh, sdílené pro všechny členy.
     // Rozsah na ts zároveň vyřadí ne-Timestamp hodnoty a čas z budoucnosti.
     const latestAct = (fid) => lazy(famEntry(fid), 'latest', async () => {
-      const s = await actCol(fid).where('ts', '<=', nowTs).orderBy('ts', 'desc').limit(1).get();
+      const s = await actCol(fid).where('ts', '<=', upperTs).orderBy('ts', 'desc').limit(1).get();
       return s.docs.length ? (toMillis(s.docs[0].data().ts) || 0) : 0;
     });
+    // Aktivita (lo, upper] po stránkách (nejvýš GN_MAX_PAGES × GN_QUERY_LIMIT), cache (gid, lo) v rámci běhu.
+    // end = konec zpracovaného rozsahu: upper, nebo při plném počtu stránek čas poslední načtené změny − 1 ms
+    // (zbytek přijde v dalším běhu; raději výjimečně zopakovat změnu ze stejné ms než ji ztratit)
+    const rangeCache = new Map();
+    const loadRange = (gid, lo) => {
+      const key = `${gid}|${lo}`;
+      if (!rangeCache.has(key)) {
+        const p = (async () => {
+          const acts = [];
+          let q = actCol(gid).where('ts', '>', Timestamp.fromMillis(lo)).where('ts', '<=', upperTs).orderBy('ts').limit(GN_QUERY_LIMIT);
+          for (let page = 0; page < GN_MAX_PAGES; page++) {
+            const snap = await q.get();
+            for (const d of snap.docs) {
+              const a = d.data() || {};
+              const t = toMillis(a.ts);
+              if (t !== null) acts.push({...a, _ts: t});
+            }
+            if (snap.docs.length < GN_QUERY_LIMIT) return {acts, end: upperMs};
+            q = q.startAfter(snap.docs[snap.docs.length - 1]);
+          }
+          const last = acts.length ? acts[acts.length - 1]._ts : upperMs;
+          return {acts, end: Math.max(lo, Math.min(upperMs, last - 1))};
+        })();
+        rangeCache.set(key, p);
+        p.catch(() => { if (rangeCache.get(key) === p) rangeCache.delete(key); });
+      }
+      return rangeCache.get(key);
+    };
 
     const groupNotifs = async (uid, prof, ns, push) => {
       const extra = Array.isArray(prof.extraGroupIds) ? prof.extraGroupIds : [];
@@ -713,16 +744,19 @@ exports.sendScheduledNotifications = onSchedule(
           const famSnap = await famEntry(gid).doc;
           const fam = famSnap.exists ? famSnap.data() : null;
           if (!fam || !fam.members || !fam.members[uid]) continue;
-          // Kalendář sdílí každá skupina se shareCal, ostatní moduly jen hlavní skupina
+          // Sdílení modulů jako v klientu: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
+          // podle shareShop / shareMeal / shareChecklist (checklist sdílený, dokud není false), zásoby vždy
           const isMain = gid === prof.familyId;
-          const mods = GN_MODULES.filter(k => (k === 'cal' ? !!fam.shareCal : isMain) && gp[k] !== 'off');
+          const shared = {cal: !!fam.shareCal, shop: isMain && !!fam.shareShop, meal: isMain && !!fam.shareMeal,
+            check: isMain && fam.shareChecklist !== false, pantry: isMain};
+          const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
           // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
-          for (const mode of GN_MODES) if (!Number.isFinite(Number(cur[mode]))) updates.push([gid, mode, nowMs]);
+          for (const mode of GN_MODES) if (typeof cur[mode] !== 'number' || !Number.isFinite(cur[mode])) updates.push([gid, mode, upperMs]);
           const from = {};
           for (const mode of new Set(mods.map(k => gp[k]))) {
-            const c = Number(cur[mode]);
-            if (Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
+            const c = cur[mode];
+            if (typeof c === 'number' && Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
           }
           const active = Object.keys(from);
           if (!active.length) continue;
@@ -736,30 +770,20 @@ exports.sendScheduledNotifications = onSchedule(
             if (mode === 'q15') { if (q15Run) due.push(mode); continue; }
             // instant: 2 min klidu, nebo by další běh překročil 10 min od první neodeslané změny
             if (nowMs - latest >= INSTANT_SETTLE) { due.push(mode); continue; }
-            const first = await actCol(gid).where('ts', '>', Timestamp.fromMillis(from[mode])).where('ts', '<=', nowTs)
+            const first = await actCol(gid).where('ts', '>', Timestamp.fromMillis(from[mode])).where('ts', '<=', upperTs)
               .orderBy('ts').limit(1).get();
             const t0 = first.docs.length ? toMillis(first.docs[0].data().ts) : null;
             if (t0 !== null && nowMs - t0 >= INSTANT_MAX_WAIT - CRON_STEP_MS) due.push(mode);
           }
           if (!due.length) continue;
-          const lo = Math.min(...due.map(k => from[k]));
-          const snap = await actCol(gid).where('ts', '>', Timestamp.fromMillis(lo)).where('ts', '<=', nowTs)
-            .orderBy('ts').limit(GN_QUERY_LIMIT).get();
-          const acts = [];
-          for (const d of snap.docs) {
-            const a = d.data() || {};
-            const t = toMillis(a.ts);
-            if (t !== null) acts.push({...a, _ts: t});
-          }
-          // Plný limit: kurzor jen po poslední načtenou změnu, zbytek přijde v dalším běhu
-          const upTo = (snap.docs.length >= GN_QUERY_LIMIT && acts.length) ? acts[acts.length - 1]._ts : nowMs;
           const wanted = (a) => typeof a.uid === 'string' && a.uid !== uid   // autor nedostane nic
             && mods.includes(a.module) && (a.action !== 'done' || gp.notifyChecked);
           const groupName = String(fam.groupName || 'Skupina').slice(0, 30);
           for (const mode of due) {
-            // Kurzor se posune i bez odeslání (jinak by se backlog opakoval)
-            updates.push([gid, mode, upTo]);
-            const list = acts.filter(a => a._ts > from[mode] && a._ts <= upTo && gp[a.module] === mode && wanted(a));
+            const {acts, end} = await loadRange(gid, from[mode]);
+            // Kurzor se posune i bez odeslání (jinak by se backlog opakoval) a nikdy necouvá
+            updates.push([gid, mode, Math.max(from[mode], end)]);
+            const list = acts.filter(a => a._ts > from[mode] && a._ts <= end && gp[a.module] === mode && wanted(a));
             if (!list.length) continue;
             const byModule = new Map();
             for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
@@ -1085,6 +1109,21 @@ async function leaveGroupForDelete(gid, uid) {
   return outcome;
 }
 
+// Aktivita uživatele ve skupině (feed „Co je nového“, TTL 7 dní) zmizí hned, ne až přes TTL.
+// Levné: dotaz uid == (automatický index), jen záznamy za posledních 7 dní
+const ACT_DELETE_BATCH = 400;
+async function deleteUserActivity(gid, uid) {
+  const col = db.collection(`families/${gid}/activity`);
+  for (let i = 0; i < 20; i++) {
+    const s = await col.where('uid', '==', uid).limit(ACT_DELETE_BATCH).get();
+    if (!s.docs.length) return;
+    const b = db.batch();
+    s.docs.forEach(d => b.delete(d.ref));
+    await b.commit();
+    if (s.docs.length < ACT_DELETE_BATCH) return;
+  }
+}
+
 exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
   const uid = request.auth.uid;
@@ -1106,11 +1145,16 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
     const memberSnap = await db.collection('families')
       .where(new FieldPath('members', uid, 'role'), 'in', ['admin', 'member']).get();
     memberSnap.forEach(d => gids.add(d.id));
-    // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5)
+    // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5), jeho aktivita (feed) se maže
     step = 'b';
     for (const gid of gids) {
       const outcome = await leaveGroupForDelete(gid, uid);
       console.log(`[LP] deleteAccount uid=${uid} skupina: ${outcome}`);
+      // Smazaná skupina (sole/missing) uklidila aktivitu sama; chyba úklidu smazání účtu nezastaví (zbytek smaže TTL)
+      if (outcome !== 'sole' && outcome !== 'missing') {
+        try { await deleteUserActivity(gid, uid); }
+        catch(e) { console.error(`[LP] deleteAccount uid=${uid} aktivita: ${e && e.code || ''}`); }
+      }
     }
     // (c) osobní data včetně všech podkolekcí
     step = 'c';
