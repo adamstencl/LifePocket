@@ -115,18 +115,19 @@ service cloud.firestore {
       allow read: if isFamMember(familyId);
       allow create: if isFamMember(familyId)
         && request.resource.data.keys().hasOnly(['ts', 'uid', 'name', 'g', 'module', 'action', 'title', 'n', 'count', 'expireAt',
-             'ref', 'val', 'to', 'em', 'msg'])
+             'ref', 'val', 'to', 'em', 'rid'])
         && request.resource.data.keys().hasAll(['ts', 'uid', 'name', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.ts == request.time
         && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'react']
         && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak']
-        // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série, to + em / msg = reakce
+        // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série, to + em = reakce,
+        // rid = ID komentáře (text se sem nekopíruje, čte se z reactions → smazaný komentář zmizí všude)
         && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref.size() <= 200))
         && (!('val' in request.resource.data) || (request.resource.data.val is int && request.resource.data.val >= 0 && request.resource.data.val <= 1000))
         && (!('to' in request.resource.data) || (request.resource.data.to is string && request.resource.data.to.size() <= 128))
         && (!('em' in request.resource.data) || (request.resource.data.em is string && request.resource.data.em.size() <= 40))
-        && (!('msg' in request.resource.data) || (request.resource.data.msg is string && request.resource.data.msg.size() <= 200))
+        && (!('rid' in request.resource.data) || (request.resource.data.rid is string && request.resource.data.rid.matches('^c_[A-Za-z0-9]{1,40}$')))
         && request.resource.data.title is string && request.resource.data.title.size() <= 60
         && request.resource.data.name is string && request.resource.data.name.size() <= 40
         && (!('g' in request.resource.data) || (request.resource.data.g is string && request.resource.data.g.size() <= 2))
@@ -181,7 +182,7 @@ service cloud.firestore {
     }
 
     // Reakce (👏 🔥 ❤️ 💪, kind 'e') a krátké komentáře (kind 'c') na sdílenou položku (s_<sid>) nebo záznam feedu (a_<id>).
-    // Emoji: rid = target_uid_em (nejde dát dvakrát), komentář: autoId. Mění se jen smazáním; maže TTL expireAt (30 dní).
+    // Emoji: rid = target_uid_em (nejde dát dvakrát), komentář: c_<autoId> (nesmí mít tvar emoji reakce). Mění se jen smazáním; maže TTL expireAt (30 dní).
     match /families/{familyId}/reactions/{rid} {
       allow read: if isFamMember(familyId);
       allow create: if isFamMember(familyId)
@@ -197,6 +198,7 @@ service cloud.firestore {
              && rid == request.resource.data.target + '_' + request.auth.uid + '_' + request.resource.data.em
              && request.resource.data.keys().hasOnly(['kind', 'target', 'to', 'uid', 'em', 'ts', 'expireAt']))
           || (request.resource.data.kind == 'c'
+             && rid.matches('^c_[A-Za-z0-9]{1,40}$')
              && request.resource.data.text is string
              && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 200
              && request.resource.data.keys().hasOnly(['kind', 'target', 'to', 'uid', 'text', 'ts', 'expireAt'])));

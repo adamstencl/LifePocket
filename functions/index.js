@@ -497,7 +497,7 @@ function gnMilestonePush(a, fam) {
 function gnReactPush(acts, fam, groupName) {
   if (acts.length === 1) {
     const a = acts[0], name = gnAuthorName(fam, a), what = gnRef(a);
-    const msg = typeof a.msg === 'string' ? a.msg.trim() : '';
+    const msg = typeof a._msg === 'string' ? a._msg.trim() : '';
     if (msg) return [`💬 ${name}:`, `„${msg.length > 120 ? msg.slice(0, 119) + '…' : msg}“${what ? ' · k ' + what : ''}`];
     const ems = gnEms(a);
     const title = `${RX_EM[ems[0]] || '👏'} ${name} ${RX_TITLE[ems[0]] || RX_TITLE.clap}`;
@@ -509,7 +509,7 @@ function gnReactPush(acts, fam, groupName) {
     let au = byAuthor.get(a.uid);
     if (!au) { au = {name: gnAuthorName(fam, a), ems: [], c: false}; byAuthor.set(a.uid, au); }
     for (const k of gnEms(a)) if (!au.ems.includes(k)) au.ems.push(k);
-    if (typeof a.msg === 'string' && a.msg.trim()) au.c = true;
+    if (typeof a._msg === 'string' && a._msg.trim()) au.c = true;
     const w = gnRef(a); if (w) whats.add(w);
   }
   const parts = [...byAuthor.values()].map(au => `${au.name} ${au.ems.map(k => RX_EM[k]).join('')}${au.c ? '💬' : ''}`.trim());
@@ -517,6 +517,23 @@ function gnReactPush(acts, fam, groupName) {
   let body = who + (whats.size === 1 ? ` k ${[...whats][0]}` : '');
   if (body.length > GN_BODY_MAX) body = body.slice(0, GN_BODY_MAX - 1) + '…';
   return [`👏 Reakce · ${groupName}`, body];
+}
+
+// Komentáře: aktivita nese jen rid, text se čte z reactions/{rid}. Smazaný (nebo cizí) komentář → push se nepošle.
+const GN_CID_RE = /^c_[A-Za-z0-9]{1,40}$/;
+async function gnResolveComments(gid, list, uid) {
+  const out = [];
+  for (const a of list) {
+    if (a.module !== 'react' || a.rid === undefined) { out.push(a); continue; }
+    if (typeof a.rid !== 'string' || !GN_CID_RE.test(a.rid)) continue;
+    try {
+      const r = await db.doc(`families/${gid}/reactions/${a.rid}`).get();
+      const d = r.exists ? (r.data() || {}) : null;
+      if (!d || d.kind !== 'c' || d.uid !== a.uid || d.to !== uid || typeof d.text !== 'string' || !d.text.trim()) continue;
+      out.push({...a, _msg: d.text.slice(0, 200)});
+    } catch (e) { console.error(`[LP] komentář gid=${gid}: ${e && e.code || ''}`); }
+  }
+  return out;
 }
 
 // Jméno autora ze členů skupiny (server nevěří jménu z klienta); a.name jen pro bývalé členy
@@ -848,7 +865,8 @@ exports.sendScheduledNotifications = onSchedule(
             const {acts, end} = await loadRange(gid, from[mode]);
             // Kurzor se posune i bez odeslání (jinak by se backlog opakoval) a nikdy necouvá
             updates.push([gid, mode, Math.max(from[mode], end)]);
-            const list = acts.filter(a => a._ts > from[mode] && a._ts <= end && gnModeOf(a, gp) === mode && wanted(a));
+            const list = await gnResolveComments(gid,
+              acts.filter(a => a._ts > from[mode] && a._ts <= end && gnModeOf(a, gp) === mode && wanted(a)), uid);
             if (!list.length) continue;
             const byModule = new Map();
             for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
@@ -1203,6 +1221,8 @@ async function deleteWhere(col, field, uid) {
 }
 async function deleteUserActivity(gid, uid) {
   await deleteWhere(db.collection(`families/${gid}/activity`), 'uid', uid);
+  // Reakce a komentáře ostatních určené jemu (záznamy feedu s to == uid)
+  await deleteWhere(db.collection(`families/${gid}/activity`), 'to', uid);
   await deleteWhere(db.collection(`families/${gid}/shared`), 'ownerUid', uid);
   await deleteWhere(db.collection(`families/${gid}/reactions`), 'uid', uid);
   await deleteWhere(db.collection(`families/${gid}/reactions`), 'to', uid);
