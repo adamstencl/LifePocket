@@ -7650,7 +7650,8 @@ function buildHabitMirror(hid) {
   };
 }
 // Souhrn cíle pro ostatní (4.42): jen nutná pole. NEsdílí se popis, kategorie, priorita, názvy podcílů, úkoly,
-// propojené návyky ani historie hodnot (mlog). Měřitelný cíl: start, cíl, aktuální hodnota a jednotka (SDIL 1b).
+// propojené návyky ani historie hodnot (mlog). Hodnoty měřitelného cíle (start, cíl, aktuální, jednotka) jen při
+// výslovné volbě g.shareVals === true (např. váha je citlivá), jinak jen %. Zrcadlo se zapisuje celé bez merge.
 const SH_COLOR_RE = /^#[0-9A-Fa-f]{3,8}$/;
 const SH_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
 function buildGoalMirror(goalId) {
@@ -7667,7 +7668,7 @@ function buildGoalMirror(goalId) {
   // Počet podcílů jen když jsou načtené (jinak zůstane hodnota z minulého zrcadla)
   if(Array.isArray(subs[goalId])) { d.sn = clampInt(subs[goalId].length, 0, 1000); d.sd = clampInt(subs[goalId].filter(x => x.done).length, 0, d.sn); }
   const m = goalMetric(g);
-  if(m && [m.start, m.target, m.cur].every(v => Math.abs(v) <= 1e9)) d.metric = {start: m.start, target: m.target, cur: m.cur, unit: m.unit};
+  if(m && g.shareVals === true && [m.start, m.target, m.cur].every(v => Math.abs(v) <= 1e9)) d.metric = {start: m.start, target: m.target, cur: m.cur, unit: m.unit};
   return d;
 }
 function buildMirror(type, itemId) { return type === 'h' ? buildHabitMirror(itemId) : type === 'g' ? buildGoalMirror(itemId) : null; }
@@ -7741,7 +7742,7 @@ function onHabitLogChanged(hid, date, wasDone, isDone) {
 }
 // Mezník sdíleného cíle do skupin: jen 25/50/75/100 % (rozhodnutí 10 gamifikace), jen nově dosažený (msHit jen přibývá)
 function announceGoal(g, m) {
-  if(!CU || !g?.id || !GOAL_MS.includes(m)) return;
+  if(!CU || !g?.id || !GOAL_MS.includes(m) || !goalOldEnough(g)) return; // čerstvý cíl: mezníky skupině neohlašovat
   const gids = sharedGids('g', g.id);
   if(!gids.length) return;
   const sid = shSid('g', g.id), name = cutName(g.name, 60);
@@ -7877,9 +7878,31 @@ function renderShareSheet() {
       <span style="font-size:18px" aria-hidden="true">👨‍👩‍👧</span>
       <span style="flex:1;font-size:15px;color:var(--text)">${esc(groupLabel(gid))}${n ? ` <span class="sh-cnt">· ${esc(t('sh.members', {n}))}</span>` : ''}</span>
       <div class="fshare-toggle${isOn ? ' on' : ''}"><div class="fshare-thumb"></div></div></div>`;
-  }).join('');
+  }).join('') + (type === 'g' && goalMetric(h) ? shareValsRowHTML(h.shareVals === true) : '');
   nEl.textContent = '👀 ' + t(type === 'g' ? 'sh.noteGoal' : 'sh.noteHabit');
 }
+// Přepínač „Sdílet i hodnoty“ u měřitelného cíle (výchozí vypnuto)
+function shareValsRowHTML(on) {
+  return `<div class="fshare-mod-row" role="switch" tabindex="0" aria-checked="${on}" onclick="toggleGoalShareVals()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGoalShareVals()}" style="min-height:52px;cursor:pointer">
+      <span style="font-size:18px" aria-hidden="true">⚖️</span>
+      <span style="flex:1;font-size:15px;color:var(--text)">${tH('sh.shareVals')}</span>
+      <div class="fshare-toggle${on ? ' on' : ''}"><div class="fshare-thumb"></div></div></div>`;
+}
+window.toggleGoalShareVals = () => {
+  if(!CU || _shItem?.type !== 'g') return;
+  const g = goals.find(x => x.id === _shItem.id);
+  if(!g || !goalMetric(g)) return;
+  const prev = g.shareVals === true, next = !prev;
+  g.shareVals = next;
+  renderShareSheet();
+  // Zrcadlo se přepíše celé (setDoc bez merge): při vypnutí metric zmizí
+  syncShared('g', g.id);
+  updateDoc(doc(db,'users',CU.uid,'goals',g.id), {shareVals: next}).catch(e => {
+    console.warn('[LP] shareVals', e?.code || e?.name);
+    g.shareVals = prev; renderShareSheet(); syncShared('g', g.id);
+    toast('❌ ' + userErr(e));
+  });
+};
 window.toggleItemShare = gid => {
   if(!CU || !_shItem || !myGroupIds().includes(gid)) return;
   const {type, id} = _shItem;
