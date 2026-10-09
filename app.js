@@ -5469,6 +5469,7 @@ function gameBackfill(prev){
     if(fresh.length){
       gl.msHit=[...hit,...fresh];
       updateDoc(doc(db,'users',CU.uid,'goals',gl.id),{msHit:arrayUnion(...fresh)}).catch(e=>console.warn('[LP] msHit:',e?.code||e?.name));
+      syncShared('g',gl.id); // zrcadlo sdíleného cíle s doplněnými mezníky
     }
     if(!goalOldEnough(gl)) continue;
     const cd=gl.createdAt?toDS(new Date(gl.createdAt)):'2000-01-01';
@@ -7657,6 +7658,13 @@ function buildHabitMirror(hid) {
 // výslovné volbě g.shareVals === true (např. váha je citlivá), jinak jen %. Zrcadlo se zapisuje celé bez merge.
 const SH_COLOR_RE = /^#[0-9A-Fa-f]{3,8}$/;
 const SH_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Datum ze zrcadla (cizí data): jen platné 'YYYY-MM-DD', jinak '' (Intl by na neplatném datu hodil RangeError)
+function shDs(ds) { return typeof ds === 'string' && SH_DS_RE.test(ds) && !isNaN(new Date(ds + 'T12:00:00')) ? ds : ''; }
+function shFmtDs(ds, preset = 'dm') {
+  const v = shDs(ds);
+  if(!v) return '';
+  try { return fmtDate(v, preset); } catch(e) { return ''; }
+}
 function buildGoalMirror(goalId) {
   const g = goals.find(x => x.id === goalId);
   if(!g) return null;
@@ -7685,7 +7693,7 @@ function mirrorDoc(type, itemId, gid, base) {
     if(ms && Number.isInteger(ms.v) && typeof ms.d === 'string') data.ms = {v: ms.v, d: ms.d.slice(0, 10)};
   } else {
     // Den splnění: první zápis se 100 %, při dalších zůstává (pokles pod 100 % ho smaže)
-    const pd = typeof prevM?.doneAt === 'string' && SH_DS_RE.test(prevM.doneAt) ? prevM.doneAt : '';
+    const pd = shDs(prevM?.doneAt);
     data.doneAt = data.progress >= 100 ? (pd || toDS()) : '';
     if(!('sn' in data) && Number.isInteger(prevM?.sn) && Number.isInteger(prevM?.sd)) {
       data.sn = clampInt(prevM.sn, 0, 1000); data.sd = clampInt(prevM.sd, 0, data.sn);
@@ -7782,7 +7790,11 @@ function shOrphanSweep() {
       const type = k[0], id = k.slice(2);
       if(!SH_KINDS.includes(type) || !id) continue;
       if(type === 'h' ? habits.some(x => x.id === id) : goals.some(x => x.id === id)) continue;
-      unshareItem(type, id, gid); // po jednom, chyby chytá unshareItem
+      // Jen samotné zrcadlo (aktivitu a reakce ostatních nechat, zmizí přes TTL)
+      const set = mySharedIn.get(k);
+      if(set) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
+      myMirrors[gid].delete(k);
+      deleteDoc(doc(db,'families',gid,'shared',shSid(type, id))).catch(e => console.warn('[LP] osirele zrcadlo', e?.code || e?.name));
     }
   }
 }
@@ -7892,9 +7904,10 @@ function renderShareSheet() {
   const {type} = _shItem, h = shItemOf(type, _shItem.id);
   if(!h) { cm('m-share'); return; }
   const on = new Set(sharedGids(type, h.id));
+  const arch = type === 'g' && !!h.archivedGoal; // archivovaný cíl: jen vypnout sdílení, nově nesdílet
   tEl.textContent = '👨‍👩‍👧 ' + t(type === 'g' ? 'sh.titleGoal' : 'sh.titleHabit');
   iEl.textContent = (h.emoji || (type === 'g' ? '🌟' : '🎯')) + ' ' + h.name;
-  gEl.innerHTML = myGroupIds().map(gid => {
+  gEl.innerHTML = myGroupIds().filter(gid => !arch || on.has(gid)).map(gid => {
     const n = Object.keys(groupDataOf(gid)?.members || {}).length;
     const isOn = on.has(gid);
     return `<div class="fshare-mod-row" role="switch" tabindex="0" aria-checked="${isOn}" data-a0="${esc(gid)}" onclick="toggleItemShare(this.dataset.a0)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleItemShare(this.dataset.a0)}" style="min-height:52px;cursor:pointer">
@@ -7934,6 +7947,7 @@ window.toggleItemShare = gid => {
     unshareItem(type, id, gid);
     toast(t('sh.offToast', {g}));
   } else {
+    if(type === 'g' && goals.find(x => x.id === id)?.archivedGoal) return; // archiv: sdílení jen vypnout
     const base = buildMirror(type, id);
     if(!base) return;
     // Hned do mapy (listener to potvrdí); zápis bez await, chyba vrátí stav zpět
@@ -7963,7 +7977,7 @@ function shFreqLabel(fr) {
 function sharedHabitCardHTML(gid, m) {
   const today = toDS(), y = new Date(); y.setDate(y.getDate() - 1);
   const yest = toDS(y);
-  const doneDate = typeof m.doneDate === 'string' ? m.doneDate : '';
+  const doneDate = shDs(m.doneDate);
   const upd = typeof m.updatedAt?.toDate === 'function' ? toDS(m.updatedAt.toDate()) : today;
   const sameDay = upd === today;
   const done = doneDate === today;
@@ -7977,7 +7991,7 @@ function sharedHabitCardHTML(gid, m) {
   const meta = [shFreqLabel(m.freq)];
   if(m.htype === 'count') meta.push(t('sh.goal', {n: goal}));
   if(streak > 0 && doneDate >= yest) meta.push('🔥 ' + t('sh.streak', {n: streak}));
-  else if(doneDate) meta.push(t('sh.lastDone', {d: fmtDate(doneDate, 'dm')}));
+  else if(doneDate) meta.push(t('sh.lastDone', {d: shFmtDs(doneDate)}));
   // last7 platí k datu zápisu → posunout o dny od té doby (chybějící dny = nesplněno)
   let last7 = typeof m.last7 === 'string' ? m.last7.slice(0, 7).padStart(7, '0') : '0000000';
   const shift = Math.max(0, Math.min(7, Math.round((new Date(today + 'T12:00:00') - new Date(upd + 'T12:00:00')) / 86400000)));
@@ -7993,7 +8007,12 @@ function sharedHabitCardHTML(gid, m) {
     ${rxBarHTML(gid, 's_' + m._sid, m.ownerUid, m.name || '')}
   </article>`;
 }
+// Chyba ve sdílené sekci (cizí data) nesmí zastavit vykreslení vlastních návyků
 function renderSharedHabits() {
+  try { renderSharedHabitsIn(); }
+  catch(e) { console.warn('[LP] sdilene navyky', e?.name); const box = document.getElementById('habits-shared'); if(box) box.innerHTML = ''; }
+}
+function renderSharedHabitsIn() {
   const box = document.getElementById('habits-shared');
   if(!box) return;
   const gids = myGroupIds();
@@ -8043,7 +8062,8 @@ function sharedGoalCardHTML(gid, m) {
     const reached = (mt.target - mt.start) * (mt.cur - mt.target) >= 0;
     meta.push(fmtVal(mt.cur) + ' / ' + fmtVal(mt.target) + u + (reached ? '' : ' · ' + t('sh.left', {v: fmtVal(Math.abs(mt.target - mt.cur)) + u})));
   }
-  if(typeof m.deadline === 'string' && SH_DS_RE.test(m.deadline)) meta.push('🏁 ' + fmtDate(m.deadline, 'dm'));
+  const dl = shFmtDs(m.deadline);
+  if(dl) meta.push('🏁 ' + dl);
   const sn = clampInt(m.sn || 0, 0, 1000);
   if(sn) meta.push('📌 ' + clampInt(m.sd || 0, 0, sn) + '/' + sn);
   const hit = Array.isArray(m.msHit) ? GOAL_MS.filter(x => m.msHit.includes(x)) : [];
@@ -8059,7 +8079,12 @@ function sharedGoalCardHTML(gid, m) {
   </article>`;
 }
 let _shgArchOpen = false; // rozbalené „Splněné a archivované“ (jen v paměti)
+// Chyba ve sdílené sekci (cizí data) nesmí zastavit rGoals ani subGoals
 function renderSharedGoals() {
+  try { renderSharedGoalsIn(); }
+  catch(e) { console.warn('[LP] sdilene cile', e?.name); const box = document.getElementById('goals-shared'); if(box) box.innerHTML = ''; }
+}
+function renderSharedGoalsIn() {
   const box = document.getElementById('goals-shared');
   if(!box) return;
   // Zrcadla bývalých členů (ještě neuklizená) se nezobrazí
@@ -8401,6 +8426,14 @@ function gfWhat(a, gid) {
   const more = Math.max(0, count - shown);
   return s + ': ' + title + (more ? ' ' + t('gf.more', {n: more}) : '');
 }
+// Kam vede klepnutí: reakce podle svého cíle (s_g_ / s_h_ zrcadlo, a_<id> záznam feedu), jinak modul záznamu
+function gfTargetMod(a, items) {
+  if(a.module !== 'react') return a.module;
+  const ref = typeof a.ref === 'string' ? a.ref : '';
+  if(ref.startsWith('s_g_')) return 'goal';
+  if(ref.startsWith('a_')) { const src = (items || []).find(x => x._id === ref.slice(2)); if(src?.module === 'goal') return 'goal'; }
+  return 'habit';
+}
 function renderGroupFeed() {
   const gid = _gf.gid;
   const gids = myGroupIds();
@@ -8446,7 +8479,7 @@ function renderGroupFeed() {
       ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
       : '';
     html += `<div class="gf-item${unread ? ' unread' : ''}${ms ? ' ms' : ''}">
-      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(a.module)}))}" data-a0="${a.module}" onclick="gfOpenModule(this.dataset.a0)">${a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(gfTargetMod(a, items))}))}" data-a0="${gfTargetMod(a, items)}" onclick="gfOpenModule(this.dataset.a0)">${a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
       <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
       <div class="gf-what">${esc(gfWhat(a, gid))}</div>${rx}</div>
     </div>`;
@@ -10226,11 +10259,11 @@ window.saveG=async()=>{
     const pm=goalMetric(prevG);
     d.metric={start,target,unit:cutName(document.getElementById('g-mu')?.value||'',8).trim(),cur:pm?pm.cur:start};
     d.progress=goalPct(d.metric);
-  } else if(goalMetric(prevG)||prevG?.mlog){ d.metric=deleteField(); d.mlog=deleteField(); }
+  } else if(goalMetric(prevG)||prevG?.mlog||prevG?.shareVals!==undefined){ d.metric=deleteField(); d.mlog=deleteField(); d.shareVals=deleteField(); }
   let gid=editGId;
   if(editGId){
     await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
-    if(prevG){ const prevP=prevG.progress; if(gMode==='val') prevG.metric=d.metric; else { delete prevG.metric; delete prevG.mlog; } prevG.progress=d.progress; goalProgressChanged(prevG,d.progress,false,prevP); }
+    if(prevG){ const prevP=prevG.progress; if(gMode==='val') prevG.metric=d.metric; else { delete prevG.metric; delete prevG.mlog; delete prevG.shareVals; } prevG.progress=d.progress; goalProgressChanged(prevG,d.progress,false,prevP); }
     toast('✓ Cíl upraven');
   } else {
     d.createdAt=new Date().toISOString();

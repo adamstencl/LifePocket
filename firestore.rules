@@ -123,6 +123,7 @@ service cloud.firestore {
         && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak', 'progress']
         // Cíl: jen mezník (progress, val 25/50/75) a splnění (done); progress nepatří jinému modulu
         && (request.resource.data.module != 'goal' || request.resource.data.action in ['progress', 'done'])
+        && (request.resource.data.module != 'goal' || request.resource.data.get('val', -1) in [25, 50, 75, 100])
         && (request.resource.data.action != 'progress' || request.resource.data.module == 'goal')
         // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série / mezník cíle v %, to + em = reakce,
         // rid = ID komentáře (text se sem nekopíruje, čte se z reactions → smazaný komentář zmizí všude)
@@ -171,7 +172,8 @@ service cloud.firestore {
         && (!('value' in d) || (d.value is int && d.value >= 0 && d.value <= 100000))
         && (!('streak' in d) || (d.streak is int && d.streak >= 0 && d.streak <= 100000))
         && (!('best' in d) || (d.best is int && d.best >= 0 && d.best <= 100000))
-        && (!('doneDate' in d) || (d.doneDate is string && d.doneDate.size() <= 10))
+        // Datum 'YYYY-MM-DD' nebo prázdné (klient posílá '' bez splnění za 60 dní)
+        && (!('doneDate' in d) || (d.doneDate is string && d.doneDate.matches('^([0-9]{4}-[0-9]{2}-[0-9]{2})?$')))
         && (!('last7' in d) || (d.last7 is string && d.last7.size() <= 7))
         && (!('ms' in d) || (d.ms is map && d.ms.keys().hasOnly(['v', 'd']) && d.ms.v is int && d.ms.d is string && d.ms.d.size() <= 10));
     }
@@ -193,8 +195,9 @@ service cloud.firestore {
         && (!('arch' in d) || d.arch is bool)
         && (!('color' in d) || (d.color is string && d.color.matches('^#[0-9A-Fa-f]{3,8}$')))
         && d.progress is int && d.progress >= 0 && d.progress <= 100
-        && (!('deadline' in d) || (d.deadline is string && d.deadline.size() <= 10))
-        && (!('doneAt' in d) || (d.doneAt is string && d.doneAt.size() <= 10))
+        // Datum 'YYYY-MM-DD' nebo prázdné (bez termínu / nesplněno)
+        && (!('deadline' in d) || (d.deadline is string && d.deadline.matches('^([0-9]{4}-[0-9]{2}-[0-9]{2})?$')))
+        && (!('doneAt' in d) || (d.doneAt is string && d.doneAt.matches('^([0-9]{4}-[0-9]{2}-[0-9]{2})?$')))
         && (!('msHit' in d) || (d.msHit is list && d.msHit.size() <= 4 && d.msHit.hasOnly([25, 50, 75, 100])))
         && (!('sn' in d) || (d.sn is int && d.sn >= 0 && d.sn <= 1000))
         && (!('sd' in d) || (d.sd is int && d.sd >= 0 && 'sn' in d && d.sd <= d.sn))
