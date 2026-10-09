@@ -7535,7 +7535,7 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
 
 // ── SDÍLENÍ NÁVYKŮ A CÍLŮ VE SKUPINĚ (zrcadlo families/{gid}/shared) A REAKCE (families/{gid}/reactions) ──
 // Zrcadlo h_<uid>_<habitId> nese jen souhrn (název, frekvence, dnešek, série, 7 dní), píše ho jen vlastník.
-// Zrcadlo g_<uid>_<goalId> (4.42): název, ikona, barva, pokrok %, termín, mezníky, počet podcílů, u měřitelného cíle hodnoty.
+// Zrcadlo g_<uid>_<goalId> (4.42): název, ikona, barva, pokrok %, termín, mezníky, počet podcílů, hodnoty měřitelného cíle jen při shareVals.
 // Zdroj pravdy o tom, co sdílím, je zrcadlo samo: mySharedIn plní listener shared každé skupiny.
 const SH_MS = [7, 30, 100];                  // milníky série (aktivita habit/streak)
 const RX = [['clap','👏'],['fire','🔥'],['heart','❤️'],['strong','💪']];
