@@ -751,7 +751,7 @@ onAuthStateChanged(auth,async u=>{
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
-    clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
+    clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyShop,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
@@ -1286,7 +1286,7 @@ function subHabits(){
   // includeMetadataChanges: přechod cache → server přijde i beze změny dat (jinak by _habitsSnapOk zůstal false)
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),{includeMetadataChanges:true},snap=>{
     // Offline start (data z cache) ještě neznamená úplný seznam návyků
-    if(!snap.metadata.fromCache&&!_habitsSnapOk){_habitsSnapOk=true;Object.keys(_shUnsub).forEach(shDailyResync);setTimeout(gameKick,0);}
+    if(!snap.metadata.fromCache&&!_habitsSnapOk){_habitsSnapOk=true;Object.keys(_shUnsub).forEach(shDailyResync);setTimeout(gameKick,0);setTimeout(shOrphanSweep,0);}
     if(hOk&&!snap.docChanges().length)return; // jen změna metadat: nepřekreslovat
     habits=snap.docs.map(d=>({id:d.id,...d.data()}));
     migrateLegacyPauses();
@@ -7554,6 +7554,9 @@ const _shTimers = new Map();
 const _shMs = new Map();                     // 'gid|sid' → poslední odeslaný milník {v,d} (než ho vrátí snapshot)
 const _shMsPend = new Map();                 // 'gid|sid' → milník čekající v bufferu aktivity (do zrcadla až po odeslání)
 const _shResyncDay = new Map();              // gid → den posledního resyncu (i když localStorage selže)
+const _shSrv = new Set();                    // gid, jehož zrcadla už přišla ze serveru
+const _shSwept = new Set();                  // gid, kde už v této relaci proběhl úklid osiřelých zrcadel
+let _goalsSrvOk = false;                     // cíle už přišly ze serveru (ne z cache)
 const shSid = (type, itemId) => `${type}_${CU.uid}_${itemId}`;
 function sharedGids(type, itemId) { return [...(mySharedIn.get(type+'_'+itemId) || [])].filter(g => myGroupIds().includes(g)); }
 function clampInt(v, lo, hi) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; }
@@ -7579,7 +7582,7 @@ function startGroupSocial(gid) {
     for(const k of mine.keys()) { if(!mySharedIn.has(k)) mySharedIn.set(k, new Set()); mySharedIn.get(k).add(gid); }
     myMirrors[gid] = mine;
     sharedByGroup[gid] = others;
-    if(!snap.metadata.fromCache) shDailyResync(gid);
+    if(!snap.metadata.fromCache) { _shSrv.add(gid); shDailyResync(gid); shOrphanSweep(); }
     refreshShareUI();
   }, e => { delete _shUnsub[gid]; familyListenErr(e); });
   if(!_rxUnsub[gid]) _rxUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'reactions'),
@@ -7593,13 +7596,13 @@ function stopGroupSocial(gid) {
   if(_shUnsub[gid]) { _shUnsub[gid](); delete _shUnsub[gid]; }
   if(_rxUnsub[gid]) { _rxUnsub[gid](); delete _rxUnsub[gid]; }
   for(const [k, set] of mySharedIn) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
-  delete myMirrors[gid]; delete sharedByGroup[gid]; delete rxByGroup[gid];
+  delete myMirrors[gid]; delete sharedByGroup[gid]; delete rxByGroup[gid]; _shSrv.delete(gid);
   refreshShareUI();
 }
 function resetSocialLocal() {
   Object.keys({..._shUnsub, ..._rxUnsub}).forEach(stopGroupSocial);
   for(const tm of _shTimers.values()) clearTimeout(tm);
-  _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear();
+  _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear();
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
 function refreshShareUI() {
@@ -7768,6 +7771,21 @@ function shDailyResync(gid) {
   });
 }
 
+// Úklid osiřelých zrcadel (položka smazaná jinde nebo dřív bez úklidu): jen moje zrcadla, jen když cíle, návyky
+// i zrcadla skupiny přišly ze serveru (z cache by chyběla nová položka), jednou za relaci a skupinu
+function shOrphanSweep() {
+  if(!CU || !_goalsSrvOk || !_habitsSnapOk || _accDeleting || _accDeleted) return;
+  for(const gid of _shSrv) {
+    if(_shSwept.has(gid) || !_shUnsub[gid] || !myMirrors[gid]) continue;
+    _shSwept.add(gid);
+    for(const k of [...myMirrors[gid].keys()]) {
+      const type = k[0], id = k.slice(2);
+      if(!SH_KINDS.includes(type) || !id) continue;
+      if(type === 'h' ? habits.some(x => x.id === id) : goals.some(x => x.id === id)) continue;
+      unshareItem(type, id, gid); // po jednom, chyby chytá unshareItem
+    }
+  }
+}
 // Zrušení sdílení: zrcadlo pryč + vlastní aktivita k položce a reakce na ni (feed pak neukazuje mrtvé odkazy)
 function unshareItem(type, itemId, gid) {
   if(!CU) return;
@@ -7846,9 +7864,14 @@ function goalShareHTML(g) {
   const sums = sharedGids('g', g.id).map(gid => rxSumHTML(gid, 's_' + sid, g.name, true)).join('');
   return `<div class="sg-section-lbl">👨‍👩‍👧 ${tH('sh.section')}</div>${shareChipHTML('g', g.id)}${sums}`;
 }
+// Archivovaný cíl: čip jen když je sdílený (nesdílený archivovaný cíl nově sdílet nejde z archivu)
+function archShareHTML(id) {
+  return sharedGids('g', id).length ? '<div style="padding:0 16px 14px">' + shareChipHTML('g', id) + '</div>' : '';
+}
 // Překreslit jen části karet cílů, které závisí na sdílení (rozepsaný úkol v kartě se tak neztratí)
 function refreshGoalShareUI() {
   document.querySelectorAll('#goals-list [data-g-shb]').forEach(el => { el.innerHTML = shBadgeHTML('g', el.dataset.gShb); });
+  document.querySelectorAll('#goals-list .g-share-arch').forEach(el => { el.innerHTML = archShareHTML(el.dataset.gid); });
   document.querySelectorAll('#goals-list .g-share').forEach(el => {
     const g = goals.find(x => x.id === el.dataset.gid);
     el.innerHTML = g ? goalShareHTML(g) : '';
@@ -10119,8 +10142,15 @@ function loadV(){
 function subGoals(){
   loadV();
   if(unsub)unsub();
-  unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),async snap=>{
+  _goalsSrvOk=false;
+  let gOk=false;
+  // includeMetadataChanges: přechod cache → server přijde i beze změny dat (úklid osiřelých zrcadel potřebuje úplný seznam)
+  unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),{includeMetadataChanges:true},async snap=>{
+    const srv=!snap.metadata.fromCache;
+    if(gOk&&!snap.docChanges().length){ if(srv&&!_goalsSrvOk){_goalsSrvOk=true;shOrphanSweep();} return; } // jen metadata
+    gOk=true;
     goals=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(srv&&!_goalsSrvOk){_goalsSrvOk=true;setTimeout(shOrphanSweep,0);}
     // Podcíle chybějících cílů paralelně (ne jeden po druhém)
     const missing=goals.filter(g=>!subs[g.id]);
     const loaded=await Promise.allSettled(missing.map(g=>getDocs(collection(db,'users',CU.uid,'goals',g.id,'subgoals'))));
@@ -10463,9 +10493,11 @@ function buildArchivedSection(archivedGoals) {
     + '<div class="ghdr-r1" style="padding:14px 16px">'
     +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
-    +   '<div class="gnm" style="text-decoration:line-through">' + esc(g.name) + '</div>' + shBadgeHTML('g', g.id)
+    +   '<div class="gnm"><span style="text-decoration:line-through">' + esc(g.name) + '</span><span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
     +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ Obnovit</button></div>'
     + '</div>'
+    // Sdílený archivovaný cíl: čip do sheetu (zrušení sdílení)
+    + '<div class="g-share-arch" data-gid="' + esc(g.id) + '">' + archShareHTML(g.id) + '</div>'
     + '</div>'
   ).join('');
   return '<div class="garchived-wrap" style="margin-top:20px">'
