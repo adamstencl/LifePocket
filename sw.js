@@ -42,7 +42,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v36';
+const CACHE = 'lifepocket-v37';
 const OFFLINE_URLS = [
   '/',
   '/index.html',

@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,fmtNum,weekdayNames,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.42';
+const APP_VERSION = '4.43';
 const CHANGELOG = [
+  { v:'4.43', items:[
+    '🤝 Společné výzvy ve skupině – táhněte za jeden provaz'
+  ], en:[
+    '🤝 Group challenges – pull together as a team'
+  ]},
   { v:'4.42', items:[
     '🎯 Sdílení cílů se skupinou – ostatní uvidí tvůj pokrok a pochválí tě na každém mezníku'
   ], en:[
@@ -5312,7 +5317,7 @@ window.dismissQS = () => {
 // Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
 // mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
 const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
-  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,bonusCap:200};
+  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,bonusCap:200};
 const GAME_MAX_LVL=50;
 const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
 function levelOf(xp){ let L=1; while(L<GAME_MAX_LVL&&xp>=lvlXP(L+1)) L++; return L; }
@@ -5405,6 +5410,7 @@ function gameSync(){
   }
   gameAfter(before,gameTotal());
   gameBadges();
+  chCheckDone(); // splněná společná výzva (XP a odznak 🧩), i když se body načetly až po výzvě
 }
 function gameQueue(){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,800); }
 // Po změně XP: překreslit kruh a lištu, případně oslavit novou úroveň (jen jednou, lvlSeen se hned zapíše)
@@ -5625,7 +5631,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -6603,6 +6609,7 @@ window.leaveFamily = async () => {
     const fSnap = await getDoc(doc(db,'families',fid));
     if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
       await unshareAllInGroup(fid); // sdílené návyky ze skupiny pryč, dokud jsem člen
+      await chLeaveAllInGroup(fid); // příspěvky ve společných výzvách také
       await updateDoc(doc(db,'families',fid), {[`members.${CU.uid}`]: deleteField()});
     }
     // Ze skupiny už jsem venku – lokální stav uklidit i když úklid profilu selže
@@ -6879,6 +6886,7 @@ window.leaveExtraGroup = async (gid) => {
     const fSnap = await getDoc(doc(db,'families',gid));
     if(fSnap.exists() && fSnap.data().members?.[CU.uid]) {
       await unshareAllInGroup(gid); // sdílené návyky ze skupiny pryč, dokud jsem člen
+      await chLeaveAllInGroup(gid); // příspěvky ve společných výzvách také
       await updateDoc(doc(db,'families',gid), {[`members.${CU.uid}`]: deleteField()});
     }
   } catch(e){ _leavingGids.delete(gid); toast('❌ Nepodařilo se opustit skupinu, zkus to znovu'); return; }
@@ -7112,6 +7120,7 @@ window.removeFamilyMember = async (uid, gid) => {
       if(!sn.docs.length) return;
       const b = writeBatch(db); sn.docs.forEach(d => b.delete(d.ref)); return b.commit();
     }).catch(e => console.warn('[LP] zrcadla odebraneho', e?.code || e?.name));
+    chDropMember(targetGid, uid); // jeho příspěvky ve výzvách (sám už je smazat nemůže)
   } catch(e) { toast('❌ Člena se nepodařilo odebrat'); }
 };
 
@@ -7323,6 +7332,7 @@ function buildGroupCard(gid, gData, isPrimary) {
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
     +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
     +feedBtn
+    +'<div class="ch-slot" data-ch-slot data-gid="'+gidAttr+'">'+chGroupHTML(gid)+'</div>'
     +'<div class="family-code-box" style="margin-bottom:12px">'
     +'<div class="family-code">'+esc(gid)+'</div>'
     +'<div class="family-code-lbl">Pošli tento kód nebo odkaz ostatním členům</div>'
@@ -7431,15 +7441,16 @@ async function deleteFamilyShopItem(id) {
 // Osobní moduly navíc: ref (zrcadlo / cíl reakce), val (série, mezník cíle v %), to + em / msg (reakce).
 // Rychlé změny se slučují: stejná skupina+modul+akce do 4 s od poslední, nejdéle 20 s od první → 1 záznam.
 // Milník (streak, mezník cíle) se neslučuje (klíč i s ref), reakce se slučují podle adresáta, komentář jde hned.
-const GA_MODS = ['shop','cal','meal','check','pantry','habit','goal','react'];
+const GA_MODS = ['shop','cal','meal','check','pantry','habit','goal','react','challenge'];
 const GA_PERSONAL = ['habit','goal','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
+// Společná výzva (4.43) je modul celé skupiny: v každé skupině, nastavení upozornění mezi moduly skupiny
 const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak','progress']);
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
 const _gaBuf = new Map();
 // Je modul ve skupině sdílený? Stejně jako server: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
 function groupModShared(gid, module) {
   if(!gid) return false;
-  if(GA_PERSONAL.includes(module)) return gid === familyId || extraGroupIds.includes(gid);
+  if(GA_PERSONAL.includes(module) || module === 'challenge') return gid === familyId || extraGroupIds.includes(gid);
   if(gid === familyId) {
     const fd = familyData || {};
     if(module === 'cal') return !!fd.shareCal;
@@ -7465,7 +7476,7 @@ function gaCheck(list, action, text, count = 1) {
 let _gaSeq = 0;
 function gaKey(gid, module, action, x) {
   let key = gid+'|'+module+'|'+action;
-  if(action === 'streak' || module === 'goal') key += '|'+(x?.ref || '');
+  if(action === 'streak' || module === 'goal' || module === 'challenge') key += '|'+(x?.ref || '');
   if(module === 'react') key += '|'+(x?.to || '') + (x?.rid ? '|c'+(++_gaSeq) : '');
   return key;
 }
@@ -7591,9 +7602,11 @@ function startGroupSocial(gid) {
     rxByGroup[gid] = snap.docs.map(d => ({...d.data({serverTimestamps:'estimate'}), _id: d.id}));
     refreshRxUI(gid);
   }, e => { delete _rxUnsub[gid]; familyListenErr(e); });
+  startGroupChallenges(gid);
 }
 function stopGroupSocial(gid) {
   if(!gid) return;
+  stopGroupChallenges(gid);
   if(_shUnsub[gid]) { _shUnsub[gid](); delete _shUnsub[gid]; }
   if(_rxUnsub[gid]) { _rxUnsub[gid](); delete _rxUnsub[gid]; }
   for(const [k, set] of mySharedIn) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
@@ -7601,7 +7614,7 @@ function stopGroupSocial(gid) {
   refreshShareUI();
 }
 function resetSocialLocal() {
-  Object.keys({..._shUnsub, ..._rxUnsub}).forEach(stopGroupSocial);
+  Object.keys({..._shUnsub, ..._rxUnsub, ..._chUnsub}).forEach(stopGroupSocial);
   for(const tm of _shTimers.values()) clearTimeout(tm);
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear();
 }
@@ -7839,6 +7852,457 @@ function dropMyMirrorsAfterRemoval(gid) {
   habits.forEach(h => { if(h?.id) ids.add('h_' + uid + '_' + h.id); });
   goals.forEach(g => { if(g?.id) ids.add('g_' + uid + '_' + g.id); });
   for(const id of ids) deleteDoc(doc(db,'families',gid,'shared',id)).catch(() => {});
+}
+
+// ── SPOLEČNÉ VÝZVY SKUPINY (4.43, docs/NAVRH-GAMIFIKACE.md F3) ──
+// families/{gid}/challenges/{cid}: týmové, ne soupeřivé. kind 'sum' = součet příspěvků do cíle (1000 dřepů),
+// 'daily' = každý den každý (5 dní bez sladkého; target = počet dní). Příspěvky v mapě p.<uid>, píše jen vlastník:
+// {n} u součtu (increment), {n, d:[dny]} u denní výzvy. Dny v lokálním čase (toDS), konec = půlnoc po posledním dni.
+// Jednotlivá čísla ukazuje UI jen se žebříčkem (board, řazený podle jména). Listener: jeden na skupinu (aktivní a nedávné).
+const CH_MAX_DAYS = 28, CH_SUM_MAX = 100000, CH_ADD_MAX = 1000;
+const CH_GRACE_MS = 12*3600000;               // rezerva po půlnoci posledního dne (offline zápis, jiné časové pásmo)
+const CH_KEEP_MS = 30*86400000;               // výsledek zůstane 30 dní (expireAt, TTL / úklid)
+const CH_RESULT_DAYS = 7;                     // výsledek skončené výzvy v kartě skupiny
+const CH_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CH_KINDS = ['sum', 'daily'];
+// Předvolby: název a jednotka z i18n (ch.pre.<id>, ch.pre.<id>.u)
+const CH_PRESETS = [
+  {id:'squats', em:'💪', kind:'sum', target:1000, days:7},
+  {id:'walk', em:'🚶', kind:'sum', target:100, days:14},
+  {id:'read', em:'📚', kind:'sum', target:500, days:14},
+  {id:'sweets', em:'🍬', kind:'daily', days:5},
+  {id:'water', em:'💧', kind:'daily', days:7},
+];
+const chByGroup = {};                         // gid → [výzvy]
+const _chUnsub = {};
+let _chSheet = null;                          // {gid, cid} | {gid, mode:'new'}
+const chRef = (gid, cid) => doc(db,'families',gid,'challenges',cid);
+
+// Konec výzvy: půlnoc (lokálně) po posledním dni + rezerva
+function chEndMs(to) { const d = new Date(to + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.getTime() + CH_GRACE_MS; }
+function chDays(c) { return Math.max(1, Math.min(CH_MAX_DAYS, dsDiff(c.from, c.to) + 1)); }
+// Skončená: ukončená zakladatelem, nebo po posledním dni (lokální datum)
+function chOver(c, today = toDS()) { return !!c.ended || today > c.to; }
+function chDaysLeft(c, today = toDS()) { return Math.max(0, dsDiff(today < c.from ? c.from : today, c.to) + 1); }
+// Data ze snapshotu: neplatné dokumenty se přeskočí (cizí data jsou jen data)
+function chNorm(id, d) {
+  if(!d || typeof d !== 'object' || !CH_KINDS.includes(d.kind)) return null;
+  if(typeof d.title !== 'string' || !d.title.trim() || !CH_DS_RE.test(d.from) || !CH_DS_RE.test(d.to) || d.from > d.to) return null;
+  const p = {};
+  if(d.p && typeof d.p === 'object' && !Array.isArray(d.p)) for(const [uid, e] of Object.entries(d.p)) if(e && typeof e === 'object') p[uid] = e;
+  return {id, kind: d.kind, title: cutName(d.title, 60), emoji: typeof d.emoji === 'string' ? cutName(d.emoji, 16) : '',
+    unit: typeof d.unit === 'string' ? cutName(d.unit, 16) : '', target: clampInt(d.target, 1, CH_SUM_MAX),
+    from: d.from, to: d.to, by: typeof d.by === 'string' ? d.by : '', board: d.board === true, ended: d.ended === true, p};
+}
+// Splněné dny příspěvku: jen platná data v rozsahu výzvy, bez duplicit
+function chPartDays(c, e) {
+  const set = new Set();
+  if(Array.isArray(e?.d)) for(const x of e.d) if(typeof x === 'string' && CH_DS_RE.test(x) && x >= c.from && x <= c.to) set.add(x);
+  return set;
+}
+function chPartN(c, e) { return c.kind === 'daily' ? chPartDays(c, e).size : clampInt(e?.n, 0, CH_SUM_MAX); }
+// Souhrn: jen současní členové (příspěvek odcházejícího zmizí), denní výzva = účastníci × dny
+function chStats(c, members) {
+  const parts = [];
+  for(const [uid, e] of Object.entries(c.p || {})) {
+    if(members && !members[uid]) continue;
+    parts.push({uid, n: chPartN(c, e)});
+  }
+  const sum = parts.reduce((s, x) => s + x.n, 0);
+  const goal = c.kind === 'daily' ? parts.length * chDays(c) : c.target;
+  const done = goal > 0 && sum >= goal;
+  return {parts, sum, goal, done, pct: goal > 0 ? Math.min(100, Math.round(sum / goal * 100)) : 0};
+}
+function chFind(gid, cid) { return (chByGroup[gid] || []).find(c => c.id === cid) || null; }
+// Běžící výzva skupiny (nejvýš jedna) a výsledek poslední skončené (do 7 dní po konci)
+function chCurrent(gid) {
+  const today = toDS(), list = chByGroup[gid] || [];
+  const cur = list.filter(c => !chOver(c, today)).sort((a, b) => a.from.localeCompare(b.from))[0] || null;
+  const last = list.filter(c => chOver(c, today) && addDays(c.to, CH_RESULT_DAYS) >= today)
+    .sort((a, b) => b.to.localeCompare(a.to))[0] || null;
+  return {cur, last};
+}
+function chCanManage(gid, c) {
+  const m = groupDataOf(gid)?.members?.[CU?.uid];
+  return !!m && (c.by === CU.uid || m.role === 'admin');
+}
+
+// Listener jedné skupiny (spouští startGroupSocial, končí ve stopGroupSocial)
+function startGroupChallenges(gid) {
+  if(!CU || !okFamilyCode(gid) || _chUnsub[gid]) return;
+  _chUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'challenges'), where('expireAt','>',Timestamp.now()), limit(10)), snap => {
+    chByGroup[gid] = snap.docs.map(d => chNorm(d.id, d.data())).filter(Boolean);
+    renderChallengeUI();
+    chCheckDone();
+  }, e => { delete _chUnsub[gid]; familyListenErr(e); });
+}
+function stopGroupChallenges(gid) {
+  if(_chUnsub[gid]) { _chUnsub[gid](); delete _chUnsub[gid]; }
+  delete chByGroup[gid];
+  if(_chSheet?.gid === gid && document.getElementById('m-chal')?.classList.contains('open')) cm('m-chal');
+  renderChallengeUI();
+}
+
+// ── Vykreslení ──
+function chMetaText(c) {
+  const today = toDS();
+  const end = t('ch.until', {d: fmtDate(c.to, 'dm')});
+  if(chOver(c, today)) return end;
+  const left = chDaysLeft(c, today);
+  return end + ' · ' + (left <= 1 ? t('ch.lastDay') : t('ch.left', {n: left}));
+}
+function chNumText(c, st) {
+  if(c.kind === 'daily') return t('ch.numDaily', {sum: fmtNum(st.sum), goal: fmtNum(st.goal)});
+  return t('ch.num', {sum: fmtNum(st.sum), goal: fmtNum(st.goal), unit: c.unit}).trim();
+}
+// Kdo přispěl: bez čísel jen avatary (výchozí), se žebříčkem jména a čísla seřazená podle jména
+function chWhoHTML(gid, c, st) {
+  const members = groupDataOf(gid)?.members || {};
+  const nm = uid => uid === CU?.uid ? t('gf.you') : (cutName(members[uid]?.name, 40) || t('gf.someone'));
+  if(c.board) {
+    const rows = st.parts.slice().sort((a, b) => nm(a.uid).localeCompare(nm(b.uid), LOCALE));
+    if(!rows.length) return `<div class="ch-who">${tH('ch.nobody')}</div>`;
+    const fmt = x => c.kind === 'daily' ? x.n + '/' + chDays(c) : fmtNum(x.n);
+    return `<div class="ch-who ch-board"><span class="ch-who-l">${tH('ch.board')}:</span> ${rows.map(x => `<span class="ch-bp">${esc(nm(x.uid))} ${esc(fmt(x))}</span>`).join(' · ')}</div>`;
+  }
+  const who = st.parts.filter(x => x.n > 0);
+  if(!who.length) return `<div class="ch-who">${tH(st.parts.length ? 'ch.joined' : 'ch.nobody', {n: st.parts.length})}</div>`;
+  const avs = who.map(x => `<span class="ch-av" title="${esc(nm(x.uid))}">${esc(lookupOr(MEMBER_AV, members[x.uid]?.avatar, '👤'))}</span>`).join('');
+  return `<div class="ch-who"><span class="ch-avs" role="img" aria-label="${esc(t('ch.whoAria', {n: who.length}))}">${avs}</span> ${tH('ch.contributed')}</div>`;
+}
+function chBarHTML(c, st) {
+  return `<div class="ch-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${st.pct}" aria-label="${esc(chNumText(c, st))}"><div class="ch-fill${st.done ? ' done' : ''}" style="width:${st.pct}%"></div></div>`;
+}
+// Karta výzvy: mode 'grp' (karta skupiny), 'dash' (Domů, s názvem skupiny), 'sheet' (detail bez tlačítka)
+function chCardHTML(gid, c, mode) {
+  const compact = mode === 'dash';
+  const members = groupDataOf(gid)?.members || {};
+  const st = chStats(c, members);
+  const mine = c.p?.[CU?.uid] && members[CU?.uid] ? chPartN(c, c.p[CU.uid]) : null;
+  const joined = mine !== null;
+  const em = esc(c.emoji || (c.kind === 'daily' ? '📅' : '🤝'));
+  let foot = '';
+  if(st.done) foot = `<div class="ch-done">🎉 ${tH('ch.doneShort')}</div>`;
+  if(joined) foot += `<div class="ch-mine">${c.kind === 'daily' ? tH('ch.mineDaily', {n: mine, days: chDays(c)}) : tH('ch.mine', {n: fmtNum(mine), unit: c.unit}).trim()}</div>`;
+  const kind = c.kind === 'daily' ? t('ch.kind.daily') : t('ch.kind.sum');
+  const head = `<div class="ch-top"><span class="ch-em" aria-hidden="true">${em}</span><div class="ch-tt">
+      <div class="ch-name">${esc(c.title)}</div><div class="ch-meta">${compact ? esc(groupLabel(gid)) + ' · ' : ''}${esc(kind)} · ${esc(chMetaText(c))}</div></div></div>`;
+  const body = head + chBarHTML(c, st) + `<div class="ch-num">${esc(chNumText(c, st))}</div>` + chWhoHTML(gid, c, st) + foot;
+  if(mode === 'sheet') return `<div class="ch-card ch-card--sheet">${body}</div>`;
+  return `<div class="ch-card">${body}
+    <button type="button" class="${joined ? 'btn-s' : 'btn-p'} ch-btn" data-a0="${esc(gid)}" onclick="openChal(this.dataset.a0)">${joined ? tH('ch.contribute') : tH('ch.join')}</button></div>`;
+}
+// Výsledek skončené výzvy: vždy pozitivně („Dali jste dohromady 82 ze 100 💪“)
+function chResultHTML(gid, c) {
+  const st = chStats(c, groupDataOf(gid)?.members || {});
+  const txt = st.done ? t('ch.resDone', {title: c.title}) : t('ch.resTeam', {sum: fmtNum(st.sum), goal: fmtNum(st.goal), title: c.title});
+  return `<div class="ch-res"><span aria-hidden="true">${st.done ? '🏆' : '💪'}</span> ${esc(txt)}</div>`;
+}
+// Sekce v kartě skupiny
+function chGroupHTML(gid) {
+  if(!CU || !okFamilyCode(gid)) return '';
+  const {cur, last} = chCurrent(gid);
+  let h = `<div class="ch-h">🤝 ${tH('ch.title')}</div>`;
+  if(cur) h += chCardHTML(gid, cur, 'grp');
+  else h += `<div class="ch-empty">${tH('ch.empty')}</div>
+    <button type="button" class="btn-s ch-btn" data-a0="${esc(gid)}" onclick="openChalNew(this.dataset.a0)">➕ ${tH('ch.new')}</button>`;
+  if(last) h += chResultHTML(gid, last);
+  return `<div class="ch-box">${h}</div>`;
+}
+// Domů: běžící výzvy ve všech mých skupinách
+function chDashHTML() {
+  if(!CU) return '';
+  let h = '';
+  for(const gid of myGroupIds()) { const {cur} = chCurrent(gid); if(cur) h += chCardHTML(gid, cur, 'dash'); }
+  return h ? `<div class="dw ch-dw" style="cursor:default"><div class="dw-head"><div class="dw-title">🤝 ${tH('ch.title')}</div></div>${h}</div>` : '';
+}
+function renderChallengeUI() {
+  document.querySelectorAll('[data-ch-slot]').forEach(el => { el.innerHTML = chGroupHTML(el.dataset.gid); });
+  const d = document.getElementById('ch-dash');
+  if(d) d.innerHTML = chDashHTML();
+  if(_chSheet && document.getElementById('m-chal')?.classList.contains('open') && !_chSheet.mode) renderChalSheet();
+}
+
+// ── Sheet výzvy: detail, přispění, správa; nová výzva ──
+window.openChal = gid => {
+  if(!myGroupIds().includes(gid)) return;
+  const {cur} = chCurrent(gid);
+  if(!cur) { window.openChalNew(gid); return; }
+  _chSheet = {gid, cid: cur.id};
+  renderChalSheet();
+  const ov = document.getElementById('m-chal');
+  if(ov && !ov.classList.contains('open')) om('m-chal');
+};
+function renderChalSheet() {
+  const tEl = document.getElementById('chal-title'), bEl = document.getElementById('chal-body');
+  if(!tEl || !bEl || !_chSheet) return;
+  const {gid, cid} = _chSheet;
+  const c = chFind(gid, cid);
+  tEl.textContent = '🤝 ' + t('ch.title');
+  if(!c) { bEl.innerHTML = `<div class="gf-empty">${tH('ch.gone')}</div>`; return; }
+  const members = groupDataOf(gid)?.members || {};
+  const e = c.p?.[CU.uid], joined = !!e && !!members[CU.uid];
+  const over = chOver(c), today = toDS(), y = addDays(today, -1);
+  let act = '';
+  if(over) act = chResultHTML(gid, c);
+  else if(!joined) act = `<p class="ch-note">${tH(c.kind === 'daily' ? 'ch.joinDaily' : 'ch.joinSum')}</p>
+    <button type="button" class="btn-p ch-big" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chJoin(this.dataset.a0,this.dataset.a1)">${tH('ch.join')}</button>`;
+  else if(c.kind === 'daily') {
+    const days = chPartDays(c, e);
+    const dayBtn = (ds, key) => ds < c.from || ds > c.to ? '' :
+      `<button type="button" class="ch-day${days.has(ds) ? ' on' : ''}" aria-pressed="${days.has(ds)}" data-a0="${esc(gid)}" data-a1="${esc(cid)}" data-a2="${ds}" onclick="chDay(this.dataset.a0,this.dataset.a1,this.dataset.a2)">${days.has(ds) ? '✅' : '⬜'} ${tH(key)}</button>`;
+    act = `<div class="ch-days">${dayBtn(today, 'ch.today')}${dayBtn(y, 'ch.yesterday')}</div>`;
+  } else {
+    const u = c.unit ? ' ' + esc(c.unit) : '';
+    act = `<div class="ch-quick" role="group" aria-label="${tH('ch.quick')}">${[1, 5, 10, 50].map(k =>
+        `<button type="button" class="ch-q" aria-label="+${k}${u}" data-a0="${esc(gid)}" data-a1="${esc(cid)}" data-a2="${k}" onclick="chAdd(this.dataset.a0,this.dataset.a1,this.dataset.a2)">+${k}</button>`).join('')}</div>
+      <div class="ch-addrow"><label class="sr-only" for="ch-add-n">${tH('ch.amount')}</label>
+        <input class="finp" type="number" inputmode="numeric" min="1" max="${CH_ADD_MAX}" step="1" id="ch-add-n" placeholder="${tH('ch.amountPh')}">
+        <button type="button" class="btn-p" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chAddInput(this.dataset.a0,this.dataset.a1)">➕ ${tH('ch.add')}</button></div>
+      <button type="button" class="ch-link" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chSetTotal(this.dataset.a0,this.dataset.a1)">✏️ ${tH('ch.fix')}</button>`;
+  }
+  let manage = '';
+  if(joined && !over) manage += `<button type="button" class="ch-link" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chLeave(this.dataset.a0,this.dataset.a1)">${tH('ch.leave')}</button>`;
+  if(chCanManage(gid, c)) {
+    manage += `<label class="gn-check"><input type="checkbox"${c.board ? ' checked' : ''} data-a0="${esc(gid)}" data-a1="${esc(cid)}" onchange="chBoard(this.dataset.a0,this.dataset.a1,this.checked)"><span>${tH('ch.boardToggle')}</span></label>`
+      + (over ? '' : `<button type="button" class="btn-s ch-btn" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chEnd(this.dataset.a0,this.dataset.a1)">🏁 ${tH('ch.end')}</button>`)
+      + `<button type="button" class="ch-link ch-del" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chDelete(this.dataset.a0,this.dataset.a1)">🗑️ ${tH('ch.delete')}</button>`;
+  }
+  bEl.innerHTML = chCardHTML(gid, c, 'sheet')
+    + act
+    + (manage ? `<div class="ch-manage">${manage}</div>` : '')
+    + `<p class="ch-note">${tH(c.board ? 'ch.privBoard' : 'ch.priv')}</p>`;
+}
+
+window.openChalNew = gid => {
+  if(!myGroupIds().includes(gid)) return;
+  if(chCurrent(gid).cur) { window.openChal(gid); return; }
+  _chSheet = {gid, mode: 'new'};
+  const tEl = document.getElementById('chal-title'), bEl = document.getElementById('chal-body');
+  if(!tEl || !bEl) return;
+  tEl.textContent = '🤝 ' + t('ch.new');
+  bEl.innerHTML = `<div class="ch-pre" role="group" aria-label="${tH('ch.presets')}">${CH_PRESETS.map(p =>
+      `<button type="button" class="gf-chip ch-pre-b" data-a0="${p.id}" onclick="chPreset(this.dataset.a0)">${p.em} ${tH('ch.pre.' + p.id)}</button>`).join('')}</div>
+    <div class="fg"><div class="flbl" id="ch-kind-l">${tH('ch.kind')}</div>
+      <div class="seg seg--block" role="radiogroup" aria-labelledby="ch-kind-l">
+        <button type="button" class="seg-btn active" role="radio" aria-checked="true" id="ch-k-sum" data-a0="sum" onclick="chKind(this.dataset.a0)">➕ ${tH('ch.kind.sum')}</button>
+        <button type="button" class="seg-btn" role="radio" aria-checked="false" id="ch-k-daily" data-a0="daily" onclick="chKind(this.dataset.a0)">📅 ${tH('ch.kind.daily')}</button>
+      </div><div class="ch-hint" id="ch-kind-hint">${tH('ch.kind.sumHint')}</div></div>
+    <div class="fg"><label class="flbl" for="ch-f-title">${tH('ch.f.title')}</label>
+      <input class="finp" id="ch-f-title" maxlength="60" placeholder="${tH('ch.f.titlePh')}"></div>
+    <div class="ch-row2" id="ch-sum-f">
+      <div class="fg"><label class="flbl" for="ch-f-target">${tH('ch.f.target')}</label>
+        <input class="finp" id="ch-f-target" type="number" inputmode="numeric" min="1" max="${CH_SUM_MAX}" step="1" value="100"></div>
+      <div class="fg"><label class="flbl" for="ch-f-unit">${tH('ch.f.unit')}</label>
+        <input class="finp" id="ch-f-unit" maxlength="16" placeholder="${tH('ch.f.unitPh')}"></div>
+    </div>
+    <div class="fg"><label class="flbl" for="ch-f-days">${tH('ch.f.days')}</label>
+      <input class="finp" id="ch-f-days" type="number" inputmode="numeric" min="1" max="${CH_MAX_DAYS}" step="1" value="7">
+      <div class="ch-hint">${tH('ch.f.daysHint', {n: CH_MAX_DAYS})}</div></div>
+    <label class="gn-check"><input type="checkbox" id="ch-f-board"><span>${tH('ch.boardToggle')}</span></label>
+    <div class="ch-hint">${tH('ch.boardHint')}</div>
+    <input type="hidden" id="ch-f-em" value="">
+    <div class="macts"><button type="button" class="btn-s" onclick="cm('m-chal')">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" id="ch-f-go" data-a0="${esc(gid)}" onclick="chCreate(this.dataset.a0)">🚀 ${tH('ch.start')}</button></div>`;
+  const ov = document.getElementById('m-chal');
+  if(ov && !ov.classList.contains('open')) om('m-chal');
+};
+window.chKind = k => {
+  if(!CH_KINDS.includes(k)) return;
+  for(const x of CH_KINDS) { const b = document.getElementById('ch-k-' + x); if(b) { b.classList.toggle('active', x === k); b.setAttribute('aria-checked', String(x === k)); } }
+  const f = document.getElementById('ch-sum-f'); if(f) f.hidden = k !== 'sum';
+  const h = document.getElementById('ch-kind-hint'); if(h) h.textContent = t(k === 'sum' ? 'ch.kind.sumHint' : 'ch.kind.dailyHint');
+};
+window.chPreset = id => {
+  const p = CH_PRESETS.find(x => x.id === id); if(!p) return;
+  const set = (i, v) => { const el = document.getElementById(i); if(el) el.value = v; };
+  window.chKind(p.kind);
+  set('ch-f-title', t('ch.pre.' + id));
+  set('ch-f-days', p.days);
+  set('ch-f-em', p.em);
+  if(p.kind === 'sum') { set('ch-f-target', p.target); set('ch-f-unit', t('ch.pre.' + id + '.u')); }
+};
+function chErr(e) { console.warn('[LP] vyzva', e?.code || e?.name); toast(t('ch.err')); }
+// Úklid vypršelých výzev (pravidla to po expireAt povolí každému členovi; jinak je smaže TTL)
+function chSweep(gid) {
+  getDocs(query(collection(db,'families',gid,'challenges'), where('expireAt','<=',Timestamp.now()), limit(20)))
+    .then(sn => sn.docs.forEach(d => deleteDoc(d.ref).catch(() => {})))
+    .catch(e => console.warn('[LP] uklid vyzev', e?.code || e?.name));
+}
+window.chCreate = gid => {
+  if(!CU || !myGroupIds().includes(gid) || _accDeleting || _accDeleted) return;
+  if(chCurrent(gid).cur) { toast(t('ch.oneOnly')); window.openChal(gid); return; }
+  const val = i => document.getElementById(i)?.value ?? '';
+  const kind = document.getElementById('ch-k-daily')?.classList.contains('active') ? 'daily' : 'sum';
+  const title = cutName(val('ch-f-title'), 60);
+  const days = Math.round(Number(val('ch-f-days')));
+  const target = Math.round(Number(val('ch-f-target')));
+  if(!title) { toast(t('ch.errTitle')); document.getElementById('ch-f-title')?.focus(); return; }
+  if(!Number.isFinite(days) || days < 1 || days > CH_MAX_DAYS) { toast(t('ch.errDays', {n: CH_MAX_DAYS})); return; }
+  if(kind === 'sum' && (!Number.isFinite(target) || target < 1 || target > CH_SUM_MAX)) { toast(t('ch.errTarget', {n: fmtNum(CH_SUM_MAX)})); return; }
+  const from = toDS(), to = addDays(from, days - 1), end = chEndMs(to);
+  const em = cutName(val('ch-f-em'), 16) || (kind === 'daily' ? '📅' : '🤝');
+  const data = {title, emoji: em, kind, target: kind === 'daily' ? days : target, from, to, by: CU.uid,
+    board: !!document.getElementById('ch-f-board')?.checked, createdAt: serverTimestamp(),
+    endAt: Timestamp.fromMillis(end), expireAt: Timestamp.fromMillis(end + CH_KEEP_MS)};
+  const unit = kind === 'sum' ? cutName(val('ch-f-unit'), 16) : '';
+  if(unit) data.unit = unit;
+  const ref = doc(collection(db,'families',gid,'challenges'));
+  // Bez await (offline se odešle později); zakladatel se rovnou přidá
+  setDoc(ref, data).catch(chErr);
+  updateDoc(ref, new FieldPath('p', CU.uid), kind === 'daily' ? {n: 0, d: []} : {n: 0}).catch(e => console.warn('[LP] vyzva join', e?.code || e?.name));
+  logGroupActivity(gid, 'challenge', 'add', title, 1, {ref: ref.id});
+  chSweep(gid);
+  // Lokálně hned (snapshot přijde vzápětí)
+  const loc = chNorm(ref.id, {...data, p: {[CU.uid]: kind === 'daily' ? {n: 0, d: []} : {n: 0}}});
+  if(loc) chByGroup[gid] = [...(chByGroup[gid] || []).filter(c => c.id !== ref.id), loc];
+  toast(t('ch.started'));
+  _chSheet = {gid, cid: ref.id};
+  renderChallengeUI();
+  renderChalSheet();
+};
+
+// Lokální změna vlastního příspěvku + oznámení splnění, když ho dotáhl můj zápis
+function chApplyLocal(gid, c, entry) {
+  const members = groupDataOf(gid)?.members || {};
+  const before = chStats(c, members).done;
+  c.p = {...c.p};
+  if(entry) c.p[CU.uid] = entry; else delete c.p[CU.uid];
+  const st = chStats(c, members);
+  if(!before && st.done) chAnnounceDone(gid, c);
+  renderChallengeUI();
+  chCheckDone();
+}
+function chAnnounceDone(gid, c) {
+  const k = 'lp_chd_' + c.id;
+  if(lsGet(k)) return;
+  lsSave(k, 1);
+  logGroupActivity(gid, 'challenge', 'done', c.title, 1, {ref: c.id});
+}
+function chLive(gid, cid) {
+  const c = chFind(gid, cid);
+  if(!CU || !c || _accDeleting || _accDeleted || !groupDataOf(gid)?.members?.[CU.uid]) return null;
+  if(chOver(c)) { toast(t('ch.over')); return null; }
+  return c;
+}
+window.chJoin = (gid, cid) => {
+  const c = chLive(gid, cid); if(!c || c.p?.[CU.uid]) return;
+  const entry = c.kind === 'daily' ? {n: 0, d: []} : {n: 0};
+  updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), entry).catch(chErr);
+  chApplyLocal(gid, c, entry);
+  toast(t('ch.joinedToast'));
+};
+// Součet: increment (dvě zařízení se nepřepíšou), nejvýš 1000 naráz, nikdy pod nulu
+window.chAdd = (gid, cid, k) => {
+  const c = chLive(gid, cid); if(!c || c.kind !== 'sum') return;
+  const cur = chPartN(c, c.p?.[CU.uid]);
+  const add = Math.min(CH_ADD_MAX, Math.max(-cur, Math.round(Number(k)) || 0));
+  const next = Math.min(CH_SUM_MAX, cur + add), diff = next - cur;
+  if(!diff) return;
+  updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid, 'n'), increment(diff)).catch(chErr);
+  chApplyLocal(gid, c, {n: next});
+  toast(t(diff > 0 ? 'ch.added' : 'ch.removed', {n: fmtNum(Math.abs(diff)), unit: c.unit}).trim());
+};
+window.chAddInput = (gid, cid) => {
+  const el = document.getElementById('ch-add-n');
+  const v = Math.round(Number(el?.value));
+  if(!Number.isFinite(v) || v < 1 || v > CH_ADD_MAX) { toast(t('ch.errAdd', {n: fmtNum(CH_ADD_MAX)})); el?.focus(); return; }
+  if(el) el.value = '';
+  window.chAdd(gid, cid, v);
+};
+// Oprava vlastního součtu (překlep): nastaví celkové číslo
+window.chSetTotal = (gid, cid) => {
+  const c = chLive(gid, cid); if(!c || c.kind !== 'sum') return;
+  const cur = chPartN(c, c.p?.[CU.uid]);
+  const raw = prompt(t('ch.fixPrompt'), String(cur));
+  if(raw === null) return;
+  const v = Math.round(Number(String(raw).replace(',', '.')));
+  if(!Number.isFinite(v) || v < 0 || v > CH_SUM_MAX || v > cur + CH_ADD_MAX) { toast(t('ch.errAdd', {n: fmtNum(CH_ADD_MAX)})); return; }
+  if(v === cur) return;
+  updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid, 'n'), v).catch(chErr);
+  chApplyLocal(gid, c, {n: v});
+};
+// Denní výzva: dnes nebo včera (lokální datum), celý záznam {n, d} najednou (n = počet dní)
+window.chDay = (gid, cid, ds) => {
+  const c = chLive(gid, cid); if(!c || c.kind !== 'daily') return;
+  const today = toDS();
+  if(!(ds === today || ds === addDays(today, -1)) || ds < c.from || ds > c.to) return;
+  const days = chPartDays(c, c.p?.[CU.uid]);
+  if(days.has(ds)) days.delete(ds); else days.add(ds);
+  const entry = {n: days.size, d: [...days].sort()};
+  updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), entry).catch(chErr);
+  chApplyLocal(gid, c, entry);
+};
+window.chLeave = (gid, cid) => {
+  const c = chFind(gid, cid); if(!CU || !c || !c.p?.[CU.uid]) return;
+  if(!confirm(t('ch.leaveConfirm'))) return;
+  updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), deleteField()).catch(chErr);
+  chApplyLocal(gid, c, null);
+};
+window.chBoard = (gid, cid, on) => {
+  const c = chFind(gid, cid); if(!c || !chCanManage(gid, c)) return;
+  c.board = !!on;
+  updateDoc(chRef(gid, cid), {board: !!on}).catch(chErr);
+  renderChallengeUI();
+};
+window.chEnd = (gid, cid) => {
+  const c = chFind(gid, cid); if(!c || !chCanManage(gid, c) || chOver(c)) return;
+  if(!confirm(t('ch.endConfirm'))) return;
+  c.ended = true;
+  updateDoc(chRef(gid, cid), {ended: true}).catch(chErr);
+  renderChallengeUI();
+};
+window.chDelete = (gid, cid) => {
+  const c = chFind(gid, cid); if(!c || !chCanManage(gid, c)) return;
+  if(!confirm(t('ch.deleteConfirm'))) return;
+  chByGroup[gid] = (chByGroup[gid] || []).filter(x => x.id !== cid);
+  deleteDoc(chRef(gid, cid)).catch(chErr);
+  cm('m-chal');
+  renderChallengeUI();
+};
+// Odchod ze skupiny: vlastní příspěvky pryč, dokud jsem člen (po jednom, chyba odchod nezastaví)
+async function chLeaveAllInGroup(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  const uid = CU.uid;
+  await Promise.all((chByGroup[gid] || []).filter(c => c.p?.[uid]).map(c =>
+    updateDoc(chRef(gid, c.id), new FieldPath('p', uid), deleteField()).catch(e => console.warn('[LP] vyzva pri odchodu', e?.code || e?.name))));
+}
+// Správce odebral člena: jeho příspěvky z výzev skupiny (pravidla správci povolí jen odebrání)
+function chDropMember(gid, uid) {
+  for(const c of chByGroup[gid] || []) {
+    if(!c.p?.[uid]) continue;
+    updateDoc(chRef(gid, c.id), new FieldPath('p', uid), deleteField()).catch(e => console.warn('[LP] vyzva odebraneho', e?.code || e?.name));
+  }
+}
+// Splněná výzva, do které jsem přispěl/a: 1× XP (once.ch_<cid>) a oslava; odznak 🧩 v dalším gameSync
+function chCheckDone() {
+  if(!CU || !game || _accDeleting || _accDeleted) return;
+  for(const gid of myGroupIds()) {
+    const members = groupDataOf(gid)?.members;
+    if(!members?.[CU.uid]) continue;
+    for(const c of chByGroup[gid] || []) {
+      if(game.once['ch_' + c.id] || chPartN(c, c.p?.[CU.uid]) <= 0) continue;
+      const st = chStats(c, members);
+      if(st.done && gameAward('ch_' + c.id, XP.chDone)) celebrateChallenge(gid, c, st);
+    }
+  }
+}
+function celebrateChallenge(gid, c, st) {
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const line = (c.emoji || '🤝') + ' ' + c.title;
+  if(celebModalOpen()) { showAvReaction('🤝', t('ch.win.t'), line, true); return; }
+  const body = document.getElementById('gwin-body');
+  if(!body) return;
+  body.innerHTML = `<div class="gs-top"><div class="gwin-em" aria-hidden="true">🤝</div>
+      <div class="lu-title" id="gwin-title">${tH('ch.win.t')}</div>
+      <div class="gs-lvl">${esc(line)}</div>
+      <div class="lu-say">${esc(chNumText(c, st))} · ${esc(groupLabel(gid))}</div>
+      ${gameOn() ? `<div class="ch-xp">+${XP.chDone} XP · 🧩 ${tH('game.badge.team_player')}</div>` : ''}
+      <div class="lu-say">„${tH('ch.win.say')}“ — ${esc(av.name)}</div></div>
+    <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
+  om('m-gwin');
+  spawnConfetti();
+  setTimeout(() => document.getElementById('gwin-ok')?.focus(), 50);
 }
 
 // ── Sheet „Sdílet se skupinou“ ──
@@ -8260,10 +8724,10 @@ window.delRxComment = rid => {
 };
 
 // ── CO JE NOVÉHO VE SKUPINĚ (feed, nepřečtené, odkaz z notifikace) ──
-const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', goal:'🎯', react:'👏'};
+const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', goal:'🎯', react:'👏', challenge:'🤝'};
 // Akce, které klient zapisuje (popisky gf.a.<modul>.<akce>); ostatní = obecný popisek
 const GF_ACTS = {shop:['add','edit','del','done','clear'], cal:['add','edit','del'], meal:['edit','del','plan'],
-  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], goal:['progress','done'], react:['add']};
+  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], goal:['progress','done'], react:['add'], challenge:['add','done']};
 const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', goal:'goals', react:'habits'};
 const _gfUnsub = {};   // gid → odhlášení listeneru nepřečtených
 const _gfUnread = {};  // gid → {total, mods:{shop:n,…}}
@@ -8354,6 +8818,7 @@ window.openGroupFeed = (gid, mod) => {
 window.gfPickGroup = gid => { if(myGroupIds().includes(gid) && gid !== _gf.gid) loadGroupFeed(gid); };
 window.gfPickMod = m => { _gf.mod = GA_MODS.includes(m) ? m : null; renderGroupFeed(); };
 window.gfOpenModule = m => {
+  if(m === 'challenge') { const gid = _gf.gid; cm('m-grpfeed'); if(gid) window.openChal(gid); return; }
   if(!GF_PAGE[m] || !(prof?.modules || []).includes(GF_PAGE[m])) return;
   cm('m-grpfeed');
   sp(GF_PAGE[m]);
@@ -8473,7 +8938,7 @@ function renderGroupFeed() {
     const mine = a.uid === CU?.uid;
     const who = mine ? t('gf.you') : (cutName(members[a.uid]?.name, 40) || cutName(a.name, 40) || t('gf.someone'));
     const unread = !mine && a._ts > _gf.prevSeen;
-    const ms = (a.module === 'habit' && a.action === 'streak') || a.module === 'goal';
+    const ms = (a.module === 'habit' && a.action === 'streak') || a.module === 'goal' || (a.module === 'challenge' && a.action === 'done');
     // Pod řádkem návyku a cíle reakce (cíl a_<id>); u vlastního řádku jen souhrn, na sebe reagovat nejde
     const rx = (a.module === 'habit' || a.module === 'goal') && a._id
       ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
@@ -8519,7 +8984,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 // ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
 const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
-  habit:'evening', goal:'evening', react:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
+  habit:'evening', goal:'evening', react:'instant', challenge:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
 const GN_OPTS = ['instant','q15','evening','off'];
 // Preference s výchozími hodnotami; neplatné hodnoty = výchozí (stejně jako server)
 function groupNotifPrefs() {
@@ -9771,6 +10236,8 @@ function rDash(){
   html+=gameIntroHTML();
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
+  // Společné výzvy ve skupinách (4.43)
+  html+='<div id="ch-dash">'+chDashHTML()+'</div>';
 
   // Mini Rex energy widget
   const rexEn = getRexEnergy();

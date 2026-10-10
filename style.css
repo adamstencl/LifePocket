@@ -1836,3 +1836,48 @@ label.sc-tog{cursor:pointer;min-height:48px}
 .wk-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .wk-btns>button{flex:1 1 140px;min-height:44px}
 .wk-card .dw-head{flex-wrap:wrap;gap:2px 8px}
+
+/* ── Společné výzvy skupiny (4.43) ── */
+.ch-box{margin:4px 0 12px}
+.ch-h{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px}
+.ch-card{display:block;width:100%;box-sizing:border-box;text-align:left;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px;color:var(--text);font-family:'Crimson Pro',serif}
+.ch-top{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.ch-em{font-size:28px;line-height:1;flex:none}
+.ch-tt{flex:1;min-width:0}
+.ch-name{font-size:16px;font-weight:700;color:var(--text);overflow-wrap:anywhere;line-height:1.3}
+.ch-meta{font-size:13px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere}
+.ch-bar{height:10px;border-radius:6px;background:var(--border);overflow:hidden;margin:10px 0 6px}
+.ch-fill{height:100%;background:var(--accent);border-radius:6px;transition:width .4s}
+.ch-fill.done{background:var(--green)}
+.ch-num{font-size:15px;font-weight:600;color:var(--text)}
+.ch-who{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.4;overflow-wrap:anywhere}
+.ch-avs{letter-spacing:2px}
+.ch-bp{white-space:nowrap}
+.ch-who-l{color:var(--text3)}
+.ch-mine{font-size:14px;color:var(--text);margin-top:6px}
+.ch-done{font-size:14px;color:var(--green);font-weight:700;margin-top:6px}
+.ch-btn{width:100%;min-height:44px;margin-top:10px}
+.ch-empty{font-size:14px;color:var(--text2);line-height:1.45}
+.ch-res{font-size:14px;color:var(--text2);margin-top:8px;line-height:1.4;overflow-wrap:anywhere}
+.ch-dw .ch-card{background:var(--card2)}
+.ch-dw .ch-card:last-child{margin-bottom:0}
+.ch-note{font-size:13px;color:var(--text3);line-height:1.45;margin:10px 0 0}
+.ch-big{width:100%;min-height:48px;margin-top:10px}
+.ch-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.ch-q{min-height:44px;min-width:0;padding:0 4px;border-radius:12px;border:1px solid var(--border2);background:var(--card2);color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-addrow{display:flex;gap:8px;margin-top:8px}
+.ch-addrow .finp{flex:1;min-width:0;min-height:44px;box-sizing:border-box}
+.ch-addrow .btn-p{flex:none;min-height:44px;white-space:nowrap}
+.ch-link{background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;text-decoration:underline;cursor:pointer;min-height:44px;padding:0 4px;text-align:left}
+.ch-del{color:var(--red)}
+.ch-days{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.ch-day{min-height:52px;border-radius:12px;border:1px solid var(--border2);background:var(--card2);color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;font-weight:600;cursor:pointer}
+.ch-day.on{border-color:var(--green);background:rgba(61,214,140,.12)}
+.ch-manage{display:flex;flex-direction:column;align-items:stretch;gap:2px;margin-top:14px;padding-top:10px;border-top:1px solid var(--border)}
+.ch-pre{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.ch-pre-b{font-size:14px;max-width:100%;white-space:normal;text-align:left}
+.ch-hint{font-size:13px;color:var(--text3);margin-top:4px;line-height:1.4}
+.ch-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ch-row2[hidden]{display:none}
+.ch-row2 .fg{min-width:0}
+.ch-xp{font-size:15px;font-weight:700;color:var(--accent);margin-top:6px}
