@@ -7860,7 +7860,6 @@ function dropMyMirrorsAfterRemoval(gid) {
 // {n} u součtu (increment), {n, d:[dny]} u denní výzvy. Dny v lokálním čase (toDS), konec = půlnoc po posledním dni.
 // Jednotlivá čísla ukazuje UI jen se žebříčkem (board, řazený podle jména). Listener: jeden na skupinu (aktivní a nedávné).
 const CH_MAX_DAYS = 28, CH_SUM_MAX = 100000, CH_ADD_MAX = 1000;
-const CH_GRACE_MS = 12*3600000;               // rezerva po půlnoci posledního dne (offline zápis, jiné časové pásmo)
 const CH_KEEP_MS = 30*86400000;               // výsledek zůstane 30 dní (expireAt, TTL / úklid)
 const CH_RESULT_DAYS = 7;                     // výsledek skončené výzvy v kartě skupiny
 const CH_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -7878,8 +7877,9 @@ const _chUnsub = {};
 let _chSheet = null;                          // {gid, cid} | {gid, mode:'new'}
 const chRef = (gid, cid) => doc(db,'families',gid,'challenges',cid);
 
-// Konec výzvy: půlnoc (lokálně) po posledním dni + rezerva
-function chEndMs(to) { const d = new Date(to + 'T00:00:00'); d.setDate(d.getDate() + 1); return d.getTime() + CH_GRACE_MS; }
+// Konec výzvy pro pravidla: poledne (lokálně) dne po posledním dni = rezerva 12 h na offline zápis a jiné časové pásmo.
+// Přes setDate, ne + 12 h v ms (změna času). Klient sám bere za konec už půlnoc (chOver).
+function chEndMs(to) { const d = new Date(to + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.getTime(); }
 function chDays(c) { return Math.max(1, Math.min(CH_MAX_DAYS, dsDiff(c.from, c.to) + 1)); }
 // Skončená: ukončená zakladatelem, nebo po posledním dni (lokální datum)
 function chOver(c, today = toDS()) { return !!c.ended || today > c.to; }
@@ -8026,9 +8026,10 @@ function renderChallengeUI() {
 // ── Sheet výzvy: detail, přispění, správa; nová výzva ──
 window.openChal = gid => {
   if(!myGroupIds().includes(gid)) return;
-  const {cur} = chCurrent(gid);
-  if(!cur) { window.openChalNew(gid); return; }
-  _chSheet = {gid, cid: cur.id};
+  const {cur, last} = chCurrent(gid);
+  const c = cur || last;                 // z feedu i na skončenou výzvu (výsledek)
+  if(!c) { window.openChalNew(gid); return; }
+  _chSheet = {gid, cid: c.id};
   renderChalSheet();
   const ov = document.getElementById('m-chal');
   if(ov && !ov.classList.contains('open')) om('m-chal');

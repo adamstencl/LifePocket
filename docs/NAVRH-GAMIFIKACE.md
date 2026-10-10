@@ -519,6 +519,8 @@ Navazuje na F2-DOC 3 (karta k sdílení počítaná čistě z čísel). Gamifika
 
 **Týmové, ne soupeřivé.** Skupina má jednu aktivní výzvu. Kdo se přidá, přispívá svými návyky do společného čísla.
 
+> **Implementace 4.43 (odchylky od návrhu níže):** výzva je vlastní dokument `families/{gid}/challenges/{cid}` (ne pole `challenge` v dokumentu skupiny), takže pravidla dokumentu skupiny (`isFamilyMemberUpdate`) se nemění. Pole: `title, emoji, kind ('sum' | 'daily'), target, unit?, from, to, by, board, createdAt, endAt, expireAt, ended?, p`. Příspěvky v mapě `p.<uid>` píše jen vlastník: u součtu `{n}` ručně (+1/+5/+10/+50, vlastní číslo, max. 1000 naráz, `increment`), u denní výzvy („každý den každý“) `{n, d:[dny]}` s tlačítky Dnes / Včera. Návyky se zatím nepropojují. Konec: `endAt` = poledne dne po posledním dni (pravidla), klient bere za konec půlnoc (`toDS`); zakladatel nebo správce může výzvu ukončit (`ended`) nebo smazat. Úklid: `expireAt` = `endAt` + 30 dní (TTL politika na skupině kolekcí `challenges` doporučená, jinak maže klient při založení další výzvy). Aktivita `module:'challenge'`, akce `add` a `done` (push podle nastavení, `done` jako milník). Pravidla viz `firestore.rules` (match `challenges`).
+
 ### 4a) Data (bez nového listeneru)
 
 ```js
