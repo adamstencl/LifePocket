@@ -7857,7 +7857,7 @@ function dropMyMirrorsAfterRemoval(gid) {
 // ── SPOLEČNÉ VÝZVY SKUPINY (4.43, docs/NAVRH-GAMIFIKACE.md F3) ──
 // families/{gid}/challenges/{cid}: týmové, ne soupeřivé. kind 'sum' = součet příspěvků do cíle (1000 dřepů),
 // 'daily' = každý den každý (5 dní bez sladkého; target = počet dní). Příspěvky v mapě p.<uid>, píše jen vlastník:
-// {n} u součtu (increment), {n, d:[dny]} u denní výzvy. Dny v lokálním čase (toDS), konec = půlnoc po posledním dni.
+// {n} u součtu (increment), {n, d:[dny]} u denní výzvy. Dny v lokálním čase (toDS), v klientu konec = půlnoc po posledním dni.
 // Jednotlivá čísla ukazuje UI jen se žebříčkem (board, řazený podle jména). Listener: jeden na skupinu (aktivní a nedávné).
 const CH_MAX_DAYS = 28, CH_SUM_MAX = 100000, CH_ADD_MAX = 1000;
 const CH_KEEP_MS = 30*86400000;               // výsledek zůstane 30 dní (expireAt, TTL / úklid)

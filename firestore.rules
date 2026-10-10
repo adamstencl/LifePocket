@@ -254,7 +254,7 @@ service cloud.firestore {
     // Společné výzvy skupiny (4.43): families/{gid}/challenges/{cid}. Týmové, ne soupeřivé.
     // Založí kdokoli ze skupiny. kind 'sum' = součet příspěvků do cíle (target), 'daily' = každý den každý (target = počet dní).
     // Příspěvky v mapě p: klíč = uid, zapisuje jen jeho vlastník ({n} u součtu, {n, d:[dny]} u denní výzvy, n == počet dní).
-    // Konec: endAt (půlnoc po posledním dni + rezerva) nebo ended:true (zakladatel / správce). Úklid: expireAt = endAt + 30 dní
+    // Konec: endAt (poledne dne po posledním dni = rezerva 12 h) nebo ended:true (zakladatel / správce). Úklid: expireAt = endAt + 30 dní
     // (TTL nebo smazání kýmkoli ze skupiny po vypršení), dřív smí smazat zakladatel a správce.
     function validChallengeNew() {
       let d = request.resource.data;
