@@ -5366,7 +5366,7 @@ function dayXP(ds){
   return Math.min(done,XP.habitCap)*XP.habit+(isPerfectDay(ds)?XP.perfect:0);
 }
 // Bonusy dnes (podcíle, úkoly, mezníky a hodnoty cílů) – strop proti „farmení“ zakládáním cílů
-const GAME_CAPPED=/^(sg|tk|gm|mv)_/;
+const GAME_CAPPED=/^(sg|tk|gm|mv|ch)_/;
 function bonusToday(){ const d=toDS(); let x=0; for(const [k,o] of Object.entries(game?.once||{})) if(o&&o.d===d&&GAME_CAPPED.test(k)) x+=Number(o.x)||0; return x; }
 function gameWriteErr(e){
   if(e?.code==='not-found'&&game&&CU){ setDoc(gameRef(),gameDocData(game),{merge:true}).catch(x=>console.warn('[LP] game:',x?.code||x?.name)); return; }
@@ -7857,7 +7857,8 @@ function dropMyMirrorsAfterRemoval(gid) {
 // ── SPOLEČNÉ VÝZVY SKUPINY (4.43, docs/NAVRH-GAMIFIKACE.md F3) ──
 // families/{gid}/challenges/{cid}: týmové, ne soupeřivé. kind 'sum' = součet příspěvků do cíle (1000 dřepů),
 // 'daily' = každý den každý (5 dní bez sladkého; target = počet dní). Příspěvky v mapě p.<uid>, píše jen vlastník:
-// {n} u součtu (increment), {n, d:[dny]} u denní výzvy. Dny v lokálním čase (toDS), v klientu konec = půlnoc po posledním dni.
+// {n} u součtu (increment), {n, d:[dny], j:den přidání} u denní výzvy (cíl účastníka = dny od j do konce).
+// Dny v lokálním čase (toDS). Konec v klientu: součet o půlnoci po posledním dni, denní výzva do poledne (odškrtnout „Včera“).
 // Jednotlivá čísla ukazuje UI jen se žebříčkem (board, řazený podle jména). Listener: jeden na skupinu (aktivní a nedávné).
 const CH_MAX_DAYS = 28, CH_SUM_MAX = 100000, CH_ADD_MAX = 1000;
 const CH_KEEP_MS = 30*86400000;               // výsledek zůstane 30 dní (expireAt, TTL / úklid)
@@ -7875,14 +7876,17 @@ const CH_PRESETS = [
 const chByGroup = {};                         // gid → [výzvy]
 const _chUnsub = {};
 let _chSheet = null;                          // {gid, cid} | {gid, mode:'new'}
+let _chFix = null;                            // cid výzvy s otevřeným polem „Opravit můj součet“
 const chRef = (gid, cid) => doc(db,'families',gid,'challenges',cid);
 
 // Konec výzvy pro pravidla: poledne (lokálně) dne po posledním dni = rezerva 12 h na offline zápis a jiné časové pásmo.
 // Přes setDate, ne + 12 h v ms (změna času). Klient sám bere za konec už půlnoc (chOver).
 function chEndMs(to) { const d = new Date(to + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.getTime(); }
 function chDays(c) { return Math.max(1, Math.min(CH_MAX_DAYS, dsDiff(c.from, c.to) + 1)); }
-// Skončená: ukončená zakladatelem, nebo po posledním dni (lokální datum)
-function chOver(c, today = toDS()) { return !!c.ended || today > c.to; }
+// Ráno po posledním dni denní výzvy: do poledne jde ještě odškrtnout „Včera“ (stejně jako rezerva endAt v pravidlech)
+function chLate(c, today = toDS()) { return c.kind === 'daily' && !c.ended && today === addDays(c.to, 1) && Date.now() < chEndMs(c.to); }
+// Skončená: ukončená zakladatelem, nebo po posledním dni (lokální datum; denní výzva až po rezervě do poledne)
+function chOver(c, today = toDS()) { return !!c.ended || (today > c.to && !chLate(c, today)); }
 function chDaysLeft(c, today = toDS()) { return Math.max(0, dsDiff(today < c.from ? c.from : today, c.to) + 1); }
 // Data ze snapshotu: neplatné dokumenty se přeskočí (cizí data jsou jen data)
 function chNorm(id, d) {
@@ -7894,22 +7898,29 @@ function chNorm(id, d) {
     unit: typeof d.unit === 'string' ? cutName(d.unit, 16) : '', target: clampInt(d.target, 1, CH_SUM_MAX),
     from: d.from, to: d.to, by: typeof d.by === 'string' ? d.by : '', board: d.board === true, ended: d.ended === true, p};
 }
-// Splněné dny příspěvku: jen platná data v rozsahu výzvy, bez duplicit
+// Den přidání do denní výzvy (j), oříznutý do rozsahu výzvy; bez platného j od začátku
+function chJoinDs(c, e) {
+  const j = e?.j;
+  return typeof j === 'string' && CH_DS_RE.test(j) ? (j < c.from ? c.from : j > c.to ? c.to : j) : c.from;
+}
+// Cíl účastníka denní výzvy: dny od přidání do konce
+function chPartGoal(c, e) { return Math.max(1, Math.min(CH_MAX_DAYS, dsDiff(chJoinDs(c, e), c.to) + 1)); }
+// Splněné dny příspěvku: jen platná data od přidání do konce výzvy, bez duplicit
 function chPartDays(c, e) {
-  const set = new Set();
-  if(Array.isArray(e?.d)) for(const x of e.d) if(typeof x === 'string' && CH_DS_RE.test(x) && x >= c.from && x <= c.to) set.add(x);
+  const set = new Set(), j = chJoinDs(c, e);
+  if(Array.isArray(e?.d)) for(const x of e.d.slice(0, CH_MAX_DAYS)) if(typeof x === 'string' && CH_DS_RE.test(x) && x >= j && x <= c.to) set.add(x);
   return set;
 }
 function chPartN(c, e) { return c.kind === 'daily' ? chPartDays(c, e).size : clampInt(e?.n, 0, CH_SUM_MAX); }
-// Souhrn: jen současní členové (příspěvek odcházejícího zmizí), denní výzva = účastníci × dny
+// Souhrn: jen současní členové (příspěvek odcházejícího zmizí), denní výzva = součet dní účastníků od jejich přidání
 function chStats(c, members) {
   const parts = [];
   for(const [uid, e] of Object.entries(c.p || {})) {
     if(members && !members[uid]) continue;
-    parts.push({uid, n: chPartN(c, e)});
+    parts.push({uid, n: chPartN(c, e), goal: c.kind === 'daily' ? chPartGoal(c, e) : 0});
   }
   const sum = parts.reduce((s, x) => s + x.n, 0);
-  const goal = c.kind === 'daily' ? parts.length * chDays(c) : c.target;
+  const goal = c.kind === 'daily' ? parts.reduce((s, x) => s + x.goal, 0) : c.target;
   const done = goal > 0 && sum >= goal;
   return {parts, sum, goal, done, pct: goal > 0 ? Math.min(100, Math.round(sum / goal * 100)) : 0};
 }
@@ -7930,7 +7941,7 @@ function chCanManage(gid, c) {
 // Listener jedné skupiny (spouští startGroupSocial, končí ve stopGroupSocial)
 function startGroupChallenges(gid) {
   if(!CU || !okFamilyCode(gid) || _chUnsub[gid]) return;
-  _chUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'challenges'), where('expireAt','>',Timestamp.now()), limit(10)), snap => {
+  _chUnsub[gid] = onSnapshot(query(collection(db,'families',gid,'challenges'), where('expireAt','>',Timestamp.now()), orderBy('expireAt','desc'), limit(10)), snap => {
     chByGroup[gid] = snap.docs.map(d => chNorm(d.id, d.data())).filter(Boolean);
     renderChallengeUI();
     chCheckDone();
@@ -7948,6 +7959,7 @@ function chMetaText(c) {
   const today = toDS();
   const end = t('ch.until', {d: fmtDate(c.to, 'dm')});
   if(chOver(c, today)) return end;
+  if(today > c.to) return end + ' · ' + t('ch.late');
   const left = chDaysLeft(c, today);
   return end + ' · ' + (left <= 1 ? t('ch.lastDay') : t('ch.left', {n: left}));
 }
@@ -7962,7 +7974,7 @@ function chWhoHTML(gid, c, st) {
   if(c.board) {
     const rows = st.parts.slice().sort((a, b) => nm(a.uid).localeCompare(nm(b.uid), LOCALE));
     if(!rows.length) return `<div class="ch-who">${tH('ch.nobody')}</div>`;
-    const fmt = x => c.kind === 'daily' ? x.n + '/' + chDays(c) : fmtNum(x.n);
+    const fmt = x => c.kind === 'daily' ? x.n + '/' + x.goal : fmtNum(x.n);
     return `<div class="ch-who ch-board"><span class="ch-who-l">${tH('ch.board')}:</span> ${rows.map(x => `<span class="ch-bp">${esc(nm(x.uid))} ${esc(fmt(x))}</span>`).join(' · ')}</div>`;
   }
   const who = st.parts.filter(x => x.n > 0);
@@ -7983,7 +7995,7 @@ function chCardHTML(gid, c, mode) {
   const em = esc(c.emoji || (c.kind === 'daily' ? '📅' : '🤝'));
   let foot = '';
   if(st.done) foot = `<div class="ch-done">🎉 ${tH('ch.doneShort')}</div>`;
-  if(joined) foot += `<div class="ch-mine">${c.kind === 'daily' ? tH('ch.mineDaily', {n: mine, days: chDays(c)}) : tH('ch.mine', {n: fmtNum(mine), unit: c.unit}).trim()}</div>`;
+  if(joined) foot += `<div class="ch-mine">${c.kind === 'daily' ? tH('ch.mineDaily', {n: mine, days: chPartGoal(c, c.p[CU.uid])}) : tH('ch.mine', {n: fmtNum(mine), unit: c.unit}).trim()}</div>`;
   const kind = c.kind === 'daily' ? t('ch.kind.daily') : t('ch.kind.sum');
   const head = `<div class="ch-top"><span class="ch-em" aria-hidden="true">${em}</span><div class="ch-tt">
       <div class="ch-name">${esc(c.title)}</div><div class="ch-meta">${compact ? esc(groupLabel(gid)) + ' · ' : ''}${esc(kind)} · ${esc(chMetaText(c))}</div></div></div>`;
@@ -8030,6 +8042,7 @@ window.openChal = gid => {
   const c = cur || last;                 // z feedu i na skončenou výzvu (výsledek)
   if(!c) { window.openChalNew(gid); return; }
   _chSheet = {gid, cid: c.id};
+  _chFix = null;
   renderChalSheet();
   const ov = document.getElementById('m-chal');
   if(ov && !ov.classList.contains('open')) om('m-chal');
@@ -8045,12 +8058,12 @@ function renderChalSheet() {
   const e = c.p?.[CU.uid], joined = !!e && !!members[CU.uid];
   const over = chOver(c), today = toDS(), y = addDays(today, -1);
   let act = '';
-  if(over) act = chResultHTML(gid, c);
+  if(over || (!joined && today > c.to)) act = chResultHTML(gid, c);   // ráno po konci se už přidat nejde
   else if(!joined) act = `<p class="ch-note">${tH(c.kind === 'daily' ? 'ch.joinDaily' : 'ch.joinSum')}</p>
     <button type="button" class="btn-p ch-big" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chJoin(this.dataset.a0,this.dataset.a1)">${tH('ch.join')}</button>`;
   else if(c.kind === 'daily') {
-    const days = chPartDays(c, e);
-    const dayBtn = (ds, key) => ds < c.from || ds > c.to ? '' :
+    const days = chPartDays(c, e), j = chJoinDs(c, e);
+    const dayBtn = (ds, key) => ds < j || ds > c.to ? '' :
       `<button type="button" class="ch-day${days.has(ds) ? ' on' : ''}" aria-pressed="${days.has(ds)}" data-a0="${esc(gid)}" data-a1="${esc(cid)}" data-a2="${ds}" onclick="chDay(this.dataset.a0,this.dataset.a1,this.dataset.a2)">${days.has(ds) ? '✅' : '⬜'} ${tH(key)}</button>`;
     act = `<div class="ch-days">${dayBtn(today, 'ch.today')}${dayBtn(y, 'ch.yesterday')}</div>`;
   } else {
@@ -8060,7 +8073,11 @@ function renderChalSheet() {
       <div class="ch-addrow"><label class="sr-only" for="ch-add-n">${tH('ch.amount')}</label>
         <input class="finp" type="number" inputmode="numeric" min="1" max="${CH_ADD_MAX}" step="1" id="ch-add-n" placeholder="${tH('ch.amountPh')}">
         <button type="button" class="btn-p" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chAddInput(this.dataset.a0,this.dataset.a1)">➕ ${tH('ch.add')}</button></div>
-      <button type="button" class="ch-link" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chSetTotal(this.dataset.a0,this.dataset.a1)">✏️ ${tH('ch.fix')}</button>`;
+      ${_chFix === cid ? `<div class="ch-addrow"><label class="sr-only" for="ch-fix-n">${tH('ch.fixPrompt')}</label>
+        <input class="finp" type="number" inputmode="numeric" min="0" max="${CH_SUM_MAX}" step="1" id="ch-fix-n" value="${chPartN(c, e)}">
+        <button type="button" class="btn-s" onclick="chFixCancel()">${tH('common.cancel')}</button>
+        <button type="button" class="btn-p" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chSetTotalSave(this.dataset.a0,this.dataset.a1)">${tH('common.save')}</button></div>`
+      : `<button type="button" class="ch-link" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chSetTotal(this.dataset.a0,this.dataset.a1)">✏️ ${tH('ch.fix')}</button>`}`;
   }
   let manage = '';
   if(joined && !over) manage += `<button type="button" class="ch-link" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chLeave(this.dataset.a0,this.dataset.a1)">${tH('ch.leave')}</button>`;
@@ -8069,10 +8086,13 @@ function renderChalSheet() {
       + (over ? '' : `<button type="button" class="btn-s ch-btn" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chEnd(this.dataset.a0,this.dataset.a1)">🏁 ${tH('ch.end')}</button>`)
       + `<button type="button" class="ch-link ch-del" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chDelete(this.dataset.a0,this.dataset.a1)">🗑️ ${tH('ch.delete')}</button>`;
   }
+  // Snapshot sheet překreslí: rozepsané číslo v polích a fokus zachovat
+  const keep = ['ch-add-n', 'ch-fix-n'].map(i => [i, document.getElementById(i)?.value, document.activeElement?.id === i]);
   bEl.innerHTML = chCardHTML(gid, c, 'sheet')
     + act
     + (manage ? `<div class="ch-manage">${manage}</div>` : '')
     + `<p class="ch-note">${tH(c.board ? 'ch.privBoard' : 'ch.priv')}</p>`;
+  for(const [i, v, f] of keep) { const el = document.getElementById(i); if(!el) continue; if(v != null) el.value = v; if(f) el.focus(); }
 }
 
 window.openChalNew = gid => {
@@ -8149,13 +8169,14 @@ window.chCreate = gid => {
   const unit = kind === 'sum' ? cutName(val('ch-f-unit'), 16) : '';
   if(unit) data.unit = unit;
   const ref = doc(collection(db,'families',gid,'challenges'));
-  // Bez await (offline se odešle později); zakladatel se rovnou přidá
-  setDoc(ref, data).catch(chErr);
-  updateDoc(ref, new FieldPath('p', CU.uid), kind === 'daily' ? {n: 0, d: []} : {n: 0}).catch(e => console.warn('[LP] vyzva join', e?.code || e?.name));
-  logGroupActivity(gid, 'challenge', 'add', title, 1, {ref: ref.id});
+  // Bez await (offline se odešle později); zakladatel se rovnou přidá (denní výzva od prvního dne, odejít může kdykoli).
+  // Aktivita „add“ až po uložení výzvy (nezaložená výzva se ve feedu neohlásí)
+  const entry = kind === 'daily' ? {n: 0, d: [], j: from} : {n: 0};
+  setDoc(ref, data).then(() => logGroupActivity(gid, 'challenge', 'add', title, 1, {ref: ref.id})).catch(chErr);
+  updateDoc(ref, new FieldPath('p', CU.uid), entry).catch(e => console.warn('[LP] vyzva join', e?.code || e?.name));
   chSweep(gid);
   // Lokálně hned (snapshot přijde vzápětí)
-  const loc = chNorm(ref.id, {...data, p: {[CU.uid]: kind === 'daily' ? {n: 0, d: []} : {n: 0}}});
+  const loc = chNorm(ref.id, {...data, p: {[CU.uid]: entry}});
   if(loc) chByGroup[gid] = [...(chByGroup[gid] || []).filter(c => c.id !== ref.id), loc];
   toast(t('ch.started'));
   _chSheet = {gid, cid: ref.id};
@@ -8163,14 +8184,16 @@ window.chCreate = gid => {
   renderChalSheet();
 };
 
-// Lokální změna vlastního příspěvku + oznámení splnění, když ho dotáhl můj zápis
+// Lokální změna vlastního příspěvku + oznámení splnění, když ho dotáhl můj příspěvek
+// (ne odchodem nebo opravou dolů: u denní výzvy odchod sníží cíl) a výzva má aspoň 2 účastníky
 function chApplyLocal(gid, c, entry) {
   const members = groupDataOf(gid)?.members || {};
   const before = chStats(c, members).done;
+  const oldN = chPartN(c, c.p?.[CU.uid]);
   c.p = {...c.p};
   if(entry) c.p[CU.uid] = entry; else delete c.p[CU.uid];
   const st = chStats(c, members);
-  if(!before && st.done) chAnnounceDone(gid, c);
+  if(!before && st.done && entry && chPartN(c, entry) > oldN && st.parts.length >= 2) chAnnounceDone(gid, c);
   renderChallengeUI();
   chCheckDone();
 }
@@ -8188,7 +8211,9 @@ function chLive(gid, cid) {
 }
 window.chJoin = (gid, cid) => {
   const c = chLive(gid, cid); if(!c || c.p?.[CU.uid]) return;
-  const entry = c.kind === 'daily' ? {n: 0, d: []} : {n: 0};
+  const today = toDS();
+  if(today > c.to) { toast(t('ch.over')); return; }   // ráno po konci denní výzvy už jen odškrtnout včerejšek
+  const entry = c.kind === 'daily' ? {n: 0, d: [], j: today < c.from ? c.from : today} : {n: 0};
   updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), entry).catch(chErr);
   chApplyLocal(gid, c, entry);
   toast(t('ch.joinedToast'));
@@ -8211,26 +8236,37 @@ window.chAddInput = (gid, cid) => {
   if(el) el.value = '';
   window.chAdd(gid, cid, v);
 };
-// Oprava vlastního součtu (překlep): nastaví celkové číslo
+// Oprava vlastního součtu (překlep): pole v sheetu místo prompt(), nastaví celkové číslo
 window.chSetTotal = (gid, cid) => {
   const c = chLive(gid, cid); if(!c || c.kind !== 'sum') return;
+  _chFix = cid;
+  renderChalSheet();
+  const el = document.getElementById('ch-fix-n');
+  if(el) { el.focus(); el.select?.(); }
+};
+window.chFixCancel = () => { _chFix = null; renderChalSheet(); };
+window.chSetTotalSave = (gid, cid) => {
+  const c = chLive(gid, cid); if(!c || c.kind !== 'sum') return;
   const cur = chPartN(c, c.p?.[CU.uid]);
-  const raw = prompt(t('ch.fixPrompt'), String(cur));
-  if(raw === null) return;
-  const v = Math.round(Number(String(raw).replace(',', '.')));
-  if(!Number.isFinite(v) || v < 0 || v > CH_SUM_MAX || v > cur + CH_ADD_MAX) { toast(t('ch.errAdd', {n: fmtNum(CH_ADD_MAX)})); return; }
-  if(v === cur) return;
+  const el = document.getElementById('ch-fix-n');
+  const raw = String(el?.value ?? '').trim();
+  const v = raw === '' ? NaN : Math.round(Number(raw.replace(',', '.')));
+  if(!Number.isFinite(v) || v < 0 || v > CH_SUM_MAX || v > cur + CH_ADD_MAX) { toast(t('ch.errAdd', {n: fmtNum(CH_ADD_MAX)})); el?.focus(); return; }
+  _chFix = null;
+  if(v === cur) { renderChalSheet(); return; }
   updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid, 'n'), v).catch(chErr);
   chApplyLocal(gid, c, {n: v});
+  renderChalSheet();
 };
 // Denní výzva: dnes nebo včera (lokální datum), celý záznam {n, d} najednou (n = počet dní)
 window.chDay = (gid, cid, ds) => {
   const c = chLive(gid, cid); if(!c || c.kind !== 'daily') return;
   const today = toDS();
-  if(!(ds === today || ds === addDays(today, -1)) || ds < c.from || ds > c.to) return;
-  const days = chPartDays(c, c.p?.[CU.uid]);
+  const e = c.p?.[CU.uid], j = chJoinDs(c, e);
+  if(!e || !(ds === today || ds === addDays(today, -1)) || ds < j || ds > c.to) return;
+  const days = chPartDays(c, e);
   if(days.has(ds)) days.delete(ds); else days.add(ds);
-  const entry = {n: days.size, d: [...days].sort()};
+  const entry = {n: days.size, d: [...days].sort(), j};
   updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), entry).catch(chErr);
   chApplyLocal(gid, c, entry);
 };
@@ -8275,7 +8311,9 @@ function chDropMember(gid, uid) {
     updateDoc(chRef(gid, c.id), new FieldPath('p', uid), deleteField()).catch(e => console.warn('[LP] vyzva odebraneho', e?.code || e?.name));
   }
 }
-// Splněná výzva, do které jsem přispěl/a: 1× XP (once.ch_<cid>) a oslava; odznak 🧩 v dalším gameSync
+// XP a odznak jen za skutečně týmovou výzvu: aspoň 2 přispěvatelé a aspoň 2 dny (jinak by šlo farmit samotářské výzvy)
+function chTeamWin(c, st) { return st.done && chDays(c) >= 2 && st.parts.filter(x => x.n > 0).length >= 2; }
+// Splněná výzva, do které jsem přispěl/a: 1× XP (once.ch_<cid>, v denním stropu bonusů) a oslava; odznak 🧩 v dalším gameSync
 function chCheckDone() {
   if(!CU || !game || _accDeleting || _accDeleted) return;
   for(const gid of myGroupIds()) {
@@ -8284,7 +8322,7 @@ function chCheckDone() {
     for(const c of chByGroup[gid] || []) {
       if(game.once['ch_' + c.id] || chPartN(c, c.p?.[CU.uid]) <= 0) continue;
       const st = chStats(c, members);
-      if(st.done && gameAward('ch_' + c.id, XP.chDone)) celebrateChallenge(gid, c, st);
+      if(chTeamWin(c, st) && gameAward('ch_' + c.id, XP.chDone)) celebrateChallenge(gid, c, st);
     }
   }
 }
@@ -8298,7 +8336,7 @@ function celebrateChallenge(gid, c, st) {
       <div class="lu-title" id="gwin-title">${tH('ch.win.t')}</div>
       <div class="gs-lvl">${esc(line)}</div>
       <div class="lu-say">${esc(chNumText(c, st))} · ${esc(groupLabel(gid))}</div>
-      ${gameOn() ? `<div class="ch-xp">+${XP.chDone} XP · 🧩 ${tH('game.badge.team_player')}</div>` : ''}
+      ${gameOn() ? `<div class="ch-xp">${game?.once?.['ch_' + c.id]?.x ? '+' + game.once['ch_' + c.id].x + ' XP · ' : ''}🧩 ${tH('game.badge.team_player')}</div>` : ''}
       <div class="lu-say">„${tH('ch.win.say')}“ — ${esc(av.name)}</div></div>
     <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
   om('m-gwin');
