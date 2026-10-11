@@ -50,9 +50,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.44';
 const CHANGELOG = [
   { v:'4.44', items:[
-    '📝 Sdílení poznámek a receptů se skupinou'
+    '📝 Sdílení poznámek a receptů se skupinou',
+    '✨ Čistší texty od AI: týdenní report a odpovědi bez cizích písmen a značek formátování'
   ], en:[
-    '📝 Share notes and recipes with your group'
+    '📝 Share notes and recipes with your group',
+    '✨ Cleaner AI texts: the weekly report and replies without foreign characters or formatting marks'
   ]},
   { v:'4.43', items:[
     '🤝 Společné výzvy ve skupině – táhněte za jeden provaz'
@@ -524,17 +526,102 @@ let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 
 // ── CLAUDE API HELPER — volá Firebase Function (klíč nikdy v klientu) ──────
-async function callClaude(messages, maxTokens = 500) {
+// quiet: bez toastu o limitu (opakovaný dotaz kvůli cizímu písmu)
+async function callClaudeRaw(messages, maxTokens = 500, quiet = false) {
   if (_accDeleting || _accDeleted || _accStopped) throw new Error('AI není k dispozici'); // během mazání účtu žádné AI dotazy
   try {
     const result = await claudeProxyFn({messages, maxTokens});
     return result.data.text;
   } catch(e) {
     // Denní limit aplikace (claudeProxy vrací resource-exhausted); rate limit Anthropicu přijde jako internal
-    if (e?.code === 'functions/resource-exhausted') toast('⚠️ ' + userErr(e));
+    if (e?.code === 'functions/resource-exhausted' && !quiet) toast('⚠️ ' + userErr(e));
     throw (e instanceof Error) ? e : new Error(String(e?.message || 'AI není k dispozici'));
   }
 }
+
+// ── Čisté AI texty (4.44): žádné cizí písmo a markdown v prostém textu ──
+// Písma mimo latinku (řečtina, azbuka, arménština, hebrejština, arabština, indická písma, thajština, gruzínština,
+// hangul, etiopské písmo, kana, CJK). Rozsahy místo \p{Script=…}: starší prohlížeče by regex nezkompilovaly.
+// Emoji, česká diakritika ani typografické znaky sem nespadají.
+const AI_FOREIGN_CH = '\u0370-\u03FF\u0400-\u052F\u0530-\u058F\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u0DFF\u0E00-\u0EFF'
+  + '\u10A0-\u10FF\u1100-\u11FF\u1200-\u137F\u1C80-\u1C8F\u1F00-\u1FFF\u2DE0-\u2DFF\u3000-\u30FF\u3130-\u318F\u3400-\u4DBF\u4E00-\u9FFF'
+  + '\uA640-\uA69F\uAC00-\uD7AF\uF900-\uFAFF\uFB1D-\uFDFF\uFE70-\uFEFC\uFF65-\uFFDC\u{20000}-\u{2FA1F}';
+const AI_LATIN_CH = 'A-Za-z\u00C0-\u024F\u1E00-\u1EFF\u0300-\u036F'; // latinka + kombinující diakritika (části slova)
+// Celé „slovo“, ve kterém je aspoň jeden cizí znak (např. „ВИДí“); při mazání i s mezerou před ním
+const AI_FOREIGN_WORD = `[${AI_LATIN_CH}${AI_FOREIGN_CH}]*[${AI_FOREIGN_CH}][${AI_LATIN_CH}${AI_FOREIGN_CH}]*`;
+const AI_FOREIGN_WORD_RE = new RegExp(AI_FOREIGN_WORD, 'gu');
+const AI_FOREIGN_DEL_RE = new RegExp(`([ \\t]?)(${AI_FOREIGN_WORD})`, 'gu');
+const AI_LATIN_LANGS = ['cs', 'en']; // jazyky appky psané latinkou
+function aiForeignWords(text) { return String(text ?? '').match(AI_FOREIGN_WORD_RE) || []; }
+// Cizí slova, která napsal sám uživatel (vstup), jsou v odpovědi v pořádku (např. citace jeho zápisku)
+function aiInputForeign(messages) {
+  const set = new Set();
+  for (const m of (Array.isArray(messages) ? messages : [])) {
+    const c = m?.content;
+    const txt = typeof c === 'string' ? c : Array.isArray(c) ? c.map(b => b?.text || '').join('\n') : '';
+    aiForeignWords(txt).forEach(w => set.add(w));
+  }
+  return set;
+}
+function aiHasForeign(text, allow) { return aiForeignWords(text).some(w => !allow?.has(w)); }
+// Odstraní cizí slova (kromě povolených) a uklidí mezery po nich; strukturu JSON nemění (mizí jen písmena v textu)
+function aiStripForeign(text, allow) {
+  const s = String(text ?? '');
+  let removed = false;
+  const out = s.replace(AI_FOREIGN_DEL_RE, (m, sp, w) => { if (allow?.has(w)) return m; removed = true; return ''; });
+  if (!removed) return s;
+  return out.replace(/\([ \t]*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ +([,.;:!?)])/g, '$1')
+    .replace(/[,;:]+([.!?])/g, '$1').replace(/(^|\n)[ \t]*[,;:][ \t]*/g, '$1').replace(/[ \t]+(\n|$)/g, '$1');
+}
+// Markdown → prostý text (report, widget, chat, citát, pozdrav): nadpisy, tučné, kurzíva, kód, odkazy, čáry.
+// Odrážky „- “ zůstávají jako text, „* “ se změní na „• “.
+function stripMd(text) {
+  return String(text ?? '')
+    .replace(/```[a-zA-Z]*\n?/g, '')
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]*$/gm, '')
+    .replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '')
+    .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
+    .replace(/__([^_\n]+?)__/g, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/^([ \t]*)\*[ \t]+/gm, '$1• ')
+    .replace(/\*([^*\s](?:[^*\n]*[^*\s])?)\*/g, '$1')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]*\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+// Text od AI zobrazený jako prostý text (i dřív uložený): bez cizího písma a markdownu
+function aiPlain(text) {
+  const s = String(text ?? '');
+  return stripMd(AI_LATIN_LANGS.includes(LANG) ? aiStripForeign(s) : s);
+}
+// Opakovaný dotaz: instrukce se připojí k systémové zprávě (server povolí jen jednu)
+function aiRetryMessages(messages) {
+  const instr = t('ai.retryLatin');
+  const out = messages.map(m => ({...m}));
+  const sys = out.find(m => m.role === 'system');
+  if (sys) sys.content = Array.isArray(sys.content) ? [...sys.content, {type: 'text', text: instr}] : String(sys.content ?? '') + '\n\n' + instr;
+  else out.unshift({role: 'system', content: instr});
+  return out;
+}
+// Volání AI s kontrolou písma: u cs/en uživatele odpověď s cizím písmem → 1 opakovaný dotaz (stojí 1 dotaz z denního limitu);
+// když nepomůže ani ten (nebo selže), cizí slova se odstraní. JSON zůstane parsovatelný (mění se jen písmena v textu).
+async function callClaude(messages, maxTokens = 500) {
+  const text = await callClaudeRaw(messages, maxTokens);
+  if (typeof text !== 'string' || !AI_LATIN_LANGS.includes(LANG)) return text;
+  const allow = aiInputForeign(messages);
+  if (!aiHasForeign(text, allow)) return text;
+  let again = '';
+  if (messages.length < 22) { // limit serveru 22 zpráv včetně případné nové systémové
+    try { again = await callClaudeRaw(aiRetryMessages(messages), maxTokens, true); }
+    catch (e) { console.warn('[LP] opakovaný dotaz AI selhal:', e?.code || e?.name); }
+  }
+  const ok = typeof again === 'string' && again.trim();
+  if (ok && !aiHasForeign(again, allow)) return again;
+  return aiStripForeign(ok ? again : text, allow);
+}
+
 let micRec=null,micOn=false,dsRec=null,dsOn=false;
 let entries=[];
 
@@ -4787,7 +4874,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá ani jiná 
 
   try {
     const msg = await callClaude([{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}], 150);
-    if (msg) showRexDashboardMessage(msg);
+    if (msg) showRexDashboardMessage(aiPlain(msg));
   } catch(e) { console.warn('[LP] rexProactiveGreeting selhalo:', e.message); }
 }
 
@@ -4837,6 +4924,12 @@ function showRexDashboardMessage(msg) {
   dashCard.appendChild(msgEl);
 }
 
+// Pravidla týdenního reportu (chat i tichý nedělní): jazyk uživatele, jen latinka, prostý text, rod podle profilu
+function weeklyReportRules(maxSentences) {
+  const g = t('ai.wr.g.' + (prof?.gender === 'f' ? 'f' : prof?.gender === 'm' ? 'm' : 'x')); // v angličtině prázdné
+  return t('ai.wr.rules', {n: maxSentences}) + (g ? '\n' + g : '');
+}
+
 // Týdenní report — zavolej z chatu
 window.getRexWeeklyReport = async () => {
 
@@ -4854,7 +4947,7 @@ window.getRexWeeklyReport = async () => {
     const dayEntries = entries.filter(e => entryDS(e) === ds);
     const dayHabits = habits.filter(h => hDone(h.id,ds));
     week.push({
-      date: d.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'}),
+      date: d.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'short'}),
       entries: dayEntries.length,
       mood: dayEntries[0]?.mood || '',
       habits: `${dayHabits.length}/${habits.length}`
@@ -4864,13 +4957,12 @@ window.getRexWeeklyReport = async () => {
   const patterns = analyzeWeekPatterns();
 
   const av = AVS.find(a => a.id === prof?.avatarId) || {name:'Rex'};
-  const sys = `Jsi ${av.name}, AI společník v LifePocket. Mluv česky, přátelsky.
-Udělej týdenní report uživatele ${prof?.nickname || ''}. Buď konkrétní, použij emoji, max 8 vět.
-Data posledních 7 dní:\n${weekStr}\nVzory v návycích: ${patterns || 'zatím málo dat'}
-PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingredience, kroky i tip — musí být česky. ZAKÁZÁNO použít jakékoliv cizí slovo, včetně anglických, japonských, ruských (cyrilice) nebo arabských výrazů. Cizí jídla popiš česky (např. "noky" ne "gnocchi", "smaženice" ne "scrambled eggs").`;
+  const sys = `Jsi ${av.name}, AI společník v aplikaci LifePocket. Napiš přátelský týdenní report pro uživatele ${prof?.nickname || ''}. Buď konkrétní podle dat.
+${weeklyReportRules(8)}
+Data posledních 7 dní:\n${weekStr}\nVzory v návycích: ${patterns || 'zatím málo dat'}`;
 
   try {
-    const rep = await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní report'}], 500), uid);
+    const rep = aiPlain(await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:t('ai.wr.user')}], 500), uid));
     if (CU?.uid !== uid) { document.getElementById('typing')?.classList.remove('active'); return; } // mezitím jiný účet
     if (!rep) throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     saveChatMessage('assistant',rep);
@@ -4906,16 +4998,18 @@ async function generateWeeklyReportSilent() {
     const dayEntries = entries.filter(e => entryDS(e) === ds);
     const dayHabits = habits.filter(h => hDone(h.id,ds));
     week.push({
-      date: d.toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'}),
+      date: d.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'short'}),
       entries: dayEntries.length, mood: dayEntries[0]?.mood || '',
       habits: `${dayHabits.length}/${habits.length}`
     });
   }
   const weekStr = week.map(d => `${d.date}: zápisky=${d.entries} ${d.mood}, návyky=${d.habits}`).join('\n');
   const av = AVS.find(a => a.id === prof?.avatarId) || {name:'Rex'};
-  const sys = `Jsi ${av.name} v LifePocket. Napiš krátký, přátelský týdenní souhrn pro ${prof?.nickname||'uživatele'} (max 5 vět). Buď konkrétní a motivující. Data týdne:\n${weekStr}\nPRAVIDLO: Piš VÝHRADNĚ česky.`;
+  const sys = `Jsi ${av.name}, AI společník v aplikaci LifePocket. Napiš krátký, přátelský a motivující týdenní souhrn pro ${prof?.nickname||'uživatele'}. Buď konkrétní podle dat.
+${weeklyReportRules(5)}
+Data týdne:\n${weekStr}`;
   try {
-    const rep = await callClaude([{role:'system',content:sys},{role:'user',content:'Týdenní souhrn'}], 300);
+    const rep = aiPlain(await callClaude([{role:'system',content:sys},{role:'user',content:t('ai.wr.userSilent')}], 300));
     if (!rep) return;
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString(), avatar: av.emoji||'⭐', avatarName: av.name}));
     rDash();
@@ -10521,9 +10615,10 @@ async function loadDailyQuote() {
         {role:'system', content:t('ai.quote.sys',{name:av.name})},
         {role:'user', content:t('ai.quote.user')}
       ], 60);
-      if (text) {
-        lsSave('lp_daily_quote', {date: today, text, lang: LANG});
-        return text;
+      const q = aiPlain(text);
+      if (q) {
+        lsSave('lp_daily_quote', {date: today, text: q, lang: LANG});
+        return q;
       }
     } catch(e) { /* fallback */ }
 
@@ -10816,7 +10911,8 @@ function rDash(){
       const daysDiff = Math.floor((new Date()-reportDate)/86400000);
       if(daysDiff <= 7) { // zobraz max 7 dní
         const dateLabel = reportDate.toLocaleDateString(LOCALE,{weekday:'long',day:'numeric',month:'long'});
-        const shortReport = wr.text.length > 120 ? wr.text.slice(0,120)+'…' : wr.text;
+        const wText = aiPlain(wr.text); // i dřív uložený report: bez cizího písma a markdownu
+        const shortReport = wText.length > 120 ? wText.slice(0,120)+'…' : wText;
         html += `<div class="dw" style="cursor:default;background:linear-gradient(135deg,rgba(245,200,66,.07),rgba(224,149,74,.05));border-color:rgba(245,200,66,.25)">
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:20px">${esc(wr.avatar||'⭐')}</span>
@@ -10824,8 +10920,8 @@ function rDash(){
             <span style="font-size:12px;color:var(--text3);margin-left:auto">${dateLabel}</span>
           </div>
           <div id="wr-preview" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px">${esc(shortReport)}</div>
-          <div id="wr-full" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px;display:none">${esc(wr.text)}</div>
-          <button data-hide="${tH('dash.wr.hide')}" data-show="${tH('dash.wr.show')}" onclick="const p=document.getElementById('wr-preview'),f=document.getElementById('wr-full'),b=this;if(f.style.display==='none'){f.style.display='block';p.style.display='none';b.textContent=b.dataset.hide}else{f.style.display='none';p.style.display='block';b.textContent=b.dataset.show}" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif">${wr.text.length>120?tH('dash.wr.show'):tH('dash.wr.chat')}</button>
+          <div id="wr-full" style="font-size:14px;color:var(--text2);line-height:1.6;margin-top:8px;display:none;white-space:pre-line">${esc(wText)}</div>
+          <button data-hide="${tH('dash.wr.hide')}" data-show="${tH('dash.wr.show')}" onclick="const p=document.getElementById('wr-preview'),f=document.getElementById('wr-full'),b=this;if(f.style.display==='none'){f.style.display='block';p.style.display='none';b.textContent=b.dataset.hide}else{f.style.display='none';p.style.display='block';b.textContent=b.dataset.show}" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:8px;padding:5px 14px;font-size:13px;color:var(--text3);cursor:pointer;font-family:'Crimson Pro',serif">${wText.length>120?tH('dash.wr.show'):tH('dash.wr.chat')}</button>
         </div>`;
       }
     } catch(e) { /* ignoruj */ }
@@ -11538,7 +11634,7 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
 3. Krátce povzbuď na zbytek dne nebo večer
 4. Max 4-5 vět, buď osobní a konkrétní.`;
   try{
-    const rep=await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}],500),uid);
+    const rep=aiPlain(await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:'Přehled mého dne: '+text}],500),uid));
     if(CU?.uid!==uid){document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     saveChatMessage('assistant',rep);
@@ -11807,7 +11903,7 @@ function buildChatContext(){
     if(!r||!r.text) return [];
     const rd=new Date(r.date);
     if(isNaN(rd)||(now-rd)>8*86400000) return [];
-    return ['('+toDS(rd)+') '+ctxT(r.text,300)];
+    return ['('+toDS(rd)+') '+ctxT(aiPlain(r.text),300)];
   });
 
   add('RODINA (skupiny)',false,()=>{
@@ -11892,7 +11988,8 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
     if(CU?.uid!==uid){document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
-    rep=rep.replace(/\[FOOD:[^\]]+\]/g,'').trim();
+    rep=aiPlain(rep.replace(/\[FOOD:[^\]]+\]/g,'')); // chat markdown nevykresluje
+    if(!rep)throw new Error('AI není k dispozici');
     saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
     if(foodMatch){
@@ -12711,7 +12808,7 @@ window.aiSuggestSteps = async function() {
     const user = `Recept: ${name} pro ${portions} osoby\nSuroviny:\n${ingr||'(neuvedeny)'}`;
     const result = await callClaude([{role:'system',content:sys},{role:'user',content:user}], 600);
     if (result && stepsEl) {
-      stepsEl.value = result.trim();
+      stepsEl.value = aiPlain(result);
       toast('✨ Postup vygenerován');
     }
   } catch(e) {
@@ -13744,7 +13841,7 @@ function appendMsg(role,text,nm='',em=''){
   bubble.className='msg '+role;
   if(role==='bot'){
     const lbl=nm?`<div class="mlbl">${esc(em||'')} ${esc(nm)}</div>`:'';
-    bubble.innerHTML=lbl+esc(text).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`;
+    bubble.innerHTML=lbl+esc(aiPlain(text)).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`; // i starší historie: bez markdownu a cizího písma
     // Nahlášení odpovědi AI (ne u chybových hlášek appky)
     if(nm!=='Chyba'){
       const rb=document.createElement('button');
