@@ -1163,8 +1163,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .shop-check.done{background:var(--green);border-color:var(--green);color:white}
 .shop-item-name{flex:1;font-size:15px;color:var(--text);transition:all .2s}
 .shop-item.done .shop-item-name{text-decoration:line-through;color:var(--text3)}
-.shop-item-qty{position:relative;flex-shrink:0;min-height:36px;min-width:44px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 10px;border-radius:18px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.shop-item-qty::after{content:'';position:absolute;inset:-4px 0}
+.shop-item-qty{position:relative;flex-shrink:0;min-height:44px;min-width:44px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 10px;border-radius:18px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .shop-item-qty.empty{color:var(--text3);border-style:dashed;font-weight:400;font-size:13px}
 .shop-item-qty:focus-visible,.quick-chip:focus-visible,.quick-chip-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .shop-parse-hint{font-size:13px;color:var(--accent);padding:2px 4px;font-family:'Crimson Pro',serif}
@@ -1186,7 +1185,12 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .shop-item-del:hover{color:var(--red)}
 .shop-item-fav{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;line-height:1;opacity:.6;flex-shrink:0;transition:opacity .15s}
 .shop-item-fav:active{opacity:1}
-.shop-from-recipe{font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
+.shop-from-recipe{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
+/* Úzké telefony (360 px): štítek receptu a množství se zkrátí výpustkou */
+@media(max-width:380px){
+  .shop-from-recipe{max-width:72px}
+  .shop-item-qty{max-width:80px}
+}
 .recurring-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px 6px 3px 10px}
 .recurring-chip-name{background:none;border:none;font-size:12px;color:var(--text2);cursor:pointer;padding:0;font-family:'Crimson Pro',serif}
 .recurring-chip-name:active{color:var(--accent)}

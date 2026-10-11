@@ -870,6 +870,7 @@ export default {
   'shop.quickTitle': '⚡ Často nakupované',
   'shop.quickAddAria': 'Přidat do nákupu: {name}',
   'shop.quickHideAria': 'Skrýt z často nakupovaných: {name}',
+  'shop.quickUnfavConfirm': 'Odebrat {name} z oblíbených a skrýt?',
   'shop.quickHidden': 'Skryto: {name}. Vrátí se, až ho přidáš ručně.',
   'shop.added': '✓ {name} přidáno',
   'shop.already': '{name} už je v seznamu',

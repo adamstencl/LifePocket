@@ -7551,19 +7551,6 @@ window.renameFamilyGroup = async () => {
 };
 
 // ── SDÍLENÝ NÁKUPNÍ SEZNAM ────────────────────────────
-// Override addShopItem aby zapisoval do rodinného prostoru pokud je aktivní sdílení
-async function addShopItemToFamily(name, category, qty = '') {
-  if(!familyId || !familyData?.shareShop) return false;
-  const fid = familyId;
-  await addDoc(collection(db,'families',fid,'shopItems'), {
-    name, category: category||'Ostatní', done:false, qty: String(qty||'').trim(),
-    addedBy: CU.uid, addedByName: prof.prezdivka||prof.nickname||'',
-    createdAt: new Date().toISOString()
-  });
-  logGroupActivity(fid, 'shop', 'add', name);
-  return true;
-}
-
 async function toggleFamilyShopItem(id, done) {
   if(!familyId) return;
   const fid = familyId, name = familyShopItems.find(i => i.id === id)?.name || '';
@@ -12080,18 +12067,20 @@ window.confirmRecipeToShop=async(btnEl)=>{
   const isShared = isShopShared(), shopFid = familyId;
   const activeItems = isShared ? familyShopItems : shopItems;
   for(const ing of lastRecipe.ingredients){
-    const exists=activeItems.some(i=>i.name.toLowerCase()===ing.name.toLowerCase());
+    const iname=cutName(ing?.name,80);
+    if(!iname) continue;
+    const exists=activeItems.some(i=>String(i.name||'').toLowerCase()===iname.toLowerCase());
     if(!exists){
       const ref = isShared
         ? collection(db,'families',familyId,'shopItems')
         : collection(db,'users',CU.uid,'shopItems');
       await addDoc(ref,{
-        name:ing.name, qty:ing.qty,
-        category:ing.category||'Ostatní',
+        name:iname, qty:cutName(String(ing.qty||''),30),
+        category:cutName(ing.category||'Ostatní',30),
         done:false, fromRecipe:lastRecipe.name,
         createdAt:new Date().toISOString()
       });
-      if(!added) firstAdded=ing.name;
+      if(!added) firstAdded=iname;
       added++;
     }
   }
@@ -12261,7 +12250,7 @@ window.editShopCat=(id, currentCat)=>{
 // ── MNOŽSTVÍ PŘI PSANÍ (4.45) ── „2 mléka“, „mléko 2l“, „3x rohlík“, „500 g mouky“ → {name, qty}
 // Název se ukládá, jak ho uživatel napsal (bez skloňování), jen se oddělí množství. qty zůstává volný řetězec.
 const SHOP_NUM_RE = '(\\d{1,4}\\/\\d{1,3}|[½¼¾]|\\d{1,5}(?:[.,]\\d{1,3})?)';
-const SHOP_UNIT_RE = '(kusy|kusů|kusu|kus|ks|pcs|pc|kilogramy|kilogramů|kilo|kila|kg|dkg|deka|deko|gramy|gramů|gramu|g|ml|litry|litrů|litru|litr|l|balení|bal\\.?|packs|pack|x|×)';
+const SHOP_UNIT_RE = '(kusy|kusů|kusu|kus|ks|pcs|pc|kilogramy|kilogramů|kilo|kila|kg|dkg|deka|deko|gramy|gramů|gramu|g|ml|dl|cl|litry|litrů|litru|litr|l|balení|bal|packs|pack|x|×)\\.?'; // tečka za jednotkou („2 l.“) se ignoruje
 const SHOP_FRAC = {'½':.5,'¼':.25,'¾':.75};
 function shopNum(s){
   s = String(s||'');
@@ -12270,7 +12259,7 @@ function shopNum(s){
   const n = f ? (Number(f[2]) ? Number(f[1])/Number(f[2]) : 0) : parseFloat(s.replace(',','.'));
   return Number.isFinite(n) ? Math.round(n*1000)/1000 : 0;
 }
-// Jednotka do jednotného tvaru (ks/kg/dkg/g/ml/l/bal); počet kusů v angličtině „pcs“
+// Jednotka do jednotného tvaru (ks/kg/dkg/g/ml/dl/cl/l/bal); počet kusů v angličtině „pcs“
 function shopUnit(u){
   u = String(u||'').toLowerCase().replace(/\.$/,'');
   if(u==='x'||u==='×'||u.startsWith('kus')||u==='ks'||u==='pc'||u==='pcs') return LANG==='en'?'pcs':'ks';
@@ -12278,7 +12267,7 @@ function shopUnit(u){
   if(u==='dkg'||u.startsWith('dek')) return 'dkg';
   if(u.startsWith('gram')||u==='g') return 'g';
   if(u.startsWith('litr')||u==='l') return 'l';
-  if(u==='ml') return 'ml';
+  if(u==='ml'||u==='dl'||u==='cl') return u;
   if(u.startsWith('bal')||u.startsWith('pack')) return LANG==='en'?'pack':'bal';
   return u;
 }
@@ -12300,6 +12289,9 @@ function parseShopInput(raw){
     return {name, qty:fmtShopQty(n, shopUnit(unit))};
   };
   let m, r;
+  // „2x 0,5 l pivo“ → pivo, „2× 0,5 l“
+  if((m = s.match(new RegExp('^(\\d{1,2})\\s*[x×]\\s*'+N+'\\s*'+U+'\\s+(.+)$','iu'))) && !/^[x×]$/i.test(m[3]) && (r = ok(m[4], shopNum(m[2]), m[3])) && Number(m[1]) > 0)
+    return {name:r.name, qty:m[1]+'× '+r.qty};
   // „500 g mouky“, „2 x mléko“, „1,5 kg brambor“, „10ks rohlíků“
   if((m = s.match(new RegExp('^'+N+'\\s*'+U+'\\s+(.+)$','iu'))) && (r = ok(m[3], shopNum(m[1]), m[2]))) return r;
   // „3x rohlík“, „2×mléko“
@@ -12310,8 +12302,8 @@ function parseShopInput(raw){
   if((m = s.match(new RegExp('^(.+?)\\s+'+N+'\\s*'+U+'$','iu'))) && (r = ok(m[1], shopNum(m[2]), m[3]))) return r;
   // „mléko x2“
   if((m = s.match(/^(.+?)\s+[x×]\s*(\d{1,3})$/iu)) && (r = ok(m[1], shopNum(m[2]), 'ks'))) return r;
-  // „vejce 10“ (celé číslo do 999 na konci = počet kusů)
-  if((m = s.match(/^(.+?)\s+(\d{1,3})$/u)) && (r = ok(m[1], shopNum(m[2]), 'ks'))) return r;
+  // „vejce 10“ (celé číslo do 30 na konci = počet kusů; „Persil 60“, „Coca-Cola 330“ zůstanou)
+  if((m = s.match(/^(.+?)\s+(\d{1,2})$/u)) && Number(m[2]) <= 30 && (r = ok(m[1], shopNum(m[2]), 'ks'))) return r;
   return none;
 }
 
@@ -12417,21 +12409,12 @@ window.toggleFavShopItem = function(name, category) {
   renderShop();
 };
 
-window.addFavToShop = async function(name, category) {
-  const activeItems = isShopShared()?familyShopItems:shopItems;
-  if(activeItems.some(i=>i.name.toLowerCase()===name.toLowerCase()&&!i.done)){
-    toast(t('shop.already',{name})); return;
-  }
-  const shared = await addShopEntry({name, category});
-  toast(t('shop.added',{name}) + (shared?' 👨‍👩‍👧':''));
-};
-
 // ── ČASTO NAKUPOVANÉ (4.45) ──────────────────────────
 // Signál = odškrtnutí položky jako koupené (+1), vrácení odškrtnutí (−1). Smazání bez koupení se nepočítá.
 // Agregát: users/{uid}/shopStats/freq (osobní seznam + skryté čipy), families/{fid}/shopStats/freq (sdílený seznam).
 // { items: { klíč: { n:název, c:kategorie, q:poslední množství, k:počet, last:'YYYY-MM-DD', h:true = skryto } } }
 // Pravidla Firestore beze změny: users/{uid}/** a families/{id}/{sub}/{doc} pro členy.
-const QS_MAX = 10, QS_HALF_LIFE = 45, QS_KEYS_MAX = 300;
+const QS_MAX = 10, QS_HALF_LIFE = 45, QS_KEYS_MAX = 300, QS_MIN_SCORE = 0.3; // pod prahem dávné položky vypadnou
 let shopFreqMine = {}, shopFreqFam = {};
 const _qsPruned = new Set();
 function shopKey(name){
@@ -12477,6 +12460,7 @@ function pickQuickShop(src, mine, favs, activeKeys, today, max = QS_MAX){
   const freq = Object.entries(src||{})
     .filter(([k,e]) => e && e.n && !e.h && !hidden(k) && ((Number(e.k)||0) >= 2 || ((Number(e.k)||0) >= 1 && qsDays(e, today) <= 21)))
     .map(([k,e]) => [k, e, qsScore(e, today)])
+    .filter(([,,sc]) => sc >= QS_MIN_SCORE)
     .sort((a,b) => b[2]-a[2] || String(a[1].n).localeCompare(String(b[1].n)));
   for(const [k,e] of freq){
     if(out.length >= max) break;
@@ -12498,13 +12482,15 @@ function renderQuickShop(){
   _qsList = quickShopList();
   wrap.hidden = !_qsList.length;
   row.innerHTML = _qsList.map(([k,e]) => `<div class="quick-chip-wrap" role="listitem">`
-    + `<button type="button" class="quick-chip" data-a0="${esc(k)}" onclick="quickAddShop(this.dataset.a0)" oncontextmenu="event.preventDefault();hideQuickShop(this.dataset.a0)" aria-label="${tH('shop.quickAddAria',{name:e.n+(e.q?' · '+e.q:'')})}">${e.pin?'⭐ ':''}${esc(e.n)}${e.q?`<small>· ${esc(e.q)}</small>`:''}</button>`
+    + `<button type="button" class="quick-chip" data-a0="${esc(k)}" onclick="quickAddShop(this.dataset.a0)" oncontextmenu="event.preventDefault()" aria-label="${tH('shop.quickAddAria',{name:e.n+(e.q?' · '+e.q:'')})}">${e.pin?'⭐ ':''}${esc(e.n)}${e.q?`<small>· ${esc(e.q)}</small>`:''}</button>`
     + `<button type="button" class="quick-chip-x" data-a0="${esc(k)}" onclick="hideQuickShop(this.dataset.a0)" aria-label="${tH('shop.quickHideAria',{name:e.n})}">✕</button></div>`).join('');
 }
 // Starý název (volá ho toggleFavShopItem a renderShop)
 function renderFavShop(){ renderQuickShop(); }
 window.quickAddShop = async key => {
-  const e = _qsList.find(([k]) => k === key)?.[1];
+  const raw = _qsList.find(([k]) => k === key)?.[1];
+  // Hodnoty mohou pocházet z dokumentu skupiny – vždy jako krátké řetězce
+  const e = raw && {n:cutName(raw.n,40), c:cutName(raw.c,30), q:cutName(String(raw.q||''),15)};
   if(!e || !e.n) return;
   const activeItems = isShopShared()?familyShopItems:shopItems;
   if(activeItems.some(i=>!i.done && shopKey(i.name)===key)){ toast(t('shop.already',{name:e.n})); return; }
@@ -12516,10 +12502,12 @@ window.quickAddShop = async key => {
     toast(t('shop.added',{name:e.n}) + (shared?' 👨‍👩‍👧':''));
   }catch(err){ toast('❌ '+userErr(err)); renderQuickShop(); }
 };
-// Skrýt čip: z oblíbených se odebere, frekvence se označí jako skrytá (jen pro mě, i ve sdíleném seznamu)
+// Skrýt čip (jen přes ✕): frekvence se označí jako skrytá (jen pro mě, i ve sdíleném seznamu);
+// oblíbená ⭐ se z oblíbených odebere až po potvrzení
 window.hideQuickShop = async key => {
   const e = _qsList.find(([k]) => k === key)?.[1];
   if(!e || !CU) return;
+  if(e.pin && !confirm(t('shop.quickUnfavConfirm',{name:e.n}))) return;
   const favs = getFavShopItems();
   const rest = favs.filter(f => shopKey(f.name) !== key);
   if(rest.length !== favs.length) saveFavShopItems(rest);

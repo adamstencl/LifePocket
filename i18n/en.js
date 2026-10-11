@@ -867,6 +867,7 @@ export default {
   'shop.quickTitle': '⚡ Frequently bought',
   'shop.quickAddAria': 'Add to shopping list: {name}',
   'shop.quickHideAria': 'Hide from frequently bought: {name}',
+  'shop.quickUnfavConfirm': 'Remove {name} from favourites and hide it?',
   'shop.quickHidden': 'Hidden: {name}. It comes back when you add it by hand.',
   'shop.added': '✓ {name} added',
   'shop.already': '{name} is already on the list',
