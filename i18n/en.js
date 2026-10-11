@@ -862,4 +862,19 @@ export default {
   'shr.share': 'Share',
   'shr.savedFirst': '🔖 Recipe saved, pick a group',
   'shr.savedBtn': 'Saved',
+
+  // ── Shopping: frequently bought and quantity (4.45) ──
+  'shop.quickTitle': '⚡ Frequently bought',
+  'shop.quickAddAria': 'Add to shopping list: {name}',
+  'shop.quickHideAria': 'Hide from frequently bought: {name}',
+  'shop.quickHidden': 'Hidden: {name}. It comes back when you add it by hand.',
+  'shop.added': '✓ {name} added',
+  'shop.already': '{name} is already on the list',
+  'shop.preview': '➕ {name} · {qty}',
+  'shop.inpPh': 'Add item… (e.g. 2 milk)',
+  'shop.inpAria': 'Add item',
+  'shop.qtyAdd': '+ qty',
+  'shop.qtyAddAria': 'Add quantity: {name}',
+  'shop.qtyAria': 'Quantity of {name}: {qty}, edit',
+  'shop.qtyPh': 'quantity…',
 };

@@ -865,4 +865,19 @@ export default {
   'shr.share': 'Sdílet',
   'shr.savedFirst': '🔖 Recept uložen, vyber skupinu',
   'shr.savedBtn': 'Uloženo',
+
+  // ── Nákupy: často nakupované a množství (4.45) ──
+  'shop.quickTitle': '⚡ Často nakupované',
+  'shop.quickAddAria': 'Přidat do nákupu: {name}',
+  'shop.quickHideAria': 'Skrýt z často nakupovaných: {name}',
+  'shop.quickHidden': 'Skryto: {name}. Vrátí se, až ho přidáš ručně.',
+  'shop.added': '✓ {name} přidáno',
+  'shop.already': '{name} už je v seznamu',
+  'shop.preview': '➕ {name} · {qty}',
+  'shop.inpPh': 'Přidat položku… (např. 2 mléka)',
+  'shop.inpAria': 'Přidat položku',
+  'shop.qtyAdd': '+ množství',
+  'shop.qtyAddAria': 'Přidat množství: {name}',
+  'shop.qtyAria': 'Množství {name}: {qty}, upravit',
+  'shop.qtyPh': 'množství…',
 };
