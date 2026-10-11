@@ -7645,6 +7645,7 @@ function resetSocialLocal() {
   Object.keys({..._shUnsub, ..._rxUnsub, ..._chUnsub}).forEach(stopGroupSocial);
   for(const tm of _shTimers.values()) clearTimeout(tm);
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear(); _shAnnounced.clear();
+  _jView = 'mine'; _rcView = 'mine'; _shv = null; _shRcPending = null;
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
 function refreshShareUI() {
@@ -7871,7 +7872,8 @@ function shDailyResync(gid) {
 // Každý typ zvlášť: až když jeho seznam přišel ze serveru (poznámky a recepty mají vlastní listener)
 function shOrphanSweep() {
   if(!CU || _accDeleting || _accDeleted) return;
-  const ready = {h: _habitsSnapOk, g: _goalsSrvOk, n: _entriesSrvOk, r: _recipesSrvOk};
+  const hg = _habitsSnapOk && _goalsSrvOk; // návyky a cíle jako dřív spolu
+  const ready = {h: hg, g: hg, n: _entriesSrvOk, r: _recipesSrvOk};
   const exists = {h: id => habits.some(x => x.id === id), g: id => goals.some(x => x.id === id),
     n: id => entries.some(x => x.id === id), r: id => savedRecipes.some(x => x.id === id)};
   for(const gid of _shSrv) {
@@ -7899,6 +7901,11 @@ function unshareItem(type, itemId, gid) {
   if(set) { set.delete(gid); if(!set.size) mySharedIn.delete(key); }
   myMirrors[gid]?.delete(key);
   deleteDoc(doc(db,'families',gid,'shared',sid)).catch(e => console.warn('[LP] zruseni sdileni', e?.code || e?.name));
+  // Nasdílení poznámky / receptu, které ještě čeká v bufferu aktivity, se neodešle
+  if(SH_POST.includes(type)) {
+    const bk = gaKey(gid, SH_TYPES[type], 'share', {ref: sid}), b = _gaBuf.get(bk);
+    if(b) { clearTimeout(b.timer); _gaBuf.delete(bk); }
+  }
   (async () => {
     const acts = await getDocs(query(collection(db,'families',gid,'activity'), where('uid','==',uid), where('ref','==',sid)));
     const actIds = new Set(acts.docs.map(d => 'a_' + d.id));

@@ -835,7 +835,7 @@ export default {
   'gf.a.recipe.share': 'Nový recept',
   'sh.titleNote': 'Sdílet poznámku',
   'sh.titleRecipe': 'Sdílet recept',
-  'sh.noteNote': 'Ostatní uvidí nadpis a celý text této poznámky, jen ke čtení. Náladu, fotku ani tvé další poznámky ne. Když poznámku upravíš, změna se jim hned propíše. Můžou ti poslat 👏 a krátký vzkaz.',
+  'sh.noteNote': 'Ostatní uvidí nadpis a celý text této poznámky, jen ke čtení. Náladu, fotku ani tvé další poznámky ne. Když poznámku upravíš, změna se jim hned propíše. Skupina dostane upozornění s nadpisem a můžou ti poslat 👏 a krátký vzkaz.',
   'sh.noteRecipe': 'Ostatní uvidí celý recept: název, čas, porce, suroviny, postup a tip. Můžou si ho uložit k sobě a poslat ti 👏 a krátký vzkaz. Upravovat ho nemůžou.',
   'shn.viewAria': 'Čí položky zobrazit',
   'shn.mine': 'Moje',

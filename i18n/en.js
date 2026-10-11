@@ -832,7 +832,7 @@ export default {
   'gf.a.recipe.share': 'New recipe',
   'sh.titleNote': 'Share note',
   'sh.titleRecipe': 'Share recipe',
-  'sh.noteNote': 'Others will see the title and the full text of this note, read-only. Not your mood, photo or other notes. When you edit the note, they see the change right away. They can send you 👏 and a short message.',
+  'sh.noteNote': 'Others will see the title and the full text of this note, read-only. Not your mood, photo or other notes. When you edit the note, they see the change right away. The group gets a notification with the title, and they can send you 👏 and a short message.',
   'sh.noteRecipe': 'Others will see the full recipe: name, time, servings, ingredients, steps and tip. They can save it to their own recipes and send you 👏 and a short message. They cannot edit it.',
   'shn.viewAria': 'Whose items to show',
   'shn.mine': 'Mine',
