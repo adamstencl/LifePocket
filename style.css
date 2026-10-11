@@ -1707,6 +1707,27 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .gf-item.ms .gf-em{font-size:24px}
 .gf-item .rx-bar{margin-top:8px}
 .share-chip:focus-visible,.rx-btn:focus-visible,.rx-sum:focus-visible,.shc-sec:focus-visible,.sh-x:focus-visible,.fshare-mod-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ── 4.44: sdílené poznámky a recepty ── */
+#j-seg:not(:empty){padding:10px 12px 0}
+#j-seg .sh-seg{margin-bottom:0}
+.sh-seg .seg-btn{padding:0 8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-empty{text-align:center;color:var(--text3);font-size:14px;padding:20px 14px;font-style:italic;line-height:1.45}
+.j-share{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;max-width:100%}
+.j-share:empty,.rc-share:empty{display:none}
+.rc-share{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:-8px 0 20px}
+.shv-who{font-size:14px;color:var(--text2);margin:2px 0 8px;overflow-wrap:anywhere}
+.shv-h{font-size:19px;color:var(--text);margin:0 0 8px;line-height:1.3;overflow-wrap:anywhere}
+.shv-text{font-size:16px;color:var(--text);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:14px}
+.shv-meta{font-size:14px;color:var(--text2);margin-bottom:4px}
+.shv-ings{list-style:none;margin:0;padding:0}
+.shv-ings li{display:flex;gap:10px;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:15px;color:var(--text);overflow-wrap:anywhere}
+.shv-qty{color:var(--text3);flex:none;max-width:45%;text-align:right}
+.shv-steps{margin:0 0 6px;padding-left:22px;color:var(--text);font-size:15px;line-height:1.5}
+.shv-steps li{margin-bottom:8px;overflow-wrap:anywhere}
+.shv-tip{margin:10px 0;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2);overflow-wrap:anywhere}
+.shv-save{display:block;width:100%;min-height:48px;margin:12px 0}
+.shv-save:disabled{opacity:.7;cursor:default}
+#shv-body .rx-bar{margin-top:6px}
 
 /* ── 4.40: pauza návyku, štíty série, neutrální dny ── */
 .htd-dot.frozen{background:transparent;box-shadow:inset 0 0 0 1px var(--blue);color:var(--blue);font-size:10px}

@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.43';
+const APP_VERSION = '4.44';
 const CHANGELOG = [
+  { v:'4.44', items:[
+    '📝 Sdílení poznámek a receptů se skupinou'
+  ], en:[
+    '📝 Share notes and recipes with your group'
+  ]},
   { v:'4.43', items:[
     '🤝 Společné výzvy ve skupině – táhněte za jeden provaz'
   ], en:[
@@ -536,10 +541,11 @@ let entries=[];
 // ── Firebase subscription helper ──────────────────────────
 // Eliminuje opakující se vzor: if(unsub) unsub(); unsub = onSnapshot(...)
 const _fireSubs = {};
-function createFireSub(key, ref, callback) {
+function createFireSub(key, ref, opts, callback) {
   if (!CU) return;
+  if (typeof opts === 'function') { callback = opts; opts = null; }
   if (_fireSubs[key]) { _fireSubs[key](); delete _fireSubs[key]; }
-  _fireSubs[key] = onSnapshot(ref, callback);
+  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback) : onSnapshot(ref, callback);
 }
 function destroyAllFireSubs() {
   Object.keys(_fireSubs).forEach(k => { if (_fireSubs[k]) _fireSubs[k](); delete _fireSubs[k]; });
@@ -850,15 +856,27 @@ let curEntryId=null, entryMood='', entryDirty=false, curEntryCreatedAt=null;
 let jRec=null, jRecOn=false;
 
 function subEntries(){
+  _entriesSrvOk=false;
+  let eOk=false;
+  // includeMetadataChanges: přechod cache → server i beze změny dat (úklid osiřelých zrcadel poznámek)
   createFireSub('entries',
     query(collection(db,'users',CU.uid,'entries'),orderBy('createdAt','desc')),
-    snap=>{ entries=snap.docs.map(d=>({id:d.id,...d.data()})); renderEntryList(); }
+    {includeMetadataChanges:true},
+    snap=>{
+      const srv=!snap.metadata.fromCache;
+      if(eOk&&!snap.docChanges().length){ if(srv&&!_entriesSrvOk){_entriesSrvOk=true;shOrphanSweep();} return; }
+      eOk=true;
+      entries=snap.docs.map(d=>({id:d.id,...d.data()})); renderEntryList();
+      if(srv&&!_entriesSrvOk){_entriesSrvOk=true;setTimeout(shOrphanSweep,0);}
+    }
   );
 }
 
 function renderEntryList(filter=''){
   const list=document.getElementById('j-list');
   if(!list)return;
+  renderNoteSeg(); refreshNoteChip();
+  if(_jView==='group'){ list.innerHTML=sharedNotesListHTML(filter); return; } // sdílené od ostatních (4.44)
   const f=filter.toLowerCase();
   const filtered=!f?entries:entries.filter(e=>
     (e.title||'').toLowerCase().includes(f)||(e.text||'').toLowerCase().includes(f)
@@ -878,7 +896,7 @@ function renderEntryList(filter=''){
     const preview=(e.text||'').slice(0,50);
     return `<div class="j-item ${e.id===curEntryId?'active':''}" data-a0="${esc(e.id)}" onclick="openEntry(this.dataset.a0)">
       <div class="j-item-date">${d}</div>
-      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${esc(e.mood)}</span>`:''}${esc(e.title||'Bez názvu')}${e.photo?` <span style="font-size:11px">📷</span>`:''}</div>
+      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${esc(e.mood)}</span>`:''}${esc(e.title||'Bez názvu')}${e.photo?` <span style="font-size:11px">📷</span>`:''}${shBadgeHTML('n',e.id)}</div>
       ${preview?`<div class="j-item-preview">${esc(preview)}…</div>`:''}
     </div>`;
   }).join('');
@@ -1030,7 +1048,9 @@ window.saveEntry=async(opts)=>{
   delete data.id;
   entryDirty=false; // změny během ukládání znovu nastaví markDirty
   try{
-    await setDoc(doc(db,'users',CU.uid,'entries',id),data);
+    const wr=setDoc(doc(db,'users',CU.uid,'entries',id),data);
+    syncShared('n',id); // sdílená poznámka: zrcadlo po 1,5 s (snapshot už má nový text), i offline
+    await wr;
     renderEntryList();
     if(!auto) toast('✓ Uloženo');
     if(createdId) gameKick();   // nová poznámka → odznak Pisálek (vyhodnotí gameSync)
@@ -1048,6 +1068,7 @@ window.saveEntry=async(opts)=>{
 window.deleteEntry=async()=>{
   if(!CU||!curEntryId||!confirm('Smazat zápisek?'))return;
   try{
+    unshareAll('n',curEntryId); // zrcadla ve skupinách pryč dřív, než poznámka zmizí
     await deleteDoc(doc(db,'users',CU.uid,'entries',curEntryId));
     entries=entries.filter(e=>e.id!==curEntryId);
     curEntryId=null; entryMood='';
@@ -7441,8 +7462,8 @@ async function deleteFamilyShopItem(id) {
 // Osobní moduly navíc: ref (zrcadlo / cíl reakce), val (série, mezník cíle v %), to + em / msg (reakce).
 // Rychlé změny se slučují: stejná skupina+modul+akce do 4 s od poslední, nejdéle 20 s od první → 1 záznam.
 // Milník (streak, mezník cíle) se neslučuje (klíč i s ref), reakce se slučují podle adresáta, komentář jde hned.
-const GA_MODS = ['shop','cal','meal','check','pantry','habit','goal','react','challenge'];
-const GA_PERSONAL = ['habit','goal','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
+const GA_MODS = ['shop','cal','meal','check','pantry','habit','goal','react','challenge','note','recipe'];
+const GA_PERSONAL = ['habit','goal','note','recipe','react']; // osobní moduly: ve všech skupinách, kde položku sdílím
 // Společná výzva (4.43) je modul celé skupiny: v každé skupině, nastavení upozornění mezi moduly skupiny
 const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak','progress']);
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
@@ -7476,7 +7497,7 @@ function gaCheck(list, action, text, count = 1) {
 let _gaSeq = 0;
 function gaKey(gid, module, action, x) {
   let key = gid+'|'+module+'|'+action;
-  if(action === 'streak' || module === 'goal' || module === 'challenge') key += '|'+(x?.ref || '');
+  if(action === 'streak' || module === 'goal' || module === 'challenge' || module === 'note' || module === 'recipe') key += '|'+(x?.ref || '');
   if(module === 'react') key += '|'+(x?.to || '') + (x?.rid ? '|c'+(++_gaSeq) : '');
   return key;
 }
@@ -7548,6 +7569,8 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
 // ── SDÍLENÍ NÁVYKŮ A CÍLŮ VE SKUPINĚ (zrcadlo families/{gid}/shared) A REAKCE (families/{gid}/reactions) ──
 // Zrcadlo h_<uid>_<habitId> nese jen souhrn (název, frekvence, dnešek, série, 7 dní), píše ho jen vlastník.
 // Zrcadlo g_<uid>_<goalId> (4.42): název, ikona, barva, pokrok %, termín, mezníky, počet podcílů, hodnoty měřitelného cíle jen při shareVals.
+// Zrcadlo n_<uid>_<entryId> (4.44): jen nadpis a text výslovně sdílené poznámky (bez nálady, fotky a data).
+// Zrcadlo r_<uid>_<recipeId> (4.44): recept (název, čas, porce, druh, suroviny, postup, tip); ostatní si ho můžou uložit k sobě.
 // Zdroj pravdy o tom, co sdílím, je zrcadlo samo: mySharedIn plní listener shared každé skupiny.
 const SH_MS = [7, 30, 100];                  // milníky série (aktivita habit/streak)
 const RX = [['clap','👏'],['fire','🔥'],['heart','❤️'],['strong','💪']];
@@ -7556,8 +7579,11 @@ const RX_TTL_MS = 30*86400000;               // reakce a komentáře mizí po 30
 const RX_MAX_LEN = 200;
 const RX_CID_RE = /^c_[A-Za-z0-9]{1,40}$/;   // ID komentáře (emoji reakce mají tvar target_uid_em)
 const MEMBER_AV = Object.fromEntries(AVS.map(a => [a.id, a.emoji])); // stejná emoji jako AVS (4.40)
-const SH_KINDS = ['h', 'g'];                 // typy zrcadel: návyk, cíl
-const mySharedIn = new Map();                // 'h_<habitId>' | 'g_<goalId>' → Set(gid)
+const SH_KINDS = ['h', 'g', 'n', 'r'];       // typy zrcadel: návyk, cíl, poznámka, recept
+const SH_TYPES = {h:'habit', g:'goal', n:'note', r:'recipe'}; // typ zrcadla → modul aktivity
+const SH_POST = ['n', 'r'];                  // nasdílení poznámky a receptu ohlásí aktivita note/recipe „share“
+const SH_NOTE_MAX = 20000, SH_RC_ING = 60, SH_RC_STEPS = 40; // limity jako v pravidlech
+const mySharedIn = new Map();                // 'h_<habitId>' | 'g_<goalId>' | 'n_<entryId>' | 'r_<recipeId>' → Set(gid)
 const myMirrors = {};                        // gid → Map('h_<habitId>' | 'g_<goalId>' → moje zrcadlo)
 const sharedByGroup = {};                    // gid → [zrcadla ostatních členů]
 const rxByGroup = {};                        // gid → [reakce a komentáře za 30 dní]
@@ -7569,6 +7595,8 @@ const _shResyncDay = new Map();              // gid → den posledního resyncu 
 const _shSrv = new Set();                    // gid, jehož zrcadla už přišla ze serveru
 const _shSwept = new Set();                  // gid, kde už v této relaci proběhl úklid osiřelých zrcadel
 let _goalsSrvOk = false;                     // cíle už přišly ze serveru (ne z cache)
+let _entriesSrvOk = false, _recipesSrvOk = false; // poznámky / recepty už přišly ze serveru (úklid osiřelých zrcadel)
+const _shAnnounced = new Set();              // 'gid|sid' nasdílení už ohlášené v této relaci (vypnout/zapnout = jen 1 upozornění)
 const shSid = (type, itemId) => `${type}_${CU.uid}_${itemId}`;
 function sharedGids(type, itemId) { return [...(mySharedIn.get(type+'_'+itemId) || [])].filter(g => myGroupIds().includes(g)); }
 function clampInt(v, lo, hi) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; }
@@ -7578,7 +7606,7 @@ function memberName(gid, uid) {
   return cutName(groupDataOf(gid)?.members?.[uid]?.name, 40) || t('gf.someone');
 }
 
-// Listenery skupiny: zrcadla (návyky, cíle) + reakce. Spouští se spolu s nepřečtenými, končí ve stopGroupUnread.
+// Listenery skupiny: zrcadla (návyky, cíle, poznámky, recepty) + reakce. Spouští se spolu s nepřečtenými, končí ve stopGroupUnread.
 function startGroupSocial(gid) {
   if(!CU || !okFamilyCode(gid)) return;
   const uid = CU.uid;
@@ -7616,7 +7644,7 @@ function stopGroupSocial(gid) {
 function resetSocialLocal() {
   Object.keys({..._shUnsub, ..._rxUnsub, ..._chUnsub}).forEach(stopGroupSocial);
   for(const tm of _shTimers.values()) clearTimeout(tm);
-  _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear();
+  _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear(); _shAnnounced.clear();
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
 function refreshShareUI() {
@@ -7624,13 +7652,19 @@ function refreshShareUI() {
   renderSharedGoals();
   refreshGoalShareUI();
   refreshHabitShareUI();
+  refreshNoteShareUI();
+  refreshRecipeShareUI();
   if(document.getElementById('m-share')?.classList.contains('open')) renderShareSheet();
+  if(document.getElementById('m-shview')?.classList.contains('open')) renderSharedView();
 }
 function refreshRxUI(gid) {
   renderSharedHabits();
   renderSharedGoals();
   refreshGoalShareUI();
   refreshHabitShareUI();
+  refreshNoteShareUI();
+  refreshRecipeShareUI();
+  if(_shv?.gid === gid && document.getElementById('m-shview')?.classList.contains('open')) renderSharedView();
   if(_gf.gid === gid && document.getElementById('m-grpfeed')?.classList.contains('open')) renderGroupFeed();
   if(_rx?.gid === gid && document.getElementById('m-rx')?.classList.contains('open')) renderRxList();
 }
@@ -7695,7 +7729,47 @@ function buildGoalMirror(goalId) {
   if(m && g.shareVals === true && [m.start, m.target, m.cur].every(v => Math.abs(v) <= 1e9)) d.metric = {start: m.start, target: m.target, cur: m.cur, unit: m.unit};
   return d;
 }
-function buildMirror(type, itemId) { return type === 'h' ? buildHabitMirror(itemId) : type === 'g' ? buildGoalMirror(itemId) : null; }
+// Poznámka (4.44): jen nadpis a text (ořez na limity pravidel). NEsdílí se nálada, fotka, datum ani AI analýza.
+function buildNoteMirror(entryId) {
+  const e = entries.find(x => x.id === entryId);
+  if(!e) return null;
+  return {title: cutName(e.title, 100) || t('shn.untitled'), text: cutName(typeof e.text === 'string' ? e.text : '', SH_NOTE_MAX)};
+}
+// Uložený recept podle ID; právě uložený (ještě bez snapshotu) z lastRecipe
+function recipeById(id) {
+  return savedRecipes.find(x => x.id === id) || (lastRecipe?.id === id && id === _shRcPending ? lastRecipe : null);
+}
+// Suroviny a postup receptu ořezané na limity pravidel (zrcadlo i kopie „Uložit k sobě“)
+function shRecipeIngs(list) {
+  return (Array.isArray(list) ? list : []).map(i => {
+    if(typeof i === 'string') return {name: cutName(i, 100)};
+    if(!i || typeof i !== 'object') return null;
+    const o = {name: cutName(i.name, 100)};
+    if(i.qty != null && String(i.qty).trim()) o.qty = cutName(i.qty, 40);
+    if(typeof i.category === 'string' && i.category.trim()) o.category = cutName(i.category, 30);
+    return o;
+  }).filter(i => i && i.name).slice(0, SH_RC_ING);
+}
+function shRecipeSteps(list) {
+  return (Array.isArray(list) ? list : []).filter(x => typeof x === 'string').map(x => cutName(x, 1000)).filter(Boolean).slice(0, SH_RC_STEPS);
+}
+// Recept (4.44): jen obsah receptu, bez savedAt a interních příznaků
+function buildRecipeMirror(id) {
+  const r = recipeById(id);
+  if(!r) return null;
+  const d = {name: cutName(r.name, 100) || '🍽️', ingredients: shRecipeIngs(r.ingredients), steps: shRecipeSteps(r.steps)};
+  const time = cutName(r.time, 40), mt = cutName(r.mealType || r.difficulty, 30), tip = cutName(r.tip, 1000);
+  if(time) d.time = time;
+  if(mt) d.mealType = mt;
+  if(tip) d.tip = tip;
+  const p = Math.round(Number(r.portions));
+  if(Number.isFinite(p) && p >= 1) d.portions = Math.min(100, p);
+  return d;
+}
+function buildMirror(type, itemId) {
+  return type === 'h' ? buildHabitMirror(itemId) : type === 'g' ? buildGoalMirror(itemId)
+    : type === 'n' ? buildNoteMirror(itemId) : type === 'r' ? buildRecipeMirror(itemId) : null;
+}
 // Celý dokument zrcadla pro skupinu (base z buildMirror, prevM = moje dosavadní zrcadlo v té skupině)
 function mirrorDoc(type, itemId, gid, base) {
   const prevM = myMirrors[gid]?.get(type + '_' + itemId), sid = shSid(type, itemId);
@@ -7704,7 +7778,7 @@ function mirrorDoc(type, itemId, gid, base) {
     data.best = Math.max(base.best, clampInt(prevM?.best || 0, 0, 100000));
     const ms = _shMs.get(gid + '|' + sid) || prevM?.ms;
     if(ms && Number.isInteger(ms.v) && typeof ms.d === 'string') data.ms = {v: ms.v, d: ms.d.slice(0, 10)};
-  } else {
+  } else if(type === 'g') {
     // Den splnění: první zápis se 100 %, při dalších zůstává (pokles pod 100 % ho smaže)
     const pd = shDs(prevM?.doneAt);
     data.doneAt = data.progress >= 100 ? (pd || toDS()) : '';
@@ -7794,15 +7868,21 @@ function shDailyResync(gid) {
 
 // Úklid osiřelých zrcadel (položka smazaná jinde nebo dřív bez úklidu): jen moje zrcadla, jen když cíle, návyky
 // i zrcadla skupiny přišly ze serveru (z cache by chyběla nová položka), jednou za relaci a skupinu
+// Každý typ zvlášť: až když jeho seznam přišel ze serveru (poznámky a recepty mají vlastní listener)
 function shOrphanSweep() {
-  if(!CU || !_goalsSrvOk || !_habitsSnapOk || _accDeleting || _accDeleted) return;
+  if(!CU || _accDeleting || _accDeleted) return;
+  const ready = {h: _habitsSnapOk, g: _goalsSrvOk, n: _entriesSrvOk, r: _recipesSrvOk};
+  const exists = {h: id => habits.some(x => x.id === id), g: id => goals.some(x => x.id === id),
+    n: id => entries.some(x => x.id === id), r: id => savedRecipes.some(x => x.id === id)};
   for(const gid of _shSrv) {
-    if(_shSwept.has(gid) || !_shUnsub[gid] || !myMirrors[gid]) continue;
-    _shSwept.add(gid);
+    if(!_shUnsub[gid] || !myMirrors[gid]) continue;
+    const types = SH_KINDS.filter(ty => ready[ty] && !_shSwept.has(gid + '|' + ty));
+    if(!types.length) continue;
+    types.forEach(ty => _shSwept.add(gid + '|' + ty));
     for(const k of [...myMirrors[gid].keys()]) {
       const type = k[0], id = k.slice(2);
-      if(!SH_KINDS.includes(type) || !id) continue;
-      if(type === 'h' ? habits.some(x => x.id === id) : goals.some(x => x.id === id)) continue;
+      if(!types.includes(type) || !id) continue;
+      if(exists[type](id)) continue;
       // Jen samotné zrcadlo (aktivitu a reakce ostatních nechat, zmizí přes TTL)
       const set = mySharedIn.get(k);
       if(set) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
@@ -8392,9 +8472,10 @@ function refreshGoalShareUI() {
     el.innerHTML = g ? goalShareHTML(g) : '';
   });
 }
-const shItemOf = (type, id) => type === 'h' ? habits.find(x => x.id === id) : type === 'g' ? goals.find(x => x.id === id) : null;
+const shItemOf = (type, id) => type === 'h' ? habits.find(x => x.id === id) : type === 'g' ? goals.find(x => x.id === id)
+  : type === 'n' ? entries.find(x => x.id === id) : type === 'r' ? recipeById(id) : null;
 window.openShareSheet = (id, type) => {
-  type = type === 'g' ? 'g' : 'h';
+  type = SH_KINDS.includes(type) ? type : 'h';
   if(!CU || !shItemOf(type, id)) return;
   if(!myGroupIds().length) { toast(t('gf.noGroup')); return; }
   _shItem = {type, id};
@@ -8408,8 +8489,11 @@ function renderShareSheet() {
   if(!h) { cm('m-share'); return; }
   const on = new Set(sharedGids(type, h.id));
   const arch = type === 'g' && !!h.archivedGoal; // archivovaný cíl: jen vypnout sdílení, nově nesdílet
-  tEl.textContent = '👨‍👩‍👧 ' + t(type === 'g' ? 'sh.titleGoal' : 'sh.titleHabit');
-  iEl.textContent = (h.emoji || (type === 'g' ? '🌟' : '🎯')) + ' ' + h.name;
+  const TT = {h: ['sh.titleHabit', 'sh.noteHabit'], g: ['sh.titleGoal', 'sh.noteGoal'], n: ['sh.titleNote', 'sh.noteNote'], r: ['sh.titleRecipe', 'sh.noteRecipe']}[type];
+  tEl.textContent = '👨‍👩‍👧 ' + t(TT[0]);
+  iEl.textContent = type === 'n' ? '📒 ' + (cutName(h.title, 100) || t('shn.untitled'))
+    : type === 'r' ? '👨‍🍳 ' + cutName(h.name, 100)
+    : (h.emoji || (type === 'g' ? '🌟' : '🎯')) + ' ' + h.name;
   gEl.innerHTML = myGroupIds().filter(gid => !arch || on.has(gid)).map(gid => {
     const n = Object.keys(groupDataOf(gid)?.members || {}).length;
     const isOn = on.has(gid);
@@ -8418,7 +8502,7 @@ function renderShareSheet() {
       <span style="flex:1;font-size:15px;color:var(--text)">${esc(groupLabel(gid))}${n ? ` <span class="sh-cnt">· ${esc(t('sh.members', {n}))}</span>` : ''}</span>
       <div class="fshare-toggle${isOn ? ' on' : ''}"><div class="fshare-thumb"></div></div></div>`;
   }).join('') + (type === 'g' && goalMetric(h) ? shareValsRowHTML(h.shareVals === true) : '');
-  nEl.textContent = '👀 ' + t(type === 'g' ? 'sh.noteGoal' : 'sh.noteHabit');
+  nEl.textContent = '👀 ' + t(TT[1]);
 }
 // Přepínač „Sdílet i hodnoty“ u měřitelného cíle (výchozí vypnuto)
 function shareValsRowHTML(on) {
@@ -8457,7 +8541,13 @@ window.toggleItemShare = gid => {
     if(!mySharedIn.has(key)) mySharedIn.set(key, new Set());
     mySharedIn.get(key).add(gid);
     const sid = shSid(type, id);
-    setDoc(doc(db,'families',gid,'shared',sid), mirrorDoc(type, id, gid, base)).catch(e => {
+    setDoc(doc(db,'families',gid,'shared',sid), mirrorDoc(type, id, gid, base)).then(() => {
+      // Poznámka a recept: ostatním přijde „nasdílel/a“ (jen jednou za relaci, jen když sdílení mezitím nezrušil)
+      const ak = gid + '|' + sid;
+      if(!SH_POST.includes(type) || _shAnnounced.has(ak) || !sharedGids(type, id).includes(gid)) return;
+      _shAnnounced.add(ak);
+      logGroupActivity(gid, SH_TYPES[type], 'share', type === 'n' ? base.title : base.name, 1, {ref: sid});
+    }).catch(e => {
       console.warn('[LP] sdileni polozky', e?.code || e?.name);
       mySharedIn.get(key)?.delete(gid);
       toast('❌ ' + userErr(e));
@@ -8466,6 +8556,204 @@ window.toggleItemShare = gid => {
     toast(t('sh.onToast', {g}));
   }
   refreshShareUI();
+};
+
+// ── Sdílené poznámky a recepty (4.44): „Moje | Od skupiny“, náhled jen ke čtení, „Uložit k sobě“ ──
+let _jView = 'mine', _rcView = 'mine';       // zobrazený seznam v Poznámkách a v Receptech (jen v paměti)
+let _shv = null;                             // otevřený náhled cizí položky {gid, sid}
+let _shRcPending = null;                     // ID receptu právě uloženého kvůli sdílení (snapshot ho ještě nemusí mít)
+const SH_NR_SID_RE = /^[nr]_[A-Za-z0-9_-]{1,300}$/;
+// Cizí zrcadla daného typu ze všech mých skupin (bývalí členové ne), řazená podle času úpravy
+function shOthers(type) {
+  const out = [];
+  for(const gid of myGroupIds()) {
+    const members = groupDataOf(gid)?.members || {};
+    for(const m of sharedByGroup[gid] || []) if(m.type === type && members[m.ownerUid]) out.push({gid, m});
+  }
+  const ms = x => typeof x.m.updatedAt?.toMillis === 'function' ? x.m.updatedAt.toMillis() : 0;
+  return out.sort((a, b) => ms(b) - ms(a));
+}
+function shUpdDs(m) { return typeof m.updatedAt?.toDate === 'function' ? shFmtDs(toDS(m.updatedAt.toDate())) : ''; }
+// Přepínač „Moje | Od skupiny (n)“; bez skupiny nebo bez cizích položek se nezobrazí (kromě otevřeného „Od skupiny“)
+function shSegHTML(fn, cur, n) {
+  if(!myGroupIds().length || (!n && cur !== 'group')) return '';
+  return `<div class="seg seg--block sh-seg" role="group" aria-label="${tH('shn.viewAria')}">
+    <button type="button" class="seg-btn${cur === 'mine' ? ' active' : ''}" aria-pressed="${cur === 'mine'}" data-a0="mine" onclick="${fn}(this.dataset.a0)">${tH('shn.mine')}</button>
+    <button type="button" class="seg-btn${cur === 'group' ? ' active' : ''}" aria-pressed="${cur === 'group'}" data-a0="group" onclick="${fn}(this.dataset.a0)">${tH('shn.fromGroup')}${n ? ' (' + n + ')' : ''}</button></div>`;
+}
+// Poznámky: čip sdílení v editoru (jen uložená poznámka, jen když jsem ve skupině) + souhrn reakcí
+function refreshNoteChip() {
+  const box = document.getElementById('j-share');
+  if(!box) return;
+  const e = CU && curEntryId && myGroupIds().length ? entries.find(x => x.id === curEntryId) : null;
+  if(!e) { box.innerHTML = ''; return; }
+  const sid = shSid('n', e.id);
+  box.innerHTML = shareChipHTML('n', e.id) + sharedGids('n', e.id).map(gid => rxSumHTML(gid, 's_' + sid, e.title || '', true)).join('');
+}
+function renderNoteSeg() {
+  const box = document.getElementById('j-seg');
+  if(!box) return;
+  if(_jView === 'group' && !myGroupIds().length) _jView = 'mine';
+  box.innerHTML = shSegHTML('setJView', _jView, shOthers('n').length);
+}
+function refreshNoteShareUI() { try { renderEntryList(document.getElementById('j-search')?.value || ''); } catch(e) { console.warn('[LP] sdilene poznamky', e?.name); } }
+window.setJView = v => { _jView = v === 'group' ? 'group' : 'mine'; refreshNoteShareUI(); };
+// Seznam „Od skupiny“ v Poznámkách (hledání v nadpisu a textu)
+function sharedNotesListHTML(filter) {
+  const f = String(filter || '').toLowerCase();
+  const list = shOthers('n').filter(({m}) => !f || String(m.title || '').toLowerCase().includes(f) || String(m.text || '').toLowerCase().includes(f));
+  if(!list.length) return `<div class="sh-empty">${tH(f ? 'shn.noMatch' : 'shn.emptyNotes')}</div>`;
+  return list.map(({gid, m}) => {
+    const title = cutName(m.title, 100) || t('shn.untitled');
+    const prev = typeof m.text === 'string' ? m.text.slice(0, 50) : '';
+    const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[m.ownerUid]?.avatar, '👤');
+    return `<div class="j-item" role="button" tabindex="0" data-a0="${esc(gid)}" data-a1="${esc(m._sid)}" onclick="openSharedItem(this.dataset.a0,this.dataset.a1)" onkeydown="if(event.key==='Enter')openSharedItem(this.dataset.a0,this.dataset.a1)">
+      <div class="j-item-date">${esc(shUpdDs(m))}</div>
+      <div class="j-item-title">${esc(title)}</div>
+      <div class="j-item-preview"><span aria-hidden="true">${av}</span> ${esc(memberName(gid, m.ownerUid))} · ${esc(groupLabel(gid))}${prev ? ' — ' + esc(prev) + '…' : ''}</div>
+    </div>`;
+  }).join('');
+}
+// Recepty: aktuálně zobrazený recept, pokud je uložený (sdílet jde jen uložený recept)
+function curRecipeId() {
+  if(!lastRecipe) return null;
+  if(lastRecipe.id && (savedRecipes.some(r => r.id === lastRecipe.id) || lastRecipe.id === _shRcPending)) return lastRecipe.id;
+  return savedRecipes.find(r => r.name === lastRecipe.name)?.id || null;
+}
+function refreshRecipeChip() {
+  const box = document.getElementById('rc-share');
+  if(!box) return;
+  const shown = document.getElementById('cook-result')?.style.display !== 'none';
+  if(!CU || !lastRecipe || !shown || !myGroupIds().length) { box.innerHTML = ''; return; }
+  const id = curRecipeId();
+  if(!id) {
+    box.innerHTML = `<button type="button" class="share-chip" aria-haspopup="dialog" onclick="shareCurrentRecipe()">👨‍👩‍👧 <span class="sc-nm">${tH('shr.share')}</span> <span aria-hidden="true">›</span></button>`;
+    return;
+  }
+  const sid = shSid('r', id);
+  box.innerHTML = shareChipHTML('r', id) + sharedGids('r', id).map(gid => rxSumHTML(gid, 's_' + sid, lastRecipe.name || '', true)).join('');
+}
+function renderRecipeSeg() {
+  const box = document.getElementById('rc-seg');
+  if(!box) return;
+  if(_rcView === 'group' && !myGroupIds().length) _rcView = 'mine';
+  box.innerHTML = shSegHTML('setRcView', _rcView, shOthers('r').length);
+}
+function refreshRecipeShareUI() { try { renderSavedRecipes(); } catch(e) { console.warn('[LP] sdilene recepty', e?.name); } }
+window.setRcView = v => { _rcView = v === 'group' ? 'group' : 'mine'; refreshRecipeShareUI(); };
+function sharedRecipesListHTML() {
+  const list = shOthers('r');
+  if(!list.length) return `<div class="cook-empty">${tH('shn.emptyRecipes')}</div>`;
+  return list.map(({gid, m}) => {
+    const p = clampInt(m.portions || 0, 0, 100);
+    const meta = [typeof m.time === 'string' && m.time ? '⏱ ' + cutName(m.time, 40) : '', p ? t('shn.portions', {n: p}) : '',
+      memberName(gid, m.ownerUid) + ' · ' + groupLabel(gid)].filter(Boolean).join(' · ');
+    return `<div class="saved-recipe-card" role="button" tabindex="0" data-a0="${esc(gid)}" data-a1="${esc(m._sid)}" onclick="openSharedItem(this.dataset.a0,this.dataset.a1)" onkeydown="if(event.key==='Enter'&amp;&amp;event.target===this)openSharedItem(this.dataset.a0,this.dataset.a1)">
+      <div class="saved-recipe-top">
+        <div class="saved-recipe-ico" aria-hidden="true">👨‍👩‍👧</div>
+        <div style="flex:1;min-width:0">
+          <div class="saved-recipe-name">${esc(cutName(m.name, 100))}</div>
+          <div class="saved-recipe-meta">${esc(meta)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+// Sdílet zobrazený recept: neuložený se nejdřív uloží (zrcadlo potřebuje ID), zápis bez await (funguje i offline)
+window.shareCurrentRecipe = () => {
+  if(!CU || !lastRecipe || _accDeleting || _accDeleted) return;
+  if(!myGroupIds().length) { toast(t('gf.noGroup')); return; }
+  let id = curRecipeId();
+  if(!id) {
+    const ref = doc(collection(db,'users',CU.uid,'savedRecipes'));
+    id = ref.id;
+    const data = {...lastRecipe, savedAt: new Date().toISOString()};
+    delete data.id;
+    _shRcPending = id;
+    lastRecipe.id = id;
+    setDoc(ref, data).catch(e => { console.warn('[LP] ulozeni receptu', e?.code || e?.name); toast('❌ ' + userErr(e)); });
+    const btn = document.getElementById('btn-save-recipe');
+    if(btn) { btn.textContent = '✅ ' + t('shr.savedBtn'); btn.style.background = 'rgba(76,217,100,.15)'; btn.style.color = 'var(--green)'; btn.style.borderColor = 'rgba(76,217,100,.4)'; }
+    toast(t('shr.savedFirst'));
+  }
+  window.openShareSheet(id, 'r');
+};
+// Náhled cizí poznámky / receptu (jen ke čtení); vlastní položka se otevře u mě
+function shvMirror() {
+  if(!_shv) return null;
+  const m = (sharedByGroup[_shv.gid] || []).find(x => x._sid === _shv.sid && (x.type === 'n' || x.type === 'r'));
+  return m && groupDataOf(_shv.gid)?.members?.[m.ownerUid] ? m : null;
+}
+window.openSharedItem = (gid, sid) => {
+  if(!CU || !myGroupIds().includes(gid) || typeof sid !== 'string' || !SH_NR_SID_RE.test(sid)) return;
+  const pre = sid[0] + '_' + CU.uid + '_';
+  if(sid.startsWith(pre)) { openOwnShared(sid[0], sid.slice(pre.length)); return; }
+  _shv = {gid, sid};
+  if(!shvMirror()) { _shv = null; toast(t('shn.gone')); return; }
+  renderSharedView();
+  const ov = document.getElementById('m-shview');
+  if(ov && !ov.classList.contains('open')) om('m-shview');
+};
+function openOwnShared(type, id) {
+  const ok = type === 'n' ? entries.some(e => e.id === id) : savedRecipes.some(r => r.id === id);
+  if(!ok) { toast(t('shn.gone')); return; }
+  ['m-grpfeed', 'm-shview'].forEach(x => { if(document.getElementById(x)?.classList.contains('open')) cm(x); });
+  if(type === 'n') { sp('journal'); window.openEntry(id); return; }
+  sp('cooking');
+  window.switchCookTab?.('recipes');
+  window.openSavedRecipe(id);
+}
+function renderSharedView() {
+  const tEl = document.getElementById('shv-title'), bEl = document.getElementById('shv-body');
+  if(!tEl || !bEl || !_shv) return;
+  const m = shvMirror();
+  if(!m) { bEl.innerHTML = `<div class="sh-empty">${tH('shn.gone')}</div>`; return; }
+  const {gid} = _shv;
+  const av = lookupOr(MEMBER_AV, groupDataOf(gid)?.members?.[m.ownerUid]?.avatar, '👤');
+  const who = `<div class="shv-who"><span aria-hidden="true">${av}</span> ${esc(t('shn.by', {who: memberName(gid, m.ownerUid), g: groupLabel(gid)}))}</div>`;
+  if(m.type === 'n') {
+    const title = cutName(m.title, 100) || t('shn.untitled');
+    tEl.textContent = '📒 ' + t('shn.viewNote');
+    bEl.innerHTML = who + `<h3 class="shv-h">${esc(title)}</h3>
+      <div class="shv-text">${esc(typeof m.text === 'string' ? m.text.slice(0, SH_NOTE_MAX) : '')}</div>
+      ${rxBarHTML(gid, 's_' + m._sid, m.ownerUid, title)}`;
+    return;
+  }
+  const name = cutName(m.name, 100) || '🍽️';
+  tEl.textContent = '👨‍🍳 ' + t('shn.viewRecipe');
+  const meta = [];
+  if(typeof m.time === 'string' && m.time) meta.push('⏱ ' + cutName(m.time, 40));
+  if(typeof m.mealType === 'string' && m.mealType) meta.push('🍽 ' + cutName(m.mealType, 30));
+  const p = clampInt(m.portions || 0, 0, 100);
+  if(p) meta.push(t('shn.portions', {n: p}));
+  const ings = shRecipeIngs(m.ingredients), steps = shRecipeSteps(m.steps);
+  const have = savedRecipes.some(r => r.name === name);
+  bEl.innerHTML = who + `<h3 class="shv-h">${esc(name)}</h3>`
+    + (meta.length ? `<div class="shv-meta">${esc(meta.join(' · '))}</div>` : '')
+    + (ings.length ? `<div class="cook-section">${tH('shn.ingredients')}</div><ul class="shv-ings">${ings.map(i => `<li><span>${esc(i.name)}</span>${i.qty ? `<span class="shv-qty">${esc(i.qty)}</span>` : ''}</li>`).join('')}</ul>` : '')
+    + (steps.length ? `<div class="cook-section">${tH('shn.steps')}</div><ol class="shv-steps">${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
+    + (typeof m.tip === 'string' && m.tip ? `<div class="shv-tip">💡 ${esc(cutName(m.tip, 1000))}</div>` : '')
+    + `<button type="button" class="btn-s shv-save"${have ? ' disabled' : ''} onclick="saveSharedRecipe()">${have ? '✅ ' + tH('shn.haveIt') : '🔖 ' + tH('shn.saveCopy')}</button>`
+    + rxBarHTML(gid, 's_' + m._sid, m.ownerUid, name);
+}
+// „Uložit k sobě“: kopie receptu do mých savedRecipes (s původním autorem nic nesdílí, další úpravy se nepropisují)
+window.saveSharedRecipe = () => {
+  if(!CU || _accDeleting || _accDeleted) return;
+  const m = shvMirror();
+  if(!m || m.type !== 'r') return;
+  const name = cutName(m.name, 100) || '🍽️';
+  if(savedRecipes.some(r => r.name === name)) { toast(t('shn.haveIt')); return; }
+  const data = {name, ingredients: shRecipeIngs(m.ingredients), steps: shRecipeSteps(m.steps), savedAt: new Date().toISOString()};
+  if(typeof m.time === 'string' && m.time) data.time = cutName(m.time, 40);
+  if(typeof m.mealType === 'string' && m.mealType) data.mealType = cutName(m.mealType, 30);
+  const p = clampInt(m.portions || 0, 0, 100);
+  data.portions = p || 4;
+  if(typeof m.tip === 'string' && m.tip) data.tip = cutName(m.tip, 1000);
+  // Bez await (offline se odešle později); seznam doplní snapshot
+  setDoc(doc(collection(db,'users',CU.uid,'savedRecipes')), data).catch(e => { console.warn('[LP] kopie receptu', e?.code || e?.name); toast('❌ ' + userErr(e)); });
+  toast(t('shn.savedCopy'));
+  const btn = document.querySelector('#shv-body .shv-save');
+  if(btn) { btn.disabled = true; btn.textContent = '✅ ' + t('shn.haveIt'); }
 };
 
 // ── Sekce „Sdíleno ve skupině“ v Návycích (jen dnešek: zrcadlo zná dnešek a 7 dní) ──
@@ -8763,11 +9051,11 @@ window.delRxComment = rid => {
 };
 
 // ── CO JE NOVÉHO VE SKUPINĚ (feed, nepřečtené, odkaz z notifikace) ──
-const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', goal:'🎯', react:'👏', challenge:'🤝'};
+const GF_EMOJI = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊', habit:'🔥', goal:'🎯', react:'👏', challenge:'🤝', note:'📒', recipe:'👨‍🍳'};
 // Akce, které klient zapisuje (popisky gf.a.<modul>.<akce>); ostatní = obecný popisek
 const GF_ACTS = {shop:['add','edit','del','done','clear'], cal:['add','edit','del'], meal:['edit','del','plan'],
-  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], goal:['progress','done'], react:['add'], challenge:['add','done']};
-const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', goal:'goals', react:'habits'};
+  check:['add','edit','del','done','clear','share'], pantry:['add','edit','del'], habit:['done','streak'], goal:['progress','done'], react:['add'], challenge:['add','done'], note:['share'], recipe:['share']};
+const GF_PAGE = {shop:'shopping', cal:'calendar', meal:'mealplan', check:'checklist', pantry:'shopping', habit:'habits', goal:'goals', react:'habits', note:'journal', recipe:'cooking'};
 const _gfUnsub = {};   // gid → odhlášení listeneru nepřečtených
 const _gfUnread = {};  // gid → {total, mods:{shop:n,…}}
 let _gf = {gid:null, mod:null, items:null, err:false, prevSeen:0, token:0};
@@ -8935,9 +9223,28 @@ function gfTargetMod(a, items) {
   if(a.module !== 'react') return a.module;
   const ref = typeof a.ref === 'string' ? a.ref : '';
   if(ref.startsWith('s_g_')) return 'goal';
-  if(ref.startsWith('a_')) { const src = (items || []).find(x => x._id === ref.slice(2)); if(src?.module === 'goal') return 'goal'; }
+  if(ref.startsWith('s_n_')) return 'note';
+  if(ref.startsWith('s_r_')) return 'recipe';
+  if(ref.startsWith('a_')) { const src = (items || []).find(x => x._id === ref.slice(2)); if(['goal','note','recipe'].includes(src?.module)) return src.module; }
   return 'habit';
 }
+// Sdílená poznámka / recept, na kterou záznam odkazuje (sid zrcadla), jinak ''
+function gfItemRef(a, items) {
+  const nr = r => typeof r === 'string' && SH_NR_SID_RE.test(r);
+  if(a.module === 'note' || a.module === 'recipe') return nr(a.ref) ? a.ref : '';
+  if(a.module !== 'react' || typeof a.ref !== 'string') return '';
+  if(a.ref.startsWith('s_')) return nr(a.ref.slice(2)) ? a.ref.slice(2) : '';
+  if(a.ref.startsWith('a_')) {
+    const src = (items || []).find(x => x._id === a.ref.slice(2));
+    return (src?.module === 'note' || src?.module === 'recipe') && nr(src.ref) ? src.ref : '';
+  }
+  return '';
+}
+// Klepnutí na ikonu řádku: poznámka a recept se otevřou jen ke čtení (vlastní u mě), ostatní moduly jako dřív
+window.gfOpenItem = (m, ref) => {
+  if(ref && (m === 'note' || m === 'recipe') && _gf.gid) { window.openSharedItem(_gf.gid, ref); return; }
+  window.gfOpenModule(m);
+};
 function renderGroupFeed() {
   const gid = _gf.gid;
   const gids = myGroupIds();
@@ -8979,11 +9286,11 @@ function renderGroupFeed() {
     const unread = !mine && a._ts > _gf.prevSeen;
     const ms = (a.module === 'habit' && a.action === 'streak') || a.module === 'goal' || (a.module === 'challenge' && a.action === 'done');
     // Pod řádkem návyku a cíle reakce (cíl a_<id>); u vlastního řádku jen souhrn, na sebe reagovat nejde
-    const rx = (a.module === 'habit' || a.module === 'goal') && a._id
+    const rx = ['habit', 'goal', 'note', 'recipe'].includes(a.module) && a._id
       ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
       : '';
     html += `<div class="gf-item${unread ? ' unread' : ''}${ms ? ' ms' : ''}">
-      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(gfTargetMod(a, items))}))}" data-a0="${gfTargetMod(a, items)}" onclick="gfOpenModule(this.dataset.a0)">${a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(gfTargetMod(a, items))}))}" data-a0="${gfTargetMod(a, items)}" data-a1="${esc(gfItemRef(a, items))}" onclick="gfOpenItem(this.dataset.a0,this.dataset.a1)">${a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
       <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
       <div class="gf-what">${esc(gfWhat(a, gid))}</div>${rx}</div>
     </div>`;
@@ -9023,7 +9330,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 // ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
 const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
-  habit:'evening', goal:'evening', react:'instant', challenge:'instant', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
+  habit:'evening', goal:'evening', react:'instant', challenge:'instant', note:'evening', recipe:'evening', quiet:{from:'22:00', to:'07:00'}, notifyChecked:false, msInstant:true};
 const GN_OPTS = ['instant','q15','evening','off'];
 // Preference s výchozími hodnotami; neplatné hodnoty = výchozí (stejně jako server)
 function groupNotifPrefs() {
@@ -11660,9 +11967,21 @@ let savedRecipes=[];
 
 function subSavedRecipes(){
   if(_fireSubs['savedRecipes'])return; // už subscribed
+  _recipesSrvOk=false;
+  let rOk=false;
+  // includeMetadataChanges: přechod cache → server i beze změny dat (úklid osiřelých zrcadel receptů)
   createFireSub('savedRecipes',
     query(collection(db,'users',CU.uid,'savedRecipes'),orderBy('savedAt','desc')),
-    snap=>{ savedRecipes=snap.docs.map(d=>({id:d.id,...d.data()})); renderSavedRecipes(); }
+    {includeMetadataChanges:true},
+    snap=>{
+      const srv=!snap.metadata.fromCache;
+      if(rOk&&!snap.docChanges().length){ if(srv&&!_recipesSrvOk){_recipesSrvOk=true;shOrphanSweep();} return; }
+      rOk=true;
+      savedRecipes=snap.docs.map(d=>({id:d.id,...d.data()}));
+      if(_shRcPending&&savedRecipes.some(r=>r.id===_shRcPending)) _shRcPending=null;
+      renderSavedRecipes();
+      if(srv&&!_recipesSrvOk){_recipesSrvOk=true;setTimeout(shOrphanSweep,0);}
+    }
   );
 }
 
@@ -12491,6 +12810,7 @@ function renderRecipe(r, scaledPortions){
   `;
   // Ulož aktuální porce pro škálování
   window._currentPortions = portions;
+  refreshRecipeChip();
 }
 
 window.changePortions = (delta) => {
@@ -12584,6 +12904,7 @@ window.deleteSavedRecipe=async(id,e)=>{
   e.stopPropagation();
   if(!CU||!confirm('Smazat uložený recept?'))return;
   try{
+    unshareAll('r',id); // zrcadla ve skupinách pryč dřív, než recept zmizí
     await deleteDoc(doc(db,'users',CU.uid,'savedRecipes',id));
     toast('Recept smazán');
   }catch(err){toast('❌ Mazání se nepovedlo: '+userErr(err));}
@@ -12607,6 +12928,8 @@ function renderSavedRecipes(){
   const section=document.getElementById('saved-recipes-section');
   const list=document.getElementById('saved-recipes-list');
   if(!section||!list)return;
+  renderRecipeSeg(); refreshRecipeChip();
+  if(_rcView==='group'){ list.innerHTML=sharedRecipesListHTML(); return; } // sdílené od ostatních (4.44)
   const filtered=cookMealType==='any'?savedRecipes:savedRecipes.filter(r=>(r.mealType||r.difficulty||'')=== cookMealType);
   if(!filtered.length){
     // Prázdný výsledek filtru: rovnou nabídnout zrušení filtru
@@ -12623,7 +12946,7 @@ function renderSavedRecipes(){
       <div class="saved-recipe-top">
         <div class="saved-recipe-ico" aria-hidden="true">🍽️</div>
         <div style="flex:1;min-width:0">
-          <div class="saved-recipe-name">${esc(r.name)}</div>
+          <div class="saved-recipe-name">${esc(r.name)}${shBadgeHTML('r',r.id)}</div>
           <div class="saved-recipe-meta">${meta}</div>
         </div>
         <button class="saved-recipe-del" data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" aria-label="Smazat recept" title="Smazat">🗑️</button>

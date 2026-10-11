@@ -483,6 +483,7 @@
             <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">📒</span><div class="ptitle" style="font-size:18px;margin:0">Poznámky</div></div>
             <button class="btn-p" style="width:auto;padding:7px 14px;font-size:14px" onclick="newEntry()">+ Nový</button>
           </div>
+          <div id="j-seg"></div>
           <div class="j-search-wrap">
             <input class="j-search" type="text" id="j-search" placeholder="🔍 Hledat…" oninput="filterEntries()">
           </div>
@@ -512,6 +513,7 @@
             </div>
             <div class="j-meta">
               <span class="j-date" id="j-date"></span>
+              <div id="j-share" class="j-share"></div>
               <div class="j-mood-row">
                 <span style="font-size:12px;color:var(--text3)">Nálada:</span>
                 <button class="j-mood-btn" data-m="😄" onclick="setEntryMood(&#39;😄&#39;,this)">😄</button>
@@ -608,6 +610,7 @@
           <button class="btn-s" onclick="sp(&#39;shopping&#39;)" style="width:auto;padding:10px 22px">📋 Nákupy</button>
           <button class="btn-s" onclick="askRecipe()" style="width:auto;padding:10px 22px">🔄 Jiný návrh</button>
         </div>
+        <div id="rc-share" class="rc-share"></div>
       </div>
 
       <!-- Planned meals from journal -->
@@ -630,6 +633,7 @@
         <div class="gh" style="margin-bottom:10px">
           <div class="sec-lbl" style="margin:0">🔖 Uložené recepty</div>
         </div>
+        <div id="rc-seg"></div>
         <div id="saved-recipes-list"></div>
       </div>
 
@@ -1180,6 +1184,17 @@
     <div id="sh-groups"></div>
     <p class="sh-note" id="sh-note"></p>
     <button type="button" class="btn-p" style="min-height:48px" onclick="cm(&#39;m-share&#39;)" data-i18n="sh.done">Hotovo</button>
+  </div>
+</div>
+
+<!-- Sdílená poznámka / recept od člena skupiny, jen ke čtení (renderSharedView, 4.44) -->
+<div class="moverlay" id="m-shview">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="shv-title">
+    <div class="gf-head">
+      <div class="mtitle" id="shv-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-shview&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="shv-body"></div>
   </div>
 </div>
 
