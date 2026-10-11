@@ -423,8 +423,9 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
 // ── Upozornění ze skupin: preference a texty ─────────────────────────────────
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS v app.js
 const GROUP_NOTIF_DEFAULTS = {shop: 'instant', cal: 'instant', meal: 'evening', check: 'evening', pantry: 'evening',
-  habit: 'evening', goal: 'evening', react: 'instant', challenge: 'instant', quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
-const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge'];
+  habit: 'evening', goal: 'evening', react: 'instant', challenge: 'instant', note: 'evening', recipe: 'evening',
+  quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
+const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge', 'note', 'recipe'];
 const GN_MODES = ['instant', 'q15', 'evening'];       // + 'off' (nic)
 const INSTANT_SETTLE = 2 * 60000;                     // „Hned“: 2 min bez další změny…
 const INSTANT_MAX_WAIT = 10 * 60000;                  // …ale nejdéle 10 min od první neodeslané změny
@@ -467,9 +468,10 @@ function inQuiet(h, m, q) {
 const czPlural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
 const dalsi = (k) => `a ${k} ${k >= 5 ? 'dalších' : 'další'}`;
 const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby'],
-  habit: ['🔥', 'Návyky'], goal: ['🎯', 'Cíle'], react: ['👏', 'Reakce'], challenge: ['🤝', 'Společné výzvy']};
+  habit: ['🔥', 'Návyky'], goal: ['🎯', 'Cíle'], react: ['👏', 'Reakce'], challenge: ['🤝', 'Společné výzvy'],
+  note: ['📒', 'Poznámky'], recipe: ['👨‍🍳', 'Recepty']};
 const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách', habit: 'v návycích', goal: 'v cílech', react: '',
-  challenge: 've výzvách'};
+  challenge: 've výzvách', note: 'v poznámkách', recipe: 'v receptech'};
 // [sloveso, zbytek]; ženský tvar = první slovo slovesa + 'a' („začal sdílet“ → „začala sdílet“)
 const GN_VERB = {
   shop:   {add: ['přidal', 'do nákupu'], edit: ['upravil', 'v nákupu'], del: ['smazal', 'z nákupu'], done: ['koupil', ''], clear: ['vyčistil', 'koupené položky']},
@@ -480,6 +482,8 @@ const GN_VERB = {
   habit:  {done: ['splnil', '']},
   goal:   {progress: ['posunul', 'cíl'], done: ['splnil', 'cíl']},
   challenge: {add: ['založil', 'společnou výzvu'], done: ['dotáhl', 'společnou výzvu']},
+  note:   {share: ['nasdílel', 'poznámku']},
+  recipe: {share: ['nasdílel', 'recept']},
 };
 const RX_EM = {clap: '👏', fire: '🔥', heart: '❤️', strong: '💪'};
 // Titulek reakce podle prvního emoji (ženský tvar se tu nemění: „ti tleská“ platí pro oba)
@@ -646,6 +650,11 @@ function gnEveningBody(byModule) {
       const nDone = acts.filter(a => a.action === 'done').length;
       if (nAdd) sub.push(`${nAdd} ${czPlural(nAdd, 'nová výzva', 'nové výzvy', 'nových výzev')}`);
       if (nDone) sub.push(`🎉 ${nDone} ${czPlural(nDone, 'splněná výzva', 'splněné výzvy', 'splněných výzev')}`);
+    } else if (mod === 'note' || mod === 'recipe') {
+      // Jen počet nasdílených položek (názvy jsou v historii změn)
+      const n = acts.filter(a => a.action === 'share').length || acts.length;
+      sub.push(mod === 'note' ? `${n} ${czPlural(n, 'sdílená poznámka', 'sdílené poznámky', 'sdílených poznámek')}`
+        : `${n} ${czPlural(n, 'nový recept', 'nové recepty', 'nových receptů')}`);
     } else if (mod === 'react') {
       const n = acts.length;
       sub.push(`${n} ${czPlural(n, 'reakce na tebe', 'reakce na tebe', 'reakcí na tebe')}`);
@@ -850,9 +859,10 @@ exports.sendScheduledNotifications = onSchedule(
           // Sdílení modulů jako v klientu: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
           // podle shareShop / shareMeal / shareChecklist (checklist sdílený, dokud není false), zásoby vždy
           const isMain = gid === prof.familyId;
-          // Osobní moduly (sdílené návyky a cíle, reakce) v každé skupině
+          // Osobní moduly (sdílené návyky, cíle, poznámky, recepty, reakce) v každé skupině
           const shared = {cal: !!fam.shareCal, shop: isMain && !!fam.shareShop, meal: isMain && !!fam.shareMeal,
-            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true};
+            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true,
+            note: true, recipe: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
           // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
@@ -1232,7 +1242,7 @@ async function leaveGroupForDelete(gid, uid) {
   return outcome;
 }
 
-// Stopy uživatele ve skupině zmizí hned, ne až přes TTL: aktivita (feed, 7 dní), sdílené návyky (zrcadla),
+// Stopy uživatele ve skupině zmizí hned, ne až přes TTL: aktivita (feed, 7 dní), sdílené položky (zrcadla návyků, cílů, poznámek a receptů),
 // reakce a komentáře, které dal (30 dní), i reakce na jeho položky (ty už neexistují).
 // Levné: dotazy na jedno pole (automatický index)
 const ACT_DELETE_BATCH = 400;
