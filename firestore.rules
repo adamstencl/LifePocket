@@ -119,7 +119,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['ts', 'uid', 'name', 'module', 'action', 'title', 'n', 'count', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.ts == request.time
-        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge']
+        && request.resource.data.module in ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge', 'note', 'recipe']
         && request.resource.data.action in ['add', 'edit', 'del', 'done', 'clear', 'plan', 'share', 'streak', 'progress']
         // Cíl: jen mezník (progress, val 25/50/75) a splnění (done); progress nepatří jinému modulu
         && (request.resource.data.module != 'goal' || request.resource.data.action in ['progress', 'done'])
@@ -127,6 +127,8 @@ service cloud.firestore {
         && (request.resource.data.action != 'progress' || request.resource.data.module == 'goal')
         // Společná výzva (4.43): jen založení (add) a splnění (done)
         && (request.resource.data.module != 'challenge' || request.resource.data.action in ['add', 'done'])
+        // Sdílená poznámka a recept (4.44): jen nasdílení (share), úprava aktivitu nevytváří
+        && (!(request.resource.data.module in ['note', 'recipe']) || request.resource.data.action == 'share')
         // Osobní moduly: ref = zrcadlo / cíl reakce, val = délka série / mezník cíle v %, to + em = reakce,
         // rid = ID komentáře (text se sem nekopíruje, čte se z reactions → smazaný komentář zmizí všude)
         && (!('ref' in request.resource.data) || (request.resource.data.ref is string && request.resource.data.ref.size() <= 200))
@@ -148,8 +150,8 @@ service cloud.firestore {
         && (resource.data.uid == request.auth.uid || isFamAdmin(familyId));
     }
 
-    // Sdílené položky (zrcadlo osobního návyku 'h' nebo cíle 'g'): sid = type_uid_itemId, čte člen, píše jen vlastník.
-    // Jen souhrnná pole, žádné logy, poznámky, popisy ani názvy podcílů.
+    // Sdílené položky (zrcadlo osobního návyku 'h', cíle 'g', poznámky 'n' nebo receptu 'r'): sid = type_uid_itemId, čte člen, píše jen vlastník.
+    // Jen nutná pole: u návyku a cíle souhrn (žádné logy, popisy ani názvy podcílů), u poznámky nadpis a text, u receptu recept.
     function validHabitMirror(fid, sid) {
       let d = request.resource.data;
       return isFamMember(fid)
@@ -211,9 +213,45 @@ service cloud.firestore {
              && d.metric.cur is number && d.metric.cur >= -1000000000 && d.metric.cur <= 1000000000
              && (!('unit' in d.metric) || (d.metric.unit is string && d.metric.unit.size() <= 8))));
     }
+    // Společná pole zrcadla: vlastník, typ, ID položky, čas zápisu ze serveru
+    function mirrorBase(fid, sid, type) {
+      let d = request.resource.data;
+      return isFamMember(fid)
+        && d.ownerUid == request.auth.uid
+        && d.type == type
+        && d.itemId is string && d.itemId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && sid == d.type + '_' + request.auth.uid + '_' + d.itemId
+        && d.updatedAt == request.time;
+    }
+    // Poznámka (4.44): jen nadpis a text výslovně sdílené poznámky (bez nálady, fotky a data), text do 20 000 znaků
+    function validNoteMirror(fid, sid) {
+      let d = request.resource.data;
+      return mirrorBase(fid, sid, 'n')
+        && d.keys().hasOnly(['type', 'ownerUid', 'itemId', 'updatedAt', 'title', 'text'])
+        && d.keys().hasAll(['type', 'ownerUid', 'itemId', 'updatedAt', 'title', 'text'])
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 100
+        && d.text is string && d.text.size() <= 20000;
+    }
+    // Recept (4.44): název, čas, porce, druh jídla, suroviny (max 60), postup (max 40 kroků), tip.
+    // Délky položek seznamů pravidla neověří (bez cyklů), ořezává je klient; dokument má limit 1 MiB.
+    function validRecipeMirror(fid, sid) {
+      let d = request.resource.data;
+      return mirrorBase(fid, sid, 'r')
+        && d.keys().hasOnly(['type', 'ownerUid', 'itemId', 'updatedAt', 'name', 'time', 'portions', 'mealType', 'ingredients', 'steps', 'tip'])
+        && d.keys().hasAll(['type', 'ownerUid', 'itemId', 'updatedAt', 'name', 'ingredients', 'steps'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 100
+        && (!('time' in d) || (d.time is string && d.time.size() <= 40))
+        && (!('portions' in d) || (d.portions is int && d.portions >= 1 && d.portions <= 100))
+        && (!('mealType' in d) || (d.mealType is string && d.mealType.size() <= 30))
+        && d.ingredients is list && d.ingredients.size() <= 60
+        && d.steps is list && d.steps.size() <= 40
+        && (!('tip' in d) || (d.tip is string && d.tip.size() <= 1000));
+    }
     function validMirror(fid, sid) {
       return (request.resource.data.type == 'h' && validHabitMirror(fid, sid))
-        || (request.resource.data.type == 'g' && validGoalMirror(fid, sid));
+        || (request.resource.data.type == 'g' && validGoalMirror(fid, sid))
+        || (request.resource.data.type == 'n' && validNoteMirror(fid, sid))
+        || (request.resource.data.type == 'r' && validRecipeMirror(fid, sid));
     }
     match /families/{familyId}/shared/{sid} {
       allow read: if isFamMember(familyId);
