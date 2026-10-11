@@ -12304,8 +12304,8 @@ function parseShopInput(raw){
   if((m = s.match(new RegExp('^'+N+'\\s*'+U+'\\s+(.+)$','iu'))) && (r = ok(m[3], shopNum(m[1]), m[2]))) return r;
   // „3x rohlík“, „2×mléko“
   if((m = s.match(new RegExp('^'+N+'\\s*([x×])\\s*(\\p{L}.*)$','iu'))) && (r = ok(m[3], shopNum(m[1]), m[2]))) return r;
-  // „2 mléka“, „1/2 chleba“, „½ melounu“
-  if((m = s.match(new RegExp('^'+N+'\\s+(\\p{L}.*)$','iu'))) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
+  // „2 mléka“, „1/2 chleba“, „½ melounu“ (počet nejvýš 3 číslice: „2024 kalendář“ zůstane)
+  if((m = s.match(/^(\d{1,3}\/\d{1,3}|[½¼¾]|\d{1,3}(?:[.,]\d{1,3})?)\s+(\p{L}.*)$/iu)) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
   // „mléko 2l“, „rohlíky 10 ks“, „pivo 0,5 l“, „mléko 2x“
   if((m = s.match(new RegExp('^(.+?)\\s+'+N+'\\s*'+U+'$','iu'))) && (r = ok(m[1], shopNum(m[2]), m[3]))) return r;
   // „mléko x2“
