@@ -1639,15 +1639,15 @@ function buildHabitCard(h){
   // Streak badge s milníky
   let streakBadge = '';
   if(streak >= 30) {
-    streakBadge = `<span class="streak-badge s-month">👑 ${streak} dní!</span>`;
+    streakBadge = `<span class="streak-badge s-month">👑 ${tNH('pl.days', streak)}!</span>`;
   } else if(streak >= 14) {
-    streakBadge = `<span class="streak-badge s-two-week">🏆 ${streak} dní</span>`;
+    streakBadge = `<span class="streak-badge s-two-week">🏆 ${tNH('pl.days', streak)}</span>`;
   } else if(streak >= 7) {
-    streakBadge = `<span class="streak-badge s-week">🔥 ${streak} dní</span>`;
+    streakBadge = `<span class="streak-badge s-week">🔥 ${tNH('pl.days', streak)}</span>`;
   } else if(streak >= 3) {
-    streakBadge = `<span class="streak-badge s-normal">🔥 ${streak} dní</span>`;
+    streakBadge = `<span class="streak-badge s-normal">🔥 ${tNH('pl.days', streak)}</span>`;
   } else if(streak > 0) {
-    streakBadge = `<span class="habit-streak-fire">🔥</span> ${streak} ${streak===1?'den':'dny'}`;
+    streakBadge = `<span class="habit-streak-fire">🔥</span> ${tNH('pl.days', streak)}`;
   }
   const streakHtml=(streak>0
     ? streakBadge
@@ -4722,7 +4722,7 @@ function sendMorningNotif() {
   });
   const todayDow = new Date().getDay();
   const habitCount = habits.filter(h => isHabitDueToday(h, today, todayDow)).length;
-  let body = `Čeká tě ${habitCount} návyk${habitCount===1?'':'ů'} na dnes.`;
+  let body = tN('ln.morningHabits', habitCount);
   if (todayEvents.length > 0) {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
@@ -4741,11 +4741,11 @@ function sendEveningNotif() {
   if (total === 0) {
     body = 'Přidej si první návyk a začni budovat lepší rutinu!';
   } else if (done === total) {
-    body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
+    body = tN('ln.eveAll', total, {g: prof?.gender});
   } else if (done === 0) {
     body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
   } else {
-    body = `Splnil${a} jsi ${done} z ${total} návyků. ${total - done} zbývají — ještě je čas!`;
+    body = tN('ln.evePart', total - done, {done, total, g: prof?.gender});
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
   sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙', {}, [], 'evening');
@@ -6447,13 +6447,7 @@ function checkInactivity() {
 
   if(lastActive === null || lastActive < 2) return;
 
-  const msgs2 = {
-    rex: `Zdravím! Pauza ${lastActive} dní. Dnes znovu makáme?`,
-    sage: `${lastActive} dní ticha. Všimli jsme si. Jak se máš?`,
-    ash: `Jsem zpět! ${lastActive} dní pauza. Co se dělo?`,
-    nora: `Chyběl jsi mi! ${lastActive} dní bez aktivity. Vše ok?`,
-    rio: `Hej! ${lastActive} dní mimo. Pojď zase žít naplno!`,
-  };
+  const inactKey = ['rex','sage','ash','nora','rio'].includes(av.id) ? av.id : 'rex';
 
   const k = `lp_inactivity_shown_${toDS(today)}`;
   if(localStorage.getItem(k)) return;
@@ -6462,8 +6456,8 @@ function checkInactivity() {
   // Zobrazit až po chvíli
   setTimeout(() => {
     showAvReaction(av.emoji,
-      lastActive >= 7 ? `${lastActive} dní pauza 😴` : `${lastActive} dny bez aktivit`,
-      `${av.name}: ${msgs2[av.id]||msgs2.rex}`
+      tN('inact.title', lastActive),
+      `${av.name}: ${tN('inact.' + inactKey, lastActive, {g: prof?.gender})}`
     );
   }, 6000);
 }
@@ -10022,8 +10016,8 @@ window.mealplanToShopping = async () => {
   );
 
   if(addedCount > 0 || foundRecipes.length > 0) {
-    let msg = `✅ Přidáno ${addedCount} ingrediencí z ${foundRecipes.length} receptu/ů.`;
-    if(withoutRecipe.length) msg += ` (${withoutRecipe.length} jídel bez receptu)`;
+    let msg = tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)});
+    if(withoutRecipe.length) msg += tN('mp.noRecipeN', withoutRecipe.length);
     toast(msg);
     sp('shopping');
   } else if(withoutRecipe.length) {
@@ -12104,9 +12098,9 @@ window.confirmRecipeToShop=async(btnEl)=>{
   if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
-  const {row:doneRow,bubble:done}=makeBotBubble(`✅ Přidal jsem <b>${added} surovin</b> do nákupního seznamu! Dobrou chuť 😋 <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`,avCur.emoji,avCur.name);
+  const {row:doneRow,bubble:done}=makeBotBubble(`✅ ${tNH('chat.ingAdded', added)} <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`,avCur.emoji,avCur.name);
   c.appendChild(doneRow);scrollChat();
-  toast(`✅ ${added} surovin přidáno do nákupu!`);
+  toast(tN('chat.ingAddedToast', added));
 };
 
 
@@ -12370,7 +12364,7 @@ window.moveShopToFamily=async(btn)=>{
     logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
     shopViewMode='shared';
     renderShop();
-    toast(`✓ ${items.length} položek přesunuto do rodinného seznamu 👨‍👩‍👧`);
+    toast(tN('shop.movedFam', items.length));
   }catch(e){
     toast('❌ Přesun se nepovedl: '+userErr(e,'přesun nákupu'));
   }finally{
@@ -12828,7 +12822,7 @@ window.shareShoppingList=()=>{
     cats[cat].forEach(i=>{ text+=`• ${i.name}${i.qty?' ('+i.qty+')':''}\n`; });
     text+='\n';
   });
-  text+=`Celkem ${remaining.length} položek`;
+  text+=tN('shop.shareTotal', remaining.length);
   // Zkus Web Share API (mobil), jinak zkopíruj do schránky
   if(navigator.share){
     navigator.share({title:'Nákupní seznam',text}).catch(()=>{});
@@ -12855,7 +12849,7 @@ window.openRecipePickerForShop = function() {
             <span style="font-size:22px">🍽️</span>
             <div style="flex:1;min-width:0">
               <div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--text)">${esc(r.name)}</div>
-              <div style="font-size:12px;color:var(--text3);margin-top:2px">⏱ ${esc(r.time||'?')} · 🥘 ${r.ingredients?.length||0} surovin</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px">⏱ ${esc(r.time||'?')} · 🥘 ${tNH('pl.ingr', r.ingredients?.length||0)}</div>
             </div>
           </div>`).join('')}
       </div>` : `
@@ -12897,7 +12891,7 @@ window.addRecipeToShop = async function(recipeId, el) {
   }
   if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? `Přidáno ${added} ingrediencí` : 'Vše už máš v nákupu'}</div></div>`;
-  toast(added > 0 ? `✅ Přidáno ${added} ingrediencí z "${recipe.name}"` : '📌 Vše z tohoto receptu už máš v nákupu');
+  toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) : '📌 Vše z tohoto receptu už máš v nákupu');
 };
 
 window.clearDoneItems=async()=>{
@@ -12911,7 +12905,7 @@ window.clearDoneItems=async()=>{
   } else {
     for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
   }
-  toast(`✓ Smazáno ${done.length} položek`);
+  toast(tN('shop.deletedN', done.length));
 };
 
 // ── COOKING ───────────────────────────────────────────
@@ -13364,7 +13358,7 @@ function initPantry() {
 
 function buildPantryHtml(low, sorted) {
   return `
-    ${low.length ? `<div class="pantry-alert">⚠️ ${low.length} ${low.length === 1 ? 'položka dochází' : low.length < 5 ? 'položky dochází' : 'položek dochází'}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
+    ${low.length ? `<div class="pantry-alert">⚠️ ${tNH('pantry.low', low.length)}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
     <div class="pantry-actions-top">
       <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">+ Přidat zásobu</button>
       ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">🛒 Navrhnout nákup</button>` : ''}
@@ -13531,7 +13525,7 @@ window.pantryToShop = async function() {
       added++;
     }
     if (fid && added > 0) logGroupActivity(fid, 'shop', 'add', low[0].name, added);
-    toast(`✓ ${added} položek přidáno do nákupního seznamu`);
+    toast(tN('shop.addedN', added));
   } catch(e) { toast('❌ Chyba při přidávání do nákupů'); }
 };
 
@@ -13590,7 +13584,7 @@ window.aiShopAddAll = async function(items) {
   }
   if(shared && items.length) logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
   switchShopTab('list');
-  toast(`✓ ${items.length} položek přidáno do nákupního seznamu`);
+  toast(tN('shop.addedN', items.length));
 };
 
 function parseIngQty(qtyStr) {
@@ -13665,7 +13659,7 @@ window.deductPantryIngredients = async function(ingredients) {
   }
   if (fid && matched) logGroupActivity(fid, 'pantry', 'edit', firstName, matched);
   if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
-  toast(matched > 0 ? `✓ ${matched} položek odečteno ze zásob` : 'Žádné suroviny nenalezeny v zásobách');
+  toast(matched > 0 ? tN('pantry.deducted', matched) : 'Žádné suroviny nenalezeny v zásobách');
 };
 
 // ── COOKING MIC ───────────────────────────────────────
@@ -13716,7 +13710,7 @@ window.addPlannedMeals = (foods, bannerEl) => {
   });
   savePlannedMeals();
   renderPlannedMeals();
-  toast(`✅ ${added} jídel přidáno do Vaření!`);
+  toast(tN('cook.mealsAdded', added));
 };
 
 async function savePlannedMeals() {
