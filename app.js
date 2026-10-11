@@ -542,17 +542,21 @@ async function callClaudeRaw(messages, maxTokens = 500, quiet = false) {
 // ── Čisté AI texty (4.44): žádné cizí písmo a markdown v prostém textu ──
 // Písma mimo latinku (řečtina, azbuka, arménština, hebrejština, arabština, indická písma, thajština, gruzínština,
 // hangul, etiopské písmo, kana, CJK). Rozsahy místo \p{Script=…}: starší prohlížeče by regex nezkompilovaly.
-// Emoji, česká diakritika ani typografické znaky sem nespadají.
+// Emoji, česká diakritika ani typografické znaky sem nespadají. CJK až od U+3040 (〰️ 〽️ a 、。 nejsou písmena).
 const AI_FOREIGN_CH = '\u0370-\u03FF\u0400-\u052F\u0530-\u058F\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u0DFF\u0E00-\u0EFF'
-  + '\u10A0-\u10FF\u1100-\u11FF\u1200-\u137F\u1C80-\u1C8F\u1F00-\u1FFF\u2DE0-\u2DFF\u3000-\u30FF\u3130-\u318F\u3400-\u4DBF\u4E00-\u9FFF'
-  + '\uA640-\uA69F\uAC00-\uD7AF\uF900-\uFAFF\uFB1D-\uFDFF\uFE70-\uFEFC\uFF65-\uFFDC\u{20000}-\u{2FA1F}';
+  + '\u10A0-\u10FF\u1100-\u11FF\u1200-\u137F\u1C80-\u1C8F\u1F00-\u1FFF\u2DE0-\u2DFF\u3040-\u30FA\u3130-\u318F\u3400-\u4DBF\u4E00-\u9FFF'
+  + '\uA640-\uA69F\uAC00-\uD7AF\uF900-\uFAFF\uFB1D-\uFDFF\uFE70-\uFEFC\uFF66-\uFF6F\uFF71-\uFF9D\uFFA0-\uFFDC\u{20000}-\u{2FA1F}';
 const AI_LATIN_CH = 'A-Za-z\u00C0-\u024F\u1E00-\u1EFF\u0300-\u036F'; // latinka + kombinující diakritika (části slova)
-// Celé „slovo“, ve kterém je aspoň jeden cizí znak (např. „ВИДí“); při mazání i s mezerou před ním
-const AI_FOREIGN_WORD = `[${AI_LATIN_CH}${AI_FOREIGN_CH}]*[${AI_FOREIGN_CH}][${AI_LATIN_CH}${AI_FOREIGN_CH}]*`;
+// Celé „slovo“, ve kterém je aspoň jeden cizí znak (např. „ВИДí“); při mazání i s mezerou před ním.
+// CJK interpunkce (、。・ー) patří ke slovu jen mezi/za CJK slovy, sama nevadí.
+const AI_FOREIGN_W1 = `[${AI_LATIN_CH}${AI_FOREIGN_CH}]*[${AI_FOREIGN_CH}][${AI_LATIN_CH}${AI_FOREIGN_CH}]*`;
+const AI_FOREIGN_WORD = `${AI_FOREIGN_W1}(?:[\u3001\u3002\u30FB\u30FC]+${AI_FOREIGN_W1})*[\u3001\u3002\u30FB\u30FC]*`;
 const AI_FOREIGN_WORD_RE = new RegExp(AI_FOREIGN_WORD, 'gu');
 const AI_FOREIGN_DEL_RE = new RegExp(`([ \\t]?)(${AI_FOREIGN_WORD})`, 'gu');
+// Samostatné řecké symboly a jednotky (π, Ω, β-karoten, μg, kΩ) nejsou cizí text; bez písmen podobných latince (ο, ν, ρ)
+const AI_FOREIGN_OK = /^(?:[αβγδλσθφμπΔΣΩ]|μ(?:g|l|m|s|mol|M)|[kM]Ω)$/u;
 const AI_LATIN_LANGS = ['cs', 'en']; // jazyky appky psané latinkou
-function aiForeignWords(text) { return String(text ?? '').match(AI_FOREIGN_WORD_RE) || []; }
+function aiForeignWords(text) { return (String(text ?? '').match(AI_FOREIGN_WORD_RE) || []).filter(w => !AI_FOREIGN_OK.test(w)); }
 // Cizí slova, která napsal sám uživatel (vstup), jsou v odpovědi v pořádku (např. citace jeho zápisku)
 function aiInputForeign(messages) {
   const set = new Set();
@@ -568,7 +572,17 @@ function aiHasForeign(text, allow) { return aiForeignWords(text).some(w => !allo
 function aiStripForeign(text, allow) {
   const s = String(text ?? '');
   let removed = false;
-  const out = s.replace(AI_FOREIGN_DEL_RE, (m, sp, w) => { if (allow?.has(w)) return m; removed = true; return ''; });
+  const out = s.replace(AI_FOREIGN_DEL_RE, (m, sp, w, off) => {
+    if (allow?.has(w) || AI_FOREIGN_OK.test(w)) return m;
+    removed = true;
+    // Slovo hned za escape sekvencí JSON (\n, \t, \u00eb…): úvodní latinka patří k ní, nesmí zmizet (jinak nevalidní JSON)
+    if (!sp) {
+      const before = s.slice(Math.max(0, off - 40), off);
+      const bs = before.match(/\\*$/)[0].length, uEsc = /(?:^|[^\\])(?:\\\\)*\\u[0-9A-Fa-f]{0,3}$/.test(before);
+      if (bs % 2 || uEsc) return w.match(/^[A-Za-z0-9]*/)[0];
+    }
+    return '';
+  });
   if (!removed) return s;
   return out.replace(/\([ \t]*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ +([,.;:!?)])/g, '$1')
     .replace(/[,;:]+([.!?])/g, '$1').replace(/(^|\n)[ \t]*[,;:][ \t]*/g, '$1').replace(/[ \t]+(\n|$)/g, '$1');
@@ -585,7 +599,8 @@ function stripMd(text) {
     .replace(/__([^_\n]+?)__/g, '$1')
     .replace(/\*\*/g, '')
     .replace(/^([ \t]*)\*[ \t]+/gm, '$1• ')
-    .replace(/\*([^*\s](?:[^*\n]*[^*\s])?)\*/g, '$1')
+    // kurzíva jen ohraničená mezerou / začátkem řádku a ne u čísel (2*3*4 zůstane)
+    .replace(/(^|[\s(„"'])\*([^*\s](?:[^*\n]*[^*\s])?)\*(?=$|[\s.,;:!?)“"'])/gm, (m, p, x) => /^[\d\s.,+\-*\/=×]+$/.test(x) ? m : p + x)
     .replace(/`([^`\n]+)`/g, '$1')
     .replace(/\[([^\]\n]+)\]\((?:https?:\/\/|mailto:)[^)\s]*\)/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
@@ -11987,13 +12002,13 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
     let rep=await chatAwaitAI(callClaude([{role:'system',content:sys},...chatH.slice(-10)],600),uid);
     if(CU?.uid!==uid){document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
-    const foodMatch=rep.match(/\[FOOD:([^\]]+)\]/);
-    rep=aiPlain(rep.replace(/\[FOOD:[^\]]+\]/g,'')); // chat markdown nevykresluje
+    const foodMatch=rep.match(/\[FOOD:([^\]]*)\]/);
+    rep=aiPlain(rep.replace(/\[FOOD:[^\]]*\]/g,'')); // chat markdown nevykresluje; prázdný tag zmizí taky
     if(!rep)throw new Error('AI není k dispozici');
     saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
-    if(foodMatch){
-      const food=foodMatch[1].trim();
+    const food=foodMatch?foodMatch[1].trim():'';
+    if(food){
       const c=document.getElementById('chatmsgs');
       const btns=document.createElement('div');
       btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
