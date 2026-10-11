@@ -148,23 +148,43 @@ const DATE_PRESETS = {
   wShortDm: { weekday: 'short', day: 'numeric', month: 'short' },
 };
 // d: Date nebo 'YYYY-MM-DD' (bere se poledne místního času, aby se den neposunul)
+// Neplatné datum (undefined, null, nesmysl, NaN) → '' místo RangeError
+const _toDate = (d, ymdNoon) => {
+  if (d == null || d === '') return null;
+  const x = d instanceof Date ? d
+    : (ymdNoon && typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? new Date(d + 'T12:00:00')
+    : new Date(d);
+  return isNaN(x.getTime()) ? null : x;
+};
 export function fmtDate(d, preset = 'dm') {
+  const x = _toDate(d, true);
+  if (!x) return '';
   if (!_dtf.has(preset)) _dtf.set(preset, new Intl.DateTimeFormat(LOCALE, DATE_PRESETS[preset] || DATE_PRESETS.dm));
-  return _dtf.get(preset).format(d instanceof Date ? d : new Date(d + 'T12:00:00'));
+  return _dtf.get(preset).format(x);
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 // Názvy dnů od pondělí (UI je pondělní)
 // raw: bez velkého písmene (cs „út“, en „Tue“) do textu uprostřed věty
+// Cache podle LOCALE|style|raw; vrací kopii, aby volající nepřepsal cache
+const _wdCache = new Map();
 export function weekdayNames(style = 'short', raw = false) {
-  const f = new Intl.DateTimeFormat(LOCALE, { weekday: style });
-  return [...Array(7)].map((_, i) => { const s = f.format(new Date(2024, 0, 1 + i)); return raw ? s : cap(s); }); // 1. 1. 2024 = pondělí
+  const key = LOCALE + '|' + style + '|' + (raw ? 1 : 0);
+  let w = _wdCache.get(key);
+  if (!w) {
+    const f = new Intl.DateTimeFormat(LOCALE, { weekday: style });
+    w = [...Array(7)].map((_, i) => { const s = f.format(new Date(2024, 0, 1 + i)); return raw ? s : cap(s); }); // 1. 1. 2024 = pondělí
+    _wdCache.set(key, w);
+  }
+  return w.slice();
 }
 // Názvy dnů od neděle (index = getDay()), náhrada ručních polí ['Ne','Po',…]
 export function dowNames(style = 'short') { const w = weekdayNames(style); return [w[6], ...w.slice(0, 6)]; }
 // Čas hh:mm podle jazyka
 let _tf = null;
 export function fmtTime(d) {
+  const x = _toDate(d, false);
+  if (!x) return '';
   if (!_tf) _tf = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
-  return _tf.format(d instanceof Date ? d : new Date(d));
+  return _tf.format(x);
 }
 export const fmtNum = n => new Intl.NumberFormat(LOCALE).format(n);

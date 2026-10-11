@@ -950,7 +950,7 @@ function habitFreqLabel(f){
   if(typeof f==='string') return f||'každý den';
   if(!f||typeof f!=='object') return 'každý den';
   if(f.type==='weekly') return (Number(f.times)||3)+'× týdně';
-  if(f.type==='days') return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(dowNames(),d,'')).filter(Boolean).join(' ')||'každý den';
+  if(f.type==='days'){const dn=dowNames();return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(' ')||'každý den';}
   return 'každý den';
 }
 // AI: cíl jako celé číslo >= 1 (text "3×" → 3)
@@ -5268,7 +5268,7 @@ window.openFocusModal = function(mode) {
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
       <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${tH('focus.history')}</div>
       ${history.map(h => {
-        const d = new Date(h.date).toLocaleDateString(LOCALE, {day:'numeric', month:'short'});
+        const d = fmtDate(h.date, 'dm'); // 'YYYY-MM-DD' jako místní poledne
         const doneIcon = h.done ? '<span style="color:var(--green);font-size:11px">✓</span>' : '';
         return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
       }).join('')}
@@ -9312,12 +9312,10 @@ function markGroupFeedSeen(gid) {
   startGroupUnread(gid); // listener znovu od nového času
 }
 
-let _gfTimeFmt = null;
 function gfTime(ms) {
   const min = Math.floor((Date.now() - ms) / 60000);
   if(min < 60) return t('gf.minAgo', {n: Math.max(1, min)});
-  if(!_gfTimeFmt) _gfTimeFmt = new Intl.DateTimeFormat(LOCALE, {hour:'2-digit', minute:'2-digit'});
-  return _gfTimeFmt.format(new Date(ms));
+  return fmtTime(ms);
 }
 function gfDayLabel(ds) {
   const today = toDS(), y = new Date(); y.setDate(y.getDate() - 1);
