@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.46';
+const APP_VERSION = '4.47';
 const CHANGELOG = [
+  { v:'4.47', items:[
+    '🌍 Většina appky je teď i v angličtině'
+  ], en:[
+    '🌍 Most of the app is now available in English'
+  ]},
   { v:'4.46', items:[
     '🌍 Přesnější data a tvary slov (1 den, 2 dny, 5 dní) a lepší angličtina'
   ], en:[
@@ -3042,7 +3047,7 @@ window.saveEvent=async()=>{
   const timeRaw=evHasTime(selEvType_val)?(document.getElementById('ev-time-inp')?.value||''):'';
   const time=okEvTime(timeRaw)?timeRaw:null;
   const dateEnd=evHasEnd(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
-  if(!name){toast('⚠️ Zadej název');return;}
+  if(!name){toast(t('common.nameReq'));return;}
   if(!date){toast('⚠️ Vyber datum');return;}
   if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
@@ -11201,7 +11206,7 @@ window.sGP=(p,btn)=>{gPriority=p;document.querySelectorAll('#g-prio-row .gprio-b
 
 window.saveG=async()=>{
   const nm=document.getElementById('g-name').value.trim();
-  if(!nm){toast('⚠️ Zadej název');return;}
+  if(!nm){toast(t('common.nameReq'));return;}
   const desc=document.getElementById('g-desc').value.trim();
   const deadline=document.getElementById('g-dl').value;
   const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,priority:gPriority,updatedAt:new Date().toISOString()};
@@ -12176,7 +12181,7 @@ function renderShop(){
   const pw=document.getElementById('shop-progress-wrap');
   if(pw){
     pw.style.display='block';
-    document.getElementById('shop-progress-label').textContent=`${done} z ${total} položek hotovo`;
+    document.getElementById('shop-progress-label').textContent=tN('shop.progress',total,{done});
     document.getElementById('shop-progress-pct').textContent=pct+'%';
     document.getElementById('shop-progress-bar').style.width=pct+'%';
   }
@@ -12191,24 +12196,23 @@ function renderShop(){
   });
 
   // Sort: unchecked first within each category
-  const catOrder=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
   const sortedCats=Object.keys(cats).sort((a,b)=>{
-    const ai=catOrder.indexOf(a), bi=catOrder.indexOf(b);
+    const ai=SHOP_CATS.indexOf(a), bi=SHOP_CATS.indexOf(b);
     return (ai===-1?99:ai)-(bi===-1?99:bi);
   });
 
   list.innerHTML=sortedCats.map((cat, catIdx)=>{
     const items=cats[cat].sort((a,b)=>a.done===b.done?0:a.done?1:-1);
     return `<div class="shop-category">
-      <div class="shop-cat-label">${esc(cat)}</div>
+      <div class="shop-cat-label">${esc(catLabel(cat))}</div>
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
           <div class="shop-check ${i.done?'done':''}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${esc(i.name)}</span>
           <button type="button" class="shop-item-qty${i.qty?'':' empty'}" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" aria-label="${i.qty?tH('shop.qtyAria',{name:i.name,qty:i.qty}):tH('shop.qtyAddAria',{name:i.name})}">${i.qty?esc(i.qty):tH('shop.qtyAdd')}</button>
-          <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="Změnit kategorii" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
+          <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="${tH('shop.catEdit')}" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${esc(i.fromRecipe)}</span>`:''}
-          <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="Přidat k oblíbeným">${isFavShopItem(i.name)?'⭐':'☆'}</button>
+          <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="${tH('shop.favAdd')}">${isFavShopItem(i.name)?'⭐':'☆'}</button>
           <button class="shop-item-del" data-a0="${esc(i.id)}" onclick="delShopItem(this.dataset.a0)">×</button>
         </div>`).join('')}
     </div>`;
@@ -12231,13 +12235,18 @@ function guessShopCategory(name){
 }
 
 const SHOP_CATS=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
+// Kategorie se ukládají česky (kanonická hodnota v datech), překládá se jen zobrazení
+const SHOP_CAT_IDS=['produce','meat','dairy','bakery','pantry','other'];
+function catLabel(c){ const i=SHOP_CATS.indexOf(c); return i<0?String(c||''):t('shop.cat.'+SHOP_CAT_IDS[i]); }
+// Jednotka „ks“ je uložená hodnota, zobrazuje se podle jazyka
+function unitLabel(u){ return (u||'ks')==='ks'?t('unit.pcs'):String(u); }
 
 window.editShopCat=(id, currentCat)=>{
   const sel=document.createElement('select');
   sel.style.cssText='background:var(--card2);border:1px solid var(--accent);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--text);font-family:"Crimson Pro",serif;outline:none;max-width:140px';
   SHOP_CATS.forEach(c=>{
     const o=document.createElement('option');
-    o.value=c; o.textContent=c;
+    o.value=c; o.textContent=catLabel(c);
     if(c===currentCat)o.selected=true;
     sel.appendChild(o);
   });
@@ -12330,20 +12339,20 @@ window.onShopInpKey=()=>{
   const hint=document.getElementById('shop-pantry-hint');
   if(hint&&pantryItems.length){
     const match=pantryItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
-    if(match){ hint.textContent=`🧊 V zásobách: ${match.qty} ${match.unit||'ks'}`; hint.style.display=''; }
+    if(match){ hint.textContent=t('shop.inPantry',{qty:match.qty,unit:unitLabel(match.unit)}); hint.style.display=''; }
     else hint.style.display='none';
   }
 };
 
 let _shopMoveBusy=false;
 window.moveShopToFamily=async(btn)=>{
-  if(!familyId||!familyData?.shareShop){toast('Nejsi v rodinné skupině se sdíleným seznamem');return;}
-  if(!shopItems.length){toast('Osobní seznam je prázdný');return;}
+  if(!familyId||!familyData?.shareShop){toast(t('shop.noFamShare'));return;}
+  if(!shopItems.length){toast(t('shop.personalEmpty'));return;}
   if(_shopMoveBusy)return;
   if(navigator.onLine===false){toast('❌ '+userErr({code:'unavailable'}));return;}
   _shopMoveBusy=true;
   const label=btn?.textContent;
-  if(btn){btn.disabled=true;btn.textContent='⏳ Přesouvám…';}
+  if(btn){btn.disabled=true;btn.textContent=t('shop.moving');}
   const fid=familyId, items=[...shopItems];
   try{
     // Po dávkách (limit 500 operací; 2 na položku) – položka se přidá do skupiny i smaže z osobních naráz
@@ -12364,7 +12373,7 @@ window.moveShopToFamily=async(btn)=>{
     renderShop();
     toast(tN('shop.movedFam', items.length));
   }catch(e){
-    toast('❌ Přesun se nepovedl: '+userErr(e,'přesun nákupu'));
+    toast(t('shop.moveFailed',{err:userErr(e,'přesun nákupu')}));
   }finally{
     _shopMoveBusy=false;
     if(btn){btn.disabled=false;btn.textContent=label;}
@@ -12400,7 +12409,7 @@ window.addShopItem=async()=>{
   const ph2=document.getElementById('shop-pantry-hint'); if(ph2)ph2.style.display='none';
   unhideQuickShop(name); // ručně přidaná skrytá položka se vrátí mezi často nakupované
   const shared=await addShopEntry({name, category:cat, qty});
-  toast(shared?'✓ Přidáno do sdíleného seznamu 👨‍👩‍👧':'✓ Přidáno');
+  toast(shared?t('shop.addedShared'):t('shop.addedPlain'));
 };
 
 // ── OBLÍBENÉ POLOŽKY NÁKUPU ──────────────────────────
@@ -12411,8 +12420,8 @@ function isFavShopItem(name) { return getFavShopItems().some(f=>f.name.toLowerCa
 window.toggleFavShopItem = function(name, category) {
   let favs = getFavShopItems();
   const idx = favs.findIndex(f=>f.name.toLowerCase()===name.toLowerCase());
-  if(idx>=0) { favs.splice(idx,1); toast('Odebráno z oblíbených'); }
-  else { favs.push({name,category}); toast('⭐ Přidáno k oblíbeným'); unhideQuickShop(name); }
+  if(idx>=0) { favs.splice(idx,1); toast(t('shop.favRemoved')); }
+  else { favs.push({name,category}); toast(t('shop.favAdded')); unhideQuickShop(name); }
   saveFavShopItems(favs);
   renderFavShop();
   renderShop();
@@ -12606,7 +12615,7 @@ function checkRecurringShop() {
       const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
       if (isShopShared()&&familyId) { const fid=familyId; await addDoc(collection(db,'families',fid,'shopItems'),si); logGroupActivity(fid,'shop','add',item.name); }
       else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
-      toast(`🔄 Automaticky přidáno: ${item.name}`);
+      toast(t('shop.rec.autoAdded',{name:item.name}));
     }
     await updateDoc(doc(db,'users',CU.uid,'recurringShop',item.id),{lastAdded:todayISO});
   });
@@ -12616,12 +12625,12 @@ function renderRecurringShop() {
   const chips = document.getElementById('recurring-shop-chips');
   if (!chips) return;
   const DAY = dowNames();
-  const FREQ = {weekly:'týdně', biweekly:'2× měs.', monthly:'měsíčně'};
+  const FREQ = {weekly:t('shop.rec.weekly'), biweekly:t('shop.rec.biweekly'), monthly:t('shop.rec.monthly')};
   chips.innerHTML = recurringShopItems.map(item => {
-    const dayLbl = item.freq !== 'monthly' ? ` · ${lookupOr(DAY,item.day,'')}` : '';
+    const dayLbl = item.freq !== 'monthly' ? ` · ${esc(lookupOr(DAY,item.day,''))}` : '';
     return `<div class="recurring-chip">
       <button data-a0="${esc(item.id)}" onclick="addFromRecurring(this.dataset.a0)" class="recurring-chip-name">${esc(item.name)}</button>
-      <span class="recurring-chip-info">${lookupOr(FREQ,item.freq,'')}${dayLbl}</span>
+      <span class="recurring-chip-info">${esc(lookupOr(FREQ,item.freq,''))}${dayLbl}</span>
       <button data-a0="${esc(item.id)}" onclick="delRecurringShopItem(this.dataset.a0)" class="recurring-chip-del">×</button>
     </div>`;
   }).join('');
@@ -12631,15 +12640,15 @@ window.addFromRecurring = async (id) => {
   const item = recurringShopItems.find(r=>r.id===id);
   if (!item) return;
   const activeItems = isShopShared() ? familyShopItems : shopItems;
-  if (activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done)) { toast(`${item.name} už je v seznamu`); return; }
+  if (activeItems.some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done)) { toast(t('shop.already',{name:item.name})); return; }
   const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, addedAt:new Date().toISOString()};
   if (isShopShared()&&familyId) { const fid=familyId; await addDoc(collection(db,'families',fid,'shopItems'),si); logGroupActivity(fid,'shop','add',item.name); }
   else await addDoc(collection(db,'users',CU.uid,'shopItems'),si);
-  toast(`✓ ${item.name} přidáno`);
+  toast(t('shop.added',{name:item.name}));
 };
 
 window.delRecurringShopItem = async (id) => {
-  if (!confirm('Odebrat z pravidelného nákupu?')) return;
+  if (!confirm(t('shop.rec.delConfirm'))) return;
   await deleteDoc(doc(db,'users',CU.uid,'recurringShop',id));
 };
 
@@ -12648,37 +12657,32 @@ window.openAddRecurringModal = function() {
   const m = document.createElement('div');
   m.id = 'recurring-modal'; m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:380px">
-    <div class="mtitle">🔄 Pravidelný nákup</div>
-    <div class="fg"><label class="flbl">Název</label>
-      <input id="rec-name" class="finp" type="text" placeholder="Mléko, Rohlíky..."></div>
+    <div class="mtitle">${tH('shop.rec.title')}</div>
+    <div class="fg"><label class="flbl">${tH('shop.rec.name')}</label>
+      <input id="rec-name" class="finp" type="text" placeholder="${tH('shop.rec.namePh')}"></div>
     <div class="frow">
-      <div class="fg"><label class="flbl">Množství</label>
-        <input id="rec-qty" class="finp" type="text" placeholder="2 l"></div>
-      <div class="fg"><label class="flbl">Kategorie</label>
+      <div class="fg"><label class="flbl">${tH('shop.rec.qty')}</label>
+        <input id="rec-qty" class="finp" type="text" placeholder="${tH('shop.rec.qtyPh')}"></div>
+      <div class="fg"><label class="flbl">${tH('shop.rec.cat')}</label>
         <select id="rec-cat" class="finp">
-          <option>Zelenina & ovoce</option><option>Maso & ryby</option>
-          <option selected>Mléčné výrobky</option><option>Pečivo</option>
-          <option>Trvanlivé</option><option>Ostatní</option>
+          ${SHOP_CATS.map((c,i)=>`<option value="${esc(c)}"${i===2?' selected':''}>${esc(catLabel(c))}</option>`).join('')}
         </select></div>
     </div>
     <div class="frow">
-      <div class="fg"><label class="flbl">Frekvence</label>
+      <div class="fg"><label class="flbl">${tH('shop.rec.freq')}</label>
         <select id="rec-freq" class="finp" onchange="toggleRecDay()">
-          <option value="weekly">Každý týden</option>
-          <option value="biweekly">Každé 2 týdny</option>
-          <option value="monthly">Každý měsíc</option>
+          <option value="weekly">${tH('shop.rec.everyWeek')}</option>
+          <option value="biweekly">${tH('shop.rec.every2Weeks')}</option>
+          <option value="monthly">${tH('shop.rec.everyMonth')}</option>
         </select></div>
-      <div class="fg" id="rec-day-wrap"><label class="flbl">Den</label>
+      <div class="fg" id="rec-day-wrap"><label class="flbl">${tH('shop.rec.day')}</label>
         <select id="rec-day" class="finp">
-          <option value="1">Pondělí</option><option value="2">Úterý</option>
-          <option value="3">Středa</option><option value="4">Čtvrtek</option>
-          <option value="5">Pátek</option><option value="6">Sobota</option>
-          <option value="0">Neděle</option>
+          ${weekdayNames('long').map((d,i)=>`<option value="${(i+1)%7}">${esc(d)}</option>`).join('')}
         </select></div>
     </div>
     <div class="macts">
-      <button class="btn-s" onclick="document.getElementById('recurring-modal').remove()">Zrušit</button>
-      <button class="btn-p" onclick="saveRecurringItem()">Uložit</button>
+      <button class="btn-s" onclick="document.getElementById('recurring-modal').remove()">${tH('common.cancel')}</button>
+      <button class="btn-p" onclick="saveRecurringItem()">${tH('common.save')}</button>
     </div>
   </div>`;
   document.body.appendChild(m);
@@ -12693,14 +12697,14 @@ window.toggleRecDay = function() {
 
 window.saveRecurringItem = async function() {
   const name = document.getElementById('rec-name')?.value.trim();
-  if (!name) { toast('⚠️ Zadej název'); return; }
+  if (!name) { toast(t('common.nameReq')); return; }
   const qty = document.getElementById('rec-qty')?.value.trim()||'';
   const category = document.getElementById('rec-cat')?.value||'Ostatní';
   const freq = document.getElementById('rec-freq')?.value||'weekly';
   const day = parseInt(document.getElementById('rec-day')?.value??1);
   await addDoc(collection(db,'users',CU.uid,'recurringShop'),{name,qty,category,freq,day,lastAdded:null,createdAt:new Date().toISOString()});
   document.getElementById('recurring-modal')?.remove();
-  toast(`✓ ${name} přidáno do pravidelného nákupu`);
+  toast(t('shop.rec.added',{name}));
 };
 
 window.toggleShopItem=async(id,wasDone)=>{
@@ -12734,7 +12738,7 @@ async function offerPantryUpdate(name, shopQty) {
     }
     const newQty = Math.round(((match.qty||0) + delta) * 1000) / 1000;
     changePantryQty(match.id, delta);
-    toast(`🧊 ${match.name}: ${newQty} ${match.unit||'ks'}`);
+    toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}));
   } else {
     // Nová položka — auto-přidej bez modálu
     const {amount, unit} = parseIngQty(shopQty||'1 ks');
@@ -12750,7 +12754,7 @@ async function offerPantryUpdate(name, shopQty) {
     // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> přidán do zásoby (${Number(amount)||0} ${esc(unit)})</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${Number(amount)||0},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">Upravit</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${Number(amount)||0},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 6000);
   }
@@ -12802,9 +12806,9 @@ window.delShopItem=async(id)=>{
 
 window.shareShoppingList=()=>{
   const activeItems=isShopShared()?familyShopItems:shopItems;
-  if(!activeItems.length){toast('Seznam je prázdný');return;}
+  if(!activeItems.length){toast(t('shop.listEmpty'));return;}
   const remaining=activeItems.filter(i=>!i.done);
-  if(!remaining.length){toast('Vše už nakoupeno! 🎉');return;}
+  if(!remaining.length){toast(t('shop.allBought'));return;}
   // Sestav text podle kategorií
   const cats=Object.create(null);
   remaining.forEach(i=>{
@@ -12812,20 +12816,19 @@ window.shareShoppingList=()=>{
     if(!cats[c])cats[c]=[];
     cats[c].push(i);
   });
-  const catOrder=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
-  const sorted=Object.keys(cats).sort((a,b)=>(catOrder.indexOf(a)<0?99:catOrder.indexOf(a))-(catOrder.indexOf(b)<0?99:catOrder.indexOf(b)));
-  let text='🛒 Nákupní seznam\n\n';
+  const sorted=Object.keys(cats).sort((a,b)=>(SHOP_CATS.indexOf(a)<0?99:SHOP_CATS.indexOf(a))-(SHOP_CATS.indexOf(b)<0?99:SHOP_CATS.indexOf(b)));
+  let text=t('shop.shareHead')+'\n\n';
   sorted.forEach(cat=>{
-    text+=`${cat}:\n`;
+    text+=`${catLabel(cat)}:\n`;
     cats[cat].forEach(i=>{ text+=`• ${i.name}${i.qty?' ('+i.qty+')':''}\n`; });
     text+='\n';
   });
   text+=tN('shop.shareTotal', remaining.length);
   // Zkus Web Share API (mobil), jinak zkopíruj do schránky
   if(navigator.share){
-    navigator.share({title:'Nákupní seznam',text}).catch(()=>{});
+    navigator.share({title:t('shop.shareTitle'),text}).catch(()=>{});
   } else {
-    navigator.clipboard.writeText(text).then(()=>toast('📋 Seznam zkopírován do schránky!')).catch(()=>toast('❌ Kopírování selhalo'));
+    navigator.clipboard.writeText(text).then(()=>toast(t('shop.copied'))).catch(()=>toast(t('shop.copyFailed')));
   }
 };
 
@@ -12836,9 +12839,9 @@ window.openRecipePickerForShop = function() {
   m.className = 'moverlay open';
   const recipes = savedRecipes || [];
   m.innerHTML = `<div class="modal" style="max-width:400px">
-    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🍽️ Vybrat recept do nákupu</h3>
+    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">${tH('shop.pick.title')}</h3>
     ${recipes.length ? `
-      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">Klikni na recept — ingredience se přidají do nákupního seznamu.</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">${tH('shop.pick.hint')}</div>
       <div style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
         ${recipes.map(r => `
           <div data-a0="${esc(r.id)}" onclick="addRecipeToShop(this.dataset.a0,this)"
@@ -12853,10 +12856,10 @@ window.openRecipePickerForShop = function() {
       </div>` : `
       <div style="text-align:center;padding:24px 0;color:var(--text3)">
         <div style="font-size:36px;margin-bottom:10px">🔖</div>
-        <div style="font-size:14px">Zatím nemáš žádné uložené recepty.</div>
-        <div style="font-size:13px;margin-top:4px">Vygeneruj recept ve Vaření a ulož ho.</div>
+        <div style="font-size:14px">${tH('shop.pick.none')}</div>
+        <div style="font-size:13px;margin-top:4px">${tH('shop.pick.noneHint')}</div>
       </div>`}
-    <button class="btn-s" style="width:100%;margin-top:14px" onclick="document.getElementById('recipe-shop-picker').remove()">Zavřít</button>
+    <button class="btn-s" style="width:100%;margin-top:14px" onclick="document.getElementById('recipe-shop-picker').remove()">${tH('common.close')}</button>
   </div>`;
   document.body.appendChild(m);
   m.addEventListener('click', e => { if(e.target === m) m.remove(); });
@@ -12865,7 +12868,7 @@ window.openRecipePickerForShop = function() {
 window.addRecipeToShop = async function(recipeId, el) {
   const recipe = savedRecipes.find(r => r.id === recipeId);
   if(!recipe) return;
-  if(!recipe.ingredients?.length) { toast('Recept nemá ingredience'); return; }
+  if(!recipe.ingredients?.length) { toast(t('shop.noIngr')); return; }
   el.style.borderColor = 'var(--green)';
   el.style.pointerEvents = 'none';
   const isSharedShop = isShopShared();
@@ -12888,14 +12891,14 @@ window.addRecipeToShop = async function(recipeId, el) {
     added++;
   }
   if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
-  el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? `Přidáno ${added} ingrediencí` : 'Vše už máš v nákupu'}</div></div>`;
-  toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) : '📌 Vše z tohoto receptu už máš v nákupu');
+  el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? tNH('shop.ingrAdded', added) : tH('shop.allInShop')}</div></div>`;
+  toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) : t('shop.allInShopToast'));
 };
 
 window.clearDoneItems=async()=>{
   const activeItems = isShopShared() ? familyShopItems : shopItems;
   const done=activeItems.filter(i=>i.done);
-  if(!done.length){toast('Žádné splněné položky');return;}
+  if(!done.length){toast(t('shop.noneDone'));return;}
   if(isShopShared()) {
     const fid=familyId;
     for(const i of done) await deleteDoc(doc(db,'families',fid,'shopItems',i.id));
@@ -13453,7 +13456,7 @@ window.savePantryItem = async function(existingId) {
   const unit = document.getElementById('pi-unit')?.value.trim();
   const minQty = parseFloat(document.getElementById('pi-min')?.value) || 0;
 
-  if (!name) { toast('⚠️ Zadej název'); return; }
+  if (!name) { toast(t('common.nameReq')); return; }
 
   document.getElementById('pantry-add-modal')?.remove();
 

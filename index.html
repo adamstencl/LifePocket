@@ -646,18 +646,18 @@
 
     <div class="page" id="p-shopping">
       <div class="gh">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle">Nákupy</div><div class="seg" id="shop-view-toggle" role="group" aria-label="Čí seznam zobrazit" hidden><button class="seg-btn" data-mode="shared" onclick="setShopView(this.dataset.mode)">Rodina</button><button class="seg-btn" data-mode="personal" onclick="setShopView(this.dataset.mode)">Moje</button></div></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle" data-i18n="shop.title">Nákupy</div><div class="seg" id="shop-view-toggle" role="group" aria-label="Čí seznam zobrazit" data-i18n-attr="aria-label:shop.viewAria" hidden><button class="seg-btn" data-mode="shared" onclick="setShopView(this.dataset.mode)" data-i18n="shop.viewFamily">Rodina</button><button class="seg-btn" data-mode="personal" onclick="setShopView(this.dataset.mode)" data-i18n="shop.viewMine">Moje</button></div></div>
         <div style="display:flex;gap:8px;align-items:center">
           <button type="button" class="gf-bell" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
-          <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()">📤 Sdílet</button>
-          <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()">✓ Vymazat splněné</button>
+          <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()" data-i18n="shop.share">📤 Sdílet</button>
+          <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()" data-i18n="shop.clearDone">✓ Vymazat splněné</button>
         </div>
       </div>
 
       <!-- Tabs -->
       <div class="cook-tabs" style="margin-bottom:14px">
-        <button class="cook-tab active" id="shop-tab-list" onclick="switchShopTab('list')">🛒 Seznam</button>
-        <button class="cook-tab" id="shop-tab-pantry" onclick="switchShopTab('pantry')">🧊 Zásoby <span id="shop-pantry-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;font-weight:700;margin-left:3px"></span></button>
+        <button class="cook-tab active" id="shop-tab-list" onclick="switchShopTab('list')" data-i18n="shop.tabList">🛒 Seznam</button>
+        <button class="cook-tab" id="shop-tab-pantry" onclick="switchShopTab('pantry')"><span data-i18n="shop.tabPantry">🧊 Zásoby</span> <span id="shop-pantry-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:11px;font-weight:700;margin-left:3px"></span></button>
       </div>
 
       <!-- TAB: SEZNAM -->
@@ -675,7 +675,7 @@
 
         <!-- Přesun do rodiny -->
         <div id="shop-move-to-family" style="display:none;margin-bottom:10px">
-          <button onclick="moveShopToFamily(this)" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed var(--accent);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif">👨‍👩‍👧 Přesunout tento seznam do rodinného sdílení</button>
+          <button onclick="moveShopToFamily(this)" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed var(--accent);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="shop.moveToFam">👨‍👩‍👧 Přesunout tento seznam do rodinného sdílení</button>
         </div>
 
         <!-- Upozornění ze skupiny chodí samy (obsah doplní renderShop) -->
@@ -695,21 +695,21 @@
             <div id="shop-pantry-hint" style="display:none;font-size:12px;color:var(--text3);padding:2px 4px;font-family:'Crimson Pro',serif;font-style:italic"></div>
           </div>
           <select id="shop-cat-sel" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 8px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:14px;outline:none;min-width:0;max-width:130px">
-            <option value="Zelenina &amp; ovoce">🥦 Zelenina & ovoce</option>
-            <option value="Maso &amp; ryby">🥩 Maso</option>
-            <option value="Mléčné výrobky">🧀 Mléčné</option>
-            <option value="Pečivo">🍞 Pečivo</option>
-            <option value="Trvanlivé">🥫 Trvanlivé</option>
-            <option value="Ostatní" selected="">📦 Ostatní</option>
+            <option value="Zelenina &amp; ovoce" data-i18n="shop.sel.produce">🥦 Zelenina & ovoce</option>
+            <option value="Maso &amp; ryby" data-i18n="shop.sel.meat">🥩 Maso</option>
+            <option value="Mléčné výrobky" data-i18n="shop.sel.dairy">🧀 Mléčné</option>
+            <option value="Pečivo" data-i18n="shop.sel.bakery">🍞 Pečivo</option>
+            <option value="Trvanlivé" data-i18n="shop.sel.pantry">🥫 Trvanlivé</option>
+            <option value="Ostatní" selected="" data-i18n="shop.sel.other">📦 Ostatní</option>
           </select>
-          <button class="btn-p" style="width:auto;padding:10px 18px" onclick="addShopItem()">+ Přidat</button>
+          <button class="btn-p" style="width:auto;padding:10px 18px" onclick="addShopItem()" data-i18n="shop.addBtn">+ Přidat</button>
         </div>
 
         <!-- Pravidelný nákup -->
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
-            <div style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif">🔄 Pravidelný nákup</div>
-            <button onclick="openAddRecurringModal()" style="background:none;border:none;color:var(--accent);font-size:13px;font-family:'Crimson Pro',serif;cursor:pointer;padding:0 2px">+ přidat</button>
+            <div style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif" data-i18n="shop.recLabel">🔄 Pravidelný nákup</div>
+            <button onclick="openAddRecurringModal()" style="background:none;border:none;color:var(--accent);font-size:13px;font-family:'Crimson Pro',serif;cursor:pointer;padding:0 2px" data-i18n="shop.recAdd">+ přidat</button>
           </div>
           <div id="recurring-shop-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
@@ -720,11 +720,11 @@
         <!-- Empty state -->
         <div id="shop-empty" class="empty-st" style="display:none">
           <div style="font-size:44px">🛒</div>
-          <div style="font-family:&#39;Playfair Display&#39;,serif;font-style:italic;font-size:18px;color:var(--text2);margin-top:10px">Seznam je prázdný</div>
-          <div style="font-size:14px;color:var(--text3);margin-top:6px">Přidej položky nebo nech AI vytvořit seznam z receptu</div>
+          <div style="font-family:&#39;Playfair Display&#39;,serif;font-style:italic;font-size:18px;color:var(--text2);margin-top:10px" data-i18n="shop.emptyTitle">Seznam je prázdný</div>
+          <div style="font-size:14px;color:var(--text3);margin-top:6px" data-i18n="shop.emptyText">Přidej položky nebo nech AI vytvořit seznam z receptu</div>
           <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;justify-content:center">
-            <button class="btn-p" style="width:auto;padding:10px 22px" onclick="document.getElementById(&#39;shop-inp&#39;).focus();document.getElementById(&#39;shop-inp&#39;).scrollIntoView({behavior:&#39;smooth&#39;})">+ Přidat položku</button>
-            <button class="btn-s" style="width:auto;padding:10px 22px" onclick="openRecipePickerForShop()">🍽️ Vybrat recept</button>
+            <button class="btn-p" style="width:auto;padding:10px 22px" onclick="document.getElementById(&#39;shop-inp&#39;).focus();document.getElementById(&#39;shop-inp&#39;).scrollIntoView({behavior:&#39;smooth&#39;})" data-i18n="shop.emptyAdd">+ Přidat položku</button>
+            <button class="btn-s" style="width:auto;padding:10px 22px" onclick="openRecipePickerForShop()" data-i18n="shop.emptyRecipe">🍽️ Vybrat recept</button>
           </div>
         </div>
         <div id="shop-invite-slot"></div>
@@ -734,7 +734,7 @@
       <div id="shop-section-pantry" style="display:none">
         <div id="shop-pantry-content"></div>
         <div style="margin-top:16px">
-          <button class="btn-sv" style="width:100%" onclick="aiShopSuggest()">🤖 AI návrh nákupu z receptů</button>
+          <button class="btn-sv" style="width:100%" onclick="aiShopSuggest()" data-i18n="shop.aiSuggest">🤖 AI návrh nákupu z receptů</button>
         </div>
       </div>
     </div>
