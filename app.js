@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,fmtNum,weekdayNames,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -47,8 +47,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.45';
+const APP_VERSION = '4.46';
 const CHANGELOG = [
+  { v:'4.46', items:[
+    '🌍 Přesnější data a tvary slov (1 den, 2 dny, 5 dní) a lepší angličtina'
+  ], en:[
+    '🌍 More accurate dates and word forms (1 day, 2 days) and better English'
+  ]},
   { v:'4.45', items:[
     '🛒 Často nakupované jedním klepnutím a chytré množství – napiš „2 mléka“ a appka to pochopí'
   ], en:[
@@ -927,7 +932,7 @@ function clearUserSessionState(){
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
-function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=d.toLocaleDateString('cs-CZ',{day:'numeric',month:'short'});if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
+function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
 // Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
 // groupNotifSent (kurzory) píše jen server, groupFeedSeen jen markGroupFeedSeen (přesné pole) → stará kopie je nesmí vrátit
@@ -945,7 +950,7 @@ function habitFreqLabel(f){
   if(typeof f==='string') return f||'každý den';
   if(!f||typeof f!=='object') return 'každý den';
   if(f.type==='weekly') return (Number(f.times)||3)+'× týdně';
-  if(f.type==='days') return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(['Ne','Po','Út','St','Čt','Pá','So'],d,'')).filter(Boolean).join(' ')||'každý den';
+  if(f.type==='days') return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(dowNames(),d,'')).filter(Boolean).join(' ')||'každý den';
   return 'každý den';
 }
 // AI: cíl jako celé číslo >= 1 (text "3×" → 3)
@@ -1000,7 +1005,7 @@ function renderEntryList(filter=''){
     return;
   }
   list.innerHTML=filtered.map(e=>{
-    const d=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{day:'numeric',month:'short',year:'numeric'}):'?';
+    const d=e.createdAt?fmtDate(new Date(e.createdAt),'dmy'):'?';
     const preview=(e.text||'').slice(0,50);
     return `<div class="j-item ${e.id===curEntryId?'active':''}" data-a0="${esc(e.id)}" onclick="openEntry(this.dataset.a0)">
       <div class="j-item-date">${d}</div>
@@ -1093,7 +1098,7 @@ window.newEntry=()=>{
   document.getElementById('j-title')?.value != null && (document.getElementById('j-title').value='');
   document.getElementById('j-text')?.value != null && (document.getElementById('j-text').value='');
   const jdate = document.getElementById('j-date');
-  if(jdate) jdate.textContent=new Date().toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  if(jdate) jdate.textContent=fmtDate(new Date(),'wdmy');
   document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.remove('sel'));
   document.getElementById('j-empty')?.style && (document.getElementById('j-empty').style.display='none');
   document.getElementById('j-edit-area')?.style && (document.getElementById('j-edit-area').style.display='flex');
@@ -1108,7 +1113,7 @@ window.openEntry=(id)=>{
   curEntryId=id; entryMood=e.mood||''; entryDirty=false; curEntryCreatedAt=e.createdAt||null;
   const jt=document.getElementById('j-title'); if(jt) jt.value=e.title||'';
   const jx=document.getElementById('j-text'); if(jx) jx.value=e.text||'';
-  const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?new Date(e.createdAt).toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Neznámé datum';
+  const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?fmtDate(new Date(e.createdAt),'wdmy'):'Neznámé datum';
   document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.toggle('sel',b.dataset.m===entryMood));
   // Load photo
   curEntryPhoto = e.photo || null;
@@ -1208,7 +1213,7 @@ let jMicBase='';
 function startJRec(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   jRec=new SR();
-  jRec.lang='cs-CZ';
+  jRec.lang=LOCALE;
   jRec.maxAlternatives=1;
   jRec.interimResults=true;
   // Na mobilu continuous=false — každá věta je samostatná session
@@ -1452,7 +1457,7 @@ function habitDayLabel(){
   if(habitDay===today)return'Dnes';
   if(habitDay===yesterday)return'Včera';
   if(habitDay===tomorrow)return'Zítra';
-  return new Date(habitDay+'T12:00:00').toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'short'});
+  return fmtDate(habitDay,'wShortDm');
 }
 
 // Datum ± n dní (poledne: změna času den nepřeskočí)
@@ -1628,7 +1633,7 @@ function buildHabitCard(h){
   const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
   const freqLabel=freq.type==='daily'?'každý den'
     :freq.type==='weekly'?`${freq.times||3}× týdně`
-    :freq.type==='days'?(freq.days||[]).map(d=>['Ne','Po','Út','St','Čt','Pá','So'][d]).join(', ')
+    :freq.type==='days'?(()=>{const dn=dowNames();return (freq.days||[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(', ');})()
     :'každý den';
 
   // Streak badge s milníky
@@ -1650,7 +1655,7 @@ function buildHabitCard(h){
     +`<span class="habit-freq-badge">${freqLabel}</span>`;
 
   // 7-day table
-  const DAY_NAMES=['Ne','Po','Út','St','Čt','Pá','So'];
+  const DAY_NAMES=dowNames();
   let thHtml='', tdHtml='';
   for(let i=6;i>=0;i--){
     const d=new Date(habitDay+'T12:00:00');
@@ -1944,7 +1949,7 @@ function renderHabitDetail(h) {
     </div>`;
 
   // Build month history — jen aktuální měsíc s navigací
-  const DAY_NAMES_SHORT = ['Po','Út','St','Čt','Pá','So','Ne'];
+  const DAY_NAMES_SHORT = weekdayNames('short');
   // Použij uložený měsíc nebo aktuální
   const hdMonthKey = 'hd_month_' + h.id;
   if(!window._hdMonth) window._hdMonth = {};
@@ -1953,7 +1958,7 @@ function renderHabitDetail(h) {
   const mMonth = window._hdMonth[h.id].m;
   const mDate = new Date(mYear, mMonth, 1);
   const mKey = mYear + '-' + String(mMonth+1).padStart(2,'0');
-  const mLabel = mDate.toLocaleDateString('cs-CZ', {month:'long', year:'numeric'}).toUpperCase();
+  const mLabel = fmtDate(mDate,'my').toLocaleUpperCase(LOCALE);
   const daysInM = new Date(mYear, mMonth+1, 0).getDate();
   const firstDow = (new Date(mYear, mMonth, 1).getDay() + 6) % 7;
   const isCurrentMonth = mYear === nowD.getFullYear() && mMonth === nowD.getMonth();
@@ -2476,7 +2481,7 @@ function renderCal(){
   const lbl=document.getElementById('cal-month-lbl');
   if(!lbl)return;
   const d=new Date(calYear,calMonth,1);
-  lbl.textContent=d.toLocaleDateString('cs-CZ',{month:'long',year:'numeric'});
+  lbl.textContent=fmtDate(d,'my');
   const today=new Date(); today.setHours(0,0,0,0);
   const dim=new Date(calYear,calMonth+1,0).getDate();
   let start=(d.getDay()+6)%7; // Monday=0
@@ -2573,8 +2578,8 @@ function renderEvList(){
       +'<div class="ev-info">'
       +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
-        ?ev._date.toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})+' – '+new Date(ev.dateEnd+'T12:00:00').toLocaleDateString('cs-CZ',{day:'numeric',month:'long'})
-        :ev._date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long'}))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
+        ?fmtDate(ev._date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
+        :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
       +'<button class="ev-del" data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
@@ -2874,7 +2879,7 @@ function showDayEventsModal(ds, dayEvs) {
   // Odstraň starý modal pokud existuje
   document.getElementById('m-day-events')?.remove();
   const date = new Date(ds + 'T12:00:00');
-  const dateLabel = date.toLocaleDateString('cs-CZ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const dateLabel = fmtDate(date,'wdmy');
   const evHtml = dayEvs.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
@@ -3053,7 +3058,7 @@ window.saveEvent=async()=>{
     try {
       if(inFamily && editGroupId) {
         await setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate);
-        logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')));
+        logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
       } else {
         await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
       }
@@ -3064,7 +3069,7 @@ window.saveEvent=async()=>{
     if(selEvShare && selEvShareGroupId) {
       const gid=selEvShareGroupId;
       await addDoc(collection(db,'families',gid,'events'),ev);
-      logGroupActivity(gid, 'cal', 'add', gaTitle(name, fmtDate(date,'dm')));
+      logGroupActivity(gid, 'cal', 'add', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
     } else {
       await addDoc(collection(db,'users',CU.uid,'events'),ev);
     }
@@ -3081,7 +3086,7 @@ window.delEvent=async(id)=>{
   const delPromises = allGids.map(gid => deleteDoc(doc(db,'families',gid,'events',id)).catch(()=>{}));
   delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
   await Promise.all(delPromises);
-  if(famEv) logGroupActivity(famEv.groupId || familyId, 'cal', 'del', gaTitle(famEv.name||'', famEv.date ? fmtDate(famEv.date,'dm') : ''));
+  if(famEv) logGroupActivity(famEv.groupId || familyId, 'cal', 'del', gaTitle(famEv.name||'', famEv.date ? fmtDate(famEv.date,'dm') : ''), 1, famEv.date ? {ref: famEv.date} : null);
   toast('Smazáno');
 };
 
@@ -7441,7 +7446,7 @@ function buildGroupCard(gid, gData, isPrimary) {
     +'<div class="family-member-av">'+lookupOr(avs,m.avatar,'👤')+'</div>'
     +'<div class="family-member-info">'
     +'<div class="family-member-name">'+esc(m.name||'Člen')+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">(ty)</span>':'')+'</div>'
-    +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+new Date(m.joinedAt||Date.now()).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})+'</div>'
+    +'<div class="family-member-role">'+(m.role==='admin'?'Správce':'Člen')+' · '+fmtDate(new Date(m.joinedAt||Date.now()),'dm')+'</div>'
     +'</div>'
     +(isAdmin&&uid!==CU?.uid?'<button data-uid="'+esc(uid)+'" data-gid="'+gidAttr+'" onclick="removeFamilyMember(this.dataset.uid,this.dataset.gid)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
     +'</div>'
@@ -9346,7 +9351,17 @@ function gfWhat(a, gid) {
   if(a.action === 'plan' || !title) return count > 1 ? s + ' (' + count + ')' : s;
   const shown = Number.isInteger(a.n) && a.n > 0 ? a.n : 1;
   const more = Math.max(0, count - shown);
-  return s + ': ' + title + (more ? ' ' + t('gf.more', {n: more}) : '');
+  return s + ': ' + (shown === 1 && count === 1 ? gfLocalTitle(a, title) : title) + (more ? ' ' + t('gf.more', {n: more}) : '');
+}
+// Přípona názvu v jazyce čtenáře: slot jídla (val = den*3 + jídlo) a datum události (ref = YYYY-MM-DD).
+// Jen u jednoho záznamu; starší záznamy bez val/ref zůstanou, jak je autor zapsal.
+function gfLocalTitle(a, title) {
+  const i = title.lastIndexOf(' · ');
+  if(i < 0) return title;
+  const main = title.slice(0, i);
+  if(a.module === 'meal' && Number.isInteger(a.val) && a.val >= 0 && a.val < 21) return main + ' · ' + mpSlot(Math.floor(a.val / 3), a.val % 3);
+  if(a.module === 'cal' && typeof a.ref === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.ref)) { try { return main + ' · ' + fmtDate(a.ref, 'dm'); } catch(e) {} }
+  return title;
 }
 // Kam vede klepnutí: reakce podle svého cíle (s_g_ / s_h_ zrcadlo, a_<id> záznam feedu), jinak modul záznamu
 function gfTargetMod(a, items) {
@@ -9549,8 +9564,11 @@ window.dismissGnIntro = () => { lsSave('lp_gn_intro', 1); document.getElementByI
 window.gnIntroSettings = () => { window.dismissGnIntro(); window.openGroupNotifSettings(); };
 
 // ── JÍDELNÍČEK ────────────────────────────────────────
-const DAYS_CS = ['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'];
-const MEALS_CS = ['Snídaně','Oběd','Večeře'];
+// Dny (od pondělí) a jídla podle jazyka; klíče d0–d6 / m0–m2 v datech se nemění
+const mpDays = () => weekdayNames('long');
+const mpMeals = () => [0,1,2].map(i => t('mp.meal.'+i));
+// Slot do aktivity skupiny: „út oběd“ / „Tue lunch“ (čtenář si ho přeloží podle val = den*3+jídlo)
+const mpSlot = (di, mi) => t('mp.slot', {day: weekdayNames('short', true)[di] || '', meal: t('mp.mealLc.'+mi)});
 
 // Zobrazený jídelníček je sdílený rodinný (ne osobní)?
 function isMealShared() { return !!(familyId && familyData?.shareMeal) && mealViewMode === 'shared'; }
@@ -9614,17 +9632,16 @@ function renderMealPlan() {
 
   const todayIdx = mealTodayIdx();
   const MEAL_EMOJI = ['🌅','☀️','🌙'];
-  const MEAL_ACC = ['snídani','oběd','večeři'];
-  el.innerHTML = welcomeBanner + DAYS_CS.map((day, di) => {
+  el.innerHTML = welcomeBanner + mpDays().map((day, di) => {
     const dayKey = 'd'+di, dayData = plan[dayKey] || {}, isToday = di === todayIdx;
     return `<section class="mp-day${isToday?' mp-day--today':''}"${isToday?' id="mp-today"':''}>
       <h3 class="mp-day-h">${day}${isToday?'<span class="mp-today">Dnes</span>':''}</h3>
-      ${MEALS_CS.map((meal, mi) => {
+      ${mpMeals().map((meal, mi) => {
         const mealKey = 'm'+mi;
         const val = (typeof dayData[mealKey] === 'string' ? dayData[mealKey] : '').trim();
         const label = `<span class="mp-slot-l">${MEAL_EMOJI[mi]} ${meal}</span>`;
         if(!canEdit) return `<div class="mp-row">${label}<div class="mp-slot mp-slot--ro${val?'':' is-empty'}">${val?esc(val):'Zatím nic'}</div></div>`;
-        return `<div class="mp-row">${label}<button class="mp-slot${val?'':' is-empty'}" data-a0="${dayKey}" data-a1="${mealKey}" onclick="openMealPicker(this.dataset.a0,this.dataset.a1)">${val ? esc(val) : `+ Přidat ${MEAL_ACC[mi]}`}</button>${val ? `<button class="mp-del" data-a0="${dayKey}" data-a1="${mealKey}" onclick="clearMealSlot(this.dataset.a0,this.dataset.a1)" aria-label="Smazat ${meal}: ${esc(val)}">✕</button>` : ''}</div>`;
+        return `<div class="mp-row">${label}<button class="mp-slot${val?'':' is-empty'}" data-a0="${dayKey}" data-a1="${mealKey}" onclick="openMealPicker(this.dataset.a0,this.dataset.a1)">${val ? esc(val) : tH('mp.add.'+mi)}</button>${val ? `<button class="mp-del" data-a0="${dayKey}" data-a1="${mealKey}" onclick="clearMealSlot(this.dataset.a0,this.dataset.a1)" aria-label="${tH('mp.delAria', {meal, val})}">✕</button>` : ''}</div>`;
       }).join('')}
     </section>`;
   }).join('');
@@ -9647,9 +9664,9 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
     setDoc(doc(db,'families',fid,'mealplan','week'), update, {merge:true})
       .catch(e => toast('❌ '+userErr(e,'jídelníček')));
     // Aktivita: „Svíčková · út oběd“; vymazání hlásí původní jídlo
-    const slot = DAYS_CS[+dayKey[1]].slice(0,2).toLowerCase() + ' ' + MEALS_CS[+mealKey[1]].toLowerCase();
-    if(val.trim()) { if(val.trim() !== prev) logGroupActivity(fid, 'meal', 'edit', gaTitle(val.trim(), slot)); }
-    else if(prev) logGroupActivity(fid, 'meal', 'del', gaTitle(prev, slot));
+    const di = +dayKey[1], mi = +mealKey[1], slot = mpSlot(di, mi), sx = {val: di*3 + mi};
+    if(val.trim()) { if(val.trim() !== prev) logGroupActivity(fid, 'meal', 'edit', gaTitle(val.trim(), slot), 1, sx); }
+    else if(prev) logGroupActivity(fid, 'meal', 'del', gaTitle(prev, slot), 1, sx);
   } else {
     if(!prof.mealPlan) prof.mealPlan = {};
     if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
@@ -9728,7 +9745,7 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
 
 // Řádek s cílem kcal: text, nebo editace (editVal !== null)
 function kcalGoalRowInner(goal, editVal) {
-  if(editVal === null) return `<span>🎯 Cíl ${Math.round(goal).toLocaleString('cs-CZ')} kcal</span>
+  if(editVal === null) return `<span>🎯 Cíl ${fmtNum(Math.round(goal))} kcal</span>
     <button class="kc-link" onclick="editKcalGoal()">Změnit</button>`;
   return `<label class="kc-goal-edit">🎯 Cíl
       <input id="set-kcalgoal" class="finp" type="number" inputmode="numeric" min="500" max="9999" value="${esc(String(editVal))}"> kcal</label>
@@ -9756,7 +9773,7 @@ window.renderKcalToday = async () => {
   const remaining = Math.max(goal-totalKcal,0);
   const over = totalKcal > goal;
 
-  const fmt = n => Math.round(n).toLocaleString('cs-CZ');
+  const fmt = n => fmtNum(Math.round(n));
   const pctRaw = Math.round(totalKcal / goal * 100);
   const pill = over
     ? `<span class="kc-pill kc-pill--over">+${fmt(totalKcal - goal)} kcal</span>`
@@ -9948,9 +9965,9 @@ window.mealplanToShopping = async () => {
   const plan = currentMealPlan();
 
   const mealNames = [];
-  DAYS_CS.forEach((_,di) => {
+  mpDays().forEach((_,di) => {
     const dayData = plan['d'+di] || {};
-    MEALS_CS.forEach((_,mi) => {
+    mpMeals().forEach((_,mi) => {
       const val = (typeof dayData['m'+mi] === 'string' ? dayData['m'+mi] : '').trim();
       if(val) mealNames.push(val);
     });
@@ -10030,7 +10047,7 @@ window.mealplanToShopping = async () => {
 window.openMealPicker = (dayKey, mealKey) => {
   if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return;
   if(!canEditMealPlan()) { toast('⚠️ Rodinný jídelníček upravuje správce skupiny'); return; }
-  const dayLabel = DAYS_CS[+dayKey[1]], mealLabel = MEALS_CS[+mealKey[1]];
+  const dayLabel = mpDays()[+dayKey[1]], mealLabel = mpMeals()[+mealKey[1]];
   const existing = document.getElementById('meal-picker-modal');
   if(existing) existing.remove();
 
@@ -10114,11 +10131,11 @@ window.openAddToMealplan = () => {
       <div style="font-size:13px;color:var(--text3);margin-bottom:16px">${esc(lastRecipe.name)}</div>${targetSeg}
       <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Vyber den:</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
-        ${DAYS_CS.map((d,i)=>`<button onclick="selectMealplanDay(${i},this)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);cursor:pointer" data-day="${i}">${d}</button>`).join('')}
+        ${mpDays().map((d,i)=>`<button onclick="selectMealplanDay(${i},this)" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);cursor:pointer" data-day="${i}">${d}</button>`).join('')}
       </div>
       <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Vyber jídlo:</div>
       <div style="display:flex;gap:8px;margin-bottom:20px">
-        ${MEALS_CS.map((m,i)=>`<button onclick="selectMealplanMeal(${i},this)" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer" data-meal="${i}">${m}</button>`).join('')}
+        ${mpMeals().map((m,i)=>`<button onclick="selectMealplanMeal(${i},this)" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer" data-meal="${i}">${m}</button>`).join('')}
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('add-to-mealplan-modal').remove()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text2);cursor:pointer">Zrušit</button>
@@ -10156,7 +10173,7 @@ window.confirmAddToMealplan = async () => {
   // Jídelníček ukáže plán, kam se jídlo uložilo
   if(canShare) mealViewMode = target;
   renderMealPlan();
-  toast(`✅ Přidáno do jídelníčku${canShare ? (target === 'shared' ? ' (Rodina)' : ' (Moje)') : ''} — ${DAYS_CS[_mealplanSelDay]}, ${MEALS_CS[_mealplanSelMeal]}`);
+  toast(`✅ Přidáno do jídelníčku${canShare ? (target === 'shared' ? ' (Rodina)' : ' (Moje)') : ''} — ${mpDays()[_mealplanSelDay]}, ${mpMeals()[_mealplanSelMeal]}`);
 };
 
 // ── STATISTIKY ────────────────────────────────────────
@@ -11570,7 +11587,7 @@ window.togMic=()=>{
   if(micOn){micRec?.stop();micOn=false;return;}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   micRec=new SR();
-  micRec.lang='cs-CZ';
+  micRec.lang=LOCALE;
   micRec.continuous=false;
   micRec.interimResults=true;
   micRec.maxAlternatives=1;
@@ -11613,7 +11630,7 @@ window.togDS=()=>{
   if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){toast('❌ Vyžaduje Chrome');return;}
   if(dsOn){stopDS();return;}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  dsRec=new SR();dsRec.lang='cs-CZ';dsRec.continuous=true;dsRec.interimResults=true;
+  dsRec=new SR();dsRec.lang=LOCALE;dsRec.continuous=true;dsRec.interimResults=true;
       let fin='';let finished=false;
       dsRec.onresult=e=>{let int='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';else int=e.results[i][0].transcript;}document.getElementById('vrec-txt').textContent='Poslouchám… '+(fin+int).slice(-60);}
       dsRec.onstart=()=>{dsOn=true;document.getElementById('dsBtn').classList.add('rec');document.getElementById('dsBtn').textContent='⏹ Nahrávám…';document.getElementById('vrec-banner').classList.add('active');};
@@ -12606,7 +12623,7 @@ function checkRecurringShop() {
 function renderRecurringShop() {
   const chips = document.getElementById('recurring-shop-chips');
   if (!chips) return;
-  const DAY = ['Ne','Po','Út','St','Čt','Pá','So'];
+  const DAY = dowNames();
   const FREQ = {weekly:'týdně', biweekly:'2× měs.', monthly:'měsíčně'};
   chips.innerHTML = recurringShopItems.map(item => {
     const dayLbl = item.freq !== 'monthly' ? ` · ${lookupOr(DAY,item.day,'')}` : '';
@@ -13688,7 +13705,7 @@ function showFoodDetectBanner(foods) {
 
 window.addPlannedMeals = (foods, bannerEl) => {
   bannerEl?.remove();
-  const today = new Date().toLocaleDateString('cs-CZ', {day:'numeric', month:'long'});
+  const today = fmtDate(new Date(),'dM');
   const existing = new Set(plannedMeals.map(m => (m.name||'').toLowerCase()));
   let added = 0;
   foods.forEach(food => {
@@ -14041,7 +14058,7 @@ function makeBotBubble(htmlContent, labelEmoji='', labelName=''){
 
 function appendMsg(role,text,nm='',em=''){
   const c=document.getElementById('chatmsgs');
-  const now=new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+  const now=fmtTime(new Date());
   if(role==='sys'){
     const d=document.createElement('div');
     d.className='msg sys';

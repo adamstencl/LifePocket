@@ -878,4 +878,17 @@ export default {
   'shop.qtyAddAria': 'Add quantity: {name}',
   'shop.qtyAria': 'Quantity of {name}: {qty}, edit',
   'shop.qtyPh': 'quantity…',
+
+  // ── Jídelníček: dny a jídla (data a plurály, 4.46) ──
+  'mp.meal.0': 'Breakfast',
+  'mp.meal.1': 'Lunch',
+  'mp.meal.2': 'Dinner',
+  'mp.mealLc.0': 'breakfast',
+  'mp.mealLc.1': 'lunch',
+  'mp.mealLc.2': 'dinner',
+  'mp.slot': '{day} {meal}',
+  'mp.add.0': '+ Add breakfast',
+  'mp.add.1': '+ Add lunch',
+  'mp.add.2': '+ Add dinner',
+  'mp.delAria': 'Remove {meal}: {val}',
 };

@@ -70,9 +70,11 @@ export async function initI18n() {
 // Vybere text podle klíče; vars.g === 'f' zkusí variantu '#f', objekt = plurál podle vars.n
 function pick(dict, rules, key, vars) {
   let v = (vars.g === 'f' && dict[key + '#f'] != null) ? dict[key + '#f'] : dict[key];
-  if (v != null && typeof v === 'object') { const n = Number(vars.n) || 0; v = v[rules.select(n)] ?? v.other; }
+  if (v != null && typeof v === 'object') { const n = Number(vars.n) || 0; v = v[rules.select(n)] ?? v.other; } // cs 'many' (1,5) chybí → other
   return v;
 }
+// Číslo do textu: desetinné podle jazyka (1,5 / 1.5), celé beze změny (roky, úrovně)
+const numStr = x => (typeof x === 'number' && Number.isFinite(x) && !Number.isInteger(x)) ? fmtNum(x) : String(x);
 
 // t(): prostý text (textContent, toast, confirm, atributy). Chybějící překlad → čeština → klíč.
 export function t(key, vars) {
@@ -83,15 +85,18 @@ export function t(key, vars) {
     if (!missing.has(key)) { missing.add(key); console.warn('[i18n] chybí klíč', key); }
     return key;
   }
-  return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : ''));
+  return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? numStr(vars[k]) : ''));
 }
+// tN(): plurál podle čísla n (cs one/few/many/other, en one/other), {n} v textu = n. Jediná cesta pro „1 den / 2 dny / 5 dní“.
+export const tN = (key, n, vars) => t(key, Object.assign({}, vars, { n }));
 // tH(): do innerHTML i atributů; všechny proměnné projdou escapováním, slovník je důvěryhodný (ci-check v něm zakazuje < a ")
 export function escH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
 export function tH(key, vars) {
   const o = {};
-  for (const [k, x] of Object.entries(vars || {})) o[k] = x == null ? x : escH(x);
+  for (const [k, x] of Object.entries(vars || {})) o[k] = x == null ? x : (typeof x === 'number' ? x : escH(x));
   return t(key, o);
 }
+export const tNH = (key, n, vars) => tH(key, Object.assign({}, vars, { n }));
 
 // Statické HTML: data-i18n="klíč" (textContent), data-i18n-attr="placeholder:klíč;aria-label:klíč2"
 // Pro češtinu se nic nepřepisuje, texty jsou už v index.html.
@@ -135,6 +140,7 @@ export function reloadForProfileLang(l) {
 const _dtf = new Map();
 const DATE_PRESETS = {
   dm: { day: 'numeric', month: 'short' },
+  dM: { day: 'numeric', month: 'long' },
   dmy: { day: 'numeric', month: 'short', year: 'numeric' },
   wdm: { weekday: 'long', day: 'numeric', month: 'long' },
   wdmy: { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
@@ -148,8 +154,17 @@ export function fmtDate(d, preset = 'dm') {
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 // Názvy dnů od pondělí (UI je pondělní)
-export function weekdayNames(style = 'short') {
+// raw: bez velkého písmene (cs „út“, en „Tue“) do textu uprostřed věty
+export function weekdayNames(style = 'short', raw = false) {
   const f = new Intl.DateTimeFormat(LOCALE, { weekday: style });
-  return [...Array(7)].map((_, i) => cap(f.format(new Date(2024, 0, 1 + i)))); // 1. 1. 2024 = pondělí
+  return [...Array(7)].map((_, i) => { const s = f.format(new Date(2024, 0, 1 + i)); return raw ? s : cap(s); }); // 1. 1. 2024 = pondělí
+}
+// Názvy dnů od neděle (index = getDay()), náhrada ručních polí ['Ne','Po',…]
+export function dowNames(style = 'short') { const w = weekdayNames(style); return [w[6], ...w.slice(0, 6)]; }
+// Čas hh:mm podle jazyka
+let _tf = null;
+export function fmtTime(d) {
+  if (!_tf) _tf = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
+  return _tf.format(d instanceof Date ? d : new Date(d));
 }
 export const fmtNum = n => new Intl.NumberFormat(LOCALE).format(n);
