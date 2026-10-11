@@ -4,6 +4,8 @@ Autor: analýza pro kodéra · 2026-10-08 · stav: návrh, nic není implementov
 
 **Stav implementace (4.37):** hotová fáze 0 a 1, z fáze 3 onboarding, Domů (widgety, focus, rychlý start, citát) a statické texty Nastavení včetně stavu notifikací. Runtime `i18n.js` drží češtinu staticky (import `i18n/cs.js`), angličtinu načítá dynamicky; chybějící anglický klíč spadne na češtinu. `?lang=` se po uložení do `lp_lang` z adresy odstraní. Ráčny v ci-check: české literály v app.js 1084, texty v index.html 159, `'cs-CZ'` 24, ruční plurál 0.
 
+**Stav 4.46 (fáze 2):** `'cs-CZ'` v app.js 0 (data přes `fmtDate`/`fmtTime`/`fmtNum`, dny přes `weekdayNames`/`dowNames`, řeč `LOCALE`), plurály přes `tN(key, n, vars)` / `tNH()` (cs one/few/many/other, en one/other; desetinné `{n}` podle jazyka). Aktivita skupiny: jídelníček ukládá slot do `val` (den*3+jídlo), kalendář datum do `ref`, čtenář si příponu přeloží (jen u jednotlivého záznamu). Zůstává česky: kontext AI (`CTX_DOW*`, `analyzeWeekPatterns`, jídelníček v `buildChatContext`) → fáze 5, push ze serveru → fáze 6.
+
 Cíl: appka umí češtinu a angličtinu. Každá fáze je samostatná nasaditelná verze a čeští uživatelé po celou dobu nic nepoznají. Angličtina je do poslední fáze dostupná jen přes `?lang=en` (beta). Automatická volba podle prohlížeče se zapne až nakonec, kdy je přeložené všechno.
 
 ---
