@@ -13361,21 +13361,21 @@ function buildPantryHtml(low, sorted) {
   return `
     ${low.length ? `<div class="pantry-alert">⚠️ ${tNH('pantry.low', low.length)}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
     <div class="pantry-actions-top">
-      <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">+ Přidat zásobu</button>
-      ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">🛒 Navrhnout nákup</button>` : ''}
+      <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">${tH('pantry.add')}</button>
+      ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">${tH('pantry.toShop')}</button>` : ''}
     </div>
-    ${sorted.length === 0 ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>Zásoby jsou prázdné.</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">Přidej co máš doma.</div></div>` : ''}
+    ${sorted.length === 0 ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>${tH('pantry.empty')}</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">${tH('pantry.emptyHint')}</div></div>` : ''}
     <div class="pantry-list">
       ${sorted.map(item => {
         const isLow = item.minQty && item.qty <= item.minQty;
         return `<div class="pantry-item ${isLow ? 'low' : ''}">
           <div class="pantry-item-info">
             <span class="pantry-item-name">${esc(item.name)}</span>
-            ${isLow ? '<span class="pantry-low-badge">dochází</span>' : ''}
+            ${isLow ? `<span class="pantry-low-badge">${tH('pantry.lowBadge')}</span>` : ''}
           </div>
           <div class="pantry-item-qty">
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, -1)">−</button>
-            <span class="pantry-qty-val">${Number(item.qty)||0} ${esc(item.unit || '')}</span>
+            <span class="pantry-qty-val">${Number(item.qty)||0} ${esc(item.unit ? unitLabel(item.unit) : '')}</span>
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, 1)">+</button>
             <button class="pantry-item-del" data-a0="${esc(item.id)}" onclick="deletePantryItem(this.dataset.a0)">🗑</button>
           </div>
@@ -13429,20 +13429,20 @@ window.openPantryAdd = function(prefill = {}) {
   m.id = 'pantry-add-modal';
   m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:380px">
-    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🧊 ${prefill.id ? 'Upravit zásobu' : 'Přidat zásobu'}</h3>
+    <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🧊 ${prefill.id ? tH('pantry.editTitle') : tH('pantry.addTitle')}</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <input id="pi-name" class="finp" placeholder="Název (např. Mléko)" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
+      <input id="pi-name" class="finp" placeholder="${tH('pantry.namePh')}" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
       <div style="display:flex;gap:8px">
-        <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="Množství" value="${esc(prefill.qty || '')}" style="flex:1">
+        <input id="pi-qty" class="finp" type="number" min="0" step="0.1" placeholder="${tH('pantry.qtyPh')}" value="${esc(prefill.qty || '')}" style="flex:1">
         <select id="pi-unit" class="finp" style="flex:1">
-          ${['ks','g','kg','ml','l'].map(u=>`<option value="${u}" ${(prefill.unit||'ks')===u?'selected':''}>${u}</option>`).join('')}
+          ${['ks','g','kg','ml','l'].map(u=>`<option value="${u}" ${(prefill.unit||'ks')===u?'selected':''}>${esc(unitLabel(u))}</option>`).join('')}
         </select>
       </div>
-      <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="Min. množství (volitelné, pro upozornění)" value="${esc(prefill.minQty || '')}" style="width:100%;box-sizing:border-box">
+      <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="${tH('pantry.minPh')}" value="${esc(prefill.minQty || '')}" style="width:100%;box-sizing:border-box">
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" onclick="savePantryItem(this.dataset.a0)">✓ Uložit</button>
-      <button class="btn-s" onclick="document.getElementById('pantry-add-modal').remove()">Zrušit</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" onclick="savePantryItem(this.dataset.a0)">${tH('pantry.save')}</button>
+      <button class="btn-s" onclick="document.getElementById('pantry-add-modal').remove()">${tH('common.cancel')}</button>
     </div>
   </div>`;
   document.body.appendChild(m);
@@ -13478,7 +13478,7 @@ window.savePantryItem = async function(existingId) {
     lsSave('lp_pantry', pantryItems);
     renderPantry();
   }
-  toast('✓ Uloženo');
+  toast(t('pantry.saved'));
 };
 
 window.changePantryQty = async function(id, delta) {
@@ -13497,7 +13497,7 @@ window.changePantryQty = async function(id, delta) {
 };
 
 window.deletePantryItem = async function(id) {
-  if (!confirm('Smazat tuto zásobu?')) return;
+  if (!confirm(t('pantry.delConfirm'))) return;
 
   if (familyId) {
     const fid = familyId, gone = pantryItems.find(i => i.id === id);
@@ -13512,7 +13512,7 @@ window.deletePantryItem = async function(id) {
 
 window.pantryToShop = async function() {
   const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
-  if (!low.length) { toast('Žádné docházející zásoby'); return; }
+  if (!low.length) { toast(t('pantry.noneLow')); return; }
   try {
     let added = 0;
     const fid = isShopShared() ? familyId : null; // skupina zachycená před cyklem
@@ -13527,13 +13527,13 @@ window.pantryToShop = async function() {
     }
     if (fid && added > 0) logGroupActivity(fid, 'shop', 'add', low[0].name, added);
     toast(tN('shop.addedN', added));
-  } catch(e) { toast('❌ Chyba při přidávání do nákupů'); }
+  } catch(e) { toast(t('pantry.toShopErr')); }
 };
 
 window.aiShopSuggest = async function() {
-  if(!savedRecipes.length){ toast('Nejdřív si ulož nějaké recepty ve Vaření'); return; }
+  if(!savedRecipes.length){ toast(t('pantry.aiNoRecipes')); return; }
   const btn = document.querySelector('[onclick="aiShopSuggest()"]');
-  if(btn){ btn.textContent = '🤖 Analyzuji receptury…'; btn.disabled = true; }
+  if(btn){ btn.textContent = t('pantry.aiBusy'); btn.disabled = true; }
   const recipeNames = savedRecipes.slice(0, 15).map(r => r.name).join(', ');
   const pantryList = pantryItems.map(p => `${p.name} (${p.qty} ${p.unit||'ks'})`).join(', ') || 'prázdné';
   const sys = `Jsi nákupní asistent. Uživatel má uložené recepty a zásoby. Na základě toho doporuč co nakoupit.
@@ -13546,12 +13546,12 @@ Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množstv�
       {role:'user',content:`Moje recepty: ${recipeNames}\nMoje zásoby: ${pantryList}\nCo mám nakoupit?`}
     ], 600);
     const data = JSON.parse(raw.trim().replace(/```json/g,'').replace(/```/g,'').trim());
-    if(!data.items?.length){ toast('AI nic nedoporučuje — zásoby jsou v pořádku'); return; }
+    if(!data.items?.length){ toast(t('pantry.aiNothing')); return; }
     const m = document.createElement('div');
     m.className = 'moverlay open';
     m.innerHTML = `<div class="modal" style="max-width:400px">
-      <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🤖 AI návrh nákupu</h3>
-      <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Na základě tvých receptů a zásob doporučuji:</p>
+      <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">${tH('pantry.aiTitle')}</h3>
+      <p style="font-size:13px;color:var(--text3);margin:0 0 12px">${tH('pantry.aiIntro')}</p>
       <div style="max-height:280px;overflow-y:auto;margin-bottom:14px">
         ${data.items.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:14px;color:var(--text2)">${esc(i.name)}</span>
@@ -13559,17 +13559,17 @@ Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množstv�
         </div>`).join('')}
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn-sv" style="flex:1" id="ai-shop-add-btn">✓ Přidat vše do nákupů</button>
-        <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
+        <button class="btn-sv" style="flex:1" id="ai-shop-add-btn">${tH('pantry.aiAddAll')}</button>
+        <button class="btn-s" onclick="this.closest('.moverlay').remove()">${tH('common.close')}</button>
       </div>
     </div>`;
     document.body.appendChild(m);
     m.addEventListener('click', e => { if(e.target===m) m.remove(); });
     document.getElementById('ai-shop-add-btn')?.addEventListener('click', () => { aiShopAddAll(data.items); m.remove(); });
   } catch(e) {
-    toast('❌ AI není k dispozici');
+    toast(t('pantry.aiNA'));
   } finally {
-    if(btn){ btn.textContent = '🤖 AI návrh nákupu z receptů'; btn.disabled = false; }
+    if(btn){ btn.textContent = t('shop.aiSuggest'); btn.disabled = false; }
   }
 };
 
@@ -13622,14 +13622,14 @@ function offerPantryDeduct(ingredients) {
   m.id = 'pantry-deduct-modal';
   m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:400px">
-    <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">🧊 Odečíst ze zásob?</h3>
-    <p style="font-size:13px;color:var(--text3);margin:0 0 12px">Chceš odečíst suroviny tohoto receptu ze svých zásob?</p>
+    <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">${tH('pantry.deductTitle')}</h3>
+    <p style="font-size:13px;color:var(--text3);margin:0 0 12px">${tH('pantry.deductText')}</p>
     <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
       ${matches.slice(0,10).map(ing=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</div>`).join('')}
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0));document.getElementById('pantry-deduct-modal').remove()">Odečíst</button>
-      <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">Přeskočit</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0));document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.deduct')}</button>
+      <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.skip')}</button>
     </div>
   </div>`;
   document.body.appendChild(m);
@@ -13660,7 +13660,7 @@ window.deductPantryIngredients = async function(ingredients) {
   }
   if (fid && matched) logGroupActivity(fid, 'pantry', 'edit', firstName, matched);
   if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
-  toast(matched > 0 ? tN('pantry.deducted', matched) : 'Žádné suroviny nenalezeny v zásobách');
+  toast(matched > 0 ? tN('pantry.deducted', matched) : t('pantry.noneFound'));
 };
 
 // ── COOKING MIC ───────────────────────────────────────
