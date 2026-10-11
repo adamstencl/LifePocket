@@ -7646,6 +7646,7 @@ function resetSocialLocal() {
   for(const tm of _shTimers.values()) clearTimeout(tm);
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear(); _shAnnounced.clear();
   _jView = 'mine'; _rcView = 'mine'; _shv = null; _shRcPending = null;
+  _entriesSrvOk = false; _recipesSrvOk = false; _shRcCopying.clear();
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
 function refreshShareUI() {
@@ -7743,10 +7744,10 @@ function recipeById(id) {
 // Suroviny a postup receptu ořezané na limity pravidel (zrcadlo i kopie „Uložit k sobě“)
 function shRecipeIngs(list) {
   return (Array.isArray(list) ? list : []).map(i => {
-    if(typeof i === 'string') return {name: cutName(i, 100)};
+    // qty vždy jako řetězec (i prázdný): kopie receptu a „Do nákupu“ s ním počítají
+    if(typeof i === 'string') return {name: cutName(i, 100), qty: ''};
     if(!i || typeof i !== 'object') return null;
-    const o = {name: cutName(i.name, 100)};
-    if(i.qty != null && String(i.qty).trim()) o.qty = cutName(i.qty, 40);
+    const o = {name: cutName(i.name, 100), qty: (i.qty != null && String(i.qty).trim()) ? cutName(i.qty, 40) : ''};
     if(typeof i.category === 'string' && i.category.trim()) o.category = cutName(i.category, 30);
     return o;
   }).filter(i => i && i.name).slice(0, SH_RC_ING);
@@ -7870,6 +7871,7 @@ function shDailyResync(gid) {
 // Úklid osiřelých zrcadel (položka smazaná jinde nebo dřív bez úklidu): jen moje zrcadla, jen když cíle, návyky
 // i zrcadla skupiny přišly ze serveru (z cache by chyběla nová položka), jednou za relaci a skupinu
 // Každý typ zvlášť: až když jeho seznam přišel ze serveru (poznámky a recepty mají vlastní listener)
+const SH_SWEEP_FRESH_MS = 2*60000;
 function shOrphanSweep() {
   if(!CU || _accDeleting || _accDeleted) return;
   const hg = _habitsSnapOk && _goalsSrvOk; // návyky a cíle jako dřív spolu
@@ -7885,6 +7887,9 @@ function shOrphanSweep() {
       const type = k[0], id = k.slice(2);
       if(!types.includes(type) || !id) continue;
       if(exists[type](id)) continue;
+      // Čerstvé zrcadlo (< 2 min) nechat: položku mohlo právě vytvořit jiné zařízení a sem ještě nedorazila
+      const ua = myMirrors[gid].get(k)?.updatedAt, uaMs = typeof ua?.toMillis === 'function' ? ua.toMillis() : 0;
+      if(uaMs && Date.now() - uaMs < SH_SWEEP_FRESH_MS) continue;
       // Jen samotné zrcadlo (aktivitu a reakce ostatních nechat, zmizí přes TTL)
       const set = mySharedIn.get(k);
       if(set) { set.delete(gid); if(!set.size) mySharedIn.delete(k); }
@@ -7934,10 +7939,12 @@ async function unshareAllInGroup(gid) {
 function dropMyMirrorsAfterRemoval(gid) {
   if(!CU) return;
   const uid = CU.uid;
-  // ID všech mých návyků a cílů (zrcadlo z paměti nemusí být úplné); neexistující dokument smazání nevadí
+  // ID všech mých návyků, cílů, poznámek a receptů (zrcadlo z paměti nemusí být úplné); neexistující dokument smazání nevadí
   const ids = new Set([...(myMirrors[gid]?.keys() || [])].map(k => k[0] + '_' + uid + '_' + k.slice(2)));
   habits.forEach(h => { if(h?.id) ids.add('h_' + uid + '_' + h.id); });
   goals.forEach(g => { if(g?.id) ids.add('g_' + uid + '_' + g.id); });
+  entries.forEach(e => { if(e?.id) ids.add('n_' + uid + '_' + e.id); });
+  savedRecipes.forEach(r => { if(r?.id) ids.add('r_' + uid + '_' + r.id); });
   for(const id of ids) deleteDoc(doc(db,'families',gid,'shared',id)).catch(() => {});
 }
 
@@ -8569,6 +8576,7 @@ window.toggleItemShare = gid => {
 let _jView = 'mine', _rcView = 'mine';       // zobrazený seznam v Poznámkách a v Receptech (jen v paměti)
 let _shv = null;                             // otevřený náhled cizí položky {gid, sid}
 let _shRcPending = null;                     // ID receptu právě uloženého kvůli sdílení (snapshot ho ještě nemusí mít)
+const _shRcCopying = new Map();              // sid zrcadla → název kopie „Uložit k sobě“, dokud ji nepotvrdí snapshot (proti dvojímu uložení)
 const SH_NR_SID_RE = /^[nr]_[A-Za-z0-9_-]{1,300}$/;
 // Cizí zrcadla daného typu ze všech mých skupin (bývalí členové ne), řazená podle času úpravy
 function shOthers(type) {
@@ -8624,8 +8632,8 @@ function sharedNotesListHTML(filter) {
 // Recepty: aktuálně zobrazený recept, pokud je uložený (sdílet jde jen uložený recept)
 function curRecipeId() {
   if(!lastRecipe) return null;
-  if(lastRecipe.id && (savedRecipes.some(r => r.id === lastRecipe.id) || lastRecipe.id === _shRcPending)) return lastRecipe.id;
-  return savedRecipes.find(r => r.name === lastRecipe.name)?.id || null;
+  // Jen podle ID (žádné hledání podle názvu: neuložený návrh se stejným názvem není uložený recept)
+  return lastRecipe.id && (savedRecipes.some(r => r.id === lastRecipe.id) || lastRecipe.id === _shRcPending) ? lastRecipe.id : null;
 }
 function refreshRecipeChip() {
   const box = document.getElementById('rc-share');
@@ -8734,7 +8742,7 @@ function renderSharedView() {
   const p = clampInt(m.portions || 0, 0, 100);
   if(p) meta.push(t('shn.portions', {n: p}));
   const ings = shRecipeIngs(m.ingredients), steps = shRecipeSteps(m.steps);
-  const have = savedRecipes.some(r => r.name === name);
+  const have = _shRcCopying.has(m._sid) || savedRecipes.some(r => r.name === name);
   bEl.innerHTML = who + `<h3 class="shv-h">${esc(name)}</h3>`
     + (meta.length ? `<div class="shv-meta">${esc(meta.join(' · '))}</div>` : '')
     + (ings.length ? `<div class="cook-section">${tH('shn.ingredients')}</div><ul class="shv-ings">${ings.map(i => `<li><span>${esc(i.name)}</span>${i.qty ? `<span class="shv-qty">${esc(i.qty)}</span>` : ''}</li>`).join('')}</ul>` : '')
@@ -8749,7 +8757,9 @@ window.saveSharedRecipe = () => {
   const m = shvMirror();
   if(!m || m.type !== 'r') return;
   const name = cutName(m.name, 100) || '🍽️';
-  if(savedRecipes.some(r => r.name === name)) { toast(t('shn.haveIt')); return; }
+  if(_shRcCopying.has(m._sid) || savedRecipes.some(r => r.name === name)) { toast(t('shn.haveIt')); return; }
+  const sid = m._sid;
+  _shRcCopying.set(sid, name);
   const data = {name, ingredients: shRecipeIngs(m.ingredients), steps: shRecipeSteps(m.steps), savedAt: new Date().toISOString()};
   if(typeof m.time === 'string' && m.time) data.time = cutName(m.time, 40);
   if(typeof m.mealType === 'string' && m.mealType) data.mealType = cutName(m.mealType, 30);
@@ -8757,7 +8767,7 @@ window.saveSharedRecipe = () => {
   data.portions = p || 4;
   if(typeof m.tip === 'string' && m.tip) data.tip = cutName(m.tip, 1000);
   // Bez await (offline se odešle později); seznam doplní snapshot
-  setDoc(doc(collection(db,'users',CU.uid,'savedRecipes')), data).catch(e => { console.warn('[LP] kopie receptu', e?.code || e?.name); toast('❌ ' + userErr(e)); });
+  setDoc(doc(collection(db,'users',CU.uid,'savedRecipes')), data).catch(e => { _shRcCopying.delete(sid); console.warn('[LP] kopie receptu', e?.code || e?.name); toast('❌ ' + userErr(e)); });
   toast(t('shn.savedCopy'));
   const btn = document.querySelector('#shv-body .shv-save');
   if(btn) { btn.disabled = true; btn.textContent = '✅ ' + t('shn.haveIt'); }
@@ -9157,6 +9167,9 @@ window.gfOpenModule = m => {
   cm('m-grpfeed');
   sp(GF_PAGE[m]);
   if(m === 'pantry') window.switchShopTab?.('pantry');
+  // Poznámky a recepty: rovnou seznam „Od skupiny“
+  if(m === 'note') { window.setJView('group'); }
+  if(m === 'recipe') { window.switchCookTab?.('recipes'); window.setRcView('group'); document.getElementById('saved-recipes-section')?.scrollIntoView({block:'start'}); }
 };
 
 async function loadGroupFeed(gid) {
@@ -11986,6 +11999,7 @@ function subSavedRecipes(){
       rOk=true;
       savedRecipes=snap.docs.map(d=>({id:d.id,...d.data()}));
       if(_shRcPending&&savedRecipes.some(r=>r.id===_shRcPending)) _shRcPending=null;
+      for(const [sid,nm] of _shRcCopying) if(savedRecipes.some(r=>r.name===nm)) _shRcCopying.delete(sid); // kopie „Uložit k sobě“ potvrzená
       renderSavedRecipes();
       if(srv&&!_recipesSrvOk){_recipesSrvOk=true;setTimeout(shOrphanSweep,0);}
     }
@@ -12755,7 +12769,8 @@ window.saveManualRecipe = async function() {
 
   // Ulož do Firestore
   const data = { ...recipe, savedAt: Date.now(), manual: true };
-  await addDoc(collection(db, 'users', CU.uid, 'savedRecipes'), data);
+  const ref = await addDoc(collection(db, 'users', CU.uid, 'savedRecipes'), data);
+  recipe.id = ref.id; // sdílení pozná uložený recept podle ID
   document.getElementById('manual-recipe-modal')?.remove();
 
   // Zobraz recept
@@ -12861,20 +12876,22 @@ window.toggleIng=(i)=>{
 };
 
 window.sendToShopping=async()=>{
-  if(!lastRecipe){toast('Nejprve vygeneruj recept');return;}
+  if(!lastRecipe||!Array.isArray(lastRecipe.ingredients)){toast('Nejprve vygeneruj recept');return;}
   let added=0, skipped=0, haveit=0;
   lastRecipe.ingredients.forEach((ing,i)=>{
     const checkedEl=document.getElementById(`cing-${i}`);
     if(checkedEl&&checkedEl.classList.contains('done')){ haveit++; } // mám doma — přeskočit
   });
   for(let i=0;i<lastRecipe.ingredients.length;i++){
-    const ing=lastRecipe.ingredients[i];
+    const raw=lastRecipe.ingredients[i];
+    const ing=typeof raw==='string'?{name:raw}:(raw||{}); // starší recepty: surovina jako text
+    if(!ing.name) continue;
     const checkedEl=document.getElementById(`cing-${i}`);
     if(checkedEl&&checkedEl.classList.contains('done')) continue; // mám doma
-    const exists=shopItems.some(s=>s.name.toLowerCase()===ing.name.toLowerCase());
+    const exists=shopItems.some(s=>String(s.name||'').toLowerCase()===String(ing.name).toLowerCase());
     if(!exists){
       await addDoc(collection(db,'users',CU.uid,'shopItems'),{
-        name:ing.name, qty:ing.qty,
+        name:String(ing.name), qty:ing.qty||'',
         category:ing.category||'Ostatní',
         done:false,
         fromRecipe:lastRecipe.name,
@@ -12900,8 +12917,11 @@ window.saveRecipe=async()=>{
   const exists=savedRecipes.some(r=>r.name===lastRecipe.name);
   if(exists){toast('📌 Tento recept už máš uložený');return;}
   try{
-    const data={...lastRecipe, savedAt:new Date().toISOString()};
-    await addDoc(collection(db,'users',CU.uid,'savedRecipes'),data);
+    const rec=lastRecipe, data={...rec, savedAt:new Date().toISOString()};
+    delete data.id;
+    const ref=await addDoc(collection(db,'users',CU.uid,'savedRecipes'),data);
+    if(!rec.id) rec.id=ref.id; // sdílení pak najde recept podle ID
+    refreshRecipeChip();
     toast('🔖 Recept uložen do oblíbených!');
     if(btn){btn.textContent='✅ Uloženo';btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
   }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e));}
