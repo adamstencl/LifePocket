@@ -496,11 +496,11 @@ window.closeChangelog = function() {
 };
 
 const AVS=[
-  {id:'rex',emoji:'⚔️',name:'Rex',vibe:'Tvrdý trénink,\njasné cíle.'},
-  {id:'sage',emoji:'🌿',name:'Sage',vibe:'Ticho, moudrost,\nhloubka.'},
-  {id:'ash',emoji:'🔥',name:'Ash',vibe:'Nový začátek\nkaždý den.'},
-  {id:'nora',emoji:'🏡',name:'Nora',vibe:'Teplo domova,\npéče o blízké.'},
-  {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
+  {id:'rex',emoji:'⚔️',name:'Rex'},
+  {id:'sage',emoji:'🌿',name:'Sage'},
+  {id:'ash',emoji:'🔥',name:'Ash'},
+  {id:'nora',emoji:'🏡',name:'Nora'},
+  {id:'rio',emoji:'🌊',name:'Rio'},
 ];
 // id = klíč v prof.visionAreas (zůstává česky), popisky ze slovníku
 const AREAS=[
@@ -517,38 +517,39 @@ const AREAS=[
 const GOAL_CAT_KEYS={'zdraví':'health','práce':'work','rodina':'family','finance':'finance','vzdělání':'edu','koníčky':'hobby','osobní':'growth','ostatní':'other'};
 const goalCatLabel=c=>lookupOr(GOAL_CAT_KEYS,c,null)?t('goal.tag.'+GOAL_CAT_KEYS[c]):c;
 const MODS=[
-  {id:'rex',emoji:'🤖',name:'AI asistent',desc:'Chat s tvým osobním AI průvodcem — rady, motivace, odpovědi na cokoliv.'},
-  {id:'habits',emoji:'🔥',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
-  {id:'journal',emoji:'📒',name:'Poznámky',desc:'Piš si myšlenky, nálady a záznamy dne — text i hlas.'},
-  {id:'calendar',emoji:'🗓️',name:'Kalendář',desc:'Události, narozeniny a rodinný kalendář na jednom místě.'},
-  {id:'goals',emoji:'🏆',name:'Cíle',desc:'Nastav si životní cíle, sleduj milníky a plň je krok za krokem.'},
-  {id:'cooking',emoji:'👨‍🍳',name:'Vaření',desc:'Ukládej recepty, sleduj kalorie a generuj nákupní seznamy.'},
-  {id:'shopping',emoji:'🧺',name:'Nákupy',desc:'Chytrý nákupní seznam — AI sestaví seznam z receptu za pár sekund.'},
-  {id:'mealplan',emoji:'🥗',name:'Jídelníček',desc:'Plánuj jídla na celý týden a sdílej jídelníček s rodinou.'},
-  {id:'checklist',emoji:'✅',name:'Checklist',desc:'Sdílené seznamy úkolů pro celou skupinu — cestování, přípravy, projekty.'},
+  {id:'rex',emoji:'🤖'},
+  {id:'habits',emoji:'🔥'},
+  {id:'journal',emoji:'📒'},
+  {id:'calendar',emoji:'🗓️'},
+  {id:'goals',emoji:'🏆'},
+  {id:'cooking',emoji:'👨‍🍳'},
+  {id:'shopping',emoji:'🧺'},
+  {id:'mealplan',emoji:'🥗'},
+  {id:'checklist',emoji:'✅'},
 ];
 const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
-// Šablony onboardingu (krok 3): předvybrané moduly + ukázkové návyky (pole jako v saveHabit; days: 0 = neděle)
+// Šablony onboardingu (krok 3): předvybrané moduly + ukázkové návyky (pole jako v saveHabit; days: 0 = neděle; název tpl.<id>.hN)
 const ONB_TPLS = {
   family: { mods:['shopping','mealplan','cooking','calendar','habits'], habits:[
-    {name:'Společná večeře',   emoji:'🍽️', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
-    {name:'Čas venku spolu',   emoji:'🌳', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'day'},
-    {name:'Hodina bez mobilu', emoji:'📵', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
+    {emoji:'🍽️', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
+    {emoji:'🌳', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'day'},
+    {emoji:'📵', type:'yesno', goal:1, freq:{type:'daily'},          group:'evening'},
   ]},
   student: { mods:['habits','calendar','goals','journal'], habits:[
-    {name:'Učení 30 minut',    emoji:'📚', type:'yesno', goal:1,  freq:{type:'days',days:[1,2,3,4,5]}, group:'day'},
-    {name:'Přečtené stránky',  emoji:'📖', type:'count', goal:10, freq:{type:'daily'},                 group:'evening'},
-    {name:'Spát do 23:00',     emoji:'😴', type:'yesno', goal:1,  freq:{type:'daily'},                 group:'evening'},
+    {emoji:'📚', type:'yesno', goal:1,  freq:{type:'days',days:[1,2,3,4,5]}, group:'day'},
+    {emoji:'📖', type:'count', goal:10, freq:{type:'daily'},                 group:'evening'},
+    {emoji:'😴', type:'yesno', goal:1,  freq:{type:'daily'},                 group:'evening'},
   ]},
   health: { mods:['habits','goals','mealplan','cooking','journal'], habits:[
-    {name:'Procházka 30 minut',emoji:'🚶', type:'yesno', goal:1, freq:{type:'daily'},          group:'day'},
-    {name:'Porce zeleniny',    emoji:'🥗', type:'count', goal:3, freq:{type:'daily'},          group:'day'},
-    {name:'Protažení',         emoji:'🧘', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'morning'},
+    {emoji:'🚶', type:'yesno', goal:1, freq:{type:'daily'},          group:'day'},
+    {emoji:'🥗', type:'count', goal:3, freq:{type:'daily'},          group:'day'},
+    {emoji:'🧘', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'morning'},
   ]},
 };
 let selTpl = null;
-const AVMSGS={rex:['Dnes je čas tvrdě makat! 💪','Každý splněný cíl tě posouvá dál.','Bez bolesti žádný pokrok!'],sage:['Ticho přináší moudrost. 🌿','Co sis dnes uvědomil o sobě?','Každý den je příležitost poznat sám sebe.'],ash:['Dnes je nový začátek! 🔥','Minulost nelze změnit, budoucnost tvoříš ty.','Změna začíná jedním krokem.'],nora:['Jak se dnes máš? 🏡','Malé radosti dělají velký život.','Jsi tu pro ostatní — nezapomeň na sebe.'],rio:['Žij naplno! 🌊','Dnes je skvělý den na nové dobrodružství!','Žít naplno je tvoje superschopnost.']};
-const MOODS=[{emoji:'😄',label:'Skvělý'},{emoji:'🙂',label:'Dobrý'},{emoji:'😐',label:'Normální'},{emoji:'😔',label:'Unavený'},{emoji:'😤',label:'Frustr.'}];
+// Denní hláška společníka: av.<id>.msg0–2
+const AVMSGS=Object.fromEntries(['rex','sage','ash','nora','rio'].map(id=>[id,[0,1,2].map(i=>t('av.'+id+'.msg'+i))]));
+const MOODS=[['😄','great'],['🙂','good'],['😐','ok'],['😔','tired'],['😤','frustr']].map(([emoji,k])=>({emoji,label:t('mood.'+k)}));
 
 let CU=null,prof={},goals=[],subs={},selMods=new Set(),selG='',selAv='',editGId=null,editSGId=null,editSGGoalId=null,gEm='🌟',gCol='#f5c842',gPriority=2,chatH=[],unsub=null,mood='',tmpAv='',vmState=null;
 let chatMemorySummary=''; // AI-generated summary of older conversations
@@ -863,7 +864,7 @@ function renderLangSwitch(){
     b.classList.toggle('active',on); b.setAttribute('aria-pressed',String(on));
   });
 }
-// Název modulu v jazyce appky (MODS drží jen české výchozí texty)
+// Název a popis modulu v jazyce appky (texty jen ve slovníku: mod.<id>, mod.<id>.desc)
 const modName=m=>t('mod.'+m.id);
 const modDesc=m=>t('mod.'+m.id+'.desc');
 const avVibe=a=>t('av.'+a.id+'.vibe');
@@ -3799,13 +3800,12 @@ window.finishOnboard=async()=>{
 function rEmptyStates(){
   const av = AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const name = prof.prezdivka||prof.nickname||'';
-  const greet = name ? `Ahoj ${name}! ` : 'Ahoj! ';
   // Journal empty
   const je_av=document.getElementById('je-av'); if(je_av)je_av.textContent=av.emoji;
-  const je_t=document.getElementById('je-title'); if(je_t)je_t.textContent=greet+'Co se dnes děje?';
+  const je_t=document.getElementById('je-title'); if(je_t)je_t.textContent=name ? t('home.jeTitleName',{name}) : t('home.jeTitle');
   // Habits empty
   const he_av=document.getElementById('he-av'); if(he_av)he_av.textContent=av.emoji;
-  const he_t=document.getElementById('he-title'); if(he_t)he_t.textContent='Ještě žádné návyky';
+  const he_t=document.getElementById('he-title'); if(he_t)he_t.textContent=t('home.heTitle');
 }
 
 function getRexEnergy() {
@@ -3953,7 +3953,7 @@ async function generateChatSummary() {
 function rAvPage(){
   rEmptyStates();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-  const msgs=AVMSGS[av.id]||['Vítej!'];
+  const msgs=AVMSGS[av.id]||[t('home.welcome')];
   const msg=msgs[new Date().getDate()%msgs.length];
   const el_em=document.getElementById('av-em');
   const el_nm=document.getElementById('av-nm');
@@ -3966,8 +3966,8 @@ function rAvPage(){
   if(el_msg)el_msg.textContent=msg;
   // av-msg already updated above
   if(el_cwem)el_cwem.textContent=av.emoji;
-  if(el_cwtitle)el_cwtitle.textContent=`${av.name} — čím ti mohu pomoci?`;
-  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" data-a0="${esc(m.emoji)}" onclick="selMood(this.dataset.a0)"><span>${m.emoji}</span><div class="av-mood-lbl">${m.label}</div></div>`).join('');
+  if(el_cwtitle)el_cwtitle.textContent=t('home.cwTitle',{name:av.name});
+  if(el_moods)el_moods.innerHTML=MOODS.map(m=>`<div class="av-mood-btn ${mood===m.emoji?'active':''}" data-a0="${esc(m.emoji)}" onclick="selMood(this.dataset.a0)"><span>${m.emoji}</span><div class="av-mood-lbl">${esc(m.label)}</div></div>`).join('');
   // Rex Tamagotchi energy
   const energy = getRexEnergy();
   const rexState = getRexState(energy);
@@ -3978,7 +3978,7 @@ function rAvPage(){
       <div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px">
         <span style="font-size:22px">${rexState.emoji}</span>
         <div style="flex:1">
-          <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Energie · <span style="color:${rexState.color};font-weight:700">${rexState.label}</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:4px">${tH('home.energy')} · <span style="color:${rexState.color};font-weight:700">${rexState.label}</span></div>
           <div style="background:var(--border);border-radius:20px;height:8px;overflow:hidden">
             <div style="width:${pct}%;height:100%;background:${rexState.color};border-radius:20px;transition:width .5s"></div>
           </div>
@@ -5015,7 +5015,7 @@ Data posledních 7 dní:\n${weekStr}\nVzory v návycích: ${patterns || 'zatím 
     appendMsg('bot', rep, av.name, av.emoji || '⭐');
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString()}));
     rDash();
-  } catch(e) { if (CU?.uid === uid) persistChat(); appendMsg('bot','❌ '+userErr(e,'report'),'Chyba','⚠️'); }
+  } catch(e) { if (CU?.uid === uid) persistChat(); appendMsg('bot','❌ '+userErr(e,'report'),t('chat.errLbl'),'⚠️'); }
   document.getElementById('typing')?.classList.remove('active');
   scrollChat();
 };
@@ -5060,7 +5060,7 @@ Data týdne:\n${weekStr}`;
     localStorage.setItem('lp_weekly_report', JSON.stringify({text: rep, date: new Date().toISOString(), avatar: av.emoji||'⭐', avatarName: av.name}));
     rDash();
     if(notifGranted()) {
-      sendNotif(`${av.emoji||'⭐'} Tvůj týdenní report je ready!`, `${av.name} připravil souhrn tohoto týdne — otevři LifePocket a podívej se.`, av.emoji||'⭐');
+      sendNotif(t('wr.notifTitle',{emoji:av.emoji||'⭐'}), t('wr.notifBody',{name:av.name}), av.emoji||'⭐');
     }
   } catch(e) { console.warn('[LP] generateWeeklyReportSilent selhalo:', e.message); }
 }
@@ -5090,7 +5090,7 @@ window.addWater = function(n = 1) {
   lsSave('lp_water', {...stored, count: waterToday});
   renderWaterInDash();
   if (waterToday >= waterGoal) {
-    toast('💧 Skvělé! Denní cíl vody splněn!');
+    toast(t('water.done'));
   }
 };
 
@@ -5111,14 +5111,14 @@ function renderWaterInDash() {
   }
   el.innerHTML = `
     <div class="water-header">
-      <span class="water-title">💧 Voda</span>
-      <span class="water-count">${waterToday}/${waterGoal} sklenic</span>
+      <span class="water-title">${tH('water.title')}</span>
+      <span class="water-count">${tH('water.count',{n:waterToday,goal:waterGoal})}</span>
     </div>
     <div class="water-glasses">${glasses.join('')}</div>
     <div class="water-bar-wrap"><div class="water-bar" style="width:${pct}%"></div></div>
     <div class="water-actions">
       <button class="water-btn-minus" onclick="removeWater()">−</button>
-      <button class="water-btn-plus" onclick="addWater()">+ Přidat sklenici</button>
+      <button class="water-btn-plus" onclick="addWater()">${tH('water.add')}</button>
     </div>
   `;
 }
@@ -6412,15 +6412,15 @@ function checkAvatarReactions(hid, date, justCompleted) {
   if(msNew && streak === 7) {
     // Hláška o štítu jen když dnešní splnění štít opravdu přidalo (při plném počtu nebo po použitém štítu ne)
     const shieldMsg = h && h.freq?.type !== 'weekly' && habitShields(h, today) > habitShields(h, addDays(today, -1)) ? ' ' + t('game.shield.earned') : '';
-    showAvReaction('🔥', `7 dní v řadě!`, `${av.name}: Týden bez přerušení u „${h?.name}"! ${name ? name+', jsi' : 'Jsi'} neporazitelný! 💪` + shieldMsg, true);
+    showAvReaction('🔥', t('avr.d7t'), (name ? t('avr.d7Name',{av:av.name,h:h?.name,name}) : t('avr.d7',{av:av.name,h:h?.name})) + shieldMsg, true);
     return;
   }
   if(msNew && streak === 14) {
-    showAvReaction('🏆', `14 dní v řadě!`, `${av.name}: Dva týdny nepřetržitě! Tohle je už charakter, ne náhoda. Bravo! 🌟`, true);
+    showAvReaction('🏆', t('avr.d14t'), t('avr.d14',{av:av.name}), true);
     return;
   }
   if(msNew && streak === 30) {
-    showAvReaction('👑', `30 dní v řadě!`, `${av.name}: Celý měsíc! ${name ? name+' — ' : ''}tohle je výjimečné. Jsem na tebe hrdý! 🎉`, true);
+    showAvReaction('👑', t('avr.d30t'), name ? t('avr.d30Name',{av:av.name,name}) : t('avr.d30',{av:av.name}), true);
     return;
   }
 
@@ -6432,21 +6432,15 @@ function checkAvatarReactions(hid, date, justCompleted) {
     ).length;
     if(doneToday === totalH && lsGet('lp_perfect_day', '') !== today) {
       lsSave('lp_perfect_day', today);
-      const msgs = {
-        rex: `Všechno splněno! Makáš jak stroj. ${name}, to je výkon! 💪`,
-        sage: `Vše splněno. ${name}, věnuji ti okamžik ticha a úcty. 🌿`,
-        ash: `100% dnes! ${name}, takhle se mění životy. 🔥`,
-        nora: `Všechno hotovo! ${name}, jsi hvězda tohoto dne. ⭐`,
-        rio: `Celý den splněn! ${name}, žiješ naplno! 🌊`,
-      };
-      showAvReaction(av.emoji, 'Perfektní den! 🎯', msgs[av.id]||msgs.rex, true);
+      const pid = ['rex','sage','ash','nora','rio'].includes(av.id) ? av.id : 'rex';
+      showAvReaction(av.emoji, t('avr.perfectT'), t('avr.perfect.'+pid,{name}), true);
       return;
     }
   }
 
   // Streak 3 — malá oslava
   if(msNew && streak === 3) {
-    showAvReaction(av.emoji, '3 dny v řadě!', `${av.name}: Tři dny bez přestávky u „${h?.name}". Dobrý začátek! 🔥`);
+    showAvReaction(av.emoji, t('avr.d3t'), t('avr.d3',{av:av.name,h:h?.name}));
   }
 }
 
@@ -11974,7 +11968,7 @@ window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(d
 // VOICE — chat mic
 window.togMic=()=>{
   if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
-    toast('❌ Hlasový vstup vyžaduje Chrome nebo Safari');return;
+    toast(t('chat.micBrowser'));return;
   }
   if(micOn){micRec?.stop();micOn=false;return;}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -12000,7 +11994,7 @@ window.togMic=()=>{
     micOn=true;sent=false;transcript='';
     const b=document.getElementById('mic-btn');
     if(b){b.classList.add('rec');b.textContent='⏹';}
-    toast('🎤 Poslouchám…');
+    toast(t('nt.listening'));
   };
   micRec.onend=()=>{
     micOn=false;
@@ -12019,18 +12013,18 @@ window.togMic=()=>{
 
 // DAY SUMMARY
 window.togDS=()=>{
-  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){toast('❌ Vyžaduje Chrome');return;}
+  if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){toast(t('chat.dsChrome'));return;}
   if(dsOn){stopDS();return;}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   dsRec=new SR();dsRec.lang=LOCALE;dsRec.continuous=true;dsRec.interimResults=true;
       let fin='';let finished=false;
-      dsRec.onresult=e=>{let int='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';else int=e.results[i][0].transcript;}document.getElementById('vrec-txt').textContent='Poslouchám… '+(fin+int).slice(-60);}
-      dsRec.onstart=()=>{dsOn=true;document.getElementById('dsBtn').classList.add('rec');document.getElementById('dsBtn').textContent='⏹ Nahrávám…';document.getElementById('vrec-banner').classList.add('active');};
+      dsRec.onresult=e=>{let int='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript+' ';else int=e.results[i][0].transcript;}document.getElementById('vrec-txt').textContent=t('chat.dsListening')+' '+(fin+int).slice(-60);}
+      dsRec.onstart=()=>{dsOn=true;document.getElementById('dsBtn').classList.add('rec');document.getElementById('dsBtn').textContent=t('chat.dsRecording');document.getElementById('vrec-banner').classList.add('active');};
       dsRec.onend=()=>{if(dsOn&&fin.trim()&&!finished){finished=true;dsOn=false;finishDS(fin.trim());}else if(dsOn&&!fin.trim()){dsRec.start();}};
       dsRec.onerror=e=>{if(e.error!=='aborted')toast('❌ '+userErr(e,'mikrofon'));stopDS();};
       dsRec.start();
 };
-window.stopDS=()=>{dsOn=false;dsRec?.stop();document.getElementById('dsBtn').classList.remove('rec');document.getElementById('dsBtn').textContent='🎤 Nahrát přehled dne';document.getElementById('vrec-banner').classList.remove('active');};
+window.stopDS=()=>{dsOn=false;dsRec?.stop();document.getElementById('dsBtn').classList.remove('rec');document.getElementById('dsBtn').textContent=t('chat.dsBtn');document.getElementById('vrec-banner').classList.remove('active');};
 
 async function finishDS(text){
   stopDS();
@@ -12064,8 +12058,8 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     saveChatMessage('assistant',rep);
     appendMsg('bot',rep,av.name,av.emoji);
-    appendMsg('sys','📝 Aktivita zaznamenaná. Chceš ji přidat do cílů?');
-  }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),'Chyba','⚠️');}
+    appendMsg('sys',t('chat.dsLogged'));
+  }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),t('chat.errLbl'),'⚠️');}
   document.getElementById('typing').classList.remove('active');scrollChat();
 }
 
@@ -12425,7 +12419,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
       btns.innerHTML=`<button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
       c.appendChild(btns);scrollChat();
     }
-  }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),'Chyba','⚠️');}
+  }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),t('chat.errLbl'),'⚠️');}
   document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
 };
 window.rexRecipe=async(food,btnEl)=>{
@@ -14472,7 +14466,7 @@ function appendMsg(role,text,nm='',em=''){
     const lbl=nm?`<div class="mlbl">${esc(em||'')} ${esc(nm)}</div>`:'';
     bubble.innerHTML=lbl+esc(aiPlain(text)).replace(/\n/g,'<br>')+`<span class="msg-time">${now}</span>`; // i starší historie: bez markdownu a cizího písma
     // Nahlášení odpovědi AI (ne u chybových hlášek appky)
-    if(nm!=='Chyba'){
+    if(nm!==t('chat.errLbl')){
       const rb=document.createElement('button');
       rb.type='button'; rb.className='msg-report'; rb.textContent='⚑ '+t('air.submit');
       rb.setAttribute('aria-label',t('air.aria'));
@@ -14491,44 +14485,12 @@ function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.
 
 // ── TOUR / PRŮVODCE ───────────────────────────────────
 
-const TOUR_MODULES = {
-  dashboard: {
-    title: 'Domovská obrazovka 🏠',
-    text: 'Tady vidíš přehled celého dne — splněné návyky, nadcházející události, jídlo a rychlý přístup ke všemu. Každé ráno začni tady.'
-  },
-  habits: {
-    title: 'Návyky 🎯',
-    text: 'Sleduj své denní rutiny — cvičení, čtení, pití vody... Každý den je zaškrtni a buduj streak. Návyky jsou propojené s tvými cíli.'
-  },
-  journal: {
-    title: 'Poznámky 📝',
-    text: 'Místo pro tvoje myšlenky, pocity a zážitky. Piš co chceš — krátce nebo dlouze. Můžeš přidat náladu nebo nahrát hlasový záznam.'
-  },
-  calendar: {
-    title: 'Kalendář 📅',
-    text: 'Plánuj události, schůzky a připomínky. Vše co si přidáš tady uvidíš i na domovské obrazovce.'
-  },
-  goals: {
-    title: 'Cíle 🌟',
-    text: 'Napiš svoji velkou životní vizi a rozděl ji na konkrétní cíle. Každý cíl propoj s návyky a uvidíš jak se každý den posouvat dál.'
-  },
-  cooking: {
-    title: 'Vaření 🍳',
-    text: 'Řekni mi co chceš vařit a já ti navrhnu recept s ingrediencemi. Recept si ulož a ingredience přidej jedním kliknutím do nákupního seznamu.'
-  },
-  shopping: {
-    title: 'Nákupy 🛒',
-    text: 'Nákupní seznam který se sám plní z receptů. Přidej položky ručně nebo nechej recept přidat ingredience automaticky. Sdílej seznam s rodinou.'
-  },
-  mealplan: {
-    title: 'Jídelníček 🍽️',
-    text: 'Naplánuj jídla na celý týden — snídaně, obědy i večeře. Vyber z uložených receptů a jedním kliknutím přidej všechny ingredience do nákupu.'
-  },
-
-  avatar: {
-    title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return 'Tvůj společník ⭐';}})()}`,
-    text: 'Tady si promluvíme. Zeptej se mě na cokoliv — cíle, recepty, jak se ti daří. Čím víc mi řekneš, tím lépe ti poradím. Můžeš i nahrát hlasový vzkaz.'
-  }
+// Texty kroků: tour.<modul>.t / tour.<modul>.x
+const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan']
+  .map(k => [k, {title: t('tour.' + k + '.t'), text: t('tour.' + k + '.x')}]));
+TOUR_MODULES.avatar = {
+  title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return t('tour.avatar.t');}})()}`,
+  text: t('tour.avatar.x')
 };
 
 // Spustit uvítací tour pro nového uživatele
@@ -14540,7 +14502,7 @@ function tourActive() {
 function startWelcomeTour() {
   _tourPlanned = false;
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
-  const name = prof?.prezdivka || prof?.nickname || 'příteli';
+  const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
 
   const modal = document.createElement('div');
   modal.id = 'tour-welcome';
@@ -14548,18 +14510,18 @@ function startWelcomeTour() {
   modal.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:360px;text-align:center">
       <div style="font-size:52px;margin-bottom:12px">${av.emoji}</div>
-      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700;margin-bottom:8px">Vítej, ${esc(name)}!</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700;margin-bottom:8px">${tH('tour.hello',{name})}</div>
       <div style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px">
-        Jsem <strong>${av.name}</strong>, tvůj osobní společník v LifePocket.
+        ${tH('tour.iam1')} <strong>${av.name}</strong>${tH('tour.iam2')}
       </div>
       <div style="font-size:14px;color:var(--text3);line-height:1.6;margin-bottom:24px">
-        Jsem tady vždy když mě budeš potřebovat — pomůžu ti s cíli, recepty, návyky i poznámkami. Chceš si se mnou projít co všechno LifePocket umí?
+        ${tH('tour.intro')}
       </div>
       <button onclick="startModuleTour()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer;margin-bottom:10px">
-        🗺️ Ukáž mi co umíš!
+        ${tH('tour.start')}
       </button>
       <button onclick="dismissTour()" style="width:100%;background:none;border:1px solid var(--border);border-radius:12px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text3);cursor:pointer">
-        Prozkoumám sám, díky
+        ${tH('tour.skip')}
       </button>
     </div>`;
   document.body.appendChild(modal);
@@ -14613,8 +14575,8 @@ function showTourStep() {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:12px;color:var(--text3)">${_tourStep + 1} / ${steps.length}</div>
         <div style="display:flex;gap:8px">
-          <button onclick="dismissTour()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text3);cursor:pointer">Přeskočit</button>
-          <button onclick="nextTourStep()" style="background:var(--accent);border:none;border-radius:8px;padding:8px 18px;font-family:'Crimson Pro',serif;font-size:14px;color:#1a1a1a;font-weight:700;cursor:pointer">${_tourStep + 1 < steps.length ? 'Další →' : '🎉 Hotovo!'}</button>
+          <button onclick="dismissTour()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text3);cursor:pointer">${tH('nt.skip')}</button>
+          <button onclick="nextTourStep()" style="background:var(--accent);border:none;border-radius:8px;padding:8px 18px;font-family:'Crimson Pro',serif;font-size:14px;color:#1a1a1a;font-weight:700;cursor:pointer">${_tourStep + 1 < steps.length ? tH('tour.next') : tH('tour.done')}</button>
         </div>
       </div>
     </div>`;
@@ -14634,7 +14596,7 @@ function finishTour() {
   sp('dashboard');
 
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
-  const name = prof?.prezdivka || prof?.nickname || 'příteli';
+  const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
   setTimeout(() => {
     document.getElementById('tour-done')?.remove();
     const done = document.createElement('div');
@@ -14643,10 +14605,10 @@ function finishTour() {
     done.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:340px;text-align:center">
         <div style="font-size:48px;margin-bottom:12px">🎉</div>
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">To je vše, ${esc(name)}!</div>
-        <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px">Teď víš co LifePocket umí. Kdykoliv budeš chtít průvodce znovu, najdeš ho v ⚙️ Nastavení.</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700;margin-bottom:10px">${tH('tour.finT',{name})}</div>
+        <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px">${tH('tour.finX')}</div>
         <button onclick="closeTourDone()" style="width:100%;background:var(--accent);border:none;border-radius:12px;padding:13px;font-family:'Crimson Pro',serif;font-size:16px;color:#1a1a1a;font-weight:700;cursor:pointer">
-          Jdeme na to! 💪
+          ${tH('tour.go')}
         </button>
       </div>`;
     document.body.appendChild(done);
