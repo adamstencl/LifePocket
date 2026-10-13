@@ -2474,11 +2474,11 @@ let editingEventId = null;
 let calFilter='all';
 
 const EV_ICONS={birthday:'🎂',event:'📌'};
-const EV_LABELS={birthday:'Narozeniny',event:'Událost'};
+const EV_LABELS={birthday:'cal.type.birthday',event:'cal.type.event'}; // klíče i18n
 // Vrátí ikonu i pro vlastní typy (hasOwnProperty kvůli prototypovým vlastnostem jako 'constructor')
 function getEvIcon(type){return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||'📌';}
 // Vrátí popisek i pro vlastní typy
-function getEvLabel(type){return Object.prototype.hasOwnProperty.call(EV_LABELS,type)?EV_LABELS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.label)||type||'Událost';}
+function getEvLabel(type){return Object.prototype.hasOwnProperty.call(EV_LABELS,type)?t(EV_LABELS[type]):((prof.customEvTypes||[]).find(x=>x.key===type)?.label)||type||t('cal.type.event');}
 // Typ narozenin nemá čas ani datum konce
 const evHasTime=t=>t!=='birthday';
 const evHasEnd =t=>t==='event';
@@ -2524,7 +2524,7 @@ function renderCal(){
   // Tlačítko migrace osobních událostí do sdíleného kalendáře
   const migrBtn=document.getElementById('cal-migrate-btn');
   if(migrBtn) migrBtn.style.display=(isCalShared()&&events.length>0)?'':'none';
-  if(migrBtn) migrBtn.textContent=`📤 Přesunout do sdíleného (${events.length})`;
+  if(migrBtn) migrBtn.textContent=t('cal.migrateBtn',{n:events.length});
   renderEvList();
 }
 
@@ -2570,7 +2570,7 @@ function renderEvList(){
     const types=[...new Set(allEvents.map(e=>e.type||'event'))];
     if(types.length>1){
       let fb='<div class="cal-filter-chips">';
-      fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">Vše <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
+      fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">'+tH('cal.all')+' <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
         fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(getEvIcon(t))+' '+esc(getEvLabel(t))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
@@ -2585,7 +2585,7 @@ function renderEvList(){
 
   const filtered=calFilter==='all'?allEvents:allEvents.filter(e=>(e.type||'event')===calFilter);
   if(!filtered.length){
-    container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">'+(calFilter==='all'?'Žádné události v příštích 14 dnech':'Žádné události tohoto typu v příštích 14 dnech')+'</div>';
+    container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">'+(calFilter==='all'?tH('cal.none14'):tH('cal.noneType14'))+'</div>';
     return;
   }
   container.innerHTML=filtered.map(ev=>{
@@ -2593,10 +2593,10 @@ function renderEvList(){
     return '<div class="ev-card">'
       +'<div class="ev-icon">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div class="ev-info">'
-      +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">👨‍👩‍👧 sdílené</span>':'')+'</div>'
+      +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">'+tH('cal.sharedBadge')+'</span>':'')+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
         ?fmtDate(ev._date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
-        :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+'</div>'
+        :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
       +'<button class="ev-del" data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
@@ -2854,7 +2854,7 @@ function saveHabitOrder(ids){
 
 window.migrateCalEvents = async function() {
   if(!isCalShared()||!events.length) return;
-  if(!confirm(`Přesunout ${events.length} osobních událostí do sdíleného kalendáře?`)) return;
+  if(!confirm(t('cal.migrateQ',{n:events.length}))) return;
   let ok=0, firstName='';
   const fid=familyId;
   for(const ev of events) {
@@ -2868,7 +2868,7 @@ window.migrateCalEvents = async function() {
     } catch(e) { console.warn('migrate err', e?.code||e?.name); }
   }
   if(ok) logGroupActivity(fid, 'cal', 'add', firstName, ok);
-  toast(`✓ ${ok} událostí přesunuto do sdíleného kalendáře`);
+  toast(t('cal.migrated',{n:ok}));
 };
 window.calDayClick=(ds)=>{
   // Najdi události pro tento den
@@ -2885,7 +2885,7 @@ window.calDayClick=(ds)=>{
     selEvType_val='event';
     renderEvTypeButtons();
     selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
-    document.getElementById('m-event').querySelector('.mtitle').textContent='📅 Nová událost';
+    document.getElementById('m-event').querySelector('.mtitle').textContent=t('cal.newTitle');
     updateEvShareUI(false);
     om('m-event');
     setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
@@ -2903,7 +2903,7 @@ function showDayEventsModal(ds, dayEvs) {
       +'<div style="font-size:22px">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div style="flex:1">'
       +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · každý rok':'')+(author?' · od '+esc(author):'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
       +'</div>'
       +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
       +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
@@ -2916,8 +2916,8 @@ function showDayEventsModal(ds, dayEvs) {
     <div class="mtitle">📅 ${dateLabel}</div>
     <div style="margin-bottom:16px">${evHtml}</div>
     <div class="macts">
-      <button class="btn-s" onclick="document.getElementById('m-day-events').remove()">Zavřít</button>
-      <button class="btn-p" onclick="addEventForDay('${ds}')">+ Přidat další</button>
+      <button class="btn-s" onclick="document.getElementById('m-day-events').remove()">${tH('common.close')}</button>
+      <button class="btn-p" onclick="addEventForDay('${ds}')">${tH('cal.addMore')}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -2934,7 +2934,7 @@ window.addEventForDay = (ds) => {
   selEvType_val = 'event';
   renderEvTypeButtons();
   selEvType('event', document.querySelector('.ev-type-btn[data-t="event"]'));
-  document.getElementById('m-event').querySelector('.mtitle').textContent = '📅 Nová událost';
+  document.getElementById('m-event').querySelector('.mtitle').textContent = t('cal.newTitle');
   updateEvShareUI(false);
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
@@ -2958,7 +2958,7 @@ window.openEditEvent = function(ev) {
   if(evHasEnd(selEvType_val)) {
     const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = ev.dateEnd || '';
   }
-  document.getElementById('m-event').querySelector('.mtitle').textContent = '✏️ Upravit událost';
+  document.getElementById('m-event').querySelector('.mtitle').textContent = t('cal.editTitle');
   updateEvShareUI(!!(ev.shared));
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
@@ -2986,8 +2986,8 @@ function renderEvTypeButtons(){
   const custom=prof.customEvTypes||[];
   let html='';
   // Základní typy
-  html+='<button class="ev-type-btn'+(selEvType_val==='event'?' sel':'')+'" data-t="event" onclick="selEvType(\'event\',this)">📌 Událost</button>';
-  html+='<button class="ev-type-btn'+(selEvType_val==='birthday'?' sel':'')+'" data-t="birthday" onclick="selEvType(\'birthday\',this)">🎂 Narozeniny</button>';
+  html+='<button class="ev-type-btn'+(selEvType_val==='event'?' sel':'')+'" data-t="event" onclick="selEvType(\'event\',this)">📌 '+tH('cal.type.event')+'</button>';
+  html+='<button class="ev-type-btn'+(selEvType_val==='birthday'?' sel':'')+'" data-t="birthday" onclick="selEvType(\'birthday\',this)">🎂 '+tH('cal.type.birthday')+'</button>';
   // Vlastní typy
   for(const ct of custom){
     html+='<button class="ev-type-btn'+(selEvType_val===ct.key?' sel':'')+'" data-t="'+esc(ct.key)+'" data-a0="'+esc(ct.key)+'" onclick="selEvType(this.dataset.a0,this)">'
@@ -2996,7 +2996,7 @@ function renderEvTypeButtons(){
       +'</button>';
   }
   // Přidat typ
-  html+='<button class="ev-type-btn ev-type-add" onclick="addCustomEvType()">＋ Typ</button>';
+  html+='<button class="ev-type-btn ev-type-add" onclick="addCustomEvType()">'+tH('cal.addType')+'</button>';
   row.innerHTML=html;
 }
 window.addCustomEvType=()=>{
@@ -3007,8 +3007,8 @@ window.addCustomEvType=()=>{
   form.id='ev-ctype-form';
   form.style.cssText='display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;width:100%';
   form.innerHTML='<input id="ev-ctype-emoji" class="finp" placeholder="😀" maxlength="2" style="width:58px;text-align:center;font-size:18px">'
-    +'<input id="ev-ctype-label" class="finp" placeholder="Název kategorie…" maxlength="25" style="flex:1;min-width:110px" onkeydown="if(event.key===\'Enter\')confirmCustomEvType()">'
-    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="confirmCustomEvType()">Přidat</button>'
+    +'<input id="ev-ctype-label" class="finp" placeholder="'+tH('cal.catPh')+'" maxlength="25" style="flex:1;min-width:110px" onkeydown="if(event.key===\'Enter\')confirmCustomEvType()">'
+    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="confirmCustomEvType()">'+tH('kc.add')+'</button>'
     +'<button class="btn-s" style="padding:6px 10px;font-size:13px" onclick="document.getElementById(\'ev-ctype-form\').remove()">✕</button>';
   row.after(form);
   setTimeout(()=>document.getElementById('ev-ctype-emoji')?.focus(),50);
@@ -3019,20 +3019,20 @@ window.confirmCustomEvType=async()=>{
   const labelInp=document.getElementById('ev-ctype-label');
   if(!emojiInp||!labelInp)return;
   const emoji=emojiInp.value.trim()||'📌';
-  if(emoji.length>2){toast('⚠️ Emoji smí mít max 2 znaky');return;}
+  if(emoji.length>2){toast(t('cal.emojiMax'));return;}
   // Ořez délky; escape se provádí při renderu
   const label=cutName(labelInp.value,25);
-  if(!label){toast('⚠️ Zadej název kategorie');return;}
+  if(!label){toast(t('cal.catReq'));return;}
   const key='c_'+Date.now().toString(36);
   const customEvTypes=[...(prof.customEvTypes||[]),{key,emoji,label}];
   prof.customEvTypes=customEvTypes;
   await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
   document.getElementById('ev-ctype-form')?.remove();
   renderEvTypeButtons();
-  toast('✓ Kategorie "'+label+'" přidána');
+  toast(t('cal.catAdded',{name:label}));
 };
 window.delCustomEvType=async(key)=>{
-  if(!CU||!confirm('Smazat tuto kategorii?'))return;
+  if(!CU||!confirm(t('cal.catDelQ')))return;
   const customEvTypes=(prof.customEvTypes||[]).filter(t=>t.key!==key);
   prof.customEvTypes=customEvTypes;
   await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
@@ -3060,8 +3060,8 @@ window.saveEvent=async()=>{
   const time=okEvTime(timeRaw)?timeRaw:null;
   const dateEnd=evHasEnd(selEvType_val)?(document.getElementById('ev-end-date-inp')?.value||null):null;
   if(!name){toast(t('common.nameReq'));return;}
-  if(!date){toast('⚠️ Vyber datum');return;}
-  if(dateEnd&&dateEnd<date){toast('⚠️ Datum konce musí být po začátku');return;}
+  if(!date){toast(t('cal.dateReq'));return;}
+  if(dateEnd&&dateEnd<date){toast(t('cal.endBad'));return;}
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
@@ -3081,7 +3081,7 @@ window.saveEvent=async()=>{
       }
     } catch(e) { toast('⚠️ '+userErr(e,'událost')); return; }
     editingEventId = null;
-    toast('✓ Událost upravena');
+    toast(t('cal.edited'));
   } else {
     if(selEvShare && selEvShareGroupId) {
       const gid=selEvShareGroupId;
@@ -3090,13 +3090,13 @@ window.saveEvent=async()=>{
     } else {
       await addDoc(collection(db,'users',CU.uid,'events'),ev);
     }
-    toast('✓ Událost přidána');
+    toast(t('cal.added'));
   }
   cm('m-event');
 };
 
 window.delEvent=async(id)=>{
-  if(!CU||!confirm('Smazat událost?'))return;
+  if(!CU||!confirm(t('cal.delQ')))return;
   const allGids = [familyId, ...extraGroupIds].filter(Boolean);
   // Sdílená událost: do aktivity jen její skupina (maže se naslepo ve všech)
   const famEv = getAllFamilyEvents().find(e => e.id === id);
@@ -3104,7 +3104,7 @@ window.delEvent=async(id)=>{
   delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
   await Promise.all(delPromises);
   if(famEv) logGroupActivity(famEv.groupId || familyId, 'cal', 'del', gaTitle(famEv.name||'', famEv.date ? fmtDate(famEv.date,'dm') : ''), 1, famEv.date ? {ref: famEv.date} : null);
-  toast('Smazáno');
+  toast(t('cal.deleted'));
 };
 
 function om(id){document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')}
@@ -3138,21 +3138,21 @@ function buildTimePicker(){
   for (let m = 0; m < 60; m += 5) mins += `<button type="button" class="tp-cell" data-m="${m}">${tpPad(m)}</button>`;
   el.innerHTML = `<div class="tp-sheet" role="dialog" aria-modal="true" aria-labelledby="tp-title">
     <div class="tp-head">
-      <div class="tp-title" id="tp-title">Vyber čas</div>
+      <div class="tp-title" id="tp-title">${tH('tp.title')}</div>
       <div class="tp-preview-row">
-        <button type="button" class="tp-step" data-step="-1" aria-label="O minutu méně">−1</button>
+        <button type="button" class="tp-step" data-step="-1" aria-label="${tH('tp.minLess')}">−1</button>
         <div class="tp-preview" id="tp-preview" aria-live="polite">--:--</div>
-        <button type="button" class="tp-step" data-step="1" aria-label="O minutu více">+1</button>
+        <button type="button" class="tp-step" data-step="1" aria-label="${tH('tp.minMore')}">+1</button>
       </div>
     </div>
     <div class="tp-cols">
-      <div class="tp-col tp-col-h"><div class="tp-lbl">Hodiny</div><div class="tp-grid tp-grid-h" role="group" aria-label="Hodiny">${hrs}</div></div>
-      <div class="tp-col tp-col-m"><div class="tp-lbl">Minuty</div><div class="tp-grid tp-grid-m" role="group" aria-label="Minuty">${mins}</div></div>
+      <div class="tp-col tp-col-h"><div class="tp-lbl">${tH('tp.hours')}</div><div class="tp-grid tp-grid-h" role="group" aria-label="${tH('tp.hours')}">${hrs}</div></div>
+      <div class="tp-col tp-col-m"><div class="tp-lbl">${tH('tp.minutes')}</div><div class="tp-grid tp-grid-m" role="group" aria-label="${tH('tp.minutes')}">${mins}</div></div>
     </div>
     <div class="tp-actions">
-      <button type="button" class="btn-s" data-tp="cancel">Zrušit</button>
-      <button type="button" class="btn-s" data-tp="clear">Vymazat</button>
-      <button type="button" class="btn-p" data-tp="ok">Nastavit</button>
+      <button type="button" class="btn-s" data-tp="cancel">${tH('common.cancel')}</button>
+      <button type="button" class="btn-s" data-tp="clear">${tH('tp.clear')}</button>
+      <button type="button" class="btn-p" data-tp="ok">${tH('tp.set')}</button>
     </div>
   </div>`;
   el.addEventListener('click', e => {
@@ -3199,7 +3199,7 @@ function openTimePicker(inp){
   tpH = m ? +m[1] : null; tpM = m ? +m[2] : null;
   // název dialogu podle popisku pole (textContent, ne HTML)
   const lbl = inp.closest('.fg')?.querySelector('.flbl')?.textContent?.trim();
-  tpEl.querySelector('#tp-title').textContent = lbl || 'Vyber čas';
+  tpEl.querySelector('#tp-title').textContent = lbl || t('tp.title');
   const clearable = !inp.required && inp.dataset.timeClear !== '0';
   tpEl.querySelector('[data-tp="clear"]').style.display = clearable ? '' : 'none';
   renderTimePicker();
