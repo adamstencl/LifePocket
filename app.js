@@ -4979,9 +4979,9 @@ function weeklyReportRules(maxSentences) {
 // Týdenní report — zavolej z chatu
 window.getRexWeeklyReport = async () => {
 
-  appendMsg('user', 'Dej mi týdenní report', '', '');
+  appendMsg('user', t('chat.wrAsk'), '', '');
   const uid = CU?.uid;
-  saveChatMessage('user','Dej mi týdenní report',false); // zapíše se spolu s odpovědí
+  saveChatMessage('user',t('chat.wrAsk'),false); // zapíše se spolu s odpovědí
   document.getElementById('typing')?.classList.add('active');
   scrollChat();
 
