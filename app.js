@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.50';
+const APP_VERSION = '4.51';
 const CHANGELOG = [
+  { v:'4.51', items:[
+    '👥 Přehlednější skupiny – emoji, šablony a volba hlavní skupiny'
+  ], en:[
+    '👥 Clearer groups – emoji, templates and choosing the main group'
+  ]},
   { v:'4.50', items:[
     '👥 Nákupní seznam teď můžeš sdílet v kterékoli skupině – rodina, spolubydlící, tým'
   ], en:[
@@ -3266,7 +3271,8 @@ window.addEventListener('popstate', () => {
   // 0. Výběr času leží nad ostatními modaly, zavírá se první
   if (timePickerOpen()) { closeTimePicker(); return; }
   // 1. Zavři otevřený modal
-  const openModal = document.querySelector('.moverlay.open, .modal-wrap.open');
+  // Poslední otevřený v DOM leží nahoře (stejný z-index); detail skupiny je vložený na začátek body (4.51)
+  const openModal = [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop();
   if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else cm(openModal.id); return; }
   // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
   if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
