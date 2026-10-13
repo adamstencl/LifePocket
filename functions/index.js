@@ -287,24 +287,35 @@ function isTimeMatch(h, m, timeStr) {
   return ((n - t + 1440) % 1440) < 5;
 }
 
+// options.quiet: souhrn (např. večerní ze skupiny) – při nahrazení starší notifikace se stejným tagem nezvoní znovu
+// a doručuje se s normální prioritou; ostatní (připomínky, události, změny) zvoní a vibrují podle nastavení telefonu
+// (silent:false, vibrate, renotify:true) s Urgency high (Android je doručí i v úsporném režimu).
 async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
+  const quiet = !!options.quiet;
   const notif = {
     title, body,
     icon: 'https://lifepocket.app/icon-192.png',
     badge: 'https://lifepocket.app/icon-192.png',
-    tag, renotify: true,
+    tag, renotify: !quiet,
+    silent: false,
+    vibrate: [200, 100, 200],
   };
   if (options.data)    notif.data = options.data;
   if (options.actions?.length) { notif.actions = options.actions; notif.requireInteraction = true; }
-  // Top-level data (jen řetězce): SW z nich skládá tag, akce a data kliknutí, protože
-  // Firebase SDK je z webpush.notification do onBackgroundMessage nepředá
-  const data = {tag: String(tag)};
+  // Top-level data (jen řetězce): data kliknutí (sw.js je čte z FCM_MSG.data), titulek a text pro appku
+  // v popředí (onMessage) a pro SW, když payload nemá notification
+  const data = {tag: String(tag), title: String(title), body: String(body)};
   for (const [k, v] of Object.entries(options.data || {})) data[k] = String(v);
   if (options.actions?.length) data.actions = JSON.stringify(options.actions);
+  if (quiet) data.quiet = '1';
   await getMessaging().send({
     token,
     data,
-    webpush: { notification: notif, fcmOptions: {link: 'https://lifepocket.app/'} }
+    webpush: {
+      headers: {Urgency: quiet ? 'normal' : 'high'},
+      notification: notif,
+      fcmOptions: {link: 'https://lifepocket.app/'},
+    }
   });
   // Titulek ani text se neloguje (obsahuje jména, názvy návyků apod.)
   console.log('[LP] Push odeslan');
@@ -908,7 +919,7 @@ exports.sendScheduledNotifications = onSchedule(
             const byModule = new Map();
             for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
             if (mode === 'evening') {
-              pushes.push([`👨‍👩‍👧 Dnes ve skupině ${groupName}`, gnEveningBody(byModule), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}}]);
+              pushes.push([`👨‍👩‍👧 Dnes ve skupině ${groupName}`, gnEveningBody(byModule), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}, quiet: true}]);
             } else {
               for (const [mod, la] of byModule) {
                 if (mod === 'react') {
@@ -977,7 +988,7 @@ exports.sendScheduledNotifications = onSchedule(
           const body = total > 0
             ? `Čeká tě ${total} návyk${total === 1 ? '' : total < 5 ? 'y' : 'ů'} na dnes. Pojď na to! ☀️`
             : 'Nový den, nová šance. Otevři LifePocket a nastav si cíle! ☀️';
-          try { await push(`☀️ Dobré ráno, ${nickname}!`, body, 'morning'); }
+          try { await push(`☀️ Dobré ráno, ${nickname}!`, body, 'morning', {data: {open: 'habits'}}); }
           catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
         }
 
@@ -1000,7 +1011,7 @@ exports.sendScheduledNotifications = onSchedule(
             else if (done === total) body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
             else if (done === 0) body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
             else body = `Splnil${a} jsi ${done} z ${total} návyků. Ještě ${total - done} zbývají!`;
-            try { await push('🌙 Večerní shrnutí', body, 'evening'); }
+            try { await push('🌙 Večerní shrnutí', body, 'evening', {data: {open: 'habits'}}); }
             catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
           }
         }
@@ -1024,7 +1035,7 @@ exports.sendScheduledNotifications = onSchedule(
                 `${habit.emoji || '🔔'} ${habit.name}`,
                 `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
                 `habit-${habitDoc.id}`,
-                { data: {habitId: habitDoc.id, date: today}, actions: [{action:'done', title:'✅ Splněno'}] }
+                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title:'✅ Splněno'}] }
               );
             } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
@@ -1056,10 +1067,10 @@ exports.sendScheduledNotifications = onSchedule(
           if (!ev.date || ev.type !== 'birthday') continue;
           const bday = ev.date.slice(5);
           if (bday === todayMD) {
-            try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`); }
+            try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] bday push:`, e.message); }
           } else if (bday === tmrwMD) {
-            try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`); }
+            try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
           }
         }
@@ -1074,7 +1085,7 @@ exports.sendScheduledNotifications = onSchedule(
           const diffMin = Math.round((evTime - prague) / 60000);
           // Okno 5 minut = jeden běh cronu → upozornění jen jednou
           if (diffMin >= 58 && diffMin < 63) {
-            try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`); }
+            try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] event push:`, e.message); }
           }
         }
@@ -1660,4 +1671,118 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
 
   console.log(`[LP] rotateGroupCode uid=${uid} hotovo: dokumentů ${stats.docs}, delta ${stats.delta}, profilů ${swapped.length}, vráceno ${stats.reverted}`);
   return {code: newCode, oldRemoved: true};
+});
+
+// ── Restore Group — obnova opuštěné skupiny (4.47) ───────────────────────────
+// Když skupinu opustí všichni členové, dokument i data (nákupy, události…) zůstávají, jen k nim nikdo nemá
+// přístup (pravidla pouští jen členy). Volající, který skupinu založil (createdBy) nebo ji opustil
+// (users/{uid}/profile/main.formerGroups.{kód}, zapisuje klient při odchodu), ji tu vrátí:
+//  - bez gid: seznam takových skupin bez členů (max 20) s počty položek
+//  - s gid: v transakci ověří totéž, přidá volajícího jako správce a skupinu zapíše do profilu
+//    (familyId, pokud nemá platnou hlavní skupinu, jinak extraGroupIds).
+// Pravidla Firestore se nemění (Admin SDK). Ostatní se pak připojí kódem běžnou cestou.
+// Logy bez kódů skupin, názvů a jmen.
+const RESTORE_MAX = 20;
+const RESTORE_SCAN = 50;
+const RESTORE_COUNTS = [['shop', 'shopItems'], ['cal', 'events'], ['check', 'checklists'], ['pantry', 'pantry']];
+
+function isEmptyGroup(d) {
+  const m = d && d.members;
+  return !m || typeof m !== 'object' || Object.keys(m).length === 0;
+}
+// Kódy opuštěných skupin z profilu (klient píše jen vlastní profil → ověřit formát a omezit počet)
+function formerGroupIds(prof) {
+  const fg = prof && prof.formerGroups;
+  if (!fg || typeof fg !== 'object') return [];
+  return Object.keys(fg).filter(g => GROUP_ID_RE.test(g))
+    .sort((a, b) => (Number(fg[b]) || 0) - (Number(fg[a]) || 0)).slice(0, RESTORE_MAX);
+}
+function canRestore(d, uid, former, gid) {
+  return isEmptyGroup(d) && (d.createdBy === uid || former.includes(gid));
+}
+
+exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 60}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const uid = request.auth.uid;
+  const profRef = db.doc(`users/${uid}/profile/main`);
+  const rawGid = (request.data || {}).gid;
+
+  // (1) Seznam obnovitelných skupin
+  if (rawGid === undefined || rawGid === null || rawGid === '') {
+    try {
+      const ps = await profRef.get();
+      const former = formerGroupIds(ps.exists ? ps.data() : {});
+      const snaps = new Map();
+      // automatický single-field index na createdBy
+      const own = await db.collection('families').where('createdBy', '==', uid).limit(RESTORE_SCAN).get();
+      own.forEach(s => snaps.set(s.id, s));
+      const rest = former.filter(g => !snaps.has(g));
+      if (rest.length) (await db.getAll(...rest.map(g => db.doc(`families/${g}`)))).forEach(s => { if (s.exists) snaps.set(s.id, s); });
+      const found = [...snaps.values()]
+        .filter(s => canRestore(s.data() || {}, uid, former, s.id))
+        .sort((a, b) => String((b.data() || {}).createdAt || '').localeCompare(String((a.data() || {}).createdAt || '')))
+        .slice(0, RESTORE_MAX);
+      const groups = await Promise.all(found.map(async (s) => {
+        const d = s.data() || {};
+        const counts = {};
+        await Promise.all(RESTORE_COUNTS.map(async ([key, col]) => {
+          try { counts[key] = (await s.ref.collection(col).count().get()).data().count; }
+          catch (e) { counts[key] = null; }
+        }));
+        return {
+          id: s.id,
+          name: String(d.groupName || '').slice(0, 40),
+          createdAt: typeof d.createdAt === 'string' ? d.createdAt.slice(0, 40) : null,
+          counts,
+        };
+      }));
+      console.log(`[LP] restoreGroup uid=${uid} seznam: ${groups.length}`);
+      return {groups};
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error(`[LP] restoreGroup uid=${uid} seznam selhal: ${e && e.code || ''}`);
+      throw new HttpsError('unavailable', 'Seznam skupin se teď nepodařilo načíst. Zkus to prosím znovu.');
+    }
+  }
+
+  // (2) Obnova jedné skupiny
+  const gid = String(rawGid);
+  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', 'Neplatný kód skupiny.');
+  const ref = db.doc(`families/${gid}`);
+  const tokenName = request.auth.token && typeof request.auth.token.name === 'string' ? request.auth.token.name : '';
+  try {
+    const res = await db.runTransaction(async (tx) => {
+      const gs = await tx.get(ref);
+      const ps = await tx.get(profRef);
+      if (!gs.exists) throw new HttpsError('not-found', 'Skupina už neexistuje.');
+      if (!ps.exists) throw new HttpsError('failed-precondition', 'Nejdřív dokonči nastavení aplikace.');
+      const d = gs.data() || {};
+      const p = ps.data() || {};
+      if (!isEmptyGroup(d)) throw new HttpsError('failed-precondition', 'Ve skupině už někdo je. Připoj se k ní kódem.');
+      if (!canRestore(d, uid, formerGroupIds(p), gid)) throw new HttpsError('permission-denied', 'Tuhle skupinu obnovit nemůžeš.');
+      // Hlavní skupina: jen když v profilu žádná platná není (neexistuje nebo v ní nejsem)
+      let asMain = true;
+      if (typeof p.familyId === 'string' && p.familyId !== gid && GROUP_ID_RE.test(p.familyId)) {
+        const ms = await tx.get(db.doc(`families/${p.familyId}`));
+        if (ms.exists && (ms.data().members || {})[uid]) asMain = false;
+      }
+      const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || 'Člen';
+      const avatar = typeof p.avatarId === 'string' && p.avatarId ? p.avatarId.slice(0, 40) : 'rex';
+      tx.update(ref, new FieldPath('members', uid), {name, avatar, joinedAt: new Date().toISOString(), role: 'admin'});
+      const upd = asMain
+        ? ['familyId', gid]
+        : ['extraGroupIds', FieldValue.arrayUnion(gid)];
+      if (p.formerGroups && typeof p.formerGroups === 'object' && Object.prototype.hasOwnProperty.call(p.formerGroups, gid)) {
+        upd.push(new FieldPath('formerGroups', gid), FieldValue.delete());
+      }
+      tx.update(profRef, ...upd);
+      return {asMain, groupName: String(d.groupName || '').slice(0, 40)};
+    });
+    console.log(`[LP] restoreGroup uid=${uid} obnoveno (${res.asMain ? 'hlavní' : 'vedlejší'})`);
+    return {gid, asMain: res.asMain, groupName: res.groupName};
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error(`[LP] restoreGroup uid=${uid} obnova selhala: ${e && e.code || ''}`);
+    throw new HttpsError('unavailable', 'Skupinu se teď nepodařilo obnovit. Zkus to prosím znovu.');
+  }
 });

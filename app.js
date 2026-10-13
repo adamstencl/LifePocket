@@ -27,6 +27,7 @@ const testPushFn=httpsCallable(functions,'testPush');
 const deleteAccountFn=httpsCallable(functions,'deleteAccount');
 // Kopie velké skupiny může trvat déle než výchozích 70 s (funkce má limit 300 s)
 const rotateGroupCodeFn=httpsCallable(functions,'rotateGroupCode',{timeout:300000});
+const restoreGroupFn=httpsCallable(functions,'restoreGroup',{timeout:120000}); // obnova opuštěné skupiny (4.47)
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 // Mazání účtu: během něj neběží AI ani zápisy na pozadí (viz sekce ÚČET)
 let _accDeleting=false, _accDeleted=false, _accStopped=false; // _accStopped: listenery zastavené (po chybě obnoví reload)
@@ -47,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.46';
+const APP_VERSION = '4.47';
 const CHANGELOG = [
+  { v:'4.47', items:[
+    '👨‍👩‍👧 Spolehlivější zakládání skupin a připojení kódem (opraví i spletené znaky B/8, S/5)',
+    '📥 Při odchodu ze skupiny si můžeš nechat kopii sdíleného obsahu, opuštěnou skupinu jde obnovit',
+    '🔔 Upozornění zvoní a vibrují podle telefonu a otevřou přímo návyk nebo kalendář'
+  ], en:[
+    '👨‍👩‍👧 More reliable group creation and joining by code (also fixes mixed-up B/8, S/5)',
+    '📥 When leaving a group you can keep a copy of the shared content, and an abandoned group can be restored',
+    '🔔 Notifications ring and vibrate as set on your phone and open the habit or calendar directly'
+  ]},
   { v:'4.46', items:[
     '🌍 Přesnější data a tvary slov (1 den, 2 dny, 5 dní) a lepší angličtina'
   ], en:[
@@ -936,7 +946,9 @@ function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.roun
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
 // Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
 // groupNotifSent (kurzory) píše jen server, groupFeedSeen jen markGroupFeedSeen (přesné pole) → stará kopie je nesmí vrátit
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;return c;}
+// Celoprofilový zápis bez polí, která spravují jiné cesty: tokeny, skupiny (familyId/extraGroupIds/formerGroups
+// – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -4428,8 +4440,10 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = [], tag = '')
       icon: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${icon}</text></svg>`,
       badge: `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>`,
       tag: tag || data.habitId || data.reminderId || 'lifepocket',
-      renotify: true,
+      // Zvuk a vibrace podle nastavení telefonu; souhrn ze skupiny (quiet) při nahrazení nezvoní znovu
+      renotify: data.quiet !== '1',
       silent: false,
+      vibrate: [200, 100, 200],
       data
     };
     // Vždy použij SW (povinné na Android/PWA), fallback na new Notification() na desktopu
@@ -4705,7 +4719,7 @@ function checkPerHabitReminders() {
       `${h.emoji} Připomínka: ${h.name}`,
       `${name}, ještě jsi dnes nesplnil${prof?.gender === 'f' ? 'a' : ''} "${h.name}". Teď je správný čas! 💪`,
       av?.emoji || h.emoji,
-      {habitId: h.id, date: today},
+      {habitId: h.id, date: today, open: 'habit'},
       [{action: 'done', title: '✅ Splněno'}],
       `habit-${h.id}`
     );
@@ -4727,7 +4741,7 @@ function sendMorningNotif() {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Dobré ráno, ${prof?.prezdivka||prof?.nickname || 'příteli'}!`, body, av?.emoji || '🌅', {}, [], 'morning');
+  sendNotif(`${av?.emoji || '⭐'} Dobré ráno, ${prof?.prezdivka||prof?.nickname || 'příteli'}!`, body, av?.emoji || '🌅', {open: 'habits'}, [], 'morning');
 }
 
 function sendEveningNotif() {
@@ -4748,7 +4762,7 @@ function sendEveningNotif() {
     body = tN('ln.evePart', total - done, {done, total, g: prof?.gender});
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙', {}, [], 'evening');
+  sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙', {open: 'habits'}, [], 'evening');
 }
 
 function checkAndRemindHabits() {
@@ -4789,7 +4803,7 @@ function checkAndRemindHabits() {
         `${h.emoji} ${h.name}`,
         'Dnes ještě nesplněno — klikni Splněno!',
         h.emoji,
-        {habitId: h.id, date: today},
+        {habitId: h.id, date: today, open: 'habit'},
         [{action: 'done', title: '✅ Splněno'}],
         `habit-${h.id}`
       );
@@ -4817,7 +4831,7 @@ function checkBirthdayNotifs() {
         const key = `lp_notif_bday_today_${ev.id}_${today}`;
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, '1');
-          sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂', {}, [], `bday-${ev.id}`);
+          sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂', {open: 'cal'}, [], `bday-${ev.id}`);
         }
       }
       // 7 dní předem — porovnání MM-DD funguje i přes roční hranici
@@ -4851,7 +4865,7 @@ function checkEventReminders() {
       const key = `lp_notif_ev_${ev.id}_${today}`;
       if (!localStorage.getItem(key)) {
         localStorage.setItem(key, '1');
-        sendNotif(`📌 Za hodinu: ${ev.name}`, `${name}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, '📌', {}, [], `ev-${ev.id}-${today}`);
+        sendNotif(`📌 Za hodinu: ${ev.name}`, `${name}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, '📌', {open: 'cal'}, [], `ev-${ev.id}-${today}`);
       }
     }
   });
@@ -6569,33 +6583,79 @@ function genFamilyCode() {
   for (let i = 0; i < 6; i++) s += FAMILY_CODE_ALPHABET[rndIdx(FAMILY_CODE_ALPHABET.length)];
   return FAMILY_WORDS[rndIdx(FAMILY_WORDS.length)] + '-' + s;
 }
-function genLegacyFamilyCode() {
-  const w = FAMILY_WORDS[Math.floor(Math.random()*FAMILY_WORDS.length)];
-  const n = String(Math.floor(1000+Math.random()*9000));
-  return w+'-'+n;
-}
-// Založí dokument skupiny s novým kódem a vrátí kód (= ID dokumentu).
-// Přechod: dokud platí stará pravidla (jen WORD-NNNN), vrátí create permission-denied
-// a jednou se zkusí starý formát.
-// TODO: po nasazení nových firestore.rules fallback i genLegacyFamilyCode odstranit.
-async function createFamilyDoc(data) {
-  const code = genFamilyCode();
-  try {
-    await setDoc(doc(db,'families',code), {...data, code});
-    return code;
-  } catch(e) {
-    if(e?.code !== 'permission-denied') throw e;
-    console.warn('Nový kód skupiny odmítnut pravidly, zkouším starý formát');
-    const legacy = genLegacyFamilyCode();
-    await setDoc(doc(db,'families',legacy), {...data, code: legacy});
-    return legacy;
+// Kód z pole / odkazu: velká písmena, bez mezer, všechny druhy pomlček → '-', chybějící pomlčka za slovem,
+// u starého kódu WORD-NNNN písmena O/I/L místo číslic
+function normFamilyCode(raw) {
+  let s = String(raw ?? '').toUpperCase().replace(/[\s ​]+/g, '').replace(/[‐-―−_.]/g, '-').replace(/-+/g, '-');
+  const m = s.match(/^([A-Z]{4})-?([A-Z0-9]{4}|[A-Z0-9]{6})$/);
+  if(m && FAMILY_WORDS.includes(m[1])) {
+    const tail = m[2].length === 4 && /^[0-9OIL]{4}$/.test(m[2]) ? m[2].replace(/O/g, '0').replace(/[IL]/g, '1') : m[2];
+    s = m[1] + '-' + tail;
   }
+  return s.slice(0, 20);
+}
+// Tvar kódu pro hledání (přípona může obsahovat i záměnné znaky, které opraví familyCodeVariants)
+const FAMILY_CODE_LOOSE_RE = new RegExp('^(' + FAMILY_WORDS.join('|') + ')-[A-Z0-9]{6}$');
+function okFamilyCodeLoose(c) { return okFamilyCode(c) || FAMILY_CODE_LOOSE_RE.test(String(c ?? '')); }
+// Záměnné znaky při přepisu kódu z obrazovky; O/0 a I/L/1 v novém kódu nejsou, nahradí se podobnými
+const FAMILY_CODE_LOOKALIKE = {'8':'8B','B':'B8','5':'5S','S':'S5','2':'2Z','Z':'Z2','6':'6G','G':'G6','O':'QD','0':'QD','I':'JT7','L':'JT7','1':'JT7'};
+const FAMILY_CODE_MAX_VARIANTS = 48;
+// Možné správné kódy pro přepsaný kód (bez něj samotného), nejvýš FAMILY_CODE_MAX_VARIANTS
+function familyCodeVariants(code) {
+  const m = String(code ?? '').match(FAMILY_CODE_LOOSE_RE);
+  if(!m) return [];
+  let out = [m[1] + '-'];
+  for(const ch of code.slice(m[1].length + 1)) {
+    const opts = FAMILY_CODE_LOOKALIKE[ch] || ch;
+    const next = [];
+    for(const p of out) for(const o of opts) { if(next.length < 4096) next.push(p + o); }
+    out = next;
+  }
+  return out.filter(c => c !== code && FAMILY_CODE_RE.test(c)).slice(0, FAMILY_CODE_MAX_VARIANTS);
+}
+// Najde skupinu podle kódu; fuzzy = zkusí i záměnné znaky (jen ruční zadání). Vrací {code, snap} nebo null.
+async function findFamilyByCode(code, fuzzy) {
+  if(okFamilyCode(code)) {
+    const s = await getDoc(doc(db,'families',code));
+    if(s.exists()) return {code, snap: s};
+  }
+  if(!fuzzy) return null;
+  const vars = familyCodeVariants(code);
+  for(let i = 0; i < vars.length; i += 8) {
+    const res = await Promise.all(vars.slice(i, i + 8).map(c => getDoc(doc(db,'families',c)).then(s => s.exists() ? {code: c, snap: s} : null)));
+    const hit = res.find(Boolean);
+    if(hit) return hit;
+  }
+  return null;
+}
+// Promise s časovým limitem (chyba s kódem deadline-exceeded); původní operace běží dál
+function withTimeout(p, ms) {
+  let tm;
+  return Promise.race([p, new Promise((_, rej) => { tm = setTimeout(() => rej(Object.assign(new Error('timeout'), {code: 'deadline-exceeded'})), ms); })])
+    .finally(() => clearTimeout(tm));
+}
+// Založí dokument skupiny s novým kódem a vrátí kód (= ID dokumentu) až po potvrzení serverem:
+// zápis (setDoc čeká na server) + kontrolní čtení ze serveru, že skupina existuje a jsem v ní správce.
+// Při jakékoli chybě vyhodí výjimku a kód se nikde neukáže. Offline rovnou chyba (zápis by visel ve frontě).
+const FAMILY_CREATE_TIMEOUT_MS = 20000;
+async function createFamilyDoc(data) {
+  if(navigator.onLine === false) throw Object.assign(new Error('offline'), {code: 'unavailable'});
+  const code = genFamilyCode();
+  const ref = doc(db,'families',code);
+  await withTimeout(setDoc(ref, {...data, code}), FAMILY_CREATE_TIMEOUT_MS);
+  const snap = await withTimeout(getDoc(ref), FAMILY_CREATE_TIMEOUT_MS);
+  if(!snap.exists() || snap.metadata.fromCache || snap.data()?.members?.[CU.uid]?.role !== 'admin')
+    throw Object.assign(new Error('not confirmed'), {code: 'deadline-exceeded'});
+  return code;
+}
+function createFamilyErrMsg(e) {
+  return e?.code === 'deadline-exceeded' && navigator.onLine !== false ? t('grp.createTimeout') : t('grp.createFail', {err: userErr(e, 'založení skupiny')});
 }
 
 // presetName: pevný název (karta „Pozvat rodinu“); z inline onclick může přijít událost, proto typeof
 window.createFamily = async (presetName) => {
   if(!CU) return;
-  if(familyId) { toast('Už jsi ve skupině'); return; }
+  if(familyId) { toast(t('grp.already')); return; }
   const nameInp = document.getElementById('family-name-inp');
   const groupName = cutName(typeof presetName==='string' ? presetName : nameInp?.value, 40) || 'Moje skupina';
   const data = {
@@ -6604,16 +6664,17 @@ window.createFamily = async (presetName) => {
     shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
   };
   try {
-    const fid = await createFamilyDoc(data); // kód = ID
+    const fid = await createFamilyDoc(data); // kód = ID, potvrzený serverem
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: fid}, {merge:true}); // jen familyId, ať se nepřepíše zbytek profilu
     prof.familyId = fid;
     familyId = fid;
     subscribeFamily();
+    initPantry(); // zásoby přepnout z lokálních na skupinové
     renderFamilySettings();
-    toast('✅ Skupina vytvořena! Sdílej kód s partnerem.');
+    toast(t('grp.created'), 4000);
   } catch(e) {
     console.warn('createFamily selhalo', e?.code || e?.name);
-    toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
+    toast(createFamilyErrMsg(e), 5000);
   }
 };
 
@@ -6626,17 +6687,19 @@ window.showJoinFamily = () => {
 // Vrací true = připojeno, false = trvalé selhání (neplatný kód, plná, nenalezena), null = dočasná chyba (offline).
 window.joinFamily = async (codeArg) => {
   if(!CU) return false;
-  const raw = typeof codeArg === 'string' ? codeArg : document.getElementById('family-code-inp')?.value;
-  const code = String(raw ?? '').trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód (např. ADAM-K7M2QX)'); return false; }
+  const fromLink = typeof codeArg === 'string';
+  const typed = normFamilyCode(fromLink ? codeArg : document.getElementById('family-code-inp')?.value);
+  if(!okFamilyCodeLoose(typed)) { toast(t('grp.codeBad')); return false; }
   // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
-  if(code === familyId || extraGroupIds.includes(code)) { toast('Už jsi v této skupině'); return false; }
+  if(typed === familyId || extraGroupIds.includes(typed)) { toast(t('grp.already')); return false; }
   try {
-    const fSnap = await getDoc(doc(db,'families',code));
-    // Z odkazu (codeArg) = nejspíš změněný kód skupiny; z formuláře spíš překlep
-    if(!fSnap.exists()) { toast(typeof codeArg === 'string' ? '❌ Pozvánka už neplatí, požádej o novou' : '❌ Skupina nenalezena — zkontroluj kód (kód z pozvánky mohl správce změnit)', 4000); return false; }
-    const fData = fSnap.data();
-    if(Object.keys(fData.members||{}).length >= 6) { toast('❌ Skupina je plná'); return false; }
+    // Z odkazu (codeArg) = nejspíš změněný kód skupiny; z formuláře spíš překlep → zkusit záměnné znaky
+    const hit = await findFamilyByCode(typed, !fromLink);
+    if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
+    const code = hit.code, fData = hit.snap.data();
+    if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
+    if(code === familyId || extraGroupIds.includes(code)) { toast(t('grp.already')); return false; }
+    if(Object.keys(fData.members||{}).length >= 6) { toast(t('grp.full')); return false; }
     // Přidej sebe do skupiny jen vlastním klíčem (celá mapa z paměti by přepsala souběžné změny)
     await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
@@ -6648,10 +6711,11 @@ window.joinFamily = async (codeArg) => {
     familyId = code;
     const jf = document.getElementById('family-join-form'); if(jf) jf.style.display='none';
     subscribeFamily();
+    initPantry();
     renderFamilySettings();
-    toast('✅ Připojen k rodinné skupině!');
+    toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
     return true;
-  } catch(e) { toast('❌ '+userErr(e,'skupina')); return null; }
+  } catch(e) { toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null; }
 };
 
 // Skupiny, které uživatel právě sám opouští (aby se snapshot nesnažil o úklid souběžně)
@@ -6734,9 +6798,9 @@ window.inviteHintAction = async () => {
   if(familyData) window.shareGroupInvite(familyId);
 };
 
-window.leaveFamily = async () => {
-  if(!familyId || !confirm('Opustit rodinnou skupinu?')) return;
-  const fid = familyId;
+// Odchod z hlavní skupiny (po dialogu openLeaveGroup). Vrací true = odešel.
+async function leaveFamilyNow(fid) {
+  if(!fid || fid !== familyId) return false;
   _leavingGids.add(fid);
   try {
     // Nejdřív odebrat ze skupiny (ještě jako člen má právo zápisu), pak uklidit profil.
@@ -6747,6 +6811,7 @@ window.leaveFamily = async () => {
       await chLeaveAllInGroup(fid); // příspěvky ve společných výzvách také
       await updateDoc(doc(db,'families',fid), {[`members.${CU.uid}`]: deleteField()});
     }
+    rememberFormerGroup(fid);
     // Ze skupiny už jsem venku – lokální stav uklidit i když úklid profilu selže
     // (familyId v profilu pak při příštím startu uklidí samoúklid isRemovedFromGroup)
     let profOk = true;
@@ -6755,11 +6820,205 @@ window.leaveFamily = async () => {
     catch(e) { profOk = false; console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); }
     if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
     resetFamilyLocal();
+    initPantry(); // zpět na lokální zásoby
     renderAfterFamilyChange();
-    toast(profOk ? 'Opustil jsi skupinu' : 'Opustil jsi skupinu (profil se dorovná po připojení)');
-  } catch(e) { toast('❌ '+userErr(e,'odchod ze skupiny')); }
+    toast(t(profOk ? 'grp.leave.done' : 'grp.leave.doneProf'));
+    return true;
+  } catch(e) { toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
   finally { _leavingGids.delete(fid); }
+}
+window.leaveFamily = () => { if(familyId) openLeaveGroup(familyId); };
+
+// Zapamatuje si opuštěnou skupinu ve vlastním profilu (formerGroups.{kód} = čas, nejvýš 20 nejnovějších).
+// Podle toho funkce restoreGroup pozná bývalého člena; pravidla skupin se nemění.
+const FORMER_GROUPS_MAX = 20;
+function rememberFormerGroup(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  const fg = {...(prof.formerGroups && typeof prof.formerGroups === 'object' ? prof.formerGroups : {}), [gid]: Date.now()};
+  const patch = {[gid]: fg[gid]};
+  Object.keys(fg).sort((a, b) => (Number(fg[b]) || 0) - (Number(fg[a]) || 0)).slice(FORMER_GROUPS_MAX)
+    .forEach(k => { patch[k] = deleteField(); delete fg[k]; });
+  prof.formerGroups = fg;
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {formerGroups: patch}, {merge:true})
+    .catch(e => console.warn('[LP] formerGroups:', e?.code || e?.name));
+}
+
+// ── Odchod ze skupiny / zrušení (poslední člen) s volbou kopie sdíleného obsahu ──
+// Kopie běží PŘED odchodem (po odchodu už pravidla data nepustí) a čeká na potvrzení serveru.
+let _leaveBusy = false;
+const _leaveCopied = new Set(); // skupiny, z nichž se v této relaci už kopírovalo (opakovaný pokus o odchod nekopíruje znovu)
+function leaveSetStatus(txt, isErr) {
+  const st = document.getElementById('leave-st');
+  if(!st) return;
+  st.textContent = txt;
+  st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
+}
+window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById('m-leavegrp')?.remove(); };
+function openLeaveGroup(gid) {
+  if(!CU || _leaveBusy || !okFamilyCode(gid)) return;
+  const isMain = gid === familyId;
+  const gData = isMain ? familyData : extraGroupsData[gid];
+  if(!gData) return;
+  const name = cutName(gData.groupName, 40) || t('grp.defName');
+  const last = !Object.keys(gData.members || {}).some(u => u !== CU.uid);
+  const word = t('grp.leave.word');
+  const opt = (val, title, desc, checked) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer">
+      <input type="radio" name="leave-keep" value="${val}"${checked ? ' checked' : ''} style="margin-top:3px">
+      <span><span style="font-weight:600;color:var(--text1)">${title}</span>${desc ? `<br><span style="font-size:13px;color:var(--text3)">${desc}</span>` : ''}</span>
+    </label>`;
+  document.getElementById('m-leavegrp')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-leavegrp'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:440px">
+    <div class="mtitle">${tH(last ? 'grp.leave.titleLast' : 'grp.leave.title', {name})}</div>
+    <div style="font-size:14px;line-height:1.6;margin-bottom:12px;color:var(--text2)">${last
+      ? `<b style="color:var(--red)">${tH('grp.leave.last')}</b> ${tH('grp.leave.lastRestore')}`
+      : tH('grp.leave.info')}</div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px">${tH('grp.leave.keepQ')}</div>
+    ${opt('all', tH('grp.leave.optAll'), tH(isMain ? 'grp.leave.optAllD' : 'grp.leave.optAllCal'), true)}
+    ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD'), false)}
+    ${opt('none', tH('grp.leave.optNone'), '', false)}
+    ${last ? `<label style="display:block;font-size:14px;margin:10px 0 4px;color:var(--red)">${tH('grp.leave.typeLabel', {word})}</label>
+    <input class="finp" id="leave-confirm-inp" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:100%;box-sizing:border-box">` : ''}
+    <div id="leave-st" role="status" aria-live="polite" style="font-size:14px;margin-top:8px;min-height:1em"></div>
+    <div class="macts">
+      <button type="button" class="btn-s" id="leave-cancel" onclick="closeLeaveGroup()">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" id="leave-btn" data-a0="${esc(gid)}" style="background:var(--red);color:#fff" onclick="confirmLeaveGroup(this.dataset.a0)">${tH(last ? 'grp.leave.btnLast' : 'grp.leave.btn')}</button>
+    </div>
+  </div>`;
+  // Klik vedle okna: během kopie / odchodu nezavírat
+  m.addEventListener('click', e => { if(e.target === m) { e.stopPropagation(); window.closeLeaveGroup(); } });
+  new MutationObserver(() => {
+    if(m.classList.contains('open') || !m.isConnected) return;
+    if(_leaveBusy) m.classList.add('open'); else window.closeLeaveGroup();
+  }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  document.body.appendChild(m);
+}
+window.confirmLeaveGroup = async (gid) => {
+  if(!CU || _leaveBusy || !okFamilyCode(gid)) return;
+  const isMain = gid === familyId;
+  if(!isMain && !extraGroupIds.includes(gid)) { window.closeLeaveGroup(); return; }
+  const mode = document.querySelector('#m-leavegrp input[name="leave-keep"]:checked')?.value || 'all';
+  const inp = document.getElementById('leave-confirm-inp');
+  const word = t('grp.leave.word');
+  if(inp && inp.value.trim().toUpperCase() !== word.toUpperCase()) { leaveSetStatus(t('grp.leave.typeErr', {word}), true); inp.focus(); return; }
+  const btn = document.getElementById('leave-btn'), cancel = document.getElementById('leave-cancel');
+  const busy = on => { _leaveBusy = on; if(btn) btn.disabled = on; if(cancel) cancel.disabled = on; };
+  busy(true);
+  let left = false;
+  try {
+    if(mode !== 'none' && !_leaveCopied.has(gid)) {
+      leaveSetStatus(t('grp.leave.copying'));
+      try {
+        const n = await copyGroupToPersonal(gid, mode);
+        _leaveCopied.add(gid);
+        if(n) toast(tN('grp.leave.copied', n), 4000);
+      } catch(e) {
+        console.warn('[LP] kopie skupiny:', e?.code || e?.name);
+        leaveSetStatus(t('grp.leave.copyFail', {err: userErr(e, 'kopie skupiny')}), true);
+        return;
+      }
+    }
+    leaveSetStatus(t('grp.leave.leaving'));
+    left = isMain ? await leaveFamilyNow(gid) : await leaveExtraGroupNow(gid);
+    if(!left) leaveSetStatus('');
+  } finally {
+    busy(false);
+    if(left) { document.getElementById('m-leavegrp')?.remove(); _leaveCopied.delete(gid); }
+  }
 };
+
+// Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
+// Hlavní skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby; vedlejší: události.
+// Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
+async function copyGroupToPersonal(gid, mode) {
+  const uid = CU.uid;
+  const isMain = gid === familyId;
+  const gData = (isMain ? familyData : extraGroupsData[gid]) || {};
+  const src = cutName(gData.groupName, 40) || gid;
+  const mine = x => mode === 'all' || (x && x.addedBy === uid);
+  const now = new Date().toISOString();
+  const writes = []; // [ref, data]
+  let n = 0;
+  // Události (kalendář): stejné pole jako osobní události, bez příznaků skupiny
+  if(gData.shareCal) {
+    const sn = await getDocs(collection(db,'families',gid,'events'));
+    sn.docs.forEach(d => {
+      const e = d.data() || {};
+      if(!mine(e) || !e.name || !e.date) return;
+      const {shared, groupId, ...ev} = e;
+      writes.push([doc(collection(db,'users',uid,'events')), {...ev, copiedFrom: src}]);
+    });
+  }
+  if(isMain) {
+    // Nákupy: jen nekoupené (koupené by osobní seznam zahltily)
+    if(gData.shareShop) {
+      const sn = await getDocs(collection(db,'families',gid,'shopItems'));
+      sn.docs.forEach(d => {
+        const it = d.data() || {};
+        if(it.done || !it.name || !mine(it)) return;
+        writes.push([doc(collection(db,'users',uid,'shopItems')),
+          {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
+      });
+    }
+    // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → přeskočit; cizí jen při 'all'
+    if(gData.shareChecklist !== false) {
+      const sn = await getDocs(collection(db,'families',gid,'checklists'));
+      const ownIds = new Set(checklists.map(c => c.id));
+      sn.docs.forEach(d => {
+        const l = d.data() || {};
+        const own = l.owner === uid;
+        if(own ? ownIds.has(d.id) : mode !== 'all') return;
+        const id = own ? d.id : genId();
+        writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items: Array.isArray(l.items) ? l.items : [], shared: false, createdAt: Date.now(), copiedFrom: src}]);
+      });
+    }
+  }
+  // Zápis po dávkách (limit 500 operací); čeká na potvrzení serveru
+  for(let i = 0; i < writes.length; i += 400) {
+    const b = writeBatch(db);
+    writes.slice(i, i + 400).forEach(([ref, data]) => b.set(ref, data));
+    await b.commit();
+  }
+  n += writes.length;
+  if(isMain && mode === 'all') {
+    // Jídelníček: doplní jen prázdná políčka osobního plánu (vlastní plán se nepřepíše)
+    if(gData.shareMeal) {
+      const ms = await getDoc(doc(db,'families',gid,'mealplan','week'));
+      const fam = ms.exists() ? normMealPlan(ms.data()) : {};
+      const patch = {};
+      let filled = 0;
+      for(const [dk, day] of Object.entries(fam)) {
+        if(!/^d[0-6]$/.test(dk) || !day || typeof day !== 'object') continue;
+        for(const [mk, val] of Object.entries(day)) {
+          const v = String(val || '').trim().slice(0, 200);
+          if(!/^m[0-2]$/.test(mk) || !v || String(prof.mealPlan?.[dk]?.[mk] || '').trim()) continue;
+          (patch[dk] = patch[dk] || {})[mk] = v; filled++;
+        }
+      }
+      if(filled) {
+        await setDoc(doc(db,'users',uid,'profile','main'), {mealPlan: patch}, {merge:true});
+        prof.mealPlan = prof.mealPlan || {};
+        for(const [dk, day] of Object.entries(patch)) prof.mealPlan[dk] = {...(prof.mealPlan[dk] || {}), ...day};
+        n += filled;
+      }
+    }
+    // Zásoby: osobní zásoby jsou jen v tomto zařízení (lp_pantry); stejný název se nepřidá dvakrát
+    const ps = await getDocs(collection(db,'families',gid,'pantry'));
+    const local = lsGet('lp_pantry', []);
+    const have = new Set((Array.isArray(local) ? local : []).map(p => String(p?.name || '').trim().toLowerCase()));
+    const add = [];
+    ps.docs.forEach(d => {
+      const p = d.data() || {};
+      const key = String(p.name || '').trim().toLowerCase();
+      if(!key || have.has(key)) return;
+      have.add(key);
+      add.push({id: genId(), name: String(p.name), qty: p.qty ?? 1, unit: p.unit || 'ks', minQty: p.minQty ?? null, updatedAt: Date.now()});
+    });
+    if(add.length) { lsSave('lp_pantry', [...(Array.isArray(local) ? local : []), ...add]); n += add.length; }
+  }
+  return n;
+}
 
 // Bez parametru kopíruje kód hlavní skupiny, s parametrem kód zadané skupiny
 window.copyFamilyCode = (gid) => {
@@ -6802,7 +7061,7 @@ function capturePendingJoin() {
   try {
     const u = new URL(location.href);
     if(!u.searchParams.has('join')) return;
-    const code = String(u.searchParams.get('join') ?? '').trim().slice(0,20).toUpperCase();
+    const code = normFamilyCode(String(u.searchParams.get('join') ?? '').slice(0,40));
     u.searchParams.delete('join');
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
     if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({code, ts: Date.now()}));
@@ -6968,11 +7227,11 @@ window.createExtraGroup = async () => {
     document.getElementById('extra-group-form').style.display = 'none';
     if(inp) inp.value = '';
     renderFamilySettings();
-    toast('✅ Skupina "' + groupName + '" vytvořena! Kód: ' + code);
+    toast(t('grp.createdExtra', {name: groupName, code}), 5000);
   } catch(e) {
     extraGroupIds = prevIds;
     console.warn('createExtraGroup selhalo', e?.code || e?.name);
-    toast('❌ Nepodařilo se vytvořit skupinu, zkus to znovu');
+    toast(createFamilyErrMsg(e), 5000);
   }
 };
 // codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři.
@@ -6980,16 +7239,18 @@ window.createExtraGroup = async () => {
 window.joinExtraGroup = async (codeArg) => {
   if(!CU) return false;
   const inp = document.getElementById('extra-group-join-code');
-  const raw = typeof codeArg === 'string' ? codeArg : inp?.value;
-  const code = String(raw ?? '').trim().toUpperCase();
-  if(!okFamilyCode(code)) { toast('⚠️ Zadej platný kód skupiny (např. ADAM-K7M2QX)'); return false; }
-  if(extraGroupIds.includes(code) || code === familyId) { toast('Už jsi v této skupině'); return false; }
+  const fromLink = typeof codeArg === 'string';
+  const typed = normFamilyCode(fromLink ? codeArg : inp?.value);
+  if(!okFamilyCodeLoose(typed)) { toast(t('grp.codeBad')); return false; }
+  if(extraGroupIds.includes(typed) || typed === familyId) { toast(t('grp.already')); return false; }
   const prevIds = extraGroupIds;
   try {
-    const fSnap = await getDoc(doc(db,'families',code));
-    if(!fSnap.exists()) { toast(typeof codeArg === 'string' ? '❌ Pozvánka už neplatí, požádej o novou' : '❌ Skupina nenalezena — zkontroluj kód (kód z pozvánky mohl správce změnit)', 4000); return false; }
-    const fData = fSnap.data();
-    if(Object.keys(fData.members||{}).length >= 8) { toast('❌ Skupina je plná'); return false; }
+    const hit = await findFamilyByCode(typed, !fromLink);
+    if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
+    const code = hit.code, fData = hit.snap.data();
+    if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
+    if(extraGroupIds.includes(code) || code === familyId) { toast(t('grp.already')); return false; }
+    if(Object.keys(fData.members||{}).length >= 8) { toast(t('grp.full')); return false; }
     await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||'Já'), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
@@ -7001,20 +7262,23 @@ window.joinExtraGroup = async (codeArg) => {
     const gf = document.getElementById('extra-group-form'); if(gf) gf.style.display = 'none';
     if(inp) inp.value = '';
     renderFamilySettings();
-    toast('✅ Připojen ke skupině "' + (fData.groupName || code) + '"');
+    toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
     return true;
   } catch(e) {
     extraGroupIds = prevIds;
     console.warn('joinExtraGroup selhalo', e?.code || e?.name);
-    toast('❌ Nepodařilo se připojit ke skupině, zkus to znovu');
+    toast(t('grp.joinFail', {err: userErr(e,'skupina')}));
     return null;
   }
 };
-window.leaveExtraGroup = async (gid) => {
+window.leaveExtraGroup = (gid) => {
   // Hlavní skupinu opouští leaveFamily(), ne tahle funkce
   if(!gid) return;
   if(gid === familyId) { toast('Hlavní skupinu opustíš tlačítkem „Opustit skupinu“ v její kartě'); return; }
-  if(!confirm('Opustit skupinu?')) return;
+  openLeaveGroup(gid);
+};
+// Odchod z vedlejší skupiny (po dialogu openLeaveGroup). Vrací true = odešel.
+async function leaveExtraGroupNow(gid) {
   _leavingGids.add(gid);
   try {
     // Nejdřív odebrat ze skupiny (deleteField – merge by klíč nesmazal), pak profil
@@ -7024,12 +7288,15 @@ window.leaveExtraGroup = async (gid) => {
       await chLeaveAllInGroup(gid); // příspěvky ve společných výzvách také
       await updateDoc(doc(db,'families',gid), {[`members.${CU.uid}`]: deleteField()});
     }
-  } catch(e){ _leavingGids.delete(gid); toast('❌ Nepodařilo se opustit skupinu, zkus to znovu'); return; }
+  } catch(e){ _leavingGids.delete(gid); toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
+  rememberFormerGroup(gid);
   try {
     await dropExtraGroupLocal(gid);
-    toast('Skupina opuštěna');
-  } finally { _leavingGids.delete(gid); }
-};
+    toast(t('grp.leave.done'));
+  } catch(e) { console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); toast(t('grp.leave.doneProf')); }
+  finally { _leavingGids.delete(gid); }
+  return true;
+}
 
 // Zruší odběry a data vedlejší skupiny jen v paměti (profil nemění)
 function forgetExtraGroupLocal(gid) {
@@ -7504,8 +7771,13 @@ function renderFamilySettings() {
     if(noGroup) noGroup.style.display = 'block';
     if(groupView) groupView.style.display = 'none';
     // Hide extra groups section
+    // Přidané skupiny zůstávají vidět i bez hlavní (dřív zmizely z Nastavení a nešlo je opustit)
     const eg = document.getElementById('family-extra-groups');
-    if(eg) eg.innerHTML = '';
+    if(eg) {
+      eg.innerHTML = extraGroupIds.filter(gid => extraGroupsData[gid] && okFamilyCode(gid))
+        .map(gid => buildGroupCard(gid, extraGroupsData[gid], false)).join('') + restoreLinkHtml();
+      if(extraGroupIds.length) updateGroupFeedBadges();
+    }
     if(!timePickerOpen()) renderGroupNotifSettings();
     return;
   }
@@ -7530,14 +7802,98 @@ function renderFamilySettings() {
     +'<input class="finp" id="extra-group-name-inp" placeholder="Název skupiny (Kamarádi, Spolubydlící…)" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
     +'<button class="btn-p" onclick="createExtraGroup()" style="width:100%;margin-bottom:10px">Vytvořit skupinu</button>'
     +'<div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">— nebo připojit se kódem —</div>'
-    +'<input class="finp" id="extra-group-join-code" placeholder="ADAM-K7M2QX" maxlength="16" oninput="this.value=this.value.toUpperCase()" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
+    +'<input class="finp" id="extra-group-join-code" placeholder="ADAM-K7M2QX" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="margin-bottom:8px;width:100%;box-sizing:border-box;text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace">'
     +'<button class="btn-sv" onclick="joinExtraGroup()" style="width:100%">Připojit se →</button>'
     +'</div>'
     +'<button onclick="showExtraGroupForm()" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:\'Crimson Pro\',serif;font-size:14px;cursor:pointer">➕ Přidat skupinu</button>';
+  html += restoreLinkHtml();
 
   eg.innerHTML = html;
   updateGroupFeedBadges();
   if(!timePickerOpen()) renderGroupNotifSettings(); // sdílené moduly se mohly změnit
+}
+
+// ── Obnovit dřívější skupinu (restoreGroup) ──
+// Skupina bez členů (všichni odešli) zůstává v databázi; zakladatel nebo bývalý člen (formerGroups v profilu)
+// ji přes funkci vrátí a stane se správcem. Ostatní se pak připojí kódem.
+let _restoreBusy = false;
+function restoreSetBody(html) { const b = document.getElementById('restore-body'); if(b) b.innerHTML = html; }
+window.closeRestoreGroup = () => { if(_restoreBusy) return; document.getElementById('m-restoregrp')?.remove(); };
+window.openRestoreGroup = async () => {
+  if(!CU || _restoreBusy) return;
+  document.getElementById('m-restoregrp')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-restoregrp'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal" style="max-width:440px">
+    <div class="mtitle">${tH('grp.restore.title')}</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:12px">${tH('grp.restore.desc')}</div>
+    <div id="restore-body" role="status" aria-live="polite" style="font-size:14px">${tH('grp.restore.loading')}</div>
+    <div class="macts"><button type="button" class="btn-s" id="restore-close" onclick="closeRestoreGroup()">${tH('common.close')}</button></div>
+  </div>`;
+  m.addEventListener('click', e => { if(e.target === m) { e.stopPropagation(); window.closeRestoreGroup(); } });
+  new MutationObserver(() => {
+    if(m.classList.contains('open') || !m.isConnected) return;
+    if(_restoreBusy) m.classList.add('open'); else window.closeRestoreGroup();
+  }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  document.body.appendChild(m);
+  try {
+    const res = await restoreGroupFn({});
+    const list = Array.isArray(res?.data?.groups) ? res.data.groups.filter(g => okFamilyCode(g?.id)) : [];
+    if(!list.length) { restoreSetBody(tH('grp.restore.none')); return; }
+    restoreSetBody(list.map(g => {
+      const c = g.counts || {};
+      const parts = [['🧺', c.shop], ['🗓️', c.cal], ['📋', c.check], ['🧊', c.pantry]]
+        .filter(([, x]) => Number.isFinite(x) && x > 0).map(([em, x]) => em + ' ' + tNH('grp.restore.items', x));
+      const created = g.createdAt ? tH('grp.restore.since', {date: fmtDate(new Date(g.createdAt), 'dmy')}) : '';
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-weight:600;color:var(--text1)">${esc(cutName(g.name, 40) || t('grp.defName'))} <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--text3)">${esc(g.id)}</span></div>
+        <div style="font-size:13px;color:var(--text3);margin:2px 0 8px">${[created, ...parts].filter(Boolean).join(' · ')}</div>
+        <button type="button" class="btn-sv restore-btn" data-a0="${esc(g.id)}" onclick="confirmRestoreGroup(this.dataset.a0)" style="width:100%">${tH('grp.restore.btn')}</button>
+      </div>`;
+    }).join(''));
+  } catch(e) {
+    console.warn('restoreGroup (seznam) selhalo', e?.code || e?.name);
+    restoreSetBody(tH('grp.restore.fail', {err: restoreErrText(e)}));
+  }
+};
+function restoreErrText(e) {
+  return ROT_SERVER_ERRS.includes(e?.code) && e?.message && !/^[a-z-]+$/i.test(e.message) ? String(e.message).slice(0, 200) : userErr(e, 'obnova skupiny');
+}
+window.confirmRestoreGroup = async (gid) => {
+  if(!CU || _restoreBusy || !okFamilyCode(gid)) return;
+  _restoreBusy = true;
+  document.querySelectorAll('#m-restoregrp .restore-btn, #restore-close').forEach(b => { b.disabled = true; });
+  const btn = document.querySelector('#m-restoregrp .restore-btn[data-a0="' + gid + '"]');
+  if(btn) btn.textContent = t('grp.restore.busy');
+  try {
+    const res = await restoreGroupFn({gid});
+    const d = res?.data || {};
+    if(d.gid !== gid) throw Object.assign(new Error(''), {code: 'functions/internal'});
+    // Lokálně přepnout: hlavní skupina (žádná platná nebyla), jinak vedlejší
+    if(d.asMain) {
+      if(familyId && familyId !== gid) resetFamilyLocal();
+      prof.familyId = gid; familyId = gid;
+      if(!unsubFamily) subscribeFamily();
+      initPantry();
+    } else if(!extraGroupIds.includes(gid)) {
+      extraGroupIds = [...extraGroupIds, gid]; prof.extraGroupIds = extraGroupIds;
+      subscribeExtraGroup(gid);
+    }
+    if(prof.formerGroups?.[gid]) { const fg = {...prof.formerGroups}; delete fg[gid]; prof.formerGroups = fg; }
+    renderAfterFamilyChange();
+    restoreSetBody(`<div>${tH('grp.restore.ok', {name: cutName(d.groupName, 40) || t('grp.defName')})}</div>
+      <div class="family-code-box" style="margin:12px 0"><div class="family-code">${esc(gid)}</div><div class="family-code-lbl">${tH('grp.restore.codeLbl')}</div></div>
+      <button type="button" class="btn-p" data-a0="${esc(gid)}" onclick="shareGroupInvite(this.dataset.a0)" style="width:100%">${tH('grp.restore.share')}</button>`);
+  } catch(e) {
+    console.warn('restoreGroup selhalo', e?.code || e?.name);
+    restoreSetBody(tH('grp.restore.fail', {err: restoreErrText(e)}));
+  } finally {
+    _restoreBusy = false;
+    const c = document.getElementById('restore-close'); if(c) c.disabled = false;
+  }
+};
+function restoreLinkHtml() {
+  return '<button type="button" onclick="openRestoreGroup()" style="display:block;margin:10px auto 0;background:none;border:none;color:var(--text3);text-decoration:underline;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">' + tH('grp.restore.link') + '</button>';
 }
 
 window.renameFamilyGroup = async () => {
@@ -9464,6 +9820,45 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
   if(document.getElementById('app')?.classList.contains('active')) consumePendingGrpFeed();
 });
 
+// Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
+let _pendingOpen = null;
+const OPEN_TARGETS = ['habit', 'habits', 'cal'];
+function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
+function captureOpenTargetLink() {
+  try {
+    const u = new URL(location.href);
+    const o = u.searchParams.get('open');
+    if(!OPEN_TARGETS.includes(o)) return;
+    const id = String(u.searchParams.get('id') ?? '');
+    ['open','id'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    _pendingOpen = {open: o, id: okNotifHabitId(id) ? id : null};
+  } catch(e) {}
+}
+captureOpenTargetLink();
+let _openBusy = false;
+async function consumePendingOpen() {
+  const p = _pendingOpen;
+  if(!p || !CU || !prof || _openBusy) return;
+  _pendingOpen = null;
+  _openBusy = true;
+  try {
+    if(p.open === 'cal') { window.sp('calendar'); return; }
+    // Návyky: počkat na první data (nejvýš 8 s), pak detail návyku, jinak seznam
+    await Promise.race([habitsReady, new Promise(r => setTimeout(r, 8000))]);
+    if(!CU) return;
+    if(p.open === 'habit' && p.id && habits.some(h => h.id === p.id)) window.openHabitDetail(p.id);
+    else window.sp('habits');
+  } catch(e) { console.warn('[LP] otevření z notifikace:', e?.name); }
+  finally { _openBusy = false; }
+}
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  const d = ev.data;
+  if(!d || d.type !== 'OPEN_TARGET' || !OPEN_TARGETS.includes(d.open)) return;
+  _pendingOpen = {open: d.open, id: okNotifHabitId(d.id) ? d.id : null};
+  if(document.getElementById('app')?.classList.contains('active')) consumePendingOpen();
+});
+
 // ── Nastavení → Upozornění ze skupin (profile/main.groupNotif) ──
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS ve functions/index.js
 const GROUP_NOTIF_DEFAULTS = {shop:'instant', cal:'instant', meal:'evening', check:'evening', pantry:'evening',
@@ -10562,6 +10957,7 @@ async function initApp(){
   else if(prof.extraGroupIds?.length){extraGroupIds=prof.extraGroupIds;for(const gid of extraGroupIds)subscribeExtraGroup(gid);}
   // Klepnutí na upozornění ze skupiny (appka byla zavřená) → feed „Co je nového“
   consumePendingGrpFeed();
+  consumePendingOpen(); // klepnutí na připomínku návyku / události → Návyky / Kalendář
   // Průvodce pro uživatele, kteří ho ještě neviděli (po onboardingu ho spouští finishOnboard)
   maybeStartTourOnInit();
   // Pozvánka do skupiny odkazem (?join=) – po changelogu, jen dotaz, nikdy automaticky
