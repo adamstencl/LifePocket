@@ -964,11 +964,11 @@ function safeImgSrc(v){const s=String(v??'');return s.startsWith('data:image/')?
 function lookupOr(o,k,fb){return Object.prototype.hasOwnProperty.call(o,k)?o[k]:fb;}
 // Čitelný popis frekvence návyku (objekt {type}, nebo starý string)
 function habitFreqLabel(f){
-  if(typeof f==='string') return f||'každý den';
-  if(!f||typeof f!=='object') return 'každý den';
-  if(f.type==='weekly') return (Number(f.times)||3)+'× týdně';
-  if(f.type==='days'){const dn=dowNames();return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(' ')||'každý den';}
-  return 'každý den';
+  if(typeof f==='string') return f||t('hb.daily');
+  if(!f||typeof f!=='object') return t('hb.daily');
+  if(f.type==='weekly') return t('hb.weekly',{n:Number(f.times)||3});
+  if(f.type==='days'){const dn=dowNames();return (Array.isArray(f.days)?f.days:[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(' ')||t('hb.daily');}
+  return t('hb.daily');
 }
 // AI: cíl jako celé číslo >= 1 (text "3×" → 3)
 function aiGoal(v){return Math.max(1,parseInt(v,10)||1);}
@@ -1471,9 +1471,9 @@ function habitDayLabel(){
   const today=toDS(new Date());
   const yesterday=toDS(new Date(Date.now()-86400000));
   const tomorrow=toDS(new Date(Date.now()+86400000));
-  if(habitDay===today)return'Dnes';
-  if(habitDay===yesterday)return'Včera';
-  if(habitDay===tomorrow)return'Zítra';
+  if(habitDay===today)return t('hb.today');
+  if(habitDay===yesterday)return t('hb.yesterday');
+  if(habitDay===tomorrow)return t('hb.tomorrow');
   return fmtDate(habitDay,'wShortDm');
 }
 
@@ -1644,14 +1644,14 @@ function buildHabitCard(h){
       const l=hLog(h.id+'_'+toDS(d));
       if(l&&l.done)weekDone++;
     }
-    weeklyStatus=`${weekDone}/${Number(h.freq.times)||3}× tento týden`;
+    weeklyStatus=tH('hb.thisWeek',{done:weekDone,n:Number(h.freq.times)||3});
   }
 
   const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
-  const freqLabel=freq.type==='daily'?'každý den'
-    :freq.type==='weekly'?`${freq.times||3}× týdně`
+  const freqLabel=freq.type==='daily'?tH('hb.daily')
+    :freq.type==='weekly'?tH('hb.weekly',{n:freq.times||3})
     :freq.type==='days'?(()=>{const dn=dowNames();return (freq.days||[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(', ');})()
-    :'každý den';
+    :tH('hb.daily');
 
   // Streak badge s milníky
   let streakBadge = '';
@@ -1668,7 +1668,7 @@ function buildHabitCard(h){
   }
   const streakHtml=(streak>0
     ? streakBadge
-    :(weeklyStatus||'<span style="color:var(--text3);font-size:11px">Začni dnes!</span>'))
+    :(weeklyStatus||`<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`))
     +`<span class="habit-freq-badge">${freqLabel}</span>`;
 
   // 7-day table
@@ -1724,7 +1724,7 @@ function buildHabitCard(h){
     controlHtml=`
       <div class="habit-counter">
         <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
-        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
           <div class="cnt-val cnt-clickable">${val}</div>
           <div class="cnt-goal">/ ${goal} ✎</div>
         </div>
@@ -1742,7 +1742,7 @@ function buildHabitCard(h){
   const hasZeroLog = log && !log.done && !log.failed && log.value===0;
   const badgeHtml = h.type==='count'
     ? `<span class="habit-done-badge" style="${hasZeroLog?'color:var(--red)':''}">${val} / ${goal}${cardDone?' ✓':hasZeroLog?' ✕':''}</span>`
-    : `<span class="habit-done-badge" style="${failed?'color:var(--red)':''}">${ done?'✓ Splněno':failed?'✕ Nesplněno':'Nesplněno'}</span>`;
+    : `<span class="habit-done-badge" style="${failed?'color:var(--red)':''}">${ done?tH('hb.done'):failed?tH('hb.failed'):tH('hb.notDone')}</span>`;
 
   const groupHabits=habits.filter(x=>( x.group||'day')===(h.group||'day')&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
   const hIdx=groupHabits.findIndex(x=>x.id===h.id);
@@ -1754,8 +1754,8 @@ function buildHabitCard(h){
         <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
         <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
       </div>
-      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="Zobrazit historii">${esc(h.emoji||'🎯')}</div>
-      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="Zobrazit historii">
+      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
+      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="${tH('hb.historyTitle')}">
         <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
@@ -1767,7 +1767,7 @@ function buildHabitCard(h){
         : h.type==='count'
           ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
-              <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="Klepni pro přímé zadání">
+              <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
                 <div class="cnt-val cnt-clickable">${val}</div>
                 <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
               </div>
@@ -1775,7 +1775,7 @@ function buildHabitCard(h){
             </div>`
           : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
-              ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?'Zrušit přeskočení':'Přeskočit dnes'}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?'⏭ Přeskočeno':'⏭'}</button>`:''}
+              ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</button>`:''}
             </div>`
       }
     </div>
@@ -1803,7 +1803,7 @@ function renderHabits(){
     return;
   }
   if(!activeHabits.length){
-    list.innerHTML='<div style="color:var(--text3);font-size:14px;padding:20px;text-align:center">Všechny návyky jsou archivovány. 📦</div>';
+    list.innerHTML=`<div style="color:var(--text3);font-size:14px;padding:20px;text-align:center">${tH('hb.allArchived')}</div>`;
     empty.style.display='none';
     requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
     return;
@@ -1811,9 +1811,9 @@ function renderHabits(){
   empty.style.display='none';
 
   const GROUPS=[
-    {id:'morning', emoji:'🌅', label:'Ráno'},
-    {id:'day',     emoji:'☀️', label:'Přes den'},
-    {id:'evening', emoji:'🌙', label:'Večer'},
+    {id:'morning', emoji:'🌅', label:t('hb.grp.morning')},
+    {id:'day',     emoji:'☀️', label:t('hb.grp.day')},
+    {id:'evening', emoji:'🌙', label:t('hb.grp.evening')},
   ];
 
   // Habits without group go to "day" by default
@@ -1879,7 +1879,7 @@ window.openHabitDetail = (hid) => {
     if(detailHabitId===hid&&body&&!document.getElementById('hd-hist-err')){
       const n=document.createElement('div'); n.id='hd-hist-err';
       n.style.cssText='font-size:12px;color:var(--text3);margin:0 0 8px';
-      n.textContent='Starší historie se nenačetla';
+      n.textContent=t('hd.histErr');
       body.prepend(n);
     }
   });
@@ -1955,10 +1955,10 @@ function renderHabitDetail(h) {
 
   const chartHtml = `
     <div class="hd-chart-wrap">
-      <div class="hd-section-title" style="margin-top:0">📈 Plnění po týdnech</div>
+      <div class="hd-section-title" style="margin-top:0">${tH('hd.byWeek')}</div>
       <div class="hd-streak-bar">
         ${weeks.map(w => `
-          <div class="hd-streak-col" title="${w.done}/${w.total} dní (${w.pct}%)">
+          <div class="hd-streak-col" title="${tH('hd.weekTitle',{done:w.done,total:w.total,pct:w.pct})}">
             <div class="hd-streak-fill" style="height:${Math.max(w.pct/maxPct*70,w.pct>0?4:2)}px;background:${w.pct>=80?'var(--green)':w.pct>=50?'var(--accent)':'var(--accent2)'}"></div>
             <div class="hd-streak-lbl">${w.label}</div>
           </div>`).join('')}
@@ -2017,51 +2017,51 @@ function renderHabitDetail(h) {
     <div class="hd-stat-grid">
       <div class="hd-stat" style="${curStreak>0&&curStreak===bestStreak?'border-color:var(--accent);background:rgba(245,200,66,.08)':''}">
         <div class="hd-stat-num" style="${curStreak>=30?'color:var(--accent)':curStreak>=7?'color:var(--green)':''}">${curStreak}${curStreak>0&&curStreak===bestStreak&&curStreak>1?'<span style="font-size:12px;color:var(--accent);margin-left:4px">★</span>':''}</div>
-        <div class="hd-stat-lbl">🔥 Aktuální série${curStreak>0&&curStreak===bestStreak&&curStreak>1?' <span style="color:var(--accent);font-size:10px">REKORD</span>':''}</div>
+        <div class="hd-stat-lbl">${tH('hd.curStreak')}${curStreak>0&&curStreak===bestStreak&&curStreak>1?` <span style="color:var(--accent);font-size:10px">${tH('hd.record')}</span>`:''}</div>
       </div>
       <div class="hd-stat">
         <div class="hd-stat-num">${bestStreak}</div>
-        <div class="hd-stat-lbl">🏆 Nejlepší série</div>
+        <div class="hd-stat-lbl">${tH('hd.bestStreak')}</div>
       </div>
       <div class="hd-stat">
         <div class="hd-stat-num">${totalDone}</div>
-        <div class="hd-stat-lbl">✓ Celkem splněno</div>
+        <div class="hd-stat-lbl">${tH('hd.totalDone')}</div>
       </div>
       <div class="hd-stat">
         <div class="hd-stat-num">${pctMonth}%</div>
-        <div class="hd-stat-lbl">📆 Tento měsíc</div>
+        <div class="hd-stat-lbl">${tH('hd.thisMonth')}</div>
       </div>
       <div class="hd-stat">
         <div class="hd-stat-num">${doneThisMonth}</div>
-        <div class="hd-stat-lbl">📅 Splněno tento měsíc</div>
+        <div class="hd-stat-lbl">${tH('hd.doneThisMonth')}</div>
       </div>
       <div class="hd-stat">
         <div class="hd-stat-num">${(() => { const daysSince = Math.max(1, Math.round((new Date() - new Date(h.createdAt || Date.now())) / 86400000)); return Math.min(100, Math.round(totalDone / daysSince * 100)); })()}%</div>
-        <div class="hd-stat-lbl">📊 Celkový výkon</div>
+        <div class="hd-stat-lbl">${tH('hd.overall')}</div>
       </div>
-      <div class="hd-stat"><div class="hd-stat-num" style="${pct30>=80?'color:var(--green)':pct30>=50?'color:var(--accent)':''}">${pct30}%</div><div class="hd-stat-lbl">📅 30 dní</div></div>
-      <div class="hd-stat"><div class="hd-stat-num" style="${pct60>=80?'color:var(--green)':pct60>=50?'color:var(--accent)':''}">${pct60}%</div><div class="hd-stat-lbl">📅 60 dní</div></div>
-      <div class="hd-stat"><div class="hd-stat-num" style="${pct90>=80?'color:var(--green)':pct90>=50?'color:var(--accent)':''}">${pct90}%</div><div class="hd-stat-lbl">📅 90 dní</div></div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct30>=80?'color:var(--green)':pct30>=50?'color:var(--accent)':''}">${pct30}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:30})}</div></div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct60>=80?'color:var(--green)':pct60>=50?'color:var(--accent)':''}">${pct60}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:60})}</div></div>
+      <div class="hd-stat"><div class="hd-stat-num" style="${pct90>=80?'color:var(--green)':pct90>=50?'color:var(--accent)':''}">${pct90}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:90})}</div></div>
     </div>
     ${shUsed90 || paused90 ? `<div class="hd-neutral-note">${[shUsed90 ? tH('hd.shUsed90',{n:shUsed90}) : '', paused90 ? tH('hd.paused90',{n:paused90}) : ''].filter(Boolean).join(' · ')}</div>` : ''}
 
-    ${hdLinkedGoal ? `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">🏆</span><div><div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Propojený cíl</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${esc(hdLinkedGoal.name)}</div><div class="habit-prog-bar" style="margin-top:6px;width:120px"><div class="habit-prog-fill" style="width:${hdLinkedGoal.progress||0}%"></div></div></div></div>` : ''}
+    ${hdLinkedGoal ? `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">🏆</span><div><div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${tH('hd.linkedGoal')}</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${esc(hdLinkedGoal.name)}</div><div class="habit-prog-bar" style="margin-top:6px;width:120px"><div class="habit-prog-fill" style="width:${hdLinkedGoal.progress||0}%"></div></div></div></div>` : ''}
 
     ${chartHtml}
-    <div class="hd-section-title" style="margin-top:20px">📅 Historie po měsících</div>
+    <div class="hd-section-title" style="margin-top:20px">${tH('hd.byMonth')}</div>
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;">
       ${monthsHtml}
     </div>
-    <div class="hd-section-title" style="margin-top:20px">🔔 Připomínka</div>
+    <div class="hd-section-title" style="margin-top:20px">${tH('hd.reminder')}</div>
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;color:var(--text2);margin-bottom:8px">Každý den tě upozorním v nastavenou hodinu, pokud návyk ještě nebude splněný.</div>
+        <div style="font-size:14px;color:var(--text2);margin-bottom:8px">${tH('hd.reminderDesc')}</div>
         <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="hd-notif-time" value="${esc(h.reminderTime||'')}"
           style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;outline:none;width:100%;box-sizing:border-box;max-width:160px">
       </div>
       <div class="hd-notif-btns" style="display:flex;gap:8px;flex-wrap:wrap">
-        ${h.reminderTime ? `<button class="btn-s" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,null)">🔕 Vypnout</button>` : ''}
-        <button class="btn-p" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,document.getElementById('hd-notif-time').value)">💾 Uložit</button>
+        ${h.reminderTime ? `<button class="btn-s" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,null)">${tH('hd.reminderOff')}</button>` : ''}
+        <button class="btn-p" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,document.getElementById('hd-notif-time').value)">💾 ${tH('common.save')}</button>
       </div>
     </div>
 
@@ -2070,17 +2070,17 @@ function renderHabitDetail(h) {
 
     <div id="hd-share"></div>
 
-    <div class="hd-section-title" style="margin-top:20px">⚙️ Správa návyku</div>
+    <div class="hd-section-title" style="margin-top:20px">${tH('hd.manage')}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn-s" style="flex:1;min-width:120px" data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)">📦 ${h.archived ? 'Obnovit' : 'Archivovat'}</button>
-      <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" data-a0="${esc(h.id)}" onclick="showDeleteHabitConfirm(this.dataset.a0,this)">🗑️ Smazat</button>
+      <button class="btn-s" style="flex:1;min-width:120px" data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)">📦 ${h.archived ? tH('hd.restore') : tH('hd.archive')}</button>
+      <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" data-a0="${esc(h.id)}" onclick="showDeleteHabitConfirm(this.dataset.a0,this)">🗑️ ${tH('hd.delete')}</button>
     </div>
     <div id="hd-delete-confirm" style="display:none;margin-top:12px;background:rgba(255,59,48,.08);border:1px solid var(--red);border-radius:14px;padding:16px">
-      <div style="font-size:14px;color:var(--red);font-weight:600;margin-bottom:8px">⚠️ Opravdu smazat návyk?</div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Smažou se i všechny záznamy a statistiky. Tuto akci nelze vrátit.</div>
+      <div style="font-size:14px;color:var(--red);font-weight:600;margin-bottom:8px">${tH('hd.delQ')}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">${tH('hd.delText')}</div>
       <div style="display:flex;gap:8px">
-        <button class="btn-s" style="flex:1" onclick="document.getElementById('hd-delete-confirm').style.display='none'">Zrušit</button>
-        <button class="btn-s" style="flex:1;color:var(--red);border-color:var(--red);font-weight:700" data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)">Ano, smazat</button>
+        <button class="btn-s" style="flex:1" onclick="document.getElementById('hd-delete-confirm').style.display='none'">${tH('common.cancel')}</button>
+        <button class="btn-s" style="flex:1;color:var(--red);border-color:var(--red);font-weight:700" data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)">${tH('hd.delYes')}</button>
       </div>
     </div>
   `;
@@ -2091,16 +2091,16 @@ window.saveHabitReminder = async (hid, time) => {
   const h = habits.find(x => x.id === hid);
   if (!h) return;
   if (time === '') time = null; // prázdné pole = vypnout
-  if (time && !/^\d{2}:\d{2}$/.test(time)) { toast('⚠️ Zadej platný čas'); return; }
+  if (time && !/^\d{2}:\d{2}$/.test(time)) { toast(t('hd.timeBad')); return; }
   // Zkontroluj oprávnění
   if (time && !notifGranted()) {
-    if (typeof Notification === 'undefined') { toast('❌ Notifikace tady nejsou dostupné (na iPhonu otevři appku z plochy)'); return; }
+    if (typeof Notification === 'undefined') { toast(t('hd.notifNA')); return; }
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { toast('❌ Notifikace nejsou povoleny'); return; }
+    if (perm !== 'granted') { toast(t('hd.notifOff')); return; }
   }
   h.reminderTime = time;
   await updateDoc(doc(db,'users',CU.uid,'habits',hid), { reminderTime: time });
-  toast(time ? `🔔 Připomínka nastavena na ${time}` : '🔕 Připomínka vypnuta');
+  toast(time ? t('hd.reminderSet',{time}) : t('hd.reminderOffT'));
   renderHabitDetail(h); // překresli detail
   renderHabits(); // aktualizuj kartičku
 };
@@ -2155,7 +2155,7 @@ window.toggleAddHabit=()=>{
   const btn=document.getElementById('add-habit-toggle');
   const showing=wrap.style.display!=='none';
   wrap.style.display=showing?'none':'block';
-  btn.textContent=showing?'+ Přidat návyk':'✕ Zrušit';
+  btn.textContent=showing?t('hb.add'):t('hb.addCancel');
   if(!showing){
     // Auto-select group based on current time
     const h=new Date().getHours();
@@ -2203,10 +2203,10 @@ window.skipHabitDay=async(hid,date)=>{
   const existing=habitLogs.find(l=>l.id===logId);
   if(existing?.skipped){
     await delHabitLog(logId);
-    toast('↩ Přeskočení zrušeno');
+    toast(t('hb.unskipped'));
   } else {
     await putHabitLog({id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0});
-    toast('⏭ Den přeskočen');
+    toast(t('hb.skippedT'));
   }
   renderHabits();
 };
@@ -2244,8 +2244,8 @@ window.toggleFreqDay=(d,btn)=>{
 
 window.saveHabit=async()=>{
   const name=document.getElementById('habit-name-inp').value.trim();
-  if(!name){toast('⚠️ Zadej název návyku');return;}
-  if(selFreqType==='days'&&selFreqDays.size===0){toast('⚠️ Vyber alespoň jeden den');return;}
+  if(!name){toast(t('hb.nameReq'));return;}
+  if(selFreqType==='days'&&selFreqDays.size===0){toast(t('hb.dayReq'));return;}
   const goal=selHabitType==='count'?parseInt(document.getElementById('habit-goal-inp').value)||10:1;
   const freq={type:selFreqType};
   if(selFreqType==='weekly')freq.times=selFreqTimes;
@@ -2269,8 +2269,8 @@ window.saveHabit=async()=>{
   const wrap=document.getElementById('add-habit-wrap');
   const btn=document.getElementById('add-habit-toggle');
   wrap.style.display='none';
-  btn.textContent='+ Přidat návyk';
-  toast('✓ Návyk přidán!');
+  btn.textContent=t('hb.add');
+  toast(t('hb.added'));
 };
 
 window.directInput=async(hid,date,curVal,goal)=>{
@@ -2283,17 +2283,17 @@ window.directInput=async(hid,date,curVal,goal)=>{
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   modal.innerHTML = `
     <div style="background:#1a1a20;border:1px solid #f5c842;border-radius:16px;padding:24px;width:100%;max-width:320px;text-align:center">
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#f5c842;margin-bottom:6px">Zadat počet</div>
-      <div style="font-size:14px;color:#a0a0b0;margin-bottom:16px">Cíl: ${goal}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#f5c842;margin-bottom:6px">${tH('hb.di.title')}</div>
+      <div style="font-size:14px;color:#a0a0b0;margin-bottom:16px">${tH('hb.di.goal',{goal})}</div>
       <input id="di-inp" type="number" min="0" max="9999" value="${curVal||0}"
         style="width:100%;background:#222228;border:2px solid #f5c842;border-radius:10px;padding:12px;color:#fff;font-family:'Playfair Display',serif;font-size:28px;text-align:center;outline:none;margin-bottom:16px">
       <div style="display:flex;gap:10px;margin-bottom:8px">
         <button onclick="document.getElementById('direct-input-modal').remove()"
-          style="flex:1;background:none;border:1px solid #2a2a35;border-radius:10px;padding:11px;color:#a0a0b0;font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer">Zrušit</button>
+          style="flex:1;background:none;border:1px solid #2a2a35;border-radius:10px;padding:11px;color:#a0a0b0;font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer">${tH('common.cancel')}</button>
         <button id="di-ok"
-          style="flex:1;background:#f5c842;border:none;border-radius:10px;padding:11px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:16px;font-weight:700;cursor:pointer">Uložit</button>
+          style="flex:1;background:#f5c842;border:none;border-radius:10px;padding:11px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:16px;font-weight:700;cursor:pointer">${tH('common.save')}</button>
       </div>
-      ${curVal!==null&&curVal!==undefined?`<button id="di-clear" style="width:100%;background:none;border:none;color:#6a6a88;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px">✕ Vymazat záznam</button>`:''}
+      ${curVal!==null&&curVal!==undefined?`<button id="di-clear" style="width:100%;background:none;border:none;color:#6a6a88;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px">${tH('hb.di.clear')}</button>`:''}
     </div>`;
   document.body.appendChild(modal);
 
@@ -2305,17 +2305,17 @@ window.directInput=async(hid,date,curVal,goal)=>{
   const save = async () => {
     const newVal = parseInt(inp.value);
     modal.remove();
-    if(isNaN(newVal)||newVal<0){toast('⚠️ Zadej platné číslo');return;}
+    if(isNaN(newVal)||newVal<0){toast(t('hb.di.bad'));return;}
     await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
     renderHabits();
-    toast(newVal===0?'✓ Zaznamenáno: 0':`✓ Zaznamenáno: ${newVal}`);
+    toast(t('hb.di.logged',{n:newVal}));
   };
 
   const clear = async () => {
     modal.remove();
     await delHabitLog(logId);
     renderHabits();
-    toast('✕ Záznam smazán');
+    toast(t('hb.di.cleared'));
   };
 
   document.getElementById('di-ok').onclick = save;
@@ -2341,7 +2341,7 @@ window.deleteHabit=async(id)=>{
   catch(e){ console.warn('[LP] mazání historie návyku:',e?.code||e?.name); }
   for(const lid of delIds) await delHabitLog(lid,true);
   habitLogs=habitLogs.filter(l=>l.habitId!==id);
-  renderHabits(); toast('Návyk smazán');
+  renderHabits(); toast(t('hb.deleted'));
   window.closeHabitDetail();
 };
 
@@ -2352,12 +2352,12 @@ window.archiveHabit = async (id) => {
   const h = habits.find(h => h.id === id);
   if (!h) return;
   const isArchived = h.archived || false;
-  const msg = isArchived ? 'Obnovit tento návyk?' : 'Archivovat tento návyk? Můžeš ho kdykoliv obnovit.';
+  const msg = isArchived ? t('hb.restoreQ') : t('hb.archiveQ');
   if (!confirm(msg)) return;
   await updateDoc(doc(db, 'users', CU.uid, 'habits', id), { archived: !isArchived });
   h.archived = !isArchived;
   syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
-  toast(isArchived ? '✅ Návyk obnoven' : '📦 Návyk archivován');
+  toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
 };
@@ -2443,7 +2443,7 @@ window.toggleArchivedHabits = () => {
   const section = document.getElementById('habits-archived');
   const btn = document.getElementById('arch-toggle-btn');
   if (section) section.style.display = _showArchived ? 'block' : 'none';
-  if (btn) btn.textContent = _showArchived ? '📦 Skrýt archiv' : '📦 Zobrazit archiv';
+  if (btn) btn.textContent = _showArchived ? t('hb.archHide') : t('hb.archShow');
   renderArchivedHabits();
 };
 
@@ -2453,15 +2453,15 @@ function renderArchivedHabits() {
   if (!list) return;
   const archived = habits.filter(h => h.archived);
   if (cnt) cnt.textContent = archived.length;
-  if (!archived.length) { list.innerHTML = '<div style="color:var(--text3);font-size:14px;padding:12px">Žádné archivované návyky.</div>'; return; }
+  if (!archived.length) { list.innerHTML = `<div style="color:var(--text3);font-size:14px;padding:12px">${tH('hb.archNone')}</div>`; return; }
   list.innerHTML = archived.map(h => `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;opacity:0.7">
       <span style="font-size:22px">${esc(h.emoji||'📌')}</span>
       <div style="flex:1">
         <div style="font-size:15px;color:var(--text2);text-decoration:line-through">${esc(h.name)}</div>
-        <div style="font-size:12px;color:var(--text3)">${esc(lookupOr({morning:'Ráno',day:'Přes den',evening:'Večer'},h.group||'day','Přes den'))} · ${esc(habitFreqLabel(h.freq))}</div>
+        <div style="font-size:12px;color:var(--text3)">${tH(lookupOr({morning:'hb.grp.morning',day:'hb.grp.day',evening:'hb.grp.evening'},h.group||'day','hb.grp.day'))} · ${esc(habitFreqLabel(h.freq))}</div>
       </div>
-      <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="Obnovit" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ Obnovit</button>
+      <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="${tH('hd.restore')}" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ ${tH('hd.restore')}</button>
       <button data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
     </div>`).join('');
 }
@@ -2648,9 +2648,9 @@ function renderHabitMonth() {
 
   list.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;text-align:center">
-      <div style="font-size:13px;color:var(--text3);margin-bottom:4px">Celkové plnění (30 dní)</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:4px">${tH('hb.m.overall')}</div>
       <div style="font-size:42px;font-weight:700;color:${overallColor};font-family:'Playfair Display',serif">${overallPct}%</div>
-      <div style="font-size:13px;color:var(--text3)">${overallDone} z ${overallTotal} splněno</div>
+      <div style="font-size:13px;color:var(--text3)">${tH('hb.m.done',{done:overallDone,total:overallTotal})}</div>
     </div>
     ${stats.map(({h,done,total,pct})=>{
       const color = pct>=80?'var(--green)':pct>=50?'var(--accent)':'var(--red)';
@@ -2661,7 +2661,7 @@ function renderHabitMonth() {
           <div style="background:var(--card2);border-radius:6px;height:6px;overflow:hidden">
             <div style="width:${pct}%;height:100%;background:${color};border-radius:6px;transition:width .4s"></div>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">${done} z ${total} dní</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">${tH('hb.m.days',{done,total})}</div>
         </div>
         <div style="font-size:18px;font-weight:700;color:${color};min-width:40px;text-align:right">${pct}%</div>
       </div>`;
@@ -2849,7 +2849,7 @@ function saveHabitOrder(ids){
   });
   if (!n) return;
   renderHabits(); // hned nové pořadí, snapshot ho potvrdí
-  batch.commit().catch(e => toast('❌ Pořadí se neuložilo: ' + userErr(e, 'návyk')));
+  batch.commit().catch(e => toast(t('hb.orderFail',{err:userErr(e, 'návyk')})));
 }
 
 window.migrateCalEvents = async function() {
