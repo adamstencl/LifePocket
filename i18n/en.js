@@ -1599,4 +1599,22 @@ export default {
   'grp.x.add': '➕ Add group',
   'grp.renamePrompt': 'New group name:',
   'grp.renamed': '✓ Group name changed',
+
+  // ── Checklist (4.48) ──
+  'cl.defName': 'Tasks',
+  'cl.processing': '📷 Processing…',
+  'cl.imgFail': '❌ Could not load the image',
+  'cl.unshare': 'Stop sharing',
+  'cl.shareFam': 'Share with family',
+  'cl.sharedLbl': '👨‍👩‍👧 Shared',
+  'cl.private': '👤 Private',
+  'cl.delList': 'Delete this list',
+  'cl.clearDone': 'Clear completed',
+  'cl.itemPh': 'Add a task...',
+  'cl.addPhoto': 'Add photo',
+  'cl.up': 'Up',
+  'cl.down': 'Down',
+  'cl.empty': 'No tasks. Add the first one!',
+  'cl.newPrompt': 'New list name:',
+  'cl.delQ': 'Delete the list “{name}”? This cannot be undone.',
 };

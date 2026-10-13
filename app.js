@@ -10613,7 +10613,7 @@ function subChecklist() {
         // Výchozí seznam jen podle odpovědi serveru (prázdná cache ≠ prázdný účet) a jen jednou za relaci
         if (!snap.metadata.fromCache && _defChecklistUid !== CU.uid) {
           _defChecklistUid = CU.uid;
-          const def = {id: genId(), name: 'Úkoly', items: [], shared: false, createdAt: Date.now()};
+          const def = {id: genId(), name: t('cl.defName'), items: [], shared: false, createdAt: Date.now()};
           setDoc(doc(db,'users',CU.uid,'checklists',def.id), def).catch(e => console.warn('[LP] výchozí checklist:', e?.code || e?.name));
         } else renderChecklist(); // bez založení výchozího zobraz aspoň aktuální stav (např. sdílené seznamy)
         return;
@@ -10635,7 +10635,7 @@ document.addEventListener('paste', async function(e) {
     if (item.type.startsWith('image/')) {
       const file = item.getAsFile();
       if (!file) continue;
-      toast('📷 Zpracovávám…');
+      toast(t('cl.processing'));
       try {
         clNewPhoto = await compressImage(file, 900, 0.75);
         const preview = document.getElementById('cl-new-photo-preview');
@@ -10644,7 +10644,7 @@ document.addEventListener('paste', async function(e) {
           preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
         }
         document.getElementById('cl-new-inp')?.focus();
-      } catch(err) { toast('❌ Nepodařilo se načíst obrázek'); }
+      } catch(err) { toast(t('cl.imgFail')); }
       break;
     }
   }
@@ -10686,17 +10686,17 @@ function renderChecklist() {
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
-        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?'Přestat sdílet':'Sdílet s rodinou'}">${list.shared?'👨‍👩‍👧 Sdíleno':'👤 Soukromé'}</button>` : ''}
-        ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="Smazat tento seznam">🗑️</button>` : ''}
+        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?tH('cl.unshare'):tH('cl.shareFam')}">${list.shared?tH('cl.sharedLbl'):tH('cl.private')}</button>` : ''}
+        ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
       </div>
-      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">Smazat splněné</button>` : ''}
+      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}</button>` : ''}
     </div>
     <div class="cl-add-row">
       <div class="cl-inp-wrap">
-        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="Přidat úkol..." onkeydown="if(event.key==='Enter')addCheckItem()">
-        <label class="cl-inp-photo-label" title="Přidat fotku">📷<input type="file" accept="image/*" style="display:none" onchange="handleClNewPhotoInput(this)"></label>
+        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="${tH('cl.itemPh')}" onkeydown="if(event.key==='Enter')addCheckItem()">
+        <label class="cl-inp-photo-label" title="${tH('cl.addPhoto')}">📷<input type="file" accept="image/*" style="display:none" onchange="handleClNewPhotoInput(this)"></label>
       </div>
-      <button class="cl-add-btn" onclick="addCheckItem()">Přidat</button>
+      <button class="cl-add-btn" onclick="addCheckItem()">${tH('kc.add')}</button>
     </div>
     <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative"></div>
     <div class="cl-items">
@@ -10711,21 +10711,21 @@ function renderChecklist() {
             ${isExpanded ? `
               <textarea id="cl-edit-${esc(item.id)}" class="cl-item-edit-inp" rows="2" data-a0="${esc(item.id)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveExpandedCheckItem(this.dataset.a0)}">${esc(item.text)}</textarea>
               <div class="cl-item-edit-actions">
-                <button class="cl-edit-save" data-a0="${esc(item.id)}" onclick="saveExpandedCheckItem(this.dataset.a0)">✓ Uložit</button>
-                <button class="cl-edit-cancel" onclick="cancelCheckEdit()">Zrušit</button>
-                <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 Smazat</button>
+                <button class="cl-edit-save" data-a0="${esc(item.id)}" onclick="saveExpandedCheckItem(this.dataset.a0)">✓ ${tH('common.save')}</button>
+                <button class="cl-edit-cancel" onclick="cancelCheckEdit()">${tH('common.cancel')}</button>
+                <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 ${tH('hd.delete')}</button>
               </div>
             ` : `
               <span class="cl-item-text" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)">${esc(item.text)}</span>
             `}
             ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
-          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="Přidat fotku">📷</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="Nahoru">↑</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="Dolů">↓</button>` : ''}
+          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="${tH('cl.addPhoto')}">📷</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="${tH('cl.up')}">↑</button>` : ''}
+          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="${tH('cl.down')}">↓</button>` : ''}
           ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
         </div>`;
-      }).join('') : '<div class="cl-empty">Žádné úkoly. Přidej první!</div>'}
+      }).join('') : `<div class="cl-empty">${tH('cl.empty')}</div>`}
     </div>
   `;
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
@@ -10740,7 +10740,7 @@ function reorderCheckItems(listId, ids) {
   const slots = list.items.map((it, i) => it.done ? -1 : i).filter(i => i >= 0);
   const byId = Object.fromEntries(undone.map(i => [i.id, i]));
   ids.forEach((id, k) => { list.items[slots[k]] = byId[id]; });
-  saveChecklistDoc(list).catch(e => toast('❌ Pořadí se neuložilo: ' + userErr(e, 'seznam')));
+  saveChecklistDoc(list).catch(e => toast(t('hb.orderFail', {err: userErr(e, 'seznam')})));
   renderChecklist();
 }
 
@@ -10754,7 +10754,7 @@ window.clearClNewPhoto = () => { clNewPhoto = null; };
 
 window.handleClNewPhotoInput = async function(input) {
   const file = input.files[0]; if (!file) return;
-  toast('📷 Zpracovávám…');
+  toast(t('cl.processing'));
   try {
     clNewPhoto = await compressImage(file, 900, 0.75);
     const preview = document.getElementById('cl-new-photo-preview');
@@ -10762,7 +10762,7 @@ window.handleClNewPhotoInput = async function(input) {
       preview.style.display = 'block';
       preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
     }
-  } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+  } catch(e) { toast(t('nt.photoFail')); }
   input.value = '';
 };
 
@@ -10853,7 +10853,7 @@ window.triggerClItemPhoto = function(itemId) {
   }
   inp.onchange = async function() {
     const file = inp.files[0]; if (!file) return;
-    toast('📷 Zpracovávám…');
+    toast(t('cl.processing'));
     try {
       const photo = await compressImage(file, 900, 0.75);
       const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
@@ -10864,7 +10864,7 @@ window.triggerClItemPhoto = function(itemId) {
         item.photos.push(photo);
         saveChecklistDoc(list); renderChecklist();
       }
-    } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+    } catch(e) { toast(t('nt.photoFail')); }
     inp.value = '';
   };
   inp.click();
@@ -10890,7 +10890,7 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
       <div class="modal" onclick="event.stopPropagation()" style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px">
         <img src="${esc(safeImgSrc(photo))}" style="max-width:100%;max-height:70vh;border-radius:12px">
         ${photos.length>1?`<div style="font-size:12px;color:var(--text3)">${photoIdx+1} / ${photos.length}</div>`:''}
-        <button class="btn-s" onclick="this.closest('.moverlay').remove()">Zavřít</button>
+        <button class="btn-s" onclick="this.closest('.moverlay').remove()">${tH('common.close')}</button>
       </div>
     </div>`
   );
@@ -10908,7 +10908,7 @@ window.clearDoneChecklistItems = function() {
 };
 
 window.addChecklist = function() {
-  const name = prompt('Název nového seznamu:');
+  const name = prompt(t('cl.newPrompt'));
   if (!name?.trim()) return;
   const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
   activeChecklist = newList.id;
@@ -10919,7 +10919,7 @@ window.deleteChecklist = async function(id) {
   const list = [...checklists,...familyChecklists].find(c => c.id === id);
   const isFamilyList = list?._family === true;
   if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
-  if (!confirm(`Smazat seznam "${list?.name}"? Tato akce je nevratná.`)) return;
+  if (!confirm(t('cl.delQ', {name: list?.name}))) return;
   if (isFamilyList && familyId) {
     const fid = familyId;
     await deleteDoc(doc(db,'families',fid,'checklists',id));

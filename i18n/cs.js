@@ -1605,4 +1605,22 @@ export default {
   'grp.x.add': '➕ Přidat skupinu',
   'grp.renamePrompt': 'Nový název skupiny:',
   'grp.renamed': '✓ Název skupiny změněn',
+
+  // ── Checklist (4.48) ──
+  'cl.defName': 'Úkoly',
+  'cl.processing': '📷 Zpracovávám…',
+  'cl.imgFail': '❌ Nepodařilo se načíst obrázek',
+  'cl.unshare': 'Přestat sdílet',
+  'cl.shareFam': 'Sdílet s rodinou',
+  'cl.sharedLbl': '👨‍👩‍👧 Sdíleno',
+  'cl.private': '👤 Soukromé',
+  'cl.delList': 'Smazat tento seznam',
+  'cl.clearDone': 'Smazat splněné',
+  'cl.itemPh': 'Přidat úkol...',
+  'cl.addPhoto': 'Přidat fotku',
+  'cl.up': 'Nahoru',
+  'cl.down': 'Dolů',
+  'cl.empty': 'Žádné úkoly. Přidej první!',
+  'cl.newPrompt': 'Název nového seznamu:',
+  'cl.delQ': 'Smazat seznam „{name}“? Tato akce je nevratná.',
 };
