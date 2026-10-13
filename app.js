@@ -6835,7 +6835,7 @@ window.createFamily = async (presetName, opts) => {
   if(familyId) { toast(t('grp.already')); return false; }
   if(groupLimitHit()) return false;
   const nameInp = document.getElementById('family-name-inp');
-  const groupName = cutName(typeof presetName==='string' && presetName.trim() ? presetName : nameInp?.value, 40) || t('grp.myGroup');
+  const groupName = cutName(typeof presetName==='string' ? presetName : nameInp?.value, 40) || t('grp.myGroup');
   const data = {
     groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
