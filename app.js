@@ -12374,11 +12374,11 @@ window.askC=t=>{document.getElementById('c-inp').value=t;send();};
 window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
 window.ar=el=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px';};
 window.send=async()=>{
-  const inp=document.getElementById('c-inp'),t=inp.value.trim();if(!t)return;
+  const inp=document.getElementById('c-inp'),userMsg=inp.value.trim();if(!userMsg)return;
   document.getElementById('cwelcome')?.remove();
   inp.value='';inp.style.height='auto';
   const uid=CU?.uid;
-  appendMsg('user',t);saveChatMessage('user',t,false); // zapíše se spolu s odpovědí (při chybě v catch)
+  appendMsg('user',userMsg);saveChatMessage('user',userMsg,false); // zapíše se spolu s odpovědí (při chybě v catch)
   document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   // ── Kontext ze všech modulů (buildChatContext); chyba kontextu chat nikdy neshodí ──
@@ -12416,7 +12416,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
       const c=document.getElementById('chatmsgs');
       const btns=document.createElement('div');
       btns.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
-      btns.innerHTML=`<button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">🍳 Navrhnout recept na <b>${esc(food)}</b></button>`;
+      btns.innerHTML=`<button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:rgba(224,149,74,.15);border:1px solid rgba(224,149,74,.4);border-radius:10px;padding:10px 18px;color:var(--accent2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;">${tH('chat.recipeFor')} <b>${esc(food)}</b></button>`;
       c.appendChild(btns);scrollChat();
     }
   }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),t('chat.errLbl'),'⚠️');}

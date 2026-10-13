@@ -1819,4 +1819,7 @@ export default {
   'cal.f.private': '🔒 Private',
   'cal.f.shared': '👨‍👩‍👧 Shared',
   'cal.f.save': 'Save event',
+
+  // ── Chat (4.48) ──
+  'chat.recipeFor': '🍳 Suggest a recipe for',
 };

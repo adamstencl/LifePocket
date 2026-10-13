@@ -1825,4 +1825,7 @@ export default {
   'cal.f.private': '🔒 Soukromá',
   'cal.f.shared': '👨‍👩‍👧 Sdílená',
   'cal.f.save': 'Uložit událost',
+
+  // ── Chat (4.48) ──
+  'chat.recipeFor': '🍳 Navrhnout recept na',
 };
