@@ -8117,6 +8117,7 @@ function resetSocialLocal() {
   for(const tm of _shTimers.values()) clearTimeout(tm);
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear(); _shAnnounced.clear();
   _jView = 'mine'; _rcView = 'mine'; _shv = null; _shRcPending = null;
+  _coachDone = false; document.getElementById('coach-tip')?.remove(); window.ctaAskClose?.(); // tipy 4.49 patří účtu
   _entriesSrvOk = false; _recipesSrvOk = false; _shRcCopying.clear();
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
@@ -8921,7 +8922,7 @@ function ctaGroups() { return myGroupIds().filter(gid => Object.keys(groupDataOf
 function ctaShareBtnHTML(type, id) {
   if(!CU || lsGet('lp_cta_off', false) || !ctaGroups().length || sharedGids(type, id).length) return '';
   const it = shItemOf(type, id);
-  if(!it || (type === 'g' && it.archivedGoal)) return '';
+  if(!it || it.archived || it.archivedGoal) return '';
   return `<button type="button" class="cta-sh" aria-haspopup="dialog" aria-label="${tH('cta.shareAria', {name: cutName(it.name, 60)})}" data-a0="${esc(id)}" data-a1="${type}" onclick="event.stopPropagation();openShareSheet(this.dataset.a0,this.dataset.a1)"><span aria-hidden="true">👨‍👩‍👧</span> ${tH('cta.share')}</button>`;
 }
 // Tip nad seznamem (kind 'h' | 'g'): vysvětlí tlačítko Sdílet, ✕ skryje tip i tlačítka natrvalo.
@@ -9050,8 +9051,17 @@ const COACH = [
   {k: 'seg', target: p => p.querySelector('.sh-seg .seg-btn[data-a0="group"]'), anchor: el => el.closest('.sh-seg')?.parentElement, txt: 'coach.seg'},
   {k: 'bell', target: p => [...p.querySelectorAll('.gf-bell')].find(b => !b.hidden && b.offsetParent), anchor: el => el.closest('.gh') || el.parentElement, txt: 'coach.bell'},
 ];
-let _coachT = null, _coachFocus = null;
-function coachSoon() { clearTimeout(_coachT); _coachT = setTimeout(coachCheck, 900); }
+let _coachT = null, _coachFocus = null, _coachDone = false, _coachScroll = false;
+function coachSoon() {
+  if(_coachDone) return;
+  // Cíl mimo obrazovku se zkusí znovu po doscrollování
+  if(!_coachScroll) {
+    const a = document.getElementById('abody');
+    if(a) { a.addEventListener('scroll', coachSoon, {passive: true}); _coachScroll = true; }
+  }
+  clearTimeout(_coachT);
+  _coachT = setTimeout(coachCheck, 900);
+}
 function coachCheck() {
   const page = document.querySelector('.page.active');
   const cur = document.getElementById('coach-tip');
@@ -9060,10 +9070,13 @@ function coachCheck() {
   try { if(!localStorage.getItem('lp_tour_done')) return; } catch(e) { return; }
   if(document.querySelector('.moverlay.open')) return;
   const seen = lsGet('lp_coach', {}) || {};
+  if(COACH.every(c => seen[c.k])) { _coachDone = true; return; }
   for(const c of COACH) {
     if(seen[c.k]) continue;
     const el = c.target(page);
     if(!el || !el.getClientRects().length) continue;
+    const r = el.getBoundingClientRect();
+    if(r.bottom < 0 || r.top > window.innerHeight - 80) continue; // mimo obrazovku (nad spodní lištou)
     const anchor = c.anchor(el);
     if(!anchor || !page.contains(anchor)) continue;
     seen[c.k] = 1;
