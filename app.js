@@ -12437,7 +12437,7 @@ window.rexRecipe=async(food,btnEl)=>{
   btnEl?.remove();
   // Zobraz loading v chatu
   const c=document.getElementById('chatmsgs');
-  const {row:loadingRow,bubble:loading}=makeBotBubble('<div style="color:var(--text3);font-style:italic">Připravuji recept, chvilku strpení…</div>','🍳','Vařím recept…');
+  const {row:loadingRow,bubble:loading}=makeBotBubble(`<div style="color:var(--text3);font-style:italic">${tH('ck.preparing')}</div>`,'🍳',t('ck.cooking'));
   c.appendChild(loadingRow);scrollChat();
   const sys=`Jsi kuchařský asistent. Odpovídej POUZE v JSON formátu, bez markdown, bez backticks.
 Vrať JSON objekt:
@@ -12448,34 +12448,34 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu musí být česk
 PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — opečte, osmažte, uvařte, promíchejte, přidejte, nakrájejte, zalijte, ochutnejte, odceďte, propasírujte atd. NIKDY nevymýšlej neexistující slova. Piš jasně, srozumitelně, jako recept z kuchařské knihy. Správná čeština: "noky" (množné č.), "odceďte" (ne "ocedíte"), "osmažte" (ne "osmělujte"), "zpracujte" (ne "vyměsujte").`;
   try{
     const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${food} pro 4 osoby`}],1500);
-    if(!rawRecipe)throw new Error('AI není k dispozici');
+    if(!rawRecipe)throw new Error('AI unavailable');
     let raw=rawRecipe.trim();
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     // Nahraď loading za kartu receptu v chatu
-    loading.innerHTML=`<div class="mlbl">🍳 Navrhovaný recept</div>
+    loading.innerHTML=`<div class="mlbl">${tH('ck.suggested')}</div>
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${esc(recipe.name)}</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${esc(recipe.time)} · 🍽 ${esc(recipe.mealType||recipe.difficulty||'?')} · 🍽 ${esc(recipe.portions)} porcí</div>
-      <div style="font-size:13px;color:var(--text2);font-weight:700;margin-bottom:8px">SUROVINY:</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${esc(recipe.time)} · 🍽 ${esc(recipe.mealType||recipe.difficulty||'?')} · 🍽 ${tH('ck.portions',{n:recipe.portions})}</div>
+      <div style="font-size:13px;color:var(--text2);font-weight:700;margin-bottom:8px">${tH('ck.ingrCaps')}</div>
       ${recipe.ingredients.map(i=>`<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;display:flex;justify-content:space-between"><span>• ${esc(i.name)}</span><span style="color:var(--text3)">${esc(i.qty)}</span></div>`).join('')}
-      <div style="font-size:13px;color:var(--text2);font-weight:700;margin:12px 0 8px">POSTUP:</div>
+      <div style="font-size:13px;color:var(--text2);font-weight:700;margin:12px 0 8px">${tH('ck.stepsCaps')}</div>
       ${recipe.steps.map((s,i)=>`<div style="padding:5px 0;font-size:14px;color:var(--text2)"><span style="color:var(--accent);font-weight:700">${i+1}.</span> ${esc(s)}</div>`).join('')}
       ${recipe.tip?`<div style="margin-top:10px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text2)">💡 ${esc(recipe.tip)}</div>`:''}`;
     // Přidej potvrzovací tlačítka
     const confirm=document.createElement('div');
     confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
     confirm.innerHTML=`
-      <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">✅ Použít — přidat suroviny do nákupu</button>
-      <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🔄 Jiný návrh</button>`;
+      <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">${tH('ck.useToShop')}</button>
+      <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">${tH('ck.another')}</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
-    loading.innerHTML=`<div class="mlbl">⚠️ Chyba</div>❌ ${esc(userErr(e,'recept'))}`;
+    loading.innerHTML=`<div class="mlbl">${tH('ck.error')}</div>❌ ${esc(userErr(e,'recept'))}`;
   }
 };
 
 window.confirmRecipeToShop=async(btnEl)=>{
-  if(!lastRecipe){toast('Nejprve nechej Rexe navrhnout recept');return;}
+  if(!lastRecipe){toast(t('mp.needRecipe'));return;}
   btnEl?.remove();
   let added=0, firstAdded='';
   const isShared = isShopShared(), shopFid = familyId;
@@ -12501,7 +12501,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
   if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
-  const {row:doneRow,bubble:done}=makeBotBubble(`✅ ${tNH('chat.ingAdded', added)} <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">🛒 Zobrazit nákup</button>`,avCur.emoji,avCur.name);
+  const {row:doneRow,bubble:done}=makeBotBubble(`✅ ${tNH('chat.ingAdded', added)} <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">${tH('ck.showShop')}</button>`,avCur.emoji,avCur.name);
   c.appendChild(doneRow);scrollChat();
   toast(tN('chat.ingAddedToast', added));
 };
@@ -13338,7 +13338,7 @@ window.addEventListener('resize',refreshCookChipFade);
 window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
   const query=inp.value.trim();
-  if(!query){toast('⚠️ Napiš co chceš vařit');return;}
+  if(!query){toast(t('ck.queryReq'));return;}
 
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
@@ -13346,7 +13346,7 @@ window.askRecipe=async()=>{
   cookLoadingEl.style.display='block';
   const avatarName=(AVS.find(a=>a.id===prof?.avatarId)||AVS[0]).name;
   const loadingText=cookLoadingEl.querySelector('div:last-child');
-  if(loadingText)loadingText.textContent=`${avatarName} vymýšlí recept…`;
+  if(loadingText)loadingText.textContent=t('ck.thinking',{name:avatarName});
   cookLoadingEl?.scrollIntoView({behavior:'smooth', block:'center'});
 
   const typeHint=cookType==='quick'?'Recept musí být rychlý (do 30 min).':
@@ -13376,7 +13376,7 @@ PRAVIDLO VAŘENÍ: Používej POUZE běžné česky kuchařské výrazy — ope�
 
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:`Recept na: ${query} pro ${cookPortions} osoby`}],1500);
-    if(!rawR)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
+    if(!rawR)throw new Error('AI unavailable');
     let raw=rawR.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
@@ -13394,35 +13394,35 @@ window.openManualRecipe = function() {
   document.getElementById('app').insertAdjacentHTML('beforeend', `
     <div class="moverlay open" id="manual-recipe-modal" onclick="if(event.target===this)this.remove()">
       <div class="modal" style="max-width:480px;max-height:88vh;overflow-y:auto;gap:14px">
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700">✏️ Vlastní recept</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);font-weight:700">${tH('ck.mr.title')}</div>
 
-        <input id="mr-name" class="finp" placeholder="Název receptu *">
+        <input id="mr-name" class="finp" placeholder="${tH('ck.mr.namePh')}">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <input id="mr-time" class="finp" placeholder="Čas (30 min)">
+          <input id="mr-time" class="finp" placeholder="${tH('ck.mr.timePh')}">
           <select id="mr-diff" class="finp">
-            <option>Snídaně</option><option>Svačina</option><option>Oběd</option><option>Večeře</option><option>Dezert</option>
+            <option value="Snídaně">${tH('mp.meal.0')}</option><option value="Svačina">${tH('ck.mr.snack')}</option><option value="Oběd">${tH('mp.meal.1')}</option><option value="Večeře">${tH('mp.meal.2')}</option><option value="Dezert">${tH('ck.mr.dessert')}</option>
           </select>
-          <input id="mr-portions" class="finp" type="number" placeholder="Porce" value="4" min="1" max="20">
+          <input id="mr-portions" class="finp" type="number" placeholder="${tH('ck.mr.portionsPh')}" value="4" min="1" max="20">
         </div>
 
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Suroviny (každá na nový řádek, např. "Mouka 200 g")</div>
-          <textarea id="mr-ingredients" class="finp" rows="5" placeholder="Kuřecí prsa 400 g&#10;Cibule 1 ks&#10;Česnek 10 g&#10;Mléko 250 ml" style="resize:vertical;font-size:14px"></textarea>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">${tH('ck.mr.ingrLbl')}</div>
+          <textarea id="mr-ingredients" class="finp" rows="5" placeholder="${tH('ck.mr.ingrPh').replace(/\n/g,'&#10;')}" style="resize:vertical;font-size:14px"></textarea>
         </div>
 
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <div style="font-size:13px;font-weight:600;color:var(--text2)">Postup (každý krok na nový řádek)</div>
-            <button onclick="aiSuggestSteps()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif">✨ Navrhnout AI</button>
+            <div style="font-size:13px;font-weight:600;color:var(--text2)">${tH('ck.mr.stepsLbl')}</div>
+            <button onclick="aiSuggestSteps()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif">${tH('ck.mr.aiSteps')}</button>
           </div>
-          <textarea id="mr-steps" class="finp" rows="6" placeholder="Maso nakrájejte na kousky&#10;Na oleji osmažte cibuli&#10;Přidejte maso a opečte" style="resize:vertical;font-size:14px"></textarea>
+          <textarea id="mr-steps" class="finp" rows="6" placeholder="${tH('ck.mr.stepsPh').replace(/\n/g,'&#10;')}" style="resize:vertical;font-size:14px"></textarea>
         </div>
 
-        <input id="mr-tip" class="finp" placeholder="Tip kuchaře (volitelné)">
+        <input id="mr-tip" class="finp" placeholder="${tH('ck.mr.tipPh')}">
 
         <div style="display:flex;gap:8px">
-          <button class="btn-s" style="flex:1" onclick="document.getElementById('manual-recipe-modal').remove()">Zrušit</button>
-          <button class="btn-p" style="flex:2" onclick="saveManualRecipe()">💾 Uložit recept</button>
+          <button class="btn-s" style="flex:1" onclick="document.getElementById('manual-recipe-modal').remove()">${tH('common.cancel')}</button>
+          <button class="btn-p" style="flex:2" onclick="saveManualRecipe()">${tH('ck.mr.save')}</button>
         </div>
       </div>
     </div>`);
@@ -13433,9 +13433,9 @@ window.aiSuggestSteps = async function() {
   const name = document.getElementById('mr-name')?.value.trim();
   const ingr = document.getElementById('mr-ingredients')?.value.trim();
   const stepsEl = document.getElementById('mr-steps');
-  if (!name) { toast('⚠️ Nejdřív zadej název receptu'); return; }
+  if (!name) { toast(t('ck.mr.nameFirst')); return; }
   const btn = document.querySelector('[onclick="aiSuggestSteps()"]');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generuji…'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('ck.mr.generating'); }
   try {
     const portions = document.getElementById('mr-portions')?.value || '4';
     const sys = `Jsi kuchařský asistent. Na základě názvu jídla a surovin napiš stručný postup vaření — 4 až 8 kroků. Každý krok na jeden řádek, bez číslování. Piš VÝHRADNĚ česky, jasně a srozumitelně jako recept z kuchařské knihy.`;
@@ -13443,12 +13443,12 @@ window.aiSuggestSteps = async function() {
     const result = await callClaude([{role:'system',content:sys},{role:'user',content:user}], 600);
     if (result && stepsEl) {
       stepsEl.value = aiPlain(result);
-      toast('✨ Postup vygenerován');
+      toast(t('ck.mr.stepsDone'));
     }
   } catch(e) {
-    toast('⚠️ AI není dostupná');
+    toast(t('ck.mr.aiNA'));
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Navrhnout AI'; }
+    if (btn) { btn.disabled = false; btn.textContent = t('ck.mr.aiSteps'); }
   }
 };
 
@@ -13472,7 +13472,7 @@ function normalizeIngQty(amount, unit) {
 
 window.saveManualRecipe = async function() {
   const name = document.getElementById('mr-name')?.value.trim();
-  if (!name) { toast('⚠️ Zadej název receptu'); return; }
+  if (!name) { toast(t('ck.mr.nameReq')); return; }
 
   const rawIngr = document.getElementById('mr-ingredients')?.value.trim() || '';
   const rawSteps = document.getElementById('mr-steps')?.value.trim() || '';
@@ -13508,7 +13508,7 @@ window.saveManualRecipe = async function() {
   lastRecipe = recipe;
   document.getElementById('cook-welcome').style.display = 'none';
   renderRecipe(recipe);
-  toast('✅ Recept uložen!');
+  toast(t('ck.mr.saved'));
 };
 
 function renderRecipe(r, scaledPortions){
@@ -13519,7 +13519,7 @@ function renderRecipe(r, scaledPortions){
   const scale = portions / basePortions;
   // Reset save button
   const saveBtn=document.getElementById('btn-save-recipe');
-  if(saveBtn){saveBtn.textContent='🔖 Uložit';saveBtn.style.background='';saveBtn.style.color='';saveBtn.style.borderColor='';}
+  if(saveBtn){saveBtn.textContent=t('ck.saveBtn');saveBtn.style.background='';saveBtn.style.color='';saveBtn.style.borderColor='';}
 
   // Funkce pro škálování množství (jednoduché číslo × scale)
   const scaleQty = (qty) => {
@@ -13542,18 +13542,18 @@ function renderRecipe(r, scaledPortions){
         <button onclick="changePortions(-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">−</button>
         <span id="portions-display" style="font-weight:700;min-width:20px;text-align:center">${portions}</span>
         <button onclick="changePortions(1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">+</button>
-        <span style="color:var(--text3)">porcí</span>
+        <span style="color:var(--text3)">${tH('ck.portionsWord')}</span>
       </span>
     </div>
-    <div class="cook-section" style="display:flex;align-items:center;justify-content:space-between">Suroviny <span style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif;font-style:italic;font-weight:400">✏️ klikni na množství pro úpravu</span></div>
+    <div class="cook-section" style="display:flex;align-items:center;justify-content:space-between">${tH('ck.ingr')} <span style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif;font-style:italic;font-weight:400">${tH('ck.qtyHint')}</span></div>
     ${r.ingredients.map((ing,i)=>`
       <div class="cook-ingredient" id="cing-row-${i}">
         <div class="cook-ing-check" id="cing-${i}" onclick="toggleIng(${i})"></div>
         <span id="ing-name-${i}">${esc(ing.name)}</span>
-        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="Klikni pro úpravu" onclick="editRecipeQty(${i},this)">${esc(scale===1?ing.qty:scaleQty(ing.qty))}</span>
-        <span id="cing-badge-${i}" style="display:none;font-size:11px;background:rgba(76,217,100,.15);color:var(--green);border-radius:6px;padding:2px 7px;border:1px solid rgba(76,217,100,.3)">mám doma</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="${tH('ck.editTitle')}" onclick="editRecipeQty(${i},this)">${esc(scale===1?ing.qty:scaleQty(ing.qty))}</span>
+        <span id="cing-badge-${i}" style="display:none;font-size:11px;background:rgba(76,217,100,.15);color:var(--green);border-radius:6px;padding:2px 7px;border:1px solid rgba(76,217,100,.3)">${tH('ck.haveHome')}</span>
       </div>`).join('')}
-    <div class="cook-section">Postup</div>
+    <div class="cook-section">${tH('ck.steps')}</div>
     ${r.steps.map((s,i)=>`
       <div class="cook-step">
         <span class="cook-step-num">${i+1}.</span>
@@ -13587,7 +13587,7 @@ window.editRecipeQty = (idx, el) => {
     if(lastRecipe.ingredients[idx]) lastRecipe.ingredients[idx].qty = newQty;
     const span = document.createElement('span');
     span.style.cssText = 'color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer';
-    span.title = 'Klikni pro úpravu';
+    span.title = t('ck.editTitle');
     span.textContent = newQty;
     span.onclick = function(){ editRecipeQty(idx, this); };
     inp.replaceWith(span);
@@ -13607,7 +13607,7 @@ window.toggleIng=(i)=>{
 };
 
 window.sendToShopping=async()=>{
-  if(!lastRecipe||!Array.isArray(lastRecipe.ingredients)){toast('Nejprve vygeneruj recept');return;}
+  if(!lastRecipe||!Array.isArray(lastRecipe.ingredients)){toast(t('ck.genFirst'));return;}
   let added=0, skipped=0, haveit=0;
   lastRecipe.ingredients.forEach((ing,i)=>{
     const checkedEl=document.getElementById(`cing-${i}`);
@@ -13632,9 +13632,9 @@ window.sendToShopping=async()=>{
     } else { skipped++; }
   }
   const parts=[];
-  if(added>0) parts.push(`${added} přidáno`);
-  if(skipped>0) parts.push(`${skipped} už v seznamu`);
-  if(haveit>0) parts.push(`${haveit} máš doma`);
+  if(added>0) parts.push(t('ck.sAdded',{n:added}));
+  if(skipped>0) parts.push(t('ck.sSkipped',{n:skipped}));
+  if(haveit>0) parts.push(t('ck.sHave',{n:haveit}));
   toast(`✅ ${parts.join(' · ')}`, 3500);
   // Zvýrazni tlačítko "Otevřít nákupy"
   const btn = document.querySelector('.cook-actions .btn-s');
@@ -13643,29 +13643,29 @@ window.sendToShopping=async()=>{
 
 // ── SAVED RECIPES ─────────────────────────────────────
 window.saveRecipe=async()=>{
-  if(!CU||!lastRecipe){toast(!lastRecipe?'Nejprve vygeneruj recept':'');return;}
+  if(!CU||!lastRecipe){toast(!lastRecipe?t('ck.genFirst'):'');return;}
   const btn=document.getElementById('btn-save-recipe');
   const exists=savedRecipes.some(r=>r.name===lastRecipe.name);
-  if(exists){toast('📌 Tento recept už máš uložený');return;}
+  if(exists){toast(t('ck.alreadySaved'));return;}
   try{
     const rec=lastRecipe, data={...rec, savedAt:new Date().toISOString()};
     delete data.id;
     const ref=await addDoc(collection(db,'users',CU.uid,'savedRecipes'),data);
     if(!rec.id) rec.id=ref.id; // sdílení pak najde recept podle ID
     refreshRecipeChip();
-    toast('🔖 Recept uložen do oblíbených!');
-    if(btn){btn.textContent='✅ Uloženo';btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
-  }catch(e){toast('❌ Nepodařilo se uložit: '+userErr(e));}
+    toast(t('ck.savedFav'));
+    if(btn){btn.textContent=t('ck.savedBtn');btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
+  }catch(e){toast(t('common.saveFailed',{err:userErr(e)}));}
 };
 
 window.deleteSavedRecipe=async(id,e)=>{
   e.stopPropagation();
-  if(!CU||!confirm('Smazat uložený recept?'))return;
+  if(!CU||!confirm(t('ck.delQ')))return;
   try{
     unshareAll('r',id); // zrcadla ve skupinách pryč dřív, než recept zmizí
     await deleteDoc(doc(db,'users',CU.uid,'savedRecipes',id));
-    toast('Recept smazán');
-  }catch(err){toast('❌ Mazání se nepovedlo: '+userErr(err));}
+    toast(t('ck.deleted'));
+  }catch(err){toast(t('nt.delFail',{err:userErr(err)}));}
 };
 
 window.openSavedRecipe=(id)=>{
@@ -13674,7 +13674,7 @@ window.openSavedRecipe=(id)=>{
   lastRecipe=r;
   // Reset save button
   const btn=document.getElementById('btn-save-recipe');
-  if(btn){btn.textContent='✅ Uloženo';btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
+  if(btn){btn.textContent=t('ck.savedBtn');btn.style.background='rgba(76,217,100,.15)';btn.style.color='var(--green)';btn.style.borderColor='rgba(76,217,100,.4)';}
   document.getElementById('cook-loading').style.display='none';
   document.getElementById('cook-result').style.display='block';
   renderRecipe(r);
@@ -13692,14 +13692,14 @@ function renderSavedRecipes(){
   if(!filtered.length){
     // Prázdný výsledek filtru: rovnou nabídnout zrušení filtru
     list.innerHTML=savedRecipes.length
-      ? `<div class="cook-empty">Pro „${esc(cookMealType)}“ zatím nemáš uložený recept.
-           <button class="cook-empty-btn" onclick="setCookMealType(&#39;any&#39;,document.querySelector(&#39;.cook-opt-btn[data-m=any]&#39;))">Zobrazit všechny</button></div>`
-      : `<div class="cook-empty">Zatím tu nic není. Nech si navrhnout recept a ťukni na 🔖 Uložit.</div>`;
+      ? `<div class="cook-empty">${tH('ck.noneFor',{type:cookMealType})}
+           <button class="cook-empty-btn" onclick="setCookMealType(&#39;any&#39;,document.querySelector(&#39;.cook-opt-btn[data-m=any]&#39;))">${tH('ck.showAll')}</button></div>`
+      : `<div class="cook-empty">${tH('ck.noneSaved')}</div>`;
     return;
   }
   list.innerHTML=filtered.map(r=>{
     const meta=[r.time?`⏱ ${esc(r.time)}`:'',(r.mealType||r.difficulty)?`🍽 ${esc(r.mealType||r.difficulty)}`:'',
-      `${Number(r.portions)||2} porcí`].filter(Boolean).join(' · ');
+      tH('ck.portions',{n:Number(r.portions)||2})].filter(Boolean).join(' · ');
     return `<div class="saved-recipe-card" role="button" tabindex="0" data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)" onkeydown="if(event.key===&#39;Enter&#39;&amp;&amp;event.target===this)openSavedRecipe(this.dataset.a0)">
       <div class="saved-recipe-top">
         <div class="saved-recipe-ico" aria-hidden="true">🍽️</div>
@@ -13707,7 +13707,7 @@ function renderSavedRecipes(){
           <div class="saved-recipe-name">${esc(r.name)}${shBadgeHTML('r',r.id)}</div>
           <div class="saved-recipe-meta">${meta}</div>
         </div>
-        <button class="saved-recipe-del" data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" aria-label="Smazat recept" title="Smazat">🗑️</button>
+        <button class="saved-recipe-del" data-a0="${esc(r.id)}" onclick="deleteSavedRecipe(this.dataset.a0,event)" aria-label="${tH('ck.delAria')}" title="${tH('hd.delete')}">🗑️</button>
       </div>
     </div>`;}).join('');
 }
