@@ -447,6 +447,7 @@ const GN_MAX_PAGES = 5;                              // až 1 000 změn na reži
 const GN_UPPER_LAG = 10000;                           // horní hranice dotazů i kurzorů = teď − 10 s
 const GN_BODY_MAX = 180;
 const GN_MAX_GROUPS = 10;
+const GROUP_MAX = 5; // max. skupin na uživatele (klient GROUP_MAX v app.js); GN_MAX_GROUPS je pojistka pro starší klienty
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // Preference člena s výchozími hodnotami; neplatné hodnoty = výchozí, quiet:null = noční klid vypnutý
@@ -867,11 +868,11 @@ exports.sendScheduledNotifications = onSchedule(
           const famSnap = await famEntry(gid).doc;
           const fam = famSnap.exists ? famSnap.data() : null;
           if (!fam || !fam.members || !fam.members[uid]) continue;
-          // Sdílení modulů jako v klientu: kalendář shareCal (každá skupina), ostatní jen hlavní skupina
-          // podle shareShop / shareMeal / shareChecklist (checklist sdílený, dokud není false), zásoby vždy
+          // Sdílení modulů jako v klientu (groupModShared): kalendář shareCal a nákupy shareShop v každé skupině (4.50),
+          // jídelníček a checklist (sdílený, dokud není false) jen hlavní skupina, zásoby vždy jen hlavní
           const isMain = gid === prof.familyId;
           // Osobní moduly (sdílené návyky, cíle, poznámky, recepty, reakce) v každé skupině
-          const shared = {cal: !!fam.shareCal, shop: isMain && !!fam.shareShop, meal: isMain && !!fam.shareMeal,
+          const shared = {cal: !!fam.shareCal, shop: !!fam.shareShop, meal: isMain && !!fam.shareMeal,
             check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true,
             note: true, recipe: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
@@ -1765,6 +1766,12 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
       if (typeof p.familyId === 'string' && p.familyId !== gid && GROUP_ID_RE.test(p.familyId)) {
         const ms = await tx.get(db.doc(`families/${p.familyId}`));
         if (ms.exists && (ms.data().members || {})[uid]) asMain = false;
+      }
+      // Limit skupin na uživatele (stejně jako klient, 4.50): hlavní + vedlejší bez obnovované
+      if (!asMain) {
+        const extra = Array.isArray(p.extraGroupIds) ? p.extraGroupIds : [];
+        const mine = new Set([p.familyId, ...extra].filter(g => typeof g === 'string' && g !== gid && GROUP_ID_RE.test(g)));
+        if (mine.size >= GROUP_MAX) throw new HttpsError('failed-precondition', `Máš už ${GROUP_MAX} skupin. Nejdřív nějakou opusť.`);
       }
       const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || 'Člen';
       const avatar = typeof p.avatarId === 'string' && p.avatarId ? p.avatarId.slice(0, 40) : 'rex';
