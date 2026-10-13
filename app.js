@@ -3309,12 +3309,9 @@ window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGr
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
-const EXPORT_COLS = [
-  ['profile','profil'], ['entries','poznámky'], ['habits','návyky'], ['habitLogs','záznamy návyků'],
-  ['events','kalendář'], ['goals','cíle'], ['shopItems','nákupy'], ['recurringShop','pravidelné nákupy'], ['shopStats','často nakupované'],
-  ['savedRecipes','recepty'], ['foodLogs','jídlo'], ['healthLogs','zdraví'], ['checklists','checklisty'],
-  ['chatMemory','chat s AI'], ['aiReports','nahlášení AI'], ['errorLogs','technické chyby'], ['game','body a odznaky']
-];
+// Popisek kolekce: klíč exp.col.<název kolekce>
+const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats',
+  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','errorLogs','game'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
   if (v === null || v === undefined || typeof v !== 'object') return v;
@@ -3347,7 +3344,7 @@ window.exportMyData = async () => {
     const addCol = (name, col) => { colParts.push((colParts.length ? ',' : '') + JSON.stringify(name) + ':' + JSON.stringify(col)); };
     for (let i = 0; i < EXPORT_COLS.length; i++) {
       const [name, label] = EXPORT_COLS[i];
-      setExportStatus('⏳ Načítám ' + esc(label) + ' (' + (i + 1) + '/' + EXPORT_COLS.length + ')…');
+      setExportStatus(tH('exp.loading', {what: label, i: i + 1, n: EXPORT_COLS.length}));
       const snap = await getDocs(collection(db, 'users', uid, name));
       if (CU?.uid !== uid) return;
       const col = {};
@@ -3359,7 +3356,7 @@ window.exportMyData = async () => {
       addCol(name, col);
       if (name === 'goals') {
         const gids = Object.keys(col);
-        setExportStatus('⏳ Načítám podcíle…');
+        setExportStatus(tH('exp.loadingSubs'));
         const res = await Promise.all(gids.map(g => getDocs(collection(db, 'users', uid, 'goals', g, 'subgoals'))));
         if (CU?.uid !== uid) return;
         const sg = {};
@@ -3369,7 +3366,7 @@ window.exportMyData = async () => {
     }
     // Skupiny: jen ID a název, cizí obsah se neexportuje
     const groups = [];
-    const addG = (id, name, primary) => { if (typeof id === 'string' && id && !groups.some(g => g.id === id)) groups.push({ id, name: String(name || 'Skupina'), primary }); };
+    const addG = (id, name, primary) => { if (typeof id === 'string' && id && !groups.some(g => g.id === id)) groups.push({ id, name: String(name || t('grp.defName')), primary }); };
     addG(familyId || prof?.familyId, familyData?.groupName, true);
     const extra = (Array.isArray(extraGroupIds) && extraGroupIds.length) ? extraGroupIds : (Array.isArray(prof?.extraGroupIds) ? prof.extraGroupIds : []);
     extra.forEach(g => addG(g, extraGroupsData?.[g]?.groupName, false));
@@ -3382,13 +3379,13 @@ window.exportMyData = async () => {
         const file = new File([blob], fname, { type: 'application/json' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           _exportFile = file;
-          setExportStatus('✅ Data jsou připravená. <button type="button" class="btn-sv acc-share-btn" onclick="shareExportFile()">📤 Uložit soubor</button>');
+          setExportStatus(tH('exp.ready') + ' <button type="button" class="btn-sv acc-share-btn" onclick="shareExportFile()">' + tH('exp.saveFile') + '</button>');
           return;
         }
       } catch (e) {}
     }
     downloadBlob(blob, fname);
-    setExportStatus('✅ Staženo: ' + esc(fname));
+    setExportStatus(tH('exp.downloaded', {name: fname}));
   } catch (e) {
     setExportStatus('⚠️ ' + esc(userErr(e, 'export dat')));
   } finally {
@@ -3399,10 +3396,10 @@ window.exportMyData = async () => {
 window.shareExportFile = async () => {
   const f = _exportFile;
   if (!f) return;
-  try { await navigator.share({ files: [f], title: 'LifePocket – moje data' }); setExportStatus('✅ Soubor ' + esc(f.name) + ' je připravený.'); }
+  try { await navigator.share({ files: [f], title: t('exp.shareTitle') }); setExportStatus(tH('exp.fileReady', {name: f.name})); }
   catch (e) {
     if (e?.name === 'AbortError') return;
-    downloadBlob(f, f.name); setExportStatus('✅ Staženo: ' + esc(f.name));
+    downloadBlob(f, f.name); setExportStatus(tH('exp.downloaded', {name: f.name}));
   }
 };
 
@@ -3430,12 +3427,12 @@ function askPassword() {
     const m = document.createElement('div');
     m.id = 'm-reauth-pw'; m.className = 'moverlay open'; m.style.zIndex = '10001';
     m.innerHTML = `<div class="modal" style="max-width:400px">
-      <div class="mtitle">🔐 Potvrď heslo</div>
-      <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">Z bezpečnostních důvodů zadej heslo k účtu <b>${esc(CU?.email || '')}</b>.</div>
+      <div class="mtitle">${tH('acc.pw.title')}</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">${tH('acc.pw.text1')} <b>${esc(CU?.email || '')}</b>.</div>
       <form id="reauth-pw-form" autocomplete="on">
         <input type="email" name="email" autocomplete="username" value="${esc(CU?.email || '')}" hidden>
-        <input class="finp" type="password" id="reauth-pw-inp" autocomplete="current-password" placeholder="Heslo" style="width:100%;box-sizing:border-box">
-        <div class="macts"><button type="button" class="btn-s" id="reauth-pw-cancel">Zrušit</button><button type="submit" class="btn-p">Potvrdit</button></div>
+        <input class="finp" type="password" id="reauth-pw-inp" autocomplete="current-password" placeholder="${tH('acc.pw.ph')}" style="width:100%;box-sizing:border-box">
+        <div class="macts"><button type="button" class="btn-s" id="reauth-pw-cancel">${tH('common.cancel')}</button><button type="submit" class="btn-p">${tH('acc.pw.confirm')}</button></div>
       </form>
     </div>`;
     let settled = false, mo = null;
@@ -3500,14 +3497,14 @@ function stopSessionActivity() {
 function delAccErrText(e) {
   const c = String(e?.code || '');
   const msg = String(e?.message || '').slice(0, 200);
-  if (c === 'lp/no-provider') return 'Odhlas se, znovu se přihlas a zkus to hned potom.';
-  if (['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(c)) return 'Nesprávné heslo, zkus to znovu.';
-  if (c === 'auth/user-mismatch') return 'Ověř se stejným účtem, kterým jsi přihlášený/á.';
-  if (c === 'functions/failed-precondition') return 'Z bezpečnostních důvodů je potřeba se znovu ověřit. Klepni na Zkusit znovu.';
-  if (_accDataGone && c === 'functions/internal') return (msg || 'Data jsou smazaná, ale účet se nepodařilo odstranit.') + ' Klepni na Zkusit znovu.';
-  if (c === 'functions/invalid-argument') return 'Chybí potvrzení – napiš SMAZAT a zkus to znovu.';
-  if (c === 'functions/unauthenticated') return 'Přihlášení vypršelo – odhlas se, znovu se přihlas a zkus to znovu.';
-  if (c === 'functions/internal') return msg || 'Smazání účtu se nepodařilo dokončit. Zkus to prosím znovu.';
+  if (c === 'lp/no-provider') return t('acc.err.noProvider');
+  if (['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(c)) return t('acc.err.wrongPw');
+  if (c === 'auth/user-mismatch') return t('acc.err.mismatch');
+  if (c === 'functions/failed-precondition') return t('acc.err.reauth');
+  if (_accDataGone && c === 'functions/internal') return (msg || t('acc.err.dataGone')) + ' ' + t('acc.err.tapRetry');
+  if (c === 'functions/invalid-argument') return t('acc.err.noConfirm', {word: t('acc.word')});
+  if (c === 'functions/unauthenticated') return t('acc.err.expired');
+  if (c === 'functions/internal') return msg || t('acc.err.internal');
   return userErr(e, 'smazání účtu');
 }
 function delAccSetStatus(txt, isErr) {
@@ -3516,7 +3513,8 @@ function delAccSetStatus(txt, isErr) {
   st.textContent = txt;
   st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
 }
-function delAccInputOk() { return (document.getElementById('delacc-inp')?.value || '').trim().toUpperCase() === 'SMAZAT'; }
+// Potvrzovací slovo v jazyce appky; server dostane vždy 'SMAZAT'
+function delAccInputOk() { return (document.getElementById('delacc-inp')?.value || '').trim().toUpperCase() === t('acc.word'); }
 window.delAccInput = () => { const b = document.getElementById('delacc-btn'); if (b && !_accDeleting) b.disabled = !delAccInputOk(); };
 window.openDeleteAccount = () => {
   if (!CU || _accDeleting) return;
@@ -3524,25 +3522,25 @@ window.openDeleteAccount = () => {
   const m = document.createElement('div');
   m.id = 'm-delacc'; m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:460px">
-    <div class="mtitle">🗑️ Smazat účet</div>
+    <div class="mtitle">${tH('set.account.delete')}</div>
     <div style="font-size:14px;color:var(--text2);line-height:1.6">
       <ul style="margin:0 0 12px;padding-left:20px">
-        <li>Smažou se všechna tvoje osobní data (poznámky, návyky, cíle, kalendář, nákupy, jídlo, chat s AI…) a odejdeš ze všech skupin.</li>
-        <li>Obsah, který jsi přidal/a do sdílených skupin, zůstane ostatním členům. Skupina, kde jsi byl/a jediný člen, se smaže celá.</li>
-        <li><b style="color:var(--red)">Smazání nejde vrátit.</b></li>
+        <li>${tH('acc.del.li1')}</li>
+        <li>${tH('acc.del.li2')}</li>
+        <li><b style="color:var(--red)">${tH('acc.del.li3')}</b></li>
       </ul>
     </div>
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:8px">💡 Doporučujeme si nejdřív stáhnout zálohu svých dat.</div>
-      <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()">📥 Stáhnout moje data</button>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:8px">${tH('acc.del.backup')}</div>
+      <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()">${tH('set.account.export')}</button>
       <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
     </div>
-    <label class="flbl" for="delacc-inp">Pro potvrzení napiš <b>SMAZAT</b></label>
-    <input class="finp" type="text" id="delacc-inp" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SMAZAT" oninput="delAccInput()" style="width:100%;box-sizing:border-box">
+    <label class="flbl" for="delacc-inp">${tH('acc.del.typeLbl')} <b>${tH('acc.word')}</b></label>
+    <input class="finp" type="text" id="delacc-inp" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="${tH('acc.word')}" oninput="delAccInput()" style="width:100%;box-sizing:border-box">
     <div id="delacc-st" role="status" aria-live="polite" style="font-size:14px;margin-top:10px;min-height:1em"></div>
     <div class="macts">
-      <button type="button" class="btn-s" id="delacc-cancel" onclick="closeDeleteAccount()">Zrušit</button>
-      <button type="button" class="btn-p" id="delacc-btn" disabled onclick="confirmDeleteAccount()" style="background:var(--red);color:#fff">Smazat účet</button>
+      <button type="button" class="btn-s" id="delacc-cancel" onclick="closeDeleteAccount()">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" id="delacc-btn" disabled onclick="confirmDeleteAccount()" style="background:var(--red);color:#fff">${tH('acc.del.btn')}</button>
     </div>
   </div>`;
   // Klik vedle okna: zavřít jen mimo probíhající mazání (globální handler .moverlay by okno jen skryl)
@@ -3566,7 +3564,7 @@ window.confirmDeleteAccount = async () => {
   const m = document.getElementById('m-delacc');
   const btn = document.getElementById('delacc-btn'), cancel = document.getElementById('delacc-cancel');
   const busy = on => {
-    if (btn) { btn.disabled = on; btn.textContent = on ? 'Mažu…' : 'Zkusit znovu'; }
+    if (btn) { btn.disabled = on; btn.textContent = on ? t('acc.del.busy') : t('common.retry'); }
     if (cancel) cancel.disabled = on;
     document.querySelectorAll('.acc-export-btn').forEach(b => { b.disabled = on; });
   };
@@ -3574,14 +3572,14 @@ window.confirmDeleteAccount = async () => {
   _accDeleting = true; busy(true);
   try {
     if (needReauth) {
-      delAccSetStatus('🔐 Ověř se prosím znovu…');
+      delAccSetStatus(t('acc.del.reauth'));
       if (!(await reauthUser())) {
         _accDeleting = false; busy(false);
-        delAccSetStatus('Ověření bylo zrušené, účet zůstal beze změny.', true);
+        delAccSetStatus(t('acc.del.reauthCancel'), true);
         return;
       }
     }
-    delAccSetStatus('⏳ Mažu účet a data, chvíli to může trvat…');
+    delAccSetStatus(t('acc.del.deleting'));
     stopSessionActivity();
     // failed-precondition se znovu neověřuje hned (popup by byl mimo klepnutí) → _forceReauth a „Zkusit znovu“
     const res = await deleteAccountFn({ confirm: 'SMAZAT' });
@@ -3615,7 +3613,7 @@ async function finishAccountDeleted() {
 window.goHomeAfterDelete = () => { location.replace('/'); };
 
 // ── Nahlášení odpovědi AI (Google Play: obsah generovaný AI) ──
-const AI_REPORT_REASONS = [['nevhodne', 'Nevhodná'], ['nepravdive', 'Nepravdivá'], ['urazlive', 'Urážlivá'], ['jine', 'Jiné']];
+const AI_REPORT_REASONS = ['nevhodne', 'nepravdive', 'urazlive', 'jine'].map(v => [v, t('air.r.' + v)]);
 let _aiReportText = '';
 function openAiReport(text) {
   if (!CU) return;
@@ -3624,16 +3622,16 @@ function openAiReport(text) {
   const m = document.createElement('div');
   m.id = 'm-aireport'; m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:420px">
-    <div class="mtitle">⚑ Nahlásit odpověď AI</div>
-    <div style="font-size:13px;color:var(--text3);margin-bottom:12px;line-height:1.5">Co je s odpovědí špatně? Uložíme text odpovědi a tvoji poznámku, abychom AI mohli vylepšit.</div>
+    <div class="mtitle">${tH('air.title')}</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:12px;line-height:1.5">${tH('air.text')}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-      ${AI_REPORT_REASONS.map(([v, l], i) => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px"><input type="radio" name="aireport-reason" value="${v}"${i === 0 ? ' checked' : ''} style="width:18px;height:18px;accent-color:var(--accent)"> ${l}</label>`).join('')}
+      ${AI_REPORT_REASONS.map(([v, l], i) => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px"><input type="radio" name="aireport-reason" value="${v}"${i === 0 ? ' checked' : ''} style="width:18px;height:18px;accent-color:var(--accent)"> ${esc(l)}</label>`).join('')}
     </div>
-    <label class="flbl" for="aireport-note">Poznámka <span style="color:var(--text3);font-weight:400">(volitelné)</span></label>
+    <label class="flbl" for="aireport-note">${tH('air.note')} <span style="color:var(--text3);font-weight:400">${tH('air.optional')}</span></label>
     <textarea class="finp" id="aireport-note" rows="3" maxlength="500" style="width:100%;box-sizing:border-box;resize:none;font-family:'Crimson Pro',serif;font-size:15px"></textarea>
     <div class="macts">
-      <button type="button" class="btn-s" onclick="document.getElementById('m-aireport')?.remove()">Zrušit</button>
-      <button type="button" class="btn-p" id="aireport-btn" onclick="submitAiReport()">Nahlásit</button>
+      <button type="button" class="btn-s" onclick="document.getElementById('m-aireport')?.remove()">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" id="aireport-btn" onclick="submitAiReport()">${tH('air.submit')}</button>
     </div>
   </div>`;
   m.addEventListener('click', e => { if (e.target === m) { e.stopPropagation(); m.remove(); } });
@@ -3649,7 +3647,7 @@ window.submitAiReport = () => {
   document.getElementById('m-aireport')?.remove();
   // Bez čekání na server: offline se zápis odešle po připojení
   addDoc(collection(db, 'users', CU.uid, 'aiReports'), rec).catch(e => toast('⚠️ ' + userErr(e, 'nahlášení AI')));
-  toast('Díky, nahlášení jsme uložili');
+  toast(t('air.thanks'));
 };
 
 // ── EMAIL / HESLO PŘIHLÁŠENÍ ──────────────────────────
@@ -4012,9 +4010,9 @@ async function loadHealthCtx() {
 
 // ── THEME TOGGLE ──────────────────────────────────────
 const THEMES = {
-  'dark-gold':  { emoji:'🌑', label:'Tmavé',   bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
-  'sunshine':   { emoji:'☀️', label:'Světlé',  bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
-  'tangerine':  { emoji:'🍊', label:'Oranžové', bg:'#fff1e6', accent:'#c94800', tc:'#fff1e6' },
+  'dark-gold':  { emoji:'🌑', label:t('set.theme.dark'),   bg:'#0c0c10', accent:'#f5c842', tc:'#0c0c10' },
+  'sunshine':   { emoji:'☀️', label:t('set.theme.light'),  bg:'#faf8f0', accent:'#d4870a', tc:'#faf8f0' },
+  'tangerine':  { emoji:'🍊', label:t('set.theme.orange'), bg:'#fff1e6', accent:'#c94800', tc:'#fff1e6' },
 };
 
 window.setTheme = (id, silent) => {
@@ -14479,8 +14477,8 @@ function appendMsg(role,text,nm='',em=''){
     // Nahlášení odpovědi AI (ne u chybových hlášek appky)
     if(nm!=='Chyba'){
       const rb=document.createElement('button');
-      rb.type='button'; rb.className='msg-report'; rb.textContent='⚑ Nahlásit';
-      rb.setAttribute('aria-label','Nahlásit odpověď AI');
+      rb.type='button'; rb.className='msg-report'; rb.textContent='⚑ '+t('air.submit');
+      rb.setAttribute('aria-label',t('air.aria'));
       rb.addEventListener('click',()=>openAiReport(text));
       bubble.insertBefore(rb,bubble.querySelector('.msg-time'));
     }
