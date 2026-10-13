@@ -646,9 +646,9 @@
 
     <div class="page" id="p-shopping">
       <div class="gh">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle" data-i18n="shop.title">Nákupy</div><div class="seg" id="shop-view-toggle" role="group" aria-label="Čí seznam zobrazit" data-i18n-attr="aria-label:shop.viewAria" hidden><button class="seg-btn" data-mode="shared" onclick="setShopView(this.dataset.mode)" data-i18n="shop.viewFamily">Rodina</button><button class="seg-btn" data-mode="personal" onclick="setShopView(this.dataset.mode)" data-i18n="shop.viewMine">Moje</button></div></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle" data-i18n="shop.title">Nákupy</div></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button type="button" class="gf-bell" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
+          <button type="button" class="gf-bell" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
           <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()" data-i18n="shop.share">📤 Sdílet</button>
           <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()" data-i18n="shop.clearDone">✓ Vymazat splněné</button>
         </div>
@@ -662,6 +662,8 @@
 
       <!-- TAB: SEZNAM -->
       <div id="shop-section-list">
+        <!-- Čí seznam: Moje / skupiny se sdílenými nákupy (4.50), plní renderShopViewToggle -->
+        <div id="shop-view-toggle" hidden></div>
         <!-- Progress bar -->
         <div id="shop-progress-wrap" style="display:none;margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -675,7 +677,7 @@
 
         <!-- Přesun do rodiny -->
         <div id="shop-move-to-family" style="display:none;margin-bottom:10px">
-          <button onclick="moveShopToFamily(this)" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed var(--accent);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="shop.moveToFam">👨‍👩‍👧 Přesunout tento seznam do rodinného sdílení</button>
+          <button onclick="moveShopToFamily(this)" style="width:100%;background:rgba(245,200,66,.08);border:1px dashed var(--accent);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--accent);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="shop.moveToPick">👥 Přesunout tento seznam do skupiny…</button>
         </div>
 
         <!-- Upozornění ze skupiny chodí samy (obsah doplní renderShop) -->
