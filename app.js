@@ -4160,7 +4160,7 @@ function registerFcmToken() {
 async function doRegisterFcmToken() {
   await msgReady;
   if (!CU || !notifGranted()) return;
-  if (!messaging) { fcmFail(msgUnsupportedReason || 'Push není na tomto zařízení dostupný'); updateNotifTokenLine(); return; }
+  if (!messaging) { fcmFail(msgUnsupportedReason || t('notif.f.noPush')); updateNotifTokenLine(); return; }
   fcmState = 'working'; fcmLastError = '';
   updateNotifTokenLine();
   try {
@@ -4174,7 +4174,7 @@ async function doRegisterFcmToken() {
         }
       }
     } else {
-      fcmFail('Service Worker není dostupný'); updateNotifTokenLine(); return;
+      fcmFail(t('notif.f.noSw')); updateNotifTokenLine(); return;
     }
 
     const swReg = await navigator.serviceWorker.ready;
@@ -4184,9 +4184,9 @@ async function doRegisterFcmToken() {
         vapidKey: VAPID_KEY,
         serviceWorkerRegistration: swReg
       });
-    } catch(e) { fcmFail('Získání tokenu selhalo', e); updateNotifTokenLine(); return; }
-    if (!token) { fcmFail('Prohlížeč nevrátil push token'); }
-    else if (!prof) { fcmFail('Profil ještě není načtený'); }
+    } catch(e) { fcmFail(t('notif.f.getToken'), e); updateNotifTokenLine(); return; }
+    if (!token) { fcmFail(t('notif.f.noToken')); }
+    else if (!prof) { fcmFail(t('notif.f.noProf')); }
     else {
       // Nastavení notifikací posílat jen když ho server ještě nemá – jinak by výchozí/lokální hodnoty přepsaly serverové
       const hasServer = !!prof.notifSettings && typeof prof.notifSettings === 'object' && !Array.isArray(prof.notifSettings);
@@ -4195,7 +4195,7 @@ async function doRegisterFcmToken() {
       if (!hasServer) prof.notifSettings = notifSettings;
       // Zapiš jen změněná pole — ne celý profil (jiné zařízení mohlo mezitím uložit něco jiného)
       try { await saveFcmToken(token, extra); fcmState = 'ok'; console.log('[LP] FCM token uložen (…' + token.slice(-6) + ')'); }
-      catch(e) { fcmFail('Uložení tokenu selhalo', e); }
+      catch(e) { fcmFail(t('notif.f.save'), e); }
     }
   } catch(e) {
     fcmFail('Registrace push selhala', e);
@@ -4268,7 +4268,7 @@ window.saveNotifSettings = () => {
     prof.notifSettings = notifSettings;
     setDoc(doc(db,'users',CU.uid,'profile','main'), {notifSettings}, {merge:true}).catch(()=>{});
   }
-  toast('✅ Nastavení notifikací uloženo');
+  toast(t('notif.saved'));
 };
 
 // ── Stav oprávnění ──
@@ -4341,17 +4341,17 @@ window.enableNotifications = async () => {
 // ── Testovací notifikace ──
 window.sendTestServerPush = async () => {
   try {
-    toast('📡 Odesílám test přes server...');
+    toast(t('notif.test.sending'));
     const res = await testPushFn();
     const n = res?.data?.sent;
-    toast(n > 1 ? `✅ Server push odeslán na ${n} zařízení! Zavři appku a zkontroluj notifikaci.` : '✅ Server push odeslán! Zavři appku a zkontroluj notifikaci.');
+    toast(n > 1 ? t('notif.test.sentN', {n}) : t('notif.test.sent'));
   } catch(e) {
     const msg = e?.message || '';
     if (e?.code === 'functions/failed-precondition' || msg.includes('FCM token')) {
-      toast('⚠️ Toto zařízení ještě nemá povolené notifikace — klikni „Obnovit token“', 4000);
+      toast(t('notif.test.noToken'), 4000);
     } else if (e?.code === 'functions/internal' && msg.includes('FCM')) {
       console.warn('[LP] test push:', msg);
-      toast('❌ Server notifikaci nedoručil. Klikni „Obnovit token“ a zkus test znovu.', 4000);
+      toast(t('notif.test.notDelivered'), 4000);
     } else {
       toast('❌ ' + userErr(e, 'test push'), 4000);
     }
@@ -4374,18 +4374,18 @@ window.refreshFcmToken = async () => {
     document.getElementById('notif-refresh-token-btn')?.insertAdjacentElement('afterend', box);
   }
   box.style.display = 'none';
-  box.innerHTML = '<div style="color:#f5c842;font-weight:bold">🔍 Technické detaily (pošli při hlášení chyby):</div>';
+  box.innerHTML = `<div style="color:#f5c842;font-weight:bold">${tH('notif.dbg.title')}</div>`;
   const showBox = () => { box.style.display = 'block'; box.scrollIntoView({behavior:'smooth', block:'center'}); };
 
   await msgReady;
-  log('1. messaging: ' + (messaging ? '✅' : '❌ ' + (msgUnsupportedReason || 'NULL - Firebase messaging se neinicializoval')));
-  log('2. CU (přihlášen): ' + (CU ? '✅ ' + CU.uid.slice(0,8) : '❌ NULL'));
-  log('3. Notif permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'API Notification chybí'));
+  log('1. messaging: ' + (messaging ? '✅' : '❌ ' + (msgUnsupportedReason || t('notif.dbg.noMsg'))));
+  log('2. ' + t('notif.dbg.cu') + ': ' + (CU ? '✅ ' + CU.uid.slice(0,8) : '❌ NULL'));
+  log('3. Notif permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : t('notif.dbg.noApi')));
   log('4. SW support: ' + ('serviceWorker' in navigator ? '✅' : '❌'));
-  log('5. Platforma: ' + getPlatform() + (isStandaloneApp() ? ' (aplikace z plochy)' : ' (prohlížeč)'));
+  log('5. ' + t('notif.dbg.platform') + ': ' + getPlatform() + (isStandaloneApp() ? ' ' + t('notif.dbg.pwa') : ' ' + t('notif.dbg.browser')));
 
   try {
-    if (!messaging || !CU || !('serviceWorker' in navigator)) throw new Error('Chybí předpoklady (viz výše)');
+    if (!messaging || !CU || !('serviceWorker' in navigator)) throw new Error(t('notif.dbg.prereq'));
     const regs = await navigator.serviceWorker.getRegistrations();
     log('6. SW registrace: ' + regs.length);
     regs.forEach((r, i) => log(`   SW[${i}]: ${r.active?.scriptURL || r.installing?.scriptURL || 'pending'}`));
@@ -4393,7 +4393,7 @@ window.refreshFcmToken = async () => {
     const swReg = await navigator.serviceWorker.ready;
     log('7. SW ready: ✅ ' + swReg.active?.scriptURL);
 
-    log('8. Získávám FCM token...');
+    log('8. ' + t('notif.dbg.getting'));
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg
@@ -4402,17 +4402,17 @@ window.refreshFcmToken = async () => {
     if (token) {
       log('9. Token: ✅ (…' + token.slice(-6) + ')');
       await saveFcmToken(token);
-      log('10. Uloženo do Firestore: ✅');
+      log('10. ' + t('notif.dbg.saved') + ': ✅');
       fcmState = 'ok'; fcmLastError = '';
-      toast('✅ FCM token uložen!');
+      toast(t('notif.dbg.tokenSaved'));
     } else {
-      log('9. Token: ❌ prázdný');
-      fcmFail('Prohlížeč nevrátil push token');
+      log('9. Token: ❌ ' + t('notif.dbg.empty'));
+      fcmFail(t('notif.f.noToken'));
       showBox();
     }
   } catch(e) {
-    log('❌ CHYBA: ' + e.message);
-    fcmFail('Obnovení tokenu selhalo', e);
+    log('❌ ' + t('notif.dbg.error') + ': ' + e.message);
+    fcmFail(t('notif.f.refresh'), e);
     showBox();
   }
   updateNotifTokenLine();
@@ -4426,10 +4426,10 @@ window.sendTestNotif = () => {
   const total = habits.length;
   sendNotif(
     '🧪 Test — LifePocket',
-    `Notifikace fungují! Dnes: ${doneToday}/${total} návyků splněno.`,
+    t('notif.test.body', {done: doneToday, total}),
     '✅'
   );
-  toast('🧪 Testovací notifikace odeslána!');
+  toast(t('notif.test.localSent'));
 };
 
 // ── Odeslat notifikaci ──
@@ -4501,7 +4501,7 @@ async function handleNotifHabitDone(data) {
     const logId = `${data.habitId}_${date}`;
     const existing = habitLogs.find(l => l.id === logId);
     if (existing && existing.done) {
-      toast(`ℹ️ ${habit.emoji} ${habit.name} — už bylo splněno`);
+      toast(t('notif.h.already', {emoji: habit.emoji, name: habit.name}));
     } else {
       const log = {id: logId, habitId: data.habitId, date, done: true, value: 1};
       try {
@@ -4514,14 +4514,14 @@ async function handleNotifHabitDone(data) {
       }
       renderHabits();
       rDash();
-      toast(`✅ ${habit.emoji} ${habit.name} — splněno!`);
+      toast(t('notif.h.done', {emoji: habit.emoji, name: habit.name}));
     }
   }
 
   // Vlastni pripominka — oznac jako splnenou (dnes)
   if (hasReminder) {
     const reminder = customReminders.find(r => r.id === data.reminderId);
-    if (reminder) toast(`✅ ${reminder.emoji} ${reminder.name} — hotovo!`);
+    if (reminder) toast(t('notif.r.done', {emoji: reminder.emoji, name: reminder.name}));
   }
   return true;
 }
@@ -4721,13 +4721,13 @@ function checkPerHabitReminders() {
 
     // Odešli notifikaci
     localStorage.setItem(sentKey, '1');
-    const name = prof?.prezdivka || prof?.nickname || 'příteli';
+    const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
     sendNotif(
-      `${h.emoji} Připomínka: ${h.name}`,
-      `${name}, ještě jsi dnes nesplnil${prof?.gender === 'f' ? 'a' : ''} "${h.name}". Teď je správný čas! 💪`,
+      t('ln.remindTitle', {emoji: h.emoji, name: h.name}),
+      t('ln.remindBody', {who: name, name: h.name, g: prof?.gender}),
       av?.emoji || h.emoji,
       {habitId: h.id, date: today, open: 'habit'},
-      [{action: 'done', title: '✅ Splněno'}],
+      [{action: 'done', title: t('ln.doneAction')}],
       `habit-${h.id}`
     );
   });
@@ -4748,7 +4748,7 @@ function sendMorningNotif() {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Dobré ráno, ${prof?.prezdivka||prof?.nickname || 'příteli'}!`, body, av?.emoji || '🌅', {open: 'habits'}, [], 'morning');
+  sendNotif(t('ln.morningTitle', {emoji: av?.emoji || '⭐', name: prof?.prezdivka||prof?.nickname || t('ln.friend')}), body, av?.emoji || '🌅', {open: 'habits'}, [], 'morning');
 }
 
 function sendEveningNotif() {
@@ -4757,19 +4757,18 @@ function sendEveningNotif() {
   const due = habits.filter(h => isHabitDueToday(h, today, new Date().getDay()));
   const done = due.filter(h => hDone(h.id,today)).length;
   const total = due.length;
-  const a = prof?.gender === 'f' ? 'a' : '';
   let body = '';
   if (total === 0) {
-    body = 'Přidej si první návyk a začni budovat lepší rutinu!';
+    body = t('ln.eveNone');
   } else if (done === total) {
     body = tN('ln.eveAll', total, {g: prof?.gender});
   } else if (done === 0) {
-    body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
+    body = t('ln.eveZero', {g: prof?.gender});
   } else {
     body = tN('ln.evePart', total - done, {done, total, g: prof?.gender});
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(`${av?.emoji || '⭐'} Večerní shrnutí`, body, av?.emoji || '🌙', {open: 'habits'}, [], 'evening');
+  sendNotif(t('ln.eveTitle', {emoji: av?.emoji || '⭐'}), body, av?.emoji || '🌙', {open: 'habits'}, [], 'evening');
 }
 
 function checkAndRemindHabits() {
@@ -4808,10 +4807,10 @@ function checkAndRemindHabits() {
     setTimeout(() => {
       sendNotif(
         `${h.emoji} ${h.name}`,
-        'Dnes ještě nesplněno — klikni Splněno!',
+        t('ln.undoneBody'),
         h.emoji,
         {habitId: h.id, date: today, open: 'habit'},
-        [{action: 'done', title: '✅ Splněno'}],
+        [{action: 'done', title: t('ln.doneAction')}],
         `habit-${h.id}`
       );
     }, i * 2000); // rozestup 2s aby se neprekryvaly
@@ -4826,7 +4825,7 @@ function checkBirthdayNotifs() {
   const in7 = new Date(now); in7.setDate(now.getDate()+7);
   const in7MMDD = `${String(in7.getMonth()+1).padStart(2,'0')}-${String(in7.getDate()).padStart(2,'0')}`;
   const today = toDS(now);
-  const name = prof?.prezdivka || prof?.nickname || 'příteli';
+  const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
 
   events.forEach(ev => {
     if (!ev.date) return;
@@ -4838,7 +4837,7 @@ function checkBirthdayNotifs() {
         const key = `lp_notif_bday_today_${ev.id}_${today}`;
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, '1');
-          sendNotif('🎂 Dnes jsou narozeniny!', `${name}, nezapomeň popřát: ${ev.name} 🎉`, '🎂', {open: 'cal'}, [], `bday-${ev.id}`);
+          sendNotif(t('ln.bdayToday'), t('ln.bdayTodayBody', {who: name, name: ev.name}), '🎂', {open: 'cal'}, [], `bday-${ev.id}`);
         }
       }
       // 7 dní předem — porovnání MM-DD funguje i přes roční hranici
@@ -4846,7 +4845,7 @@ function checkBirthdayNotifs() {
         const key = `lp_notif_bday_7d_${ev.id}_${today}`;
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, '1');
-          sendNotif('🎂 Za 7 dní narozeniny', `${ev.name} slaví za týden — čas na přání nebo dárek! 🎁`, '🎂');
+          sendNotif(t('ln.bday7'), t('ln.bday7Body', {name: ev.name}), '🎂');
         }
       }
     }
@@ -4858,7 +4857,7 @@ function checkEventReminders() {
   if (!notifGranted() || hasPushToken()) return; // s push tokenem posílá server
   const now = new Date();
   const today = toDS(now);
-  const name = prof?.prezdivka || prof?.nickname || 'příteli';
+  const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
 
   events.forEach(ev => {
     if (ev.type !== 'event' || !okEvTime(ev.time)) return;
@@ -4872,7 +4871,7 @@ function checkEventReminders() {
       const key = `lp_notif_ev_${ev.id}_${today}`;
       if (!localStorage.getItem(key)) {
         localStorage.setItem(key, '1');
-        sendNotif(`📌 Za hodinu: ${ev.name}`, `${name}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, '📌', {open: 'cal'}, [], `ev-${ev.id}-${today}`);
+        sendNotif(t('ln.evTitle', {name: ev.name}), t('ln.evBody', {who: name, name: ev.name, time: ev.time}), '📌', {open: 'cal'}, [], `ev-${ev.id}-${today}`);
       }
     }
   });
