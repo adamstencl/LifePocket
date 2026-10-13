@@ -1156,6 +1156,60 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .grp-pick-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:0 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;font-weight:600;cursor:pointer;text-align:left}
 .grp-pick-row.sel{border-color:var(--accent);color:var(--accent)}
 .grp-pick:focus-visible,.grp-pick-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Správa skupin (4.51): krátké karty, detail ve sheetu, nová skupina */
+.grp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:4px 0 8px;font-size:15px;font-weight:700;color:var(--text)}
+.grp-cnt{font-size:13px;font-weight:400;color:var(--text2)}
+.grp-list{display:flex;flex-direction:column;gap:8px;margin:0 0 10px;padding:0;list-style:none}
+.grp-card{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 14px;background:var(--card2);border:1px solid var(--border);border-radius:14px;color:var(--text);font-family:'Crimson Pro',serif;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.grp-card:active{background:var(--card3,var(--card2))}
+.grp-card .gf-count{margin-left:0;flex-shrink:0}
+.grp-em{font-size:26px;line-height:1;flex-shrink:0}
+.grp-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.grp-name{display:flex;align-items:center;gap:4px;min-width:0;font-size:16px;font-weight:700}
+.grp-name-t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grp-star{font-size:12px;flex-shrink:0}
+.grp-sub{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grp-chev{font-size:22px;color:var(--text2);flex-shrink:0}
+.grp-add{display:block;width:100%;min-height:44px;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
+.grp-add:disabled{opacity:.55;cursor:default}
+.grp-note{font-size:13px;color:var(--text2);line-height:1.4;margin:4px 0 10px}
+.grp-note--c{text-align:center}
+.grp-sheet{max-width:480px}
+.grp-sh-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.grp-sh-t{flex:1;min-width:0;margin:0;font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--accent);overflow-wrap:anywhere}
+.grp-sh-t:focus{outline:none}
+.grp-ic{flex-shrink:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:18px;cursor:pointer}
+.grp-sec-h{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+.grp-mod{width:100%;min-height:48px;font-family:'Crimson Pro',serif;color:var(--text);text-align:left;cursor:pointer}
+.grp-mod-em{font-size:18px}
+.grp-mod-l{flex:1;font-size:15px;color:var(--text)}
+.grp-mod-fixed{cursor:default}
+.grp-mod-note{font-size:13px;color:var(--text2)}
+.grp-you{color:var(--text2);font-size:12px}
+.grp-rm{flex-shrink:0;width:44px;height:44px;background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;border-radius:10px}
+.grp-code-box{margin:0 0 12px}
+.grp-code-acts{display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap}
+.grp-code-acts button{min-height:44px;padding:0 14px;font-size:14px}
+.grp-share-btn{width:auto;flex:0 0 auto}
+.grp-rot-warn{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
+.grp-legacy{font-size:13px;color:var(--red);margin-top:8px;line-height:1.4}
+.grp-bottom{display:flex;flex-direction:column;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.grp-setmain{width:100%;min-height:44px}
+.grp-leave{width:100%;min-height:44px;background:none;border:1px solid var(--red);border-radius:10px;color:var(--red);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
+.grp-lbl{display:block;font-size:13px;font-weight:600;color:var(--text2);margin:10px 0 6px}
+.grp-inp{width:100%;box-sizing:border-box;margin-bottom:4px}
+.grp-code-inp{text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace;margin-bottom:8px}
+.grp-em-pick{display:flex;flex-wrap:wrap;gap:6px}
+.grp-em-btn{width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:var(--card2);border:1px solid var(--border);border-radius:12px;font-size:22px;cursor:pointer}
+.grp-em-btn.sel{border:2px solid var(--accent);background:var(--card)}
+.grp-tpl{margin-bottom:10px}
+.grp-ng-mods{margin-top:4px}
+.grp-ng-create,.grp-ng-join{width:100%;min-height:44px}
+.grp-or{font-size:13px;color:var(--text2);text-align:center;margin:14px 0 8px}
+.grp-main-info{font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:6px}
+.grp-main-ul{margin:0 0 10px;padding-left:20px;font-size:14px;line-height:1.55;color:var(--text)}
+.grp-st{font-size:14px;margin-top:4px;min-height:1em}
+.grp-card:focus-visible,.grp-ic:focus-visible,.grp-mod:focus-visible,.grp-rm:focus-visible,.grp-em-btn:focus-visible,.grp-add:focus-visible,.grp-leave:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .dw-grp{min-width:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none;letter-spacing:0;font-weight:600}
 .seg-btn{min-height:44px;padding:0 18px;border:none;border-radius:21px;background:transparent;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s,color .2s;-webkit-tap-highlight-color:transparent}
 .seg-btn.active{background:var(--accent);color:var(--on-accent)}

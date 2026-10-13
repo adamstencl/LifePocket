@@ -6823,17 +6823,19 @@ function createFamilyErrMsg(e) {
 }
 
 // presetName: pevný název (karta „Pozvat rodinu“); z inline onclick může přijít událost, proto typeof
-window.createFamily = async (presetName) => {
-  if(!CU) return;
-  if(familyId) { toast(t('grp.already')); return; }
-  if(groupLimitHit()) return;
+// opts (4.51, sheet nové skupiny): {emoji, flags} – emoji a přepínače modulů ze šablony. Vrací true = založeno.
+window.createFamily = async (presetName, opts) => {
+  if(!CU) return false;
+  if(familyId) { toast(t('grp.already')); return false; }
+  if(groupLimitHit()) return false;
   const nameInp = document.getElementById('family-name-inp');
-  const groupName = cutName(typeof presetName==='string' ? presetName : nameInp?.value, 40) || 'Moje skupina';
+  const groupName = cutName(typeof presetName==='string' && presetName.trim() ? presetName : nameInp?.value, 40) || t('grp.myGroup');
   const data = {
     groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
-    shareShop: true, shareCal: true, shareMeal: true, shareChecklist: true
+    ...groupTemplateFlags('home', opts?.flags)
   };
+  if(okGroupEmoji(opts?.emoji)) data.emoji = opts.emoji;
   try {
     const fid = await createFamilyDoc(data); // kód = ID, potvrzený serverem
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: fid}, {merge:true}); // jen familyId, ať se nepřepíše zbytek profilu
@@ -6841,11 +6843,14 @@ window.createFamily = async (presetName) => {
     familyId = fid;
     subscribeFamily();
     initPantry(); // zásoby přepnout z lokálních na skupinové
+    if(nameInp) nameInp.value = '';
     renderFamilySettings();
     toast(t('grp.created'), 4000);
+    return true;
   } catch(e) {
     console.warn('createFamily selhalo', e?.code || e?.name);
     toast(createFamilyErrMsg(e), 5000);
+    return false;
   }
 };
 
@@ -6859,7 +6864,7 @@ window.showJoinFamily = () => {
 window.joinFamily = async (codeArg) => {
   if(!CU) return false;
   const fromLink = typeof codeArg === 'string';
-  const typed = normFamilyCode(fromLink ? codeArg : document.getElementById('family-code-inp')?.value);
+  const typed = normFamilyCode(fromLink ? codeArg : joinCodeInp('family-code-inp')?.value);
   if(!okFamilyCodeLoose(typed)) { toast(t('grp.codeBad')); return false; }
   // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
   if(typed === familyId || extraGroupIds.includes(typed)) { toast(t('grp.already')); return false; }
@@ -7348,10 +7353,11 @@ window.toggleFamilyModule = async (key, gid = null) => {
   const targetGid = gid || familyId;
   const targetData = gid ? extraGroupsData[gid] : familyData;
   if(!targetGid || !targetData) return;
+  if(!GROUP_MOD_KEYS.includes(key)) return;
   const oldVal = targetData[key];
-  const newVal = !oldVal;
-  // Vypnutí nákupů: data zůstanou, jen je skupina přestane vidět
-  if(key === 'shareShop' && oldVal && !confirm(t('grp.shopOffQ', {name: cutName(targetData.groupName, 40) || t('grp.defName')}))) return;
+  const newVal = !groupModVal(targetData, key); // checklist bez pole = zapnutý
+  // Vypnutí modulu: data zůstanou, jen je skupina přestane vidět → potvrdit
+  if(!newVal && !confirm(t('grp.modOffQ', {mod: grpModName(key), name: cutName(targetData.groupName, 40) || t('grp.defName')}))) return;
   targetData[key] = newVal;
   try {
     await setDoc(doc(db,'families',targetGid), {[key]: newVal}, {merge:true});
@@ -7383,20 +7389,17 @@ window.toggleFamilyModule = async (key, gid = null) => {
   renderFamilySettings();
 };
 
-window.showExtraGroupForm = () => {
-  const form = document.getElementById('extra-group-form');
-  if(form) form.style.display = form.style.display === 'none' ? '' : 'none';
-};
-window.createExtraGroup = async () => {
-  if(!CU) return;
-  if(groupLimitHit()) return;
-  const inp = document.getElementById('extra-group-name-inp');
-  const groupName = cutName(inp?.value,40) || t('grp.newDefName');
+// opts: {name, emoji, flags} ze sheetu nové skupiny (výchozí šablona Kamarádi = jen kalendář). Vrací true = založeno.
+window.createExtraGroup = async (opts) => {
+  if(!CU) return false;
+  if(groupLimitHit()) return false;
+  const groupName = cutName(opts?.name, 40) || t('grp.newDefName');
   const data = {
     groupName, createdBy: CU.uid, createdAt: new Date().toISOString(),
     members: { [CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||t('grp.me')), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'admin' } },
-    shareShop: false, shareCal: true, shareMeal: false, shareChecklist: false
+    ...groupTemplateFlags('friends', opts?.flags)
   };
+  if(okGroupEmoji(opts?.emoji)) data.emoji = opts.emoji;
   const prevIds = extraGroupIds;
   try {
     const code = await createFamilyDoc(data);
@@ -7405,21 +7408,21 @@ window.createExtraGroup = async () => {
     await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayUnion(code)});
     prof.extraGroupIds = extraGroupIds;
     subscribeExtraGroup(code);
-    document.getElementById('extra-group-form').style.display = 'none';
-    if(inp) inp.value = '';
     renderFamilySettings();
     toast(t('grp.createdExtra', {name: groupName, code}), 5000);
+    return true;
   } catch(e) {
     extraGroupIds = prevIds;
     console.warn('createExtraGroup selhalo', e?.code || e?.name);
     toast(createFamilyErrMsg(e), 5000);
+    return false;
   }
 };
 // codeArg: kód z pozvánky odkazem; bez něj se čte z pole ve formuláři.
 // Vrací true = připojeno, false = trvalé selhání (neplatný kód, plná, nenalezena), null = dočasná chyba (offline).
 window.joinExtraGroup = async (codeArg) => {
   if(!CU) return false;
-  const inp = document.getElementById('extra-group-join-code');
+  const inp = joinCodeInp('extra-group-join-code');
   const fromLink = typeof codeArg === 'string';
   const typed = normFamilyCode(fromLink ? codeArg : inp?.value);
   if(!okFamilyCodeLoose(typed)) { toast(t('grp.codeBad')); return false; }
@@ -7441,7 +7444,6 @@ window.joinExtraGroup = async (codeArg) => {
     await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayUnion(code)});
     prof.extraGroupIds = extraGroupIds;
     subscribeExtraGroup(code);
-    const gf = document.getElementById('extra-group-form'); if(gf) gf.style.display = 'none';
     if(inp) inp.value = '';
     renderFamilySettings();
     toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
@@ -7871,133 +7873,454 @@ window.toggleChecklistShare = async function(listId) {
   renderChecklist();
 };
 
-function buildGroupCard(gid, gData, isPrimary) {
-  const members = gData.members || {};
-  const avs = MEMBER_AV;
-  const isAdmin = members[CU?.uid]?.role === 'admin';
-  // Emoji jako v hlavičkách modulů (🧺 nákupy, 🗓️ kalendář). Vedlejší skupiny sdílí kalendář a nákupy (4.50),
-  // jídelníček a checklisty zatím jen hlavní skupina
-  const shareModules = [
-    {key:'shareShop', emoji:'🧺', label:tH('mod.shopping'), val: !!gData.shareShop},
-    {key:'shareCal',  emoji:'🗓️', label:tH('mod.calendar'), val: !!gData.shareCal},
-    {key:'shareMeal', emoji:'🥗', label:tH('mod.mealplan'), val: !!gData.shareMeal},
-    {key:'shareChecklist', emoji:'📋', label:tH('mod.checklist'), val: gData.shareChecklist !== false && !!gData.shareChecklist},
-  ].filter(m => isPrimary || m.key === 'shareCal' || m.key === 'shareShop');
-  // gid jde do HTML jen přes data-gid (esc), v JS se čte přes dataset
-  const gidAttr = esc(gid);
-  const membersHtml = Object.entries(members).map(([uid,m])=>
-    '<div class="family-member">'
-    +'<div class="family-member-av">'+lookupOr(avs,m.avatar,'👤')+'</div>'
-    +'<div class="family-member-info">'
-    +'<div class="family-member-name">'+esc(m.name||t('grp.member'))+(uid===CU?.uid?' <span style="color:var(--text3);font-size:11px">'+tH('grp.you')+'</span>':'')+'</div>'
-    +'<div class="family-member-role">'+(m.role==='admin'?tH('grp.admin'):tH('grp.member'))+' · '+fmtDate(new Date(m.joinedAt||Date.now()),'dm')+'</div>'
-    +'</div>'
-    +(isAdmin&&uid!==CU?.uid?'<button data-uid="'+esc(uid)+'" data-gid="'+gidAttr+'" onclick="removeFamilyMember(this.dataset.uid,this.dataset.gid)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7">✕</button>':'')
-    +'</div>'
-  ).join('');
-  const modsHtml = shareModules.map(m=>
-    '<div class="fshare-mod-row" data-gid="'+gidAttr+'" onclick="toggleFamilyModule(\''+m.key+'\',this.dataset.gid)" style="cursor:pointer">'
-    +'<span style="font-size:18px">'+m.emoji+'</span>'
-    +'<span style="flex:1;font-size:14px;color:var(--text1)">'+m.label+'</span>'
-    +'<div class="fshare-toggle '+(m.val?'on':'')+'"><div class="fshare-thumb"></div></div>'
-    +'</div>'
-  ).join('');
-  const leaveBtn = isPrimary
-    ? '<button onclick="leaveFamily()" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">'+tH('grp.leave.btn')+'</button>'
-    : '<button data-gid="'+gidAttr+'" onclick="leaveExtraGroup(this.dataset.gid)" style="margin-top:12px;background:none;border:1px solid var(--red);border-radius:8px;padding:6px 14px;color:var(--red);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;width:100%">'+tH('grp.leave.btn')+'</button>';
-  const nameLabel = esc(gData.groupName || t('grp.defName')) + (isPrimary ? ' <span style="font-size:11px;color:var(--text3)">'+tH('grp.main')+'</span>' : '');
-  const renameBtn = isPrimary ? ' <button onclick="renameFamilyGroup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px">✏️</button>' : '';
-  // Nový kód smí vygenerovat jen správce; starý krátký kód (WORD-NNNN) se dá uhodnout → zvýraznit
-  const legacyCode = FAMILY_CODE_LEGACY_RE.test(gid);
-  const rotateBtn = isAdmin
-    ? '<button type="button" class="rotcode-open" data-gid="'+gidAttr+'" onclick="openRotateGroupCode(this.dataset.gid)"'+(_rotateBusy?' disabled':'')+' style="'
-      +(legacyCode ? 'background:var(--red);border:none;color:#fff;font-weight:700' : 'background:none;border:1px solid var(--border);color:var(--text2)')
-      +';border-radius:8px;padding:5px 14px;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">'+tH('grp.newCode')+'</button>'
-    : '';
-  const legacyWarn = isAdmin && legacyCode
-    ? '<div role="note" style="font-size:13px;color:var(--red);margin-top:8px;line-height:1.4">'+tH('grp.legacyWarn')+'</div>'
-    : '';
-  // „Co je nového“ se štítkem nepřečtených (počet doplňuje updateGroupFeedBadges)
+// ── SPRÁVA SKUPIN (4.51) ── krátké karty v Nastavení, detail ve sheetu, emoji, šablony, volba hlavní skupiny
+const GROUP_EMOJIS = ['🏠','💼','🎉','⚽','🏡','🎓','✈️','👥'];
+// Šablony nové skupiny předvyplní přepínače modulů (shareChecklist vždy explicitně, čte se jako !== false)
+const GROUP_TEMPLATES = {
+  home:    {em:'🏠', shareShop:true,  shareCal:true, shareMeal:true,  shareChecklist:true},
+  team:    {em:'💼', shareShop:false, shareCal:true, shareMeal:false, shareChecklist:true},
+  friends: {em:'🎉', shareShop:false, shareCal:true, shareMeal:false, shareChecklist:false},
+};
+const GROUP_MOD_KEYS = ['shareShop','shareCal','shareMeal','shareChecklist'];
+const GROUP_MOD_INFO = {shareShop:['🧺','shop'], shareCal:['🗓️','cal'], shareMeal:['🥗','meal'], shareChecklist:['📋','check']};
+function okGroupEmoji(e) { return GROUP_EMOJIS.includes(e); }
+// Příznaky modulů: šablona + ruční změny (over), vždy všechna 4 pole jako boolean
+function groupTemplateFlags(tpl, over) {
+  const base = GROUP_TEMPLATES[tpl] || GROUP_TEMPLATES.friends;
+  const out = {};
+  for(const k of GROUP_MOD_KEYS) out[k] = typeof over?.[k] === 'boolean' ? over[k] : !!base[k];
+  return out;
+}
+// Přepínače, které skupina v Nastavení ukazuje: hlavní všechny, vedlejší zatím nákupy a kalendář (fáze 3)
+function groupModKeys(isMain) { return isMain ? GROUP_MOD_KEYS : ['shareShop','shareCal']; }
+// Hodnota přepínače (checklist bez pole = zapnutý, stejně jako groupModShared)
+function groupModVal(d, key) { return key === 'shareChecklist' ? d?.shareChecklist !== false : !!d?.[key]; }
+function grpModName(key) { return t('gn.mod.' + GROUP_MOD_INFO[key][1]); }
+
+// Krátká karta skupiny v Nastavení (klepnutí otevře detail)
+function groupCardHTML(gid) {
+  const d = groupDataOf(gid);
+  if(!d) return '';
+  const isMain = gid === familyId;
+  const n = Object.keys(d.members || {}).length;
+  const mods = ['shop','cal','meal','check','pantry'].filter(m => groupModShared(gid, m));
+  const ems = {shop:'🧺', cal:'🗓️', meal:'🥗', check:'📋', pantry:'🧊'};
   const unreadN = _gfUnread[gid]?.total || 0;
-  const feedBtn = '<button type="button" class="gf-open" data-gid="'+gidAttr+'" onclick="openGroupFeed(this.dataset.gid)">'
-    +'<span aria-hidden="true">🔔</span> '+tH('gf.title')
-    +'<span class="gf-count" data-gf-count data-gid="'+gidAttr+'"'+(unreadN?'':' hidden')+'>'+(unreadN>9?'9+':unreadN)+'</span></button>';
-  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">'
-    +'<div style="font-family:\'Playfair Display\',serif;font-size:17px;color:var(--accent);font-weight:700;margin-bottom:6px">'+nameLabel+renameBtn+'</div>'
-    +feedBtn
-    +'<div class="ch-slot" data-ch-slot data-gid="'+gidAttr+'">'+chGroupHTML(gid)+'</div>'
-    +'<div class="family-code-box" style="margin-bottom:12px">'
-    +'<div class="family-code">'+esc(gid)+'</div>'
-    +'<div class="family-code-lbl">'+tH('grp.codeLbl')+'</div>'
-    +'<div style="display:flex;gap:8px;margin-top:8px;justify-content:center;flex-wrap:wrap">'
-    +'<button data-gid="'+gidAttr+'" onclick="copyFamilyCode(this.dataset.gid)" style="background:none;border:1px solid var(--accent);border-radius:8px;padding:5px 14px;color:var(--accent);cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">'+tH('grp.copy')+'</button>'
-    +'<button data-gid="'+gidAttr+'" onclick="shareGroupInvite(this.dataset.gid)" style="background:var(--accent);border:none;border-radius:8px;padding:5px 14px;color:#1a1a1a;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px;font-weight:700">'+tH('grp.share')+'</button>'
-    +rotateBtn
-    +'</div>'+legacyWarn+'</div>'
-    +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">'+tH('grp.members',{n:Object.keys(members).length})+'</div>'
-    +membersHtml
-    +'<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">'+tH('grp.sharedMods')+'</div>'
-    +modsHtml
-    +leaveBtn
-    +'</div>';
+  const g = esc(gid);
+  return '<li><button type="button" class="grp-card" data-gid="'+g+'" aria-haspopup="dialog" onclick="openGroupSheet(this.dataset.gid)">'
+    + '<span class="grp-em" aria-hidden="true">'+esc(grpEmoji(gid))+'</span>'
+    + '<span class="grp-main">'
+    +   '<span class="grp-name"><span class="grp-name-t">'+esc(grpName(gid))+'</span>'
+    +   (isMain ? ' <span class="grp-star" aria-hidden="true">⭐</span><span class="sr-only">'+tH('grp.mainSr')+'</span>' : '')+'</span>'
+    +   '<span class="grp-sub">'+tNH('grp.nMembers', n)
+    +   (mods.length ? ' · <span aria-hidden="true">'+mods.map(m => ems[m]).join(' ')+'</span><span class="sr-only">'
+          + tH('grp.sharesSr', {list: mods.map(gfModName).join(', ')})+'</span>' : '')
+    +   '</span>'
+    + '</span>'
+    + '<span class="gf-count" data-gf-count data-gid="'+g+'"'+(unreadN?'':' hidden')+'>'+(unreadN>9?'9+':unreadN)+'</span>'
+    + '<span class="grp-chev" aria-hidden="true">›</span>'
+    + '</button></li>';
+}
+function groupListHTML(gids) {
+  return gids.length ? '<ul class="grp-list">'+gids.map(groupCardHTML).join('')+'</ul>' : '';
 }
 
+let _grpListHtml = '';
 function renderFamilySettings() {
   try { ctaRefresh(); } catch(e) { console.warn('[LP] cta', e?.name); } // členové skupiny mění výzvy k akci (4.49)
   const section = document.getElementById('family-section');
   if(!section) return;
-  const avs = MEMBER_AV;
-
   const noGroup = document.getElementById('family-no-group');
   const groupView = document.getElementById('family-group-view');
-
-  if(!familyId || !familyData || !okFamilyCode(familyId)) {
-    if(noGroup) noGroup.style.display = 'block';
-    if(groupView) groupView.style.display = 'none';
-    // Hide extra groups section
-    // Přidané skupiny zůstávají vidět i bez hlavní (dřív zmizely z Nastavení a nešlo je opustit)
-    const eg = document.getElementById('family-extra-groups');
-    if(eg) {
-      eg.innerHTML = extraGroupIds.filter(gid => extraGroupsData[gid] && okFamilyCode(gid))
-        .map(gid => buildGroupCard(gid, extraGroupsData[gid], false)).join('') + restoreLinkHtml();
-      if(extraGroupIds.length) updateGroupFeedBadges();
-    }
-    if(!timePickerOpen()) renderGroupNotifSettings();
-    return;
-  }
-  if(noGroup) noGroup.style.display = 'none';
-  if(groupView) groupView.style.display = 'none'; // We use dynamic rendering below
-
-  // Render all groups dynamically into family-extra-groups container
   const eg = document.getElementById('family-extra-groups');
-  if(!eg) return;
-
-  let html = buildGroupCard(familyId, familyData, true);
-
-  // Extra groups
-  for(const gid of extraGroupIds) {
-    const gData = extraGroupsData[gid];
-    if(gData && okFamilyCode(gid)) html += buildGroupCard(gid, gData, false);
+  if(groupView) groupView.style.display = 'none';
+  const hasMain = !!(familyId && familyData && okFamilyCode(familyId));
+  if(noGroup) noGroup.style.display = hasMain ? 'none' : 'block';
+  if(eg) {
+    const gids = myGroupIds().filter(g => groupDataOf(g));
+    let html = '';
+    if(gids.length) html += '<div class="grp-head"><span>'+tH('grp.listTitle')+'</span><span class="grp-cnt">'+tH('grp.countOf', {n: groupCount(), max: GROUP_MAX})+'</span></div>';
+    html += groupListHTML(gids);
+    // Přidat skupinu (bez hlavní skupiny zakládá blok family-no-group); při limitu jen neaktivní s vysvětlením
+    if(hasMain) {
+      const atMax = groupCount() >= GROUP_MAX;
+      html += '<button type="button" class="grp-add" onclick="openNewGroup()"'+(atMax?' disabled aria-describedby="grp-max-note"':'')+'>'+tH('grp.x.add')+'</button>'
+        + (atMax ? '<div id="grp-max-note" class="grp-note grp-note--c">'+tH('grp.maxGroups', {n: GROUP_MAX})+'</div>' : '');
+    }
+    html += restoreLinkHtml();
+    if(_grpListHtml !== html || !eg.firstChild) { eg.innerHTML = html; _grpListHtml = html; } // beze změny nepřekreslovat (fokus)
   }
-
-  // "Přidat skupinu" section (při limitu 5 skupin jen neaktivní tlačítko s vysvětlením)
-  const atMax = groupCount() >= GROUP_MAX;
-  html += '<div id="extra-group-form" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">'
-    +'<div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">'+tH('grp.x.title')+'</div>'
-    +'<input class="finp" id="extra-group-name-inp" placeholder="'+tH('grp.x.namePh')+'" style="margin-bottom:8px;width:100%;box-sizing:border-box">'
-    +'<button class="btn-p" onclick="createExtraGroup()" style="width:100%;margin-bottom:10px">'+tH('grp.x.create')+'</button>'
-    +'<div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:8px">'+tH('grp.x.or')+'</div>'
-    +'<input class="finp" id="extra-group-join-code" placeholder="ADAM-K7M2QX" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" style="margin-bottom:8px;width:100%;box-sizing:border-box;text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace">'
-    +'<button class="btn-sv" onclick="joinExtraGroup()" style="width:100%">'+tH('set.groups.join')+'</button>'
-    +'</div>'
-    +'<button onclick="showExtraGroupForm()"'+(atMax?' disabled aria-describedby="grp-max-note"':'')+' style="width:100%;background:rgba(245,200,66,.08);border:1px dashed rgba(245,200,66,.3);border-radius:10px;padding:10px;color:var(--accent);font-family:\'Crimson Pro\',serif;font-size:14px;cursor:'+(atMax?'default;opacity:.55':'pointer')+'">'+tH('grp.x.add')+'</button>'
-    +(atMax?'<div id="grp-max-note" style="font-size:13px;color:var(--text2);text-align:center;margin-top:6px">'+tH('grp.maxGroups',{n:GROUP_MAX})+'</div>':'');
-  html += restoreLinkHtml();
-
-  eg.innerHTML = html;
   updateGroupFeedBadges();
+  renderGroupSheet();
   if(!timePickerOpen()) renderGroupNotifSettings(); // sdílené moduly se mohly změnit
 }
+
+// ── Sheet: vlastní překryvné okno (Esc, klik vedle, Zpět, návrat fokusu) ──
+// prepend: pod okny z index.html (feed, výzvy), aby se otevřela nad detailem skupiny
+function mountGroupSheet(m, focusBack, prepend) {
+  const rm = Element.prototype.remove;
+  m.remove = () => {
+    if(!m.isConnected) return;
+    rm.call(m);
+    setTimeout(() => { const el = focusBack(); el?.focus?.(); }, 0);
+  };
+  m.addEventListener('keydown', e => { if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.remove(); } });
+  m.addEventListener('click', e => { if(e.target === m) { e.stopPropagation(); m.remove(); } });
+  // Zpět (cm() / globální klik jen sundá .open) → odstranit celé
+  new MutationObserver(() => { if(!m.classList.contains('open')) m.remove(); }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  if(prepend) document.body.prepend(m); else document.body.appendChild(m);
+}
+
+// ── Detail skupiny (sheet m-group) ──
+let _grpSheetGid = null, _grpSheetHtml = '';
+function groupSheetBody(gid) {
+  const d = groupDataOf(gid);
+  if(!d) return '';
+  const isMain = gid === familyId;
+  const members = d.members || {};
+  const isAdmin = members[CU?.uid]?.role === 'admin';
+  const g = esc(gid);
+  const unreadN = _gfUnread[gid]?.total || 0;
+  let h = '<div class="grp-sh-head">'
+    + '<span class="grp-em" aria-hidden="true">'+esc(grpEmoji(gid))+'</span>'
+    + '<h2 class="grp-sh-t" id="grp-sheet-t" tabindex="-1">'+esc(grpName(gid))+(isMain ? ' <span class="grp-star" aria-hidden="true">⭐</span><span class="sr-only">'+tH('grp.mainSr')+'</span>' : '')+'</h2>'
+    + '<button type="button" class="grp-ic" data-fk="edit" data-gid="'+g+'" aria-label="'+tH(isAdmin ? 'grp.editAria' : 'grp.renameAria')+'" onclick="openGroupEdit(this.dataset.gid)">✏️</button>'
+    + '<button type="button" class="grp-ic" data-fk="close" aria-label="'+tH('common.close')+'" onclick="closeGroupSheet()">✕</button>'
+    + '</div>';
+  h += '<button type="button" class="gf-open" data-fk="feed" data-gid="'+g+'" onclick="openGroupFeed(this.dataset.gid)">'
+    + '<span aria-hidden="true">🔔</span> '+tH('gf.title')
+    + '<span class="gf-count" data-gf-count data-gid="'+g+'"'+(unreadN?'':' hidden')+'>'+(unreadN>9?'9+':unreadN)+'</span></button>';
+  // Co skupina sdílí
+  h += '<div class="grp-sec-h">'+tH('grp.sharesH')+'</div>';
+  h += groupModKeys(isMain).map(k => {
+    const on = groupModVal(d, k);
+    return '<button type="button" class="fshare-mod-row grp-mod" role="switch" aria-checked="'+on+'" data-fk="mod-'+k+'" data-gid="'+g+'" data-a0="'+k+'" onclick="toggleFamilyModule(this.dataset.a0,this.dataset.gid)">'
+      + '<span class="grp-mod-em" aria-hidden="true">'+GROUP_MOD_INFO[k][0]+'</span><span class="grp-mod-l">'+esc(grpModName(k))+'</span>'
+      + '<span class="fshare-toggle'+(on?' on':'')+'" aria-hidden="true"><span class="fshare-thumb"></span></span></button>';
+  }).join('');
+  h += isMain
+    ? '<div class="fshare-mod-row grp-mod-fixed"><span class="grp-mod-em" aria-hidden="true">🧊</span><span class="grp-mod-l">'+tH('gn.mod.pantry')+'</span><span class="grp-mod-note">'+tH('grp.pantryMain')+'</span></div>'
+    : '<div class="grp-note">'+tH('grp.extraModsNote')+'</div>';
+  h += '<div class="grp-note">'+tH('grp.personalNote')+'</div>';
+  // Výzvy
+  h += '<div class="ch-slot" data-ch-slot data-gid="'+g+'">'+chGroupHTML(gid)+'</div>';
+  // Členové
+  h += '<div class="grp-sec-h">'+tH('grp.members', {n: Object.keys(members).length})+'</div>';
+  h += Object.entries(members).map(([uid, m]) =>
+    '<div class="family-member">'
+    + '<div class="family-member-av" aria-hidden="true">'+lookupOr(MEMBER_AV, m.avatar, '👤')+'</div>'
+    + '<div class="family-member-info">'
+    + '<div class="family-member-name">'+esc(m.name || t('grp.member'))+(uid === CU?.uid ? ' <span class="grp-you">'+tH('grp.you')+'</span>' : '')+'</div>'
+    + '<div class="family-member-role">'+(m.role === 'admin' ? tH('grp.admin') : tH('grp.member'))+' · '+fmtDate(new Date(m.joinedAt || Date.now()), 'dm')+'</div>'
+    + '</div>'
+    + (isAdmin && uid !== CU?.uid ? '<button type="button" class="grp-rm" data-fk="rm-'+esc(uid)+'" data-uid="'+esc(uid)+'" data-gid="'+g+'" aria-label="'+tH('grp.rmAria', {name: cutName(m.name, 40) || t('grp.member')})+'" onclick="removeFamilyMember(this.dataset.uid,this.dataset.gid)">✕</button>' : '')
+    + '</div>').join('');
+  // Pozvat
+  const legacyCode = FAMILY_CODE_LEGACY_RE.test(gid);
+  h += '<div class="grp-sec-h">'+tH('grp.inviteH')+'</div>'
+    + '<div class="family-code-box grp-code-box">'
+    + '<div class="family-code">'+g+'</div>'
+    + '<div class="family-code-lbl">'+tH('grp.codeLbl')+'</div>'
+    + '<div class="grp-code-acts">'
+    + '<button type="button" class="btn-s" data-fk="copy" data-gid="'+g+'" onclick="copyFamilyCode(this.dataset.gid)">'+tH('grp.copy')+'</button>'
+    + '<button type="button" class="btn-p grp-share-btn" data-fk="share" data-gid="'+g+'" onclick="shareGroupInvite(this.dataset.gid)">'+tH('grp.share')+'</button>'
+    + (isAdmin ? '<button type="button" class="btn-s rotcode-open'+(legacyCode ? ' grp-rot-warn' : '')+'" data-fk="rot" data-gid="'+g+'" onclick="openRotateGroupCode(this.dataset.gid)"'+(_rotateBusy?' disabled':'')+'>'+tH('grp.newCode')+'</button>' : '')
+    + '</div>'
+    + (isAdmin && legacyCode ? '<div role="note" class="grp-legacy">'+tH('grp.legacyWarn')+'</div>' : '')
+    + '</div>';
+  // Dole: nastavit jako hlavní, opustit
+  h += '<div class="grp-bottom">'
+    + (!isMain ? '<button type="button" class="btn-s grp-setmain" data-fk="main" data-gid="'+g+'" onclick="openSetMainGroup(this.dataset.gid)"'+(_setMainBusy?' disabled':'')+'>'+tH('grp.setMain')+'</button>' : '')
+    + '<button type="button" class="grp-leave" data-fk="leave" data-gid="'+g+'" onclick="'+(isMain ? 'leaveFamily()' : 'leaveExtraGroup(this.dataset.gid)')+'">'+tH('grp.leave.btn')+'</button>'
+    + '</div>';
+  return h;
+}
+// Překreslí otevřený detail (jen při změně, fokus zůstane na stejném prvku podle data-fk)
+function renderGroupSheet() {
+  const m = document.getElementById('m-group');
+  if(!m) return;
+  const gid = _grpSheetGid;
+  if(!gid || !myGroupIds().includes(gid)) { m.remove(); return; } // odchod, odebrání, změna kódu
+  const html = groupSheetBody(gid);
+  if(!html || html === _grpSheetHtml) return;
+  const body = m.querySelector('.grp-sheet-body');
+  if(!body) return;
+  const fk = m.contains(document.activeElement) ? document.activeElement?.dataset?.fk : null;
+  const st = m.querySelector('.modal')?.scrollTop || 0;
+  _grpSheetHtml = html;
+  body.innerHTML = html;
+  const box = m.querySelector('.modal'); if(box) box.scrollTop = st;
+  if(fk) [...body.querySelectorAll('[data-fk]')].find(el => el.dataset.fk === fk)?.focus({preventScroll: true});
+}
+window.openGroupSheet = (gid) => {
+  if(!CU || !myGroupIds().includes(gid) || !groupDataOf(gid)) return;
+  document.getElementById('m-group')?.remove();
+  _grpSheetGid = gid; _grpSheetHtml = '';
+  const m = document.createElement('div');
+  m.id = 'm-group'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal grp-sheet" role="dialog" aria-modal="true" aria-labelledby="grp-sheet-t"><div class="grp-sheet-body"></div></div>';
+  mountGroupSheet(m, () => {
+    if(document.getElementById('m-group')) return null;
+    _grpSheetGid = null;
+    return [...document.querySelectorAll('#family-extra-groups .grp-card')].find(b => b.dataset.gid === gid) || null;
+  }, true);
+  renderGroupSheet();
+  m.querySelector('#grp-sheet-t')?.focus();
+};
+window.closeGroupSheet = () => document.getElementById('m-group')?.remove();
+
+// ── Úprava názvu a emoji (název smí každý člen, emoji jen správce – pravidla: isFamilyMemberUpdate) ──
+let _grpEditEm = null;
+window.openGroupEdit = (gid) => {
+  const d = groupDataOf(gid);
+  if(!CU || !d || !myGroupIds().includes(gid)) return;
+  const isAdmin = d.members?.[CU.uid]?.role === 'admin';
+  _grpEditEm = grpEmoji(gid);
+  document.getElementById('m-grpedit')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-grpedit'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="grpedit-t" style="max-width:420px">'
+    + '<div class="mtitle" id="grpedit-t">'+tH(isAdmin ? 'grp.editTitle' : 'grp.renameTitle')+'</div>'
+    + '<label class="grp-lbl" for="grpedit-name">'+tH('grp.nameLbl')+'</label>'
+    + '<input class="finp grp-inp" id="grpedit-name" maxlength="40" autocomplete="off" value="'+esc(grpName(gid))+'">'
+    + (isAdmin
+      ? '<div class="grp-lbl" id="grpedit-em-l">'+tH('grp.emojiLbl')+'</div>'+groupEmojiPickerHTML('grpedit-em-l', _grpEditEm, 'pickGroupEditEmoji')
+      : '<div class="grp-note">'+tH('grp.emojiAdminOnly')+'</div>')
+    + '<div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.cancel')+'</button>'
+    + '<button type="button" class="btn-p" id="grpedit-save" data-gid="'+esc(gid)+'" onclick="saveGroupEdit(this.dataset.gid)">'+tH('common.save')+'</button></div></div>';
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => opener?.isConnected ? opener : document.querySelector('#m-group [data-fk="edit"]'));
+  m.querySelector('#grpedit-name')?.focus();
+};
+function groupEmojiPickerHTML(labelId, cur, fn) {
+  return '<div class="grp-em-pick" role="group" aria-labelledby="'+labelId+'">'
+    + GROUP_EMOJIS.map(e => '<button type="button" class="grp-em-btn'+(e===cur?' sel':'')+'" aria-pressed="'+(e===cur)+'" data-a0="'+e+'" onclick="'+fn+'(this.dataset.a0)">'+e+'</button>').join('')
+    + '</div>';
+}
+function syncEmojiPicker(root, cur) {
+  root?.querySelectorAll('.grp-em-btn').forEach(b => { const on = b.dataset.a0 === cur; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); });
+}
+window.pickGroupEditEmoji = (e) => { if(!okGroupEmoji(e)) return; _grpEditEm = e; syncEmojiPicker(document.getElementById('m-grpedit'), e); };
+window.saveGroupEdit = async (gid) => {
+  const d = groupDataOf(gid);
+  if(!CU || !d || !myGroupIds().includes(gid)) return;
+  const isAdmin = d.members?.[CU.uid]?.role === 'admin';
+  const name = cutName(document.getElementById('grpedit-name')?.value, 40);
+  const patch = {};
+  if(name && name !== cutName(d.groupName, 40)) patch.groupName = name;
+  if(isAdmin && okGroupEmoji(_grpEditEm) && _grpEditEm !== grpEmoji(gid)) patch.emoji = _grpEditEm;
+  if(!Object.keys(patch).length) { document.getElementById('m-grpedit')?.remove(); return; }
+  const btn = document.getElementById('grpedit-save'); if(btn) btn.disabled = true;
+  try {
+    await setDoc(doc(db,'families',gid), patch, {merge:true});
+    document.getElementById('m-grpedit')?.remove();
+    toast(t('grp.edited'));
+  } catch(e) {
+    if(btn) btn.disabled = false;
+    console.warn('saveGroupEdit selhalo', e?.code || e?.name);
+    toast(t('grp.editFail'));
+  }
+};
+
+// ── Nová skupina (sheet m-newgrp): název, emoji, šablona s přepínači, nebo připojení kódem ──
+// Bez hlavní skupiny se zakládá hlavní (createFamily), jinak vedlejší (createExtraGroup)
+let _ng = null, _ngBusy = false;
+window.openNewGroup = () => {
+  if(!CU) return;
+  if(groupLimitHit()) return;
+  const isMain = !familyId;
+  const tpl = isMain ? 'home' : 'friends';
+  _ng = {isMain, tpl, em: GROUP_TEMPLATES[tpl].em, emTouched: false, flags: groupTemplateFlags(tpl)};
+  document.getElementById('m-newgrp')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-newgrp'; m.className = 'moverlay open';
+  const tpls = [['home','grp.tpl.home'],['team','grp.tpl.team'],['friends','grp.tpl.friends']];
+  m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="newgrp-t" style="max-width:440px">'
+    + '<div class="mtitle" id="newgrp-t">'+tH('grp.x.title')+'</div>'
+    + '<label class="grp-lbl" for="ng-name">'+tH('grp.nameLbl')+'</label>'
+    + '<input class="finp grp-inp" id="ng-name" maxlength="40" autocomplete="off" placeholder="'+tH('grp.x.namePh')+'">'
+    + '<div class="grp-lbl" id="ng-em-l">'+tH('grp.emojiLbl')+'</div>'
+    + groupEmojiPickerHTML('ng-em-l', _ng.em, 'pickNewGroupEmoji')
+    + '<div class="grp-lbl" id="ng-tpl-l">'+tH('grp.tplLbl')+'</div>'
+    + '<div class="seg seg--block seg--grp grp-tpl" role="group" aria-labelledby="ng-tpl-l">'
+    + tpls.map(([k, key]) => '<button type="button" class="seg-btn" data-a0="'+k+'" aria-pressed="false" onclick="pickNewGroupTpl(this.dataset.a0)">'+tH(key)+'</button>').join('')
+    + '</div>'
+    + '<div class="grp-ng-mods">'
+    + groupModKeys(isMain).map(k => '<button type="button" class="fshare-mod-row grp-mod" role="switch" aria-checked="false" data-a0="'+k+'" onclick="toggleNewGroupMod(this.dataset.a0)">'
+        + '<span class="grp-mod-em" aria-hidden="true">'+GROUP_MOD_INFO[k][0]+'</span><span class="grp-mod-l">'+esc(grpModName(k))+'</span>'
+        + '<span class="fshare-toggle" aria-hidden="true"><span class="fshare-thumb"></span></span></button>').join('')
+    + '</div>'
+    + (isMain ? '' : '<div class="grp-note">'+tH('grp.extraModsNote')+'</div>')
+    + '<button type="button" class="btn-p grp-ng-create" id="ng-create" onclick="submitNewGroup()">'+tH('grp.x.create')+'</button>'
+    + '<div class="grp-or">'+tH('grp.x.or')+'</div>'
+    + '<input class="finp grp-inp grp-code-inp" id="grp-join-code" placeholder="ADAM-K7M2QX" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="'+tH('grp.codeAria')+'">'
+    + '<button type="button" class="btn-sv grp-ng-join" id="ng-join" onclick="submitJoinGroup()">'+tH('set.groups.join')+'</button>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.cancel')+'</button></div>'
+    + '</div>';
+  const pre = document.getElementById('family-name-inp');
+  if(isMain && pre?.value) m.querySelector('#ng-name').value = cutName(pre.value, 40);
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => opener?.isConnected ? opener : null);
+  syncNewGroup();
+  m.querySelector('#ng-name')?.focus();
+};
+function syncNewGroup() {
+  const m = document.getElementById('m-newgrp');
+  if(!m || !_ng) return;
+  syncEmojiPicker(m, _ng.em);
+  m.querySelectorAll('.grp-tpl .seg-btn').forEach(b => { const on = b.dataset.a0 === _ng.tpl; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+  m.querySelectorAll('.grp-ng-mods .grp-mod').forEach(b => {
+    const on = !!_ng.flags[b.dataset.a0];
+    b.setAttribute('aria-checked', String(on));
+    b.querySelector('.fshare-toggle')?.classList.toggle('on', on);
+  });
+  const busy = _ngBusy;
+  ['ng-create','ng-join'].forEach(id => { const b = document.getElementById(id); if(b) b.disabled = busy; });
+}
+window.pickNewGroupEmoji = (e) => { if(!_ng || !okGroupEmoji(e)) return; _ng.em = e; _ng.emTouched = true; syncNewGroup(); };
+window.pickNewGroupTpl = (k) => {
+  if(!_ng || !GROUP_TEMPLATES[k]) return;
+  _ng.tpl = k; _ng.flags = groupTemplateFlags(k);
+  if(!_ng.emTouched) _ng.em = GROUP_TEMPLATES[k].em; // emoji vybrané ručně šablona nepřepíše
+  syncNewGroup();
+};
+window.toggleNewGroupMod = (k) => {
+  if(!_ng || !GROUP_MOD_KEYS.includes(k)) return;
+  _ng.flags = {..._ng.flags, [k]: !_ng.flags[k]};
+  syncNewGroup();
+};
+window.submitNewGroup = async () => {
+  if(!_ng || _ngBusy) return;
+  const opts = {name: document.getElementById('ng-name')?.value || '', emoji: _ng.em, flags: {..._ng.flags}};
+  _ngBusy = true; syncNewGroup();
+  let ok = false;
+  try { ok = familyId ? await window.createExtraGroup(opts) : await window.createFamily(opts.name, opts); }
+  finally { _ngBusy = false; syncNewGroup(); }
+  if(ok) document.getElementById('m-newgrp')?.remove();
+};
+window.submitJoinGroup = async () => {
+  if(_ngBusy) return;
+  _ngBusy = true; syncNewGroup();
+  let ok = false;
+  try { ok = familyId ? await window.joinExtraGroup() : await window.joinFamily(); }
+  finally { _ngBusy = false; syncNewGroup(); }
+  if(ok === true) document.getElementById('m-newgrp')?.remove();
+};
+// Pole s kódem: ve sheetu nové skupiny, jinak původní formulář
+function joinCodeInp(id) { return document.getElementById('grp-join-code') || document.getElementById(id); }
+
+// ── ⭐ Nastavit jako hlavní ──
+// Profil: prohození familyId a extraGroupIds v jedné transakci (starší verze čtou familyId beze změny).
+// Data se nepřesouvají: zásoby, jídelníček a checklisty se berou z nové hlavní, ty staré zůstanou ve staré skupině.
+let _setMainBusy = false;
+// Nový stav profilu (čistá funkce): null = skupina v profilu není; already = už je hlavní (jiné zařízení)
+function swapMainGroupIds(p, gid) {
+  const cur = okFamilyCode(p?.familyId) ? p.familyId : null;
+  const extras = Array.isArray(p?.extraGroupIds) ? p.extraGroupIds.filter(okFamilyCode) : [];
+  if(cur === gid) return {already: true, familyId: gid, extraGroupIds: extras.filter((g, i, a) => g !== gid && a.indexOf(g) === i), oldMain: null};
+  if(!extras.includes(gid)) return null;
+  const next = [];
+  for(const g of extras.map(g => g === gid ? cur : g)) if(g && g !== gid && !next.includes(g)) next.push(g); // stará hlavní na místo nové
+  return {already: false, familyId: gid, extraGroupIds: next, oldMain: cur};
+}
+async function setMainGroupTx(gid) {
+  const ref = doc(db,'users',CU.uid,'profile','main');
+  const fref = doc(db,'families',gid);
+  return runTransaction(db, async tx => {
+    const ps = await tx.get(ref);
+    const fs = await tx.get(fref);
+    if(!fs.exists() || !fs.data()?.members?.[CU.uid]) throw Object.assign(new Error('not member'), {code: 'grp/not-member'});
+    const r = swapMainGroupIds(ps.exists() ? ps.data() : {}, gid);
+    if(!r) throw Object.assign(new Error('not in profile'), {code: 'grp/not-in-profile'});
+    if(!r.already) tx.update(ref, {familyId: r.familyId, extraGroupIds: r.extraGroupIds});
+    return r;
+  });
+}
+// Přepne lokální stav: nová hlavní (listenery hlavní skupiny, zásoby), stará mezi vedlejší
+function applyMainSwitchLocal(gid, r) {
+  const newData = groupDataOf(gid), oldMain = familyId, oldData = familyData;
+  flushAllGroupActivity(); // čekající aktivita ještě do obou skupin
+  forgetExtraGroupLocal(gid);
+  if(oldMain) resetFamilyLocal();
+  familyId = gid; prof.familyId = gid;
+  familyData = newData || null; // karta nezmizí, než dorazí snapshot
+  extraGroupIds = r.extraGroupIds.filter(g => g !== gid); prof.extraGroupIds = extraGroupIds;
+  if(oldMain && oldData && extraGroupIds.includes(oldMain)) extraGroupsData[oldMain] = oldData;
+  subscribeFamily(); // přihlásí i starou hlavní jako vedlejší (běžící přeskočí)
+  initPantry();
+  renderAfterFamilyChange();
+}
+function setMainSetStatus(txt, isErr) {
+  const st = document.getElementById('setmain-st');
+  if(!st) return;
+  st.textContent = txt;
+  st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
+}
+window.openSetMainGroup = (gid) => {
+  if(!CU || _setMainBusy || gid === familyId || !extraGroupIds.includes(gid)) return;
+  const d = extraGroupsData[gid];
+  if(!d) return;
+  const name = grpLabel(gid);
+  const old = familyId && familyData ? grpLabel(familyId) : null;
+  const off = ['shareMeal','shareChecklist'].filter(k => !groupModVal(d, k)).map(grpModName);
+  const li = [
+    tH('grp.mainLi1', {name}),
+    old ? tH('grp.mainLi2', {old}) : '',
+    off.length ? tH('grp.mainLi3', {name, list: off.join(', ')}) : '',
+    tH('grp.mainLi4', {name}),
+    tH('grp.mainLi5'),
+  ].filter(Boolean);
+  document.getElementById('m-setmain')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-setmain'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="setmain-t" style="max-width:440px">'
+    + '<div class="mtitle" id="setmain-t">'+tH('grp.mainTitle', {name})+'</div>'
+    + '<div class="grp-main-info">'+tH('grp.mainIntro')+'</div>'
+    + '<ul class="grp-main-ul">'+li.map(x => '<li>'+x+'</li>').join('')+'</ul>'
+    + '<div id="setmain-st" role="status" aria-live="polite" class="grp-st"></div>'
+    + '<div class="macts"><button type="button" class="btn-s" id="setmain-cancel" onclick="closeSetMainGroup()">'+tH('common.cancel')+'</button>'
+    + '<button type="button" class="btn-p" id="setmain-btn" data-gid="'+esc(gid)+'" onclick="confirmSetMainGroup(this.dataset.gid)">'+tH('grp.setMain')+'</button></div></div>';
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => opener?.isConnected ? opener : document.querySelector('#m-group [data-fk="close"]'));
+  // Během zápisu nezavírat (Esc, klik vedle, Zpět)
+  const rm = m.remove;
+  m.remove = () => { if(_setMainBusy) { m.classList.add('open'); return; } rm(); };
+  m.querySelector('#setmain-btn')?.focus();
+};
+window.closeSetMainGroup = () => document.getElementById('m-setmain')?.remove();
+window.confirmSetMainGroup = async (gid) => {
+  if(!CU || _setMainBusy || !okFamilyCode(gid)) return;
+  if(gid === familyId) { window.closeSetMainGroup(); return; }
+  if(!extraGroupIds.includes(gid)) { window.closeSetMainGroup(); return; }
+  const btn = document.getElementById('setmain-btn'), cancel = document.getElementById('setmain-cancel');
+  const busy = on => {
+    _setMainBusy = on;
+    if(btn) btn.disabled = on;
+    if(cancel) cancel.disabled = on;
+    document.querySelectorAll('.grp-setmain').forEach(b => { b.disabled = on; });
+  };
+  busy(true);
+  setMainSetStatus(t('grp.mainBusy'));
+  const uid = CU.uid;
+  let r = null;
+  try {
+    if(navigator.onLine === false) throw Object.assign(new Error('offline'), {code: 'unavailable'});
+    r = await withTimeout(setMainGroupTx(gid), FAMILY_CREATE_TIMEOUT_MS);
+  } catch(e) {
+    busy(false);
+    console.warn('setMainGroup selhalo', e?.code || e?.name);
+    const txt = e?.code === 'grp/not-member' ? t('grp.mainNotMember') : e?.code === 'grp/not-in-profile' ? t('grp.mainStale') : userErr(e, 'skupina');
+    document.getElementById('m-setmain')?.classList.add('open');
+    setMainSetStatus('⚠️ ' + txt, true);
+    return;
+  }
+  busy(false);
+  if(CU?.uid !== uid) return;
+  // Lokální stav mezitím mohl změnit snapshot (odebrání) → přepnout jen když skupina pořád je vedlejší
+  if(familyId !== gid && extraGroupIds.includes(gid)) applyMainSwitchLocal(gid, r);
+  window.closeSetMainGroup();
+  toast(t('grp.mainDone', {name: grpLabel(gid)}), 4000);
+};
 
 // ── Obnovit dřívější skupinu (restoreGroup) ──
 // Skupina bez členů (všichni odešli) zůstává v databázi; zakladatel nebo bývalý člen (formerGroups v profilu)
@@ -8084,15 +8407,6 @@ window.confirmRestoreGroup = async (gid) => {
 function restoreLinkHtml() {
   return '<button type="button" onclick="openRestoreGroup()" style="display:block;margin:10px auto 0;background:none;border:none;color:var(--text3);text-decoration:underline;cursor:pointer;font-family:\'Crimson Pro\',serif;font-size:13px">' + tH('grp.restore.link') + '</button>';
 }
-
-window.renameFamilyGroup = async () => {
-  if(!familyId) return;
-  const cur = familyData?.groupName || t('grp.myGroup');
-  const name = cutName(prompt(t('grp.renamePrompt'), cur),40);
-  if(!name || name === cutName(cur,40)) return;
-  await setDoc(doc(db,'families',familyId), {groupName: name}, {merge:true});
-  toast(t('grp.renamed'));
-};
 
 // ── SDÍLENÝ NÁKUPNÍ SEZNAM ────────────────────────────
 async function toggleFamilyShopItem(fid, id, done) {
