@@ -8958,8 +8958,22 @@ function ctaRefresh() {
   const w = document.getElementById('grp-what');
   if(w) w.innerHTML = ctaWhatHTML();
 }
-window.ctaHide = () => { lsSave('lp_cta_off', 1); ctaRefresh(); toast(t('cta.hidden'), 3500); };
-window.ctaInvHide = () => { lsSave('lp_cta_inv', 1); ctaRefresh(); };
+// Fokus po ✕: první prvek seznamu za tipem, jinak nadpis stránky (fokus nespadne na body)
+function ctaFocusNear(slot) {
+  const page = document.querySelector('.page.active');
+  const vis = el => el && el.getClientRects().length;
+  const list = slot?.isConnected && slot.closest('#habits-list,#goals-list');
+  let el = list ? [...list.querySelectorAll('button:not([disabled]),a[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')].find(vis) : null;
+  if(!el) {
+    el = page?.querySelector('.ptitle,.dgreet');
+    if(el && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+  }
+  if(vis(el)) el.focus({preventScroll: true});
+}
+// Slot, ze kterého přišel klik (před překreslením)
+const ctaSlot = () => document.activeElement?.closest?.('[data-cta-tip],#ch-dash') || null;
+window.ctaHide = () => { const s = ctaSlot(); lsSave('lp_cta_off', 1); ctaRefresh(); ctaFocusNear(s); toast(t('cta.hidden'), 3500); };
+window.ctaInvHide = () => { const s = ctaSlot(); lsSave('lp_cta_inv', 1); ctaRefresh(); ctaFocusNear(s); };
 // Pozvat: skupina, kde jsem sám → odkaz na pozvánku; bez skupiny → Nastavení, Skupiny
 window.ctaInvite = () => {
   const alone = myGroupIds().find(gid => groupDataOf(gid));
@@ -8976,11 +8990,14 @@ function ctaGoGroups() {
   }, 200);
 }
 
-// Nabídka sdílení hned po vytvoření návyku nebo cíle (bublina nad lištou, sama zmizí po 10 s)
+// Nabídka sdílení hned po vytvoření návyku nebo cíle (bublina nad lištou, sama zmizí po 15 s;
+// při fokusu nebo najetí myší se odpočet zastaví). Respektuje skrytá tlačítka (lp_cta_off).
+const CTA_ASK_MS = 15000;
 let _ctaAskT = null;
 function ctaAskShare(type, id) {
   const gids = ctaGroups();
-  if(!CU || !id || !gids.length || !SH_KINDS.includes(type)) return;
+  if(!CU || !id || !gids.length || !SH_KINDS.includes(type) || lsGet('lp_cta_off', false)) return;
+  if(document.getElementById('module-hint')) return;
   window.ctaAskClose();
   const el = document.createElement('div');
   el.id = 'cta-ask';
@@ -8990,7 +9007,13 @@ function ctaAskShare(type, id) {
     <button type="button" class="cta-ask-b" data-a0="${esc(id)}" data-a1="${type}" onclick="ctaAskGo(this.dataset.a0,this.dataset.a1)">${tH('cta.askBtn')}</button>
     <button type="button" class="cta-ask-x" aria-label="${tH('common.close')}" onclick="ctaAskClose()">✕</button>`;
   document.body.appendChild(el);
-  _ctaAskT = setTimeout(window.ctaAskClose, 10000);
+  const run = () => { clearTimeout(_ctaAskT); _ctaAskT = setTimeout(window.ctaAskClose, CTA_ASK_MS); };
+  const pause = () => { clearTimeout(_ctaAskT); _ctaAskT = null; };
+  el.addEventListener('mouseenter', pause);
+  el.addEventListener('focusin', pause);
+  el.addEventListener('mouseleave', () => { if(!el.contains(document.activeElement)) run(); });
+  el.addEventListener('focusout', e => { if(!el.contains(e.relatedTarget) && !el.matches(':hover')) run(); });
+  run();
 }
 window.ctaAskClose = () => { clearTimeout(_ctaAskT); _ctaAskT = null; document.getElementById('cta-ask')?.remove(); };
 window.ctaAskGo = (id, type) => { window.ctaAskClose(); window.openShareSheet(id, type); };
@@ -9009,14 +9032,13 @@ function ctaChHTML() {
     <div class="ch-pre" role="group" aria-label="${tH('ch.presets')}">${pre}
       <button type="button" class="gf-chip ch-pre-b" data-a0="${esc(gid)}" onclick="openChalNew(this.dataset.a0)">✏️ ${tH('cta.chCustom')}</button></div></div>`;
 }
-window.ctaChHide = () => { lsSave('lp_cta_ch', Date.now() + CTA_CH_SNOOZE_MS); ctaRefresh(); };
-// Šablona na jedno klepnutí: formulář nové výzvy, předvolba a spuštění (sheet pak ukáže běžící výzvu)
+window.ctaChHide = () => { const s = ctaSlot(); lsSave('lp_cta_ch', Date.now() + CTA_CH_SNOOZE_MS); ctaRefresh(); ctaFocusNear(s); };
+// Šablona: otevře předvyplněný formulář nové výzvy; spouští až uživatel tlačítkem „Spustit“
 window.ctaChQuick = (gid, id) => {
   if(!ctaGroups().includes(gid) || !CH_PRESETS.some(p => p.id === id)) return;
   if(chCurrent(gid).cur) { window.openChal(gid); return; }
   window.openChalNew(gid);
   window.chPreset(id);
-  window.chCreate(gid);
 };
 
 // Nastavení → Skupiny: odstavec „Co můžeš sdílet“ s odkazy
@@ -9068,7 +9090,7 @@ function coachCheck() {
   if(cur && (!page || !page.contains(cur))) coachClose(false);
   if(!CU || !page || document.getElementById('coach-tip') || document.getElementById('module-hint')) return;
   try { if(!localStorage.getItem('lp_tour_done')) return; } catch(e) { return; }
-  if(document.querySelector('.moverlay.open')) return;
+  if(coachBusy()) return;
   const seen = lsGet('lp_coach', {}) || {};
   if(COACH.every(c => seen[c.k])) { _coachDone = true; return; }
   for(const c of COACH) {
@@ -9085,6 +9107,13 @@ function coachCheck() {
     return;
   }
 }
+// Uživatel právě píše nebo je otevřené jiné okno či bublina → tip počká
+function coachBusy() {
+  const a = document.activeElement;
+  if(a && a.matches?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return true;
+  if(document.querySelector('#cta-ask,#direct-input-modal,.tp-overlay.open,.moverlay.open')) return true;
+  return [...document.querySelectorAll('[role="dialog"]')].some(d => d.id !== 'coach-tip' && d.getClientRects().length);
+}
 function coachShow(c, el, anchor) {
   const tip = document.createElement('div');
   tip.id = 'coach-tip';
@@ -9097,8 +9126,7 @@ function coachShow(c, el, anchor) {
   // Šipka míří na střed cílového prvku
   const r = el.getBoundingClientRect(), b = tip.getBoundingClientRect();
   tip.style.setProperty('--cx', Math.max(18, Math.min(b.width - 18, r.left + r.width / 2 - b.left)) + 'px');
-  _coachFocus = el;
-  tip.querySelector('.coach-ok')?.focus({preventScroll: true});
+  _coachFocus = el; // tip je nemodální: fokus zůstává, kde je
 }
 function coachClose(back) {
   document.getElementById('coach-tip')?.remove();
@@ -9814,7 +9842,8 @@ function updateGroupFeedBells() {
     const n = myGroupIds().reduce((s, g) => s + (groupModShared(g, m) ? (_gfUnread[g]?.mods?.[m] || 0) : 0), 0);
     btn.toggleAttribute('data-dot', n > 0);
     btn.setAttribute('aria-label', n ? t('gf.bellAriaN', {n}) : t('gf.bellAria'));
-  }  if(Object.values(show).some(Boolean)) coachSoon(); // tip k 🔔 (4.49)
+  }
+  if(Object.values(show).some(Boolean)) coachSoon(); // tip k 🔔 (4.49)
 }
 
 // Otevře feed; gid null = první skupina, kde je modul sdílený (přednost má ta s nepřečtenými)
@@ -14900,6 +14929,7 @@ function maybeStartTourOnInit() {
 const _origSp = window.sp;
 window.sp = id => {
   _origSp(id);
+  window.ctaAskClose?.(); // nabídka sdílení patří ke stránce, kde vznikla
   coachSoon(); // jednorázové tipy ke sdílení (4.49)
   if(id !== 'dashboard' && id !== 'settings') {
     setTimeout(() => showModuleHint(id), 500);
