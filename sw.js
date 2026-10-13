@@ -1,5 +1,9 @@
 // LifePocket Service Worker
 
+// Klik na notifikaci: registrovat PŘED Firebase messaging. Notifikaci s payloadem "notification" zobrazí SDK
+// (data má pod FCM_MSG) a jeho vlastní handler by jen otevřel odkaz; tenhle běží první a zastaví ho.
+self.addEventListener('notificationclick', onNotifClick);
+
 // Firebase pro push notifikace — obaleno v try-catch aby SW přežil výpadek CDN
 let fmsg = null;
 try {
@@ -19,30 +23,33 @@ try {
 }
 
 // Zpracování push notifikací na pozadí (appka zavřená)
-// Firebase SDK při payloadu s "notification" zobrazí notifikaci samo (tag/akce/data z webpush.notification),
-// ale do tohoto handleru předá jen title/body/icon. Tag, akce a data proto server posílá i v top-level "data"
-// a tady z nich notifikaci složíme znovu se stejným tagem — nahradí tu od SDK (žádný duplikát).
-// Handler vždy vrací showNotification (iOS ruší subscription u "tichých" pushů).
+// Payload s "notification" (webpush.notification ze serveru) zobrazí Firebase SDK samo, včetně tagu, akcí,
+// zvuku/vibrace (silent:false, vibrate, renotify) a dat; dřív se tu ihned nahrazovala stejným tagem
+// s renotify:false, což na některých Androidech (Samsung) notifikaci ztišilo. Proto se už nenahrazuje.
+// Bez "notification" (jen data) ji složíme tady. Handler vždy vrací Promise (iOS ruší subscription u "tichých" pushů,
+// u payloadu s notification ji ale SDK zobrazilo samo).
 if (fmsg) fmsg.onBackgroundMessage(payload => {
-  const n = payload.notification || {};
+  if (payload.notification) return Promise.resolve();
   const d = payload.data || {};
   let actions = [];
   try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { /* neplatné akce — bez tlačítek */ }
   const {tag, actions: _a, ...clickData} = d;
   const opts = {
-    body: n.body || d.body || '',
-    icon: n.icon || '/icon-192.png',
+    body: d.body || '',
+    icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: tag || 'lifepocket',
-    // Když už notifikaci ukázalo SDK, náhrada nesmí zapípat podruhé
-    renotify: !payload.notification,
+    // Zvuk a vibrace podle telefonu; souhrn ze skupiny (quiet) při nahrazení nezvoní znovu
+    renotify: d.quiet !== '1',
+    silent: false,
+    vibrate: [200, 100, 200],
     data: clickData,
   };
   if (Array.isArray(actions) && actions.length) { opts.actions = actions; opts.requireInteraction = true; }
-  return self.registration.showNotification(n.title || d.title || 'LifePocket', opts);
+  return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v41';
+const CACHE = 'lifepocket-v42';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -83,10 +90,29 @@ self.addEventListener('fetch', e => {
   })));
 });
 
-// ── Klik na tlačítko v notifikaci ──
-self.addEventListener('notificationclick', e => {
+// ── Klik na notifikaci nebo její tlačítko (registrováno nahoře, před Firebase) ──
+// Okno appky: přednostně viditelné / zaměřené, jinak první
+function pickClient(clients) {
+  return clients.find(c => c.focused) || clients.find(c => c.visibilityState === 'visible') || clients[0];
+}
+// Zpráva do běžící appky a fokus, jinak nové okno s parametry v URL
+function openInApp(msg, url) {
+  return self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
+    const c = pickClient(clients);
+    if (c) {
+      if (msg) c.postMessage(msg);
+      return c.focus();
+    }
+    return self.clients.openWindow(url);
+  });
+}
+function onNotifClick(e) {
+  const raw = e.notification.data || {};
+  // Notifikace zobrazená Firebase SDK: data serveru jsou v FCM_MSG.data; SDK handler se nespustí
+  const fcm = raw.FCM_MSG;
+  if (fcm) e.stopImmediatePropagation();
+  const data = (fcm && fcm.data) || raw;
   e.notification.close();
-  const data = e.notification.data || {};
   if (e.action === 'done') {
     // Datum z notifikace (den, pro který připomínka platí); jinak lokální dnešek (ne UTC).
     // Tady jen kontrola tvaru, rozsah (ne budoucnost, max. 14 dní) ověří app.js přes validNotifDate().
@@ -102,9 +128,10 @@ self.addEventListener('notificationclick', e => {
     };
     e.waitUntil(
       self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
-        if (clients.length > 0) {
-          clients[0].postMessage(msg);
-          clients[0].focus();
+        const c = pickClient(clients);
+        if (c) {
+          c.postMessage(msg);
+          c.focus();
         } else {
           return caches.open('lp-pending').then(c =>
             c.put('pending-action', new Response(JSON.stringify(msg)))
@@ -115,25 +142,18 @@ self.addEventListener('notificationclick', e => {
   } else if (data.open === 'grpfeed' && typeof data.gid === 'string' && /^[A-Z]{3,8}-[A-Z0-9]{4,8}$/.test(data.gid)) {
     // Upozornění ze skupiny → „Co je nového“: otevřené okno dostane zprávu, jinak se otevře s parametry v URL
     const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'].includes(data.module) ? data.module : '';
-    const msg = {type: 'OPEN_GRPFEED', gid: data.gid, module: mod};
-    e.waitUntil(
-      self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
-        if (clients.length > 0) {
-          clients[0].postMessage(msg);
-          return clients[0].focus();
-        }
-        return self.clients.openWindow('/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : ''));
-      })
-    );
+    e.waitUntil(openInApp({type: 'OPEN_GRPFEED', gid: data.gid, module: mod},
+      '/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : '')));
+  } else if (['habit', 'habits', 'cal'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
+    // Připomínka návyku → detail návyku, ranní/večerní přehled → Návyky, událost / narozeniny → Kalendář
+    const open = data.open || 'habit';
+    const id = open === 'habit' && typeof data.habitId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.habitId) ? data.habitId : '';
+    e.waitUntil(openInApp({type: 'OPEN_TARGET', open, id},
+      '/?open=' + open + (id ? '&id=' + encodeURIComponent(id) : '')));
   } else {
-    e.waitUntil(
-      self.clients.matchAll({type: 'window'}).then(clients => {
-        if (clients.length > 0) { clients[0].focus(); return; }
-        return self.clients.openWindow('/');
-      })
-    );
+    e.waitUntil(openInApp(null, '/'));
   }
-});
+}
 
 // Poznámka: Firebase onBackgroundMessage (výše) již zpracovává všechny FCM push notifikace.
 // Ruční 'push' listener zde není potřeba — způsoboval by dvojité notifikace při zavřené appce.

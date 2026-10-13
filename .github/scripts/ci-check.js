@@ -249,7 +249,7 @@ try {
 } catch (e) { fail('inline handlery: ' + e.message); }
 
 // Ráčny vícejazyčnosti (docs/NAVRH-I18N.md): každá fáze překladu čísla sníží, nový český text mimo slovník CI shodí
-const I18N_ALLOW = { appCz: 922, htmlCz: 139, csCZ: 0, manualPlural: 0 };
+const I18N_ALLOW = { appCz: 851, htmlCz: 139, csCZ: 0, manualPlural: 0 };
 console.log('i18n: slovníky a použité klíče');
 // Slovník je ES modul „export default { … }“ s čistým objektem; načte se bez importu přes vm
 function loadDict(f) {
@@ -289,7 +289,7 @@ try {
   if (!badPl) ok('tvary plurálů v pořádku');
   // Bezpečnost: hodnoty jdou do innerHTML i atributů (title="…", data-i18n-attr) → žádné < a ".
   // Uvozovky jen u výslovně textových klíčů (jen textContent), ty se nesmí použít v atributu.
-  const QUOTE_TEXT_ONLY = new Set(['ios.s2b', 'dash.ev']);
+  const QUOTE_TEXT_ONLY = new Set(['ios.s2b', 'dash.ev', 'kc.aiBusyFor']);
   let badChars = 0;
   const attrKeys = new Set();
   for (const m of read('index.html').matchAll(/data-i18n-attr="([^"]+)"/g)) m[1].split(';').forEach(x => attrKeys.add(x.slice(x.indexOf(':') + 1).trim()));
