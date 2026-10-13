@@ -1087,16 +1087,16 @@
 
 <div class="moverlay" id="m-goal">
   <div class="modal">
-    <div class="mtitle" id="gm-title">🌟 Nový cíl</div>
+    <div class="mtitle" id="gm-title" data-i18n="goal.newTitle">🌟 Nový cíl</div>
     <div class="fg"><label class="flbl">Název cíle</label><input class="finp" type="text" id="g-name" placeholder="Zhubnout 10 kg…" maxlength="60"></div>
     <div class="fg"><label class="flbl">Popis / poznámka <span style="color:var(--text3);font-weight:400">(volitelné)</span></label><textarea class="finp" id="g-desc" rows="2" placeholder="Proč je tento cíl důležitý, jak ho chci dosáhnout…" style="resize:none;font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5"></textarea></div>
     <div class="frow">
       <div class="fg"><label class="flbl">Kategorie</label>
         <select class="finp" id="g-cat">
-          <option value="zdraví">💪 Zdraví</option><option value="práce">💼 Práce</option>
-          <option value="rodina">👨‍👩‍👧 Rodina</option><option value="finance">💰 Finance</option>
-          <option value="vzdělání">📚 Vzdělání</option><option value="koníčky">🎨 Koníčky</option>
-          <option value="osobní">🌱 Osobní rozvoj</option><option value="ostatní">⭐ Ostatní</option>
+          <option value="zdraví" data-i18n="goal.cat.health">💪 Zdraví</option><option value="práce" data-i18n="goal.cat.work">💼 Práce</option>
+          <option value="rodina" data-i18n="goal.cat.family">👨‍👩‍👧 Rodina</option><option value="finance" data-i18n="goal.cat.finance">💰 Finance</option>
+          <option value="vzdělání" data-i18n="goal.cat.edu">📚 Vzdělání</option><option value="koníčky" data-i18n="goal.cat.hobby">🎨 Koníčky</option>
+          <option value="osobní" data-i18n="goal.cat.growth">🌱 Osobní rozvoj</option><option value="ostatní" data-i18n="goal.cat.other">⭐ Ostatní</option>
         </select></div>
       <div class="fg"><label class="flbl">Deadline</label><input class="finp" type="date" id="g-dl"></div>
     </div>
@@ -1140,7 +1140,7 @@
 
 <div class="moverlay" id="m-subgoal">
   <div class="modal">
-    <div class="mtitle" id="sgm-title">📌 Nový podcíl</div>
+    <div class="mtitle" id="sgm-title" data-i18n="goal.sub.newTitle">📌 Nový podcíl</div>
     <div class="fg"><label class="flbl">Název podcíle</label><input class="finp" type="text" id="sg-name" placeholder="Dokončit kurz, Ušetřit 50 000 Kč…" maxlength="80"></div>
     <div class="fg"><label class="flbl">Popis <span style="color:var(--text3);font-weight:400">(volitelné)</span></label><textarea class="finp" id="sg-desc" rows="2" placeholder="Co konkrétně chceš dosáhnout…" style="resize:none;font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5"></textarea></div>
     <div class="fg"><label class="flbl">Deadline <span style="color:var(--text3);font-weight:400">(volitelné — přidá se do kalendáře)</span></label><input class="finp" type="date" id="sg-dl"></div>

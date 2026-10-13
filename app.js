@@ -502,16 +502,20 @@ const AVS=[
   {id:'nora',emoji:'🏡',name:'Nora',vibe:'Teplo domova,\npéče o blízké.'},
   {id:'rio',emoji:'🌊',name:'Rio',vibe:'Žít naplno,\nbez hranic.'},
 ];
+// id = klíč v prof.visionAreas (zůstává česky), popisky ze slovníku
 const AREAS=[
-  {id:'zdraví',key:'zdravi',emoji:'💪',label:'Zdraví',ph:'Chci být fit a plný energie…'},
-  {id:'práce',key:'prace',emoji:'💼',label:'Práce & kariéra',ph:'Chci si vybudovat vlastní firmu…'},
-  {id:'rodina',key:'rodina',emoji:'👨‍👩‍👧',label:'Rodina',ph:'Chci trávit víc času s rodinou…'},
-  {id:'finance',key:'finance',emoji:'💰',label:'Finance',ph:'Chci mít finanční svobodu do 45…'},
-  {id:'vzdělání',key:'vzdelani',emoji:'📚',label:'Vzdělání',ph:'Chci se neustále učit a růst…'},
-  {id:'vztahy',key:'vztahy',emoji:'❤️',label:'Vztahy',ph:'Chci mít hluboké a smysluplné vztahy…'},
-  {id:'koníčky',key:'konicky',emoji:'🎨',label:'Koníčky',ph:'Chci mít čas na věci které mě baví…'},
-  {id:'osobní rozvoj',key:'rozvoj',emoji:'🌱',label:'Osobní rozvoj',ph:'Chci každý den být lepší verzí sebe…'},
-];
+  {id:'zdraví',key:'zdravi',emoji:'💪'},
+  {id:'práce',key:'prace',emoji:'💼'},
+  {id:'rodina',key:'rodina',emoji:'👨‍👩‍👧'},
+  {id:'finance',key:'finance',emoji:'💰'},
+  {id:'vzdělání',key:'vzdelani',emoji:'📚'},
+  {id:'vztahy',key:'vztahy',emoji:'❤️'},
+  {id:'koníčky',key:'konicky',emoji:'🎨'},
+  {id:'osobní rozvoj',key:'rozvoj',emoji:'🌱'},
+].map(a=>({...a,label:t('goal.area.'+a.key),ph:t('goal.areaPh.'+a.key)}));
+// Kategorie cíle: uložená hodnota (česky, z <select id="g-cat">) → klíč popisku
+const GOAL_CAT_KEYS={'zdraví':'health','práce':'work','rodina':'family','finance':'finance','vzdělání':'edu','koníčky':'hobby','osobní':'growth','ostatní':'other'};
+const goalCatLabel=c=>lookupOr(GOAL_CAT_KEYS,c,null)?t('goal.tag.'+GOAL_CAT_KEYS[c]):c;
 const MODS=[
   {id:'rex',emoji:'🤖',name:'AI asistent',desc:'Chat s tvým osobním AI průvodcem — rady, motivace, odpovědi na cokoliv.'},
   {id:'habits',emoji:'🔥',name:'Návyky',desc:'Buduj denní rutiny, sleduj streak a plň si osobní výzvy.'},
@@ -11420,19 +11424,19 @@ function renderVisionModal(){
       +'<div class="vmodal-area-hdr">'
       +'<span class="vmodal-area-em">'+em+'</span>'
       +'<span class="vmodal-area-lbl">'+esc(lbl)+'</span>'
-      +'<button class="vmodal-area-rm" data-a0="'+esc(key)+'" onclick="vmRemoveArea(this.dataset.a0)" title="Odebrat">✕</button>'
+      +'<button class="vmodal-area-rm" data-a0="'+esc(key)+'" onclick="vmRemoveArea(this.dataset.a0)" title="'+tH('goal.vm.remove')+'">✕</button>'
       +'</div>'
       +'<textarea class="finp" id="'+vDomId(key)+'" rows="2" style="resize:none" placeholder="'+esc(ph)+'">'+val+'</textarea>'
       +'</div>';
   }
   // Chips for inactive default areas
   const inactiveDefault=AREAS.filter(a=>!vmState.activeKeys.has(a.id));
-  html+='<div class="vmodal-chips-lbl">+ Přidat oblast:</div>';
+  html+='<div class="vmodal-chips-lbl">'+tH('goal.vm.addArea')+'</div>';
   html+='<div class="vmodal-add-chips">';
   for(const a of inactiveDefault){
     html+='<button class="vmodal-chip" data-a0="'+esc(a.id)+'" onclick="vmAddArea(this.dataset.a0)">'+a.emoji+' '+a.label+'</button>';
   }
-  html+='<button class="vmodal-chip" onclick="vmAddCustom()">✨ Vlastní…</button>';
+  html+='<button class="vmodal-chip" onclick="vmAddCustom()">'+tH('goal.vm.custom')+'</button>';
   html+='</div>';
   body.innerHTML=html;
 }
@@ -11456,8 +11460,8 @@ window.vmAddCustom=()=>{
   const row=document.createElement('div');
   row.id='vm-custom-row';
   row.style.cssText='display:flex;gap:8px;margin-top:8px;width:100%';
-  row.innerHTML='<input class="finp" id="vm-custom-lbl" placeholder="Název oblasti…" maxlength="30" style="flex:1">'
-    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="vmConfirmCustom()">Přidat</button>';
+  row.innerHTML='<input class="finp" id="vm-custom-lbl" placeholder="'+tH('goal.vm.areaPh')+'" maxlength="30" style="flex:1">'
+    +'<button class="btn-p" style="padding:6px 14px;font-size:13px;white-space:nowrap" onclick="vmConfirmCustom()">'+tH('kc.add')+'</button>';
   chips.after(row);
   setTimeout(()=>{ const inp=document.getElementById('vm-custom-lbl'); if(inp)inp.focus(); },50);
 };
@@ -11465,7 +11469,7 @@ window.vmConfirmCustom=()=>{
   const inp=document.getElementById('vm-custom-lbl');
   if(!inp)return;
   const label=inp.value.trim();
-  if(!label){toast('⚠️ Zadej název oblasti');return;}
+  if(!label){toast(t('goal.vm.areaReq'));return;}
   const key='c_'+Date.now().toString(36);
   vmState.customAreas.push({key,label});
   vmState.activeKeys.add(key);
@@ -11503,7 +11507,7 @@ window.saveV=async()=>{
   prof.visionAreas=areas;
   prof.customAreaLabels=customAreaLabels;
   await updateDoc(doc(db,'users',CU.uid,'profile','main'),{visionAreas:areas,customAreaLabels});
-  loadV();cm('m-vision');toast('✓ Vize uložena');
+  loadV();cm('m-vision');toast(t('goal.vm.saved'));
 };
 function loadV(){
   const container=document.getElementById('vision-areas');
@@ -11521,7 +11525,7 @@ function loadV(){
     if(!defaultIds.has(key)&&text)rows.push({emoji:'✨',label:customAreaLabels[key]||key,text});
   }
   if(!rows.length){
-    container.innerHTML='<div class="vtxt empty" style="padding:0">Klikni ✏️ a napiš svoji vizi pro každou oblast…</div>';
+    container.innerHTML='<div class="vtxt empty" style="padding:0">'+tH('goal.vm.empty')+'</div>';
     return;
   }
   container.innerHTML=rows.map(r=>'<div class="varea-item"><span class="varea-em">'+r.emoji+'</span><div class="varea-body"><div class="varea-lbl">'+esc(r.label)+'</div><div class="varea-txt">'+esc(r.text)+'</div></div></div>').join('');
@@ -11573,7 +11577,7 @@ async function updateGoalProgress(gid) {
 
 window.openGM=(gid=null)=>{
   editGId=gid;
-  document.getElementById('gm-title').textContent=gid?'✏️ Upravit cíl':'🌟 Nový cíl';
+  document.getElementById('gm-title').textContent=gid?t('goal.editTitle'):t('goal.newTitle');
   if(gid){
     const g=goals.find(x=>x.id===gid);
     document.getElementById('g-name').value=g.name||'';
@@ -11619,14 +11623,14 @@ window.saveG=async()=>{
   if(editGId){
     await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
     if(prevG){ const prevP=prevG.progress; if(gMode==='val') prevG.metric=d.metric; else { delete prevG.metric; delete prevG.mlog; delete prevG.shareVals; } prevG.progress=d.progress; goalProgressChanged(prevG,d.progress,false,prevP); }
-    toast('✓ Cíl upraven');
+    toast(t('goal.edited'));
   } else {
     d.createdAt=new Date().toISOString();
     d.msHit=GOAL_MS.filter(m=>d.progress>=m); // nový cíl: dosažené mezníky potichu, bez oslavy a bez XP
     const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);
     subs[r.id]=[];
     gid=r.id;
-    toast('✓ Cíl přidán');
+    toast(t('goal.added'));
   }
   syncShared('g',gid); // název, ikona, termín ve sdíleném zrcadle
   // Sync deadline → kalendář
@@ -11635,12 +11639,12 @@ window.saveG=async()=>{
 };
 
 window.delG=async id=>{
-  if(!CU||!confirm('Smazat cíl a všechny podcíle?'))return;
+  if(!CU||!confirm(t('goal.delQ')))return;
   unshareAll('g',id); // zrcadla ve skupinách pryč dřív, než cíl zmizí
   await deleteDoc(doc(db,'users',CU.uid,'goals',id));
   try{await deleteDoc(doc(db,'users',CU.uid,'events',`goal-${id}`));}catch(e){}
   delete subs[id];
-  toast('Cíl smazán');
+  toast(t('goal.deleted'));
 };
 
 window.togSubs=gid=>{
@@ -11656,7 +11660,7 @@ window.togSubs=gid=>{
 // ── Podcíle (sub-goals) ───────────────────────────────────
 window.openSubGM=(gid,sid=null)=>{
   editSGGoalId=gid; editSGId=sid;
-  document.getElementById('sgm-title').textContent=sid?'✏️ Upravit podcíl':'📌 Nový podcíl';
+  document.getElementById('sgm-title').textContent=sid?t('goal.sub.editTitle'):t('goal.sub.newTitle');
   if(sid){
     const sg=subs[gid]?.find(s=>s.id===sid)||{};
     document.getElementById('sg-name').value=sg.name||'';
@@ -11672,7 +11676,7 @@ window.openSubGM=(gid,sid=null)=>{
 
 window.saveSubG=async()=>{
   const nm=document.getElementById('sg-name').value.trim();
-  if(!nm){toast('⚠️ Zadej název podcíle');return;}
+  if(!nm){toast(t('goal.sub.nameReq'));return;}
   const desc=document.getElementById('sg-desc').value.trim();
   const deadline=document.getElementById('sg-dl').value;
   const gid=editSGGoalId;
@@ -11684,7 +11688,7 @@ window.saveSubG=async()=>{
     await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updated);
     const idx=subs[gid]?.findIndex(s=>s.id===sid);
     if(idx>=0) subs[gid][idx]=updated;
-    toast('✓ Podcíl upraven');
+    toast(t('goal.sub.edited'));
   } else {
     // Nový
     const d={name:nm,description:desc,deadline,done:false,tasks:[],createdAt:new Date().toISOString()};
@@ -11692,7 +11696,7 @@ window.saveSubG=async()=>{
     if(!subs[gid])subs[gid]=[];
     sid=r.id;
     subs[gid].push({id:sid,...d});
-    toast('✓ Podcíl přidán');
+    toast(t('goal.sub.added'));
   }
   // Sync deadline → kalendář
   syncShared('g',gid); // počet podcílů ve sdíleném zrcadle
@@ -11761,14 +11765,14 @@ window.archiveGoal=async(id)=>{
   await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:true,archivedAt:new Date().toISOString()});
   const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=true;
   syncShared('g',id); // sdílený cíl zůstane ve skupině jako archivovaný (arch:true)
-  toast('🎉 Výborně! Cíl splněn a archivován!');rGoals();
+  toast(t('goal.archivedT'));rGoals();
 };
 window.unarchiveGoal=async(id)=>{
   if(!CU)return;
   await updateDoc(doc(db,'users',CU.uid,'goals',id),{archivedGoal:false});
   const g=goals.find(x=>x.id===id);if(g)g.archivedGoal=false;
   syncShared('g',id);
-  toast('✓ Cíl obnoven');rGoals();
+  toast(t('goal.restored'));rGoals();
 };
 
 // ── Render cílů ───────────────────────────────────────────
@@ -11792,7 +11796,7 @@ function buildGoalCard(g, openSet, doneToday) {
         + '<span class="gh-habit-nm">' + esc(hb.name) + '</span>'
         + '<span class="gh-habit-st' + (done?' done':'') + '">' + (done?'✓':'○') + '</span></div>';
     }).join('');
-    linkedHtml = '<div class="sg-section-lbl">🔥 Propojené návyky</div>'
+    linkedHtml = '<div class="sg-section-lbl">'+tH('goal.linkedHabits')+'</div>'
       + '<div class="gh-habits-list">' + rows + '</div>';
   }
 
@@ -11824,24 +11828,24 @@ function buildGoalCard(g, openSet, doneToday) {
         + '</div>'
         + (taskRows ? '<div class="tasks-list">' + taskRows + '</div>' : '')
         + '<div class="task-add-row">'
-        +   '<input class="task-inp" id="ti-' + esc(s.id) + '" placeholder="Přidat úkol…" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onkeydown="if(event.key===\'Enter\')addTask(this.dataset.a0,this.dataset.a1)">'
+        +   '<input class="task-inp" id="ti-' + esc(s.id) + '" placeholder="' + tH('goal.taskPh') + '" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onkeydown="if(event.key===\'Enter\')addTask(this.dataset.a0,this.dataset.a1)">'
         +   '<button class="btn-xs2 btn-add-task" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="addTask(this.dataset.a0,this.dataset.a1)">+</button>'
         + '</div>'
         + '</div>';
     }).join('');
-    subsHtml = '<div class="sg-section-lbl">📌 Podcíle</div>' + sgRows;
+    subsHtml = '<div class="sg-section-lbl">' + tH('goal.subs') + '</div>' + sgRows;
   }
 
   const prio = g.priority || 2;
-  const prioTag = prio===1 ? '<span class="gtag gprio-high">🔴 Vysoká</span>'
-                : prio===3 ? '<span class="gtag gprio-low">🟢 Nízká</span>' : '';
-  const completedTag = g.progress >= 100 ? '<span class="gtag gcompleted">🎉 Splněno!</span>' : '';
+  const prioTag = prio===1 ? '<span class="gtag gprio-high">' + tH('goal.prioHigh') + '</span>'
+                : prio===3 ? '<span class="gtag gprio-low">' + tH('goal.prioLow') + '</span>' : '';
+  const completedTag = g.progress >= 100 ? '<span class="gtag gcompleted">' + tH('goal.completed') + '</span>' : '';
   const archiveBtn = g.progress >= 100
-    ? '<button class="btn-p gcomplete-btn" data-a0="' + esc(g.id) + '" onclick="archiveGoal(this.dataset.a0)">🎉 Archivovat jako splněný</button>'
+    ? '<button class="btn-p gcomplete-btn" data-a0="' + esc(g.id) + '" onclick="archiveGoal(this.dataset.a0)">' + tH('goal.archiveBtn') + '</button>'
     : '';
 
   const tagsRow = prioTag
-    + '<span class="gtag">📂 ' + esc(g.category||'ostatní') + '</span>'
+    + '<span class="gtag">📂 ' + esc(goalCatLabel(g.category||'ostatní')) + '</span>'
     + (g.deadline ? '<span class="gtag">🏁 ' + fd(g.deadline) + '</span>' : '')
     + (sb.length ? '<span class="gtag">📌 ' + doneSubs + '/' + sb.length + '</span>' : '')
     + (totalTasks ? '<span class="gtag">☑ ' + doneTasks + '/' + totalTasks + '</span>' : '')
@@ -11868,7 +11872,7 @@ function buildGoalCard(g, openSet, doneToday) {
     + '</div>'
     + '<div class="gsubs' + (io?' open':'') + '" id="gs-' + g.id + '">'
     +   fullNameHtml + descHtml + linkedHtml + subsHtml
-    +   '<button class="btn-add-sg" data-a0="' + esc(g.id) + '" onclick="openSubGM(this.dataset.a0)">+ Přidat podcíl</button>'
+    +   '<button class="btn-add-sg" data-a0="' + esc(g.id) + '" onclick="openSubGM(this.dataset.a0)">' + tH('goal.addSub') + '</button>'
     +   '<div class="g-share" data-gid="' + esc(g.id) + '">' + goalShareHTML(g) + '</div>'
     +   archiveBtn
     + '</div>'
@@ -11882,7 +11886,7 @@ function buildArchivedSection(archivedGoals) {
     +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
     +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
     +   '<div class="gnm"><span style="text-decoration:line-through">' + esc(g.name) + '</span><span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
-    +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ Obnovit</button></div>'
+    +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ ' + tH('hd.restore') + '</button></div>'
     + '</div>'
     // Sdílený archivovaný cíl: čip do sheetu (zrušení sdílení)
     + '<div class="g-share-arch" data-gid="' + esc(g.id) + '">' + archShareHTML(g.id) + '</div>'
@@ -11895,7 +11899,7 @@ function buildArchivedSection(archivedGoals) {
     +   'd.style.display=op?\'none\':\'block\';'
     +   'this.querySelector(\'.garch-arrow\').textContent=op?\'▼\':\'▲\''
     + '">'
-    +   '📦 Splněné cíle (' + archivedGoals.length + ') <span class="garch-arrow">▼</span>'
+    +   tH('goal.archived',{n:archivedGoals.length}) + ' <span class="garch-arrow">▼</span>'
     + '</button>'
     + '<div id="garch-list" style="display:none;margin-top:10px">' + rows + '</div>'
     + '</div>';
@@ -11914,13 +11918,13 @@ function rGoals() {
     const av = AVS.find(a => a.id === prof.avatarId) || AVS[0];
     c.innerHTML = '<div class="empty-st">'
       + '<div style="font-size:52px">' + av.emoji + '</div>'
-      + '<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">Jaký je tvůj velký sen?</div>'
-      + '<div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">Cíle ti pomáhají dávat návykům smysl. Přidej svůj první cíl!</div>'
-      + '<button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">🌟 Přidat první cíl</button>'
+      + '<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">' + tH('goal.emptyTitle') + '</div>'
+      + '<div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">' + tH('goal.emptyText') + '</div>'
+      + '<button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">' + tH('goal.emptyBtn') + '</button>'
       + '</div>';
     if (addBtn) addBtn.style.display = 'none';
     const sel = document.getElementById('habit-goal-sel');
-    if (sel) sel.innerHTML = '<option value="">— bez cíle —</option>';
+    if (sel) sel.innerHTML = '<option value="">' + tH('goal.none') + '</option>';
     return;
   }
   if (addBtn) addBtn.style.display = '';
@@ -11938,7 +11942,7 @@ function rGoals() {
   const sel = document.getElementById('habit-goal-sel');
   if (sel) {
     const cur = sel.value;
-    sel.innerHTML = '<option value="">— bez cíle —</option>'
+    sel.innerHTML = '<option value="">' + tH('goal.none') + '</option>'
       + activeGoals.map(g => '<option value="' + esc(g.id) + '">' + (g.emoji||'🌟') + ' ' + esc(g.name) + '</option>').join('');
     if (cur) sel.value = cur;
   }
