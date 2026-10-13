@@ -963,6 +963,11 @@ function clearUserSessionState(){
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
+  // Dynamická okna skupin (4.51): zavřít bez návratu fokusu a vynulovat jejich stav
+  try{
+    ['m-group','m-newgrp','m-grpedit','m-setmain','m-leavegrp','m-rotcode'].forEach(id=>{const el=document.getElementById(id);if(el)Element.prototype.remove.call(el);});
+    _grpSheetGid=null; _grpSheetHtml=''; _grpSheetPending=null; _ng=null; _grpListHtml='';
+  }catch(e){}
 }
 
 function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
@@ -3273,7 +3278,7 @@ window.addEventListener('popstate', () => {
   // 1. Zavři otevřený modal
   // Poslední otevřený v DOM leží nahoře (stejný z-index); detail skupiny je vložený na začátek body (4.51)
   const openModal = [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop();
-  if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else cm(openModal.id); return; }
+  if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else if(openModal.id) cm(openModal.id); else openModal.remove(); return; }
   // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
   if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
     window.closeEntry(); return;
@@ -7080,6 +7085,7 @@ function openLeaveGroup(gid) {
     if(_leaveBusy) m.classList.add('open'); else window.closeLeaveGroup();
   }).observe(m, { attributes: true, attributeFilter: ['class'] });
   document.body.appendChild(m);
+  m.querySelector('#leave-cancel')?.focus();
 }
 window.confirmLeaveGroup = async (gid) => {
   if(!CU || _leaveBusy || !okFamilyCode(gid)) return;
@@ -7375,9 +7381,6 @@ window.toggleFamilyModule = async (key, gid = null) => {
     renderFamilySettings();
     return;
   }
-  if(!gid) {
-    if(key==='shareChecklist' && newVal) syncChecklistToFamily();
-  }
   // Handle extra group cal subscription changes
   if(gid && key === 'shareCal') {
     if(newVal && !unsubExtraGroupCals[gid]) {
@@ -7620,7 +7623,11 @@ function rotSetStatus(txt, isErr) {
   st.textContent = txt;
   st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
 }
-window.closeRotateGroupCode = () => { if(_rotateBusy) return; document.getElementById('m-rotcode')?.remove(); };
+window.closeRotateGroupCode = () => {
+  if(_rotateBusy) return;
+  document.getElementById('m-rotcode')?.remove();
+  document.querySelector('#m-group [data-fk="rot"]')?.focus(); // zpět do detailu skupiny (je-li otevřený)
+};
 window.openRotateGroupCode = (gid) => {
   if(!CU || _rotateBusy || !okFamilyCode(gid)) return;
   const gData = gid === familyId ? familyData : extraGroupsData[gid];
@@ -7653,6 +7660,7 @@ window.openRotateGroupCode = (gid) => {
     if(_rotateBusy) m.classList.add('open'); else window.closeRotateGroupCode();
   }).observe(m, { attributes: true, attributeFilter: ['class'] });
   document.body.appendChild(m);
+  m.querySelector('#rotcode-cancel')?.focus();
 };
 // Chybové hlášky funkce jsou česky pro uživatele; síť a přihlášení přes userErr
 const ROT_SERVER_ERRS = ['functions/failed-precondition','functions/permission-denied','functions/not-found','functions/aborted','functions/resource-exhausted','functions/internal','functions/invalid-argument','functions/unavailable','functions/deadline-exceeded'];
@@ -7674,6 +7682,7 @@ window.confirmRotateGroupCode = async (gid) => {
     const code = String(res?.data?.code || '');
     if(!okFamilyCode(code)) throw Object.assign(new Error(''), {code:'functions/internal'});
     ok = true;
+    if(_grpSheetGid === gid && document.getElementById('m-group')) _grpSheetPending = code; // detail znovu pod novým kódem
     switchGroupLocal(gid, code);
     busy(false);
     const acts = document.getElementById('rotcode-acts');
@@ -7779,6 +7788,7 @@ function subscribeFamily() {
     }
     const prevShop = !!familyData?.shareShop, prevLbl = familyData && grpLabel(fid);
     familyData = snap.data();
+    if(familyId === fid) fillChecklistSharedGid(fid); // starší sdílené checklisty bez sharedGid (jednorázově)
     // Přepínač Moje / skupiny (4.50): změna sdílení nebo přejmenování
     if(prevShop !== !!familyData.shareShop || (familyData.shareShop && prevLbl !== grpLabel(fid))) renderShop();
     if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
@@ -7848,10 +7858,23 @@ function subscribeSharedChecklist() {
   );
 }
 
+// Seznam je sdílený jen v té hlavní skupině, kde byl sdílen (sharedGid); po změně hlavní skupiny se do nové nepřenese
+function clSharedHere(c) { return !!(c?.shared && familyId && c.sharedGid === familyId); }
+// Starší sdílené seznamy bez sharedGid patří skupině, ve které byly sdílené (jednorázové doplnění)
+function fillChecklistSharedGid(gid) {
+  if(!CU || !okFamilyCode(gid)) return;
+  for(const c of checklists) {
+    if(!c?.id || !c.shared || c.sharedGid) continue;
+    c.sharedGid = gid;
+    setDoc(doc(db,'users',CU.uid,'checklists',c.id), {sharedGid: gid}, {merge:true})
+      .catch(e => console.warn('[LP] sharedGid checklistu:', e?.code || e?.name));
+  }
+}
+
 async function syncChecklistToFamily() {
   if(!familyId || familyData?.shareChecklist===false) return;
-  // Sync označených listů (shared: true) do Firestore
-  const toShare = checklists.filter(c => c.shared);
+  // Sync označených listů sdílených v této skupině do Firestore
+  const toShare = checklists.filter(clSharedHere);
   for (const list of toShare) {
     await setDoc(doc(db,'families',familyId,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
@@ -7862,9 +7885,11 @@ async function syncChecklistToFamily() {
 window.toggleChecklistShare = async function(listId) {
   const list = checklists.find(c => c.id === listId);
   if(!list || !familyId) return;
-  list.shared = !list.shared;
-  saveChecklistDoc(list);
   const fid = familyId;
+  // Sdílený v jiné (dřívější hlavní) skupině = tady nesdílený → sdílet do aktuální
+  if(clSharedHere(list)) { list.shared = false; delete list.sharedGid; }
+  else { list.shared = true; list.sharedGid = fid; }
+  saveChecklistDoc(list);
   if(list.shared) {
     await setDoc(doc(db,'families',fid,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
@@ -7892,7 +7917,7 @@ const GROUP_MOD_INFO = {shareShop:['🧺','shop'], shareCal:['🗓️','cal'], s
 function okGroupEmoji(e) { return GROUP_EMOJIS.includes(e); }
 // Příznaky modulů: šablona + ruční změny (over), vždy všechna 4 pole jako boolean
 function groupTemplateFlags(tpl, over) {
-  const base = GROUP_TEMPLATES[tpl] || GROUP_TEMPLATES.friends;
+  const base = Object.hasOwn(GROUP_TEMPLATES, tpl) ? GROUP_TEMPLATES[tpl] : GROUP_TEMPLATES.friends;
   const out = {};
   for(const k of GROUP_MOD_KEYS) out[k] = typeof over?.[k] === 'boolean' ? over[k] : !!base[k];
   return out;
@@ -7961,6 +7986,20 @@ function renderFamilySettings() {
   if(!timePickerOpen()) renderGroupNotifSettings(); // sdílené moduly se mohly změnit
 }
 
+// Horní otevřené okno: poslední otevřené v DOM (stejný z-index)
+function topOverlay() { return [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop() || null; }
+// Fokus do nově otevřeného okna (první ovládací prvek), aby Esc a Tab mířily do něj
+function focusOverlay(ov) { ov?.querySelector('button:not([disabled]), input:not([disabled]), select, textarea, [href]')?.focus(); }
+// Tab cyklí uvnitř okna (focus trap)
+function trapTab(m, e) {
+  if(e.key !== 'Tab') return;
+  const f = [...m.querySelectorAll('button:not([disabled]), input:not([disabled]), select, textarea, [href], [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);
+  if(!f.length) return;
+  const a = document.activeElement, first = f[0], last = f[f.length - 1];
+  if(e.shiftKey && (a === first || !f.includes(a))) { e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && (a === last || !m.contains(a))) { e.preventDefault(); first.focus(); }
+}
+
 // ── Sheet: vlastní překryvné okno (Esc, klik vedle, Zpět, návrat fokusu) ──
 // prepend: pod okny z index.html (feed, výzvy), aby se otevřela nad detailem skupiny
 function mountGroupSheet(m, focusBack, prepend) {
@@ -7970,7 +8009,8 @@ function mountGroupSheet(m, focusBack, prepend) {
     rm.call(m);
     setTimeout(() => { const el = focusBack(); el?.focus?.(); }, 0);
   };
-  m.addEventListener('keydown', e => { if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.remove(); } });
+  // Esc jen v horním okně (nad detailem může ležet feed, výzva…; ty zavře jejich vlastní obsluha)
+  m.addEventListener('keydown', e => { if(e.key === 'Escape' && topOverlay() === m) { e.preventDefault(); e.stopPropagation(); m.remove(); } });
   m.addEventListener('click', e => { if(e.target === m) { e.stopPropagation(); m.remove(); } });
   // Zpět (cm() / globální klik jen sundá .open) → odstranit celé
   new MutationObserver(() => { if(!m.classList.contains('open')) m.remove(); }).observe(m, { attributes: true, attributeFilter: ['class'] });
@@ -7978,7 +8018,7 @@ function mountGroupSheet(m, focusBack, prepend) {
 }
 
 // ── Detail skupiny (sheet m-group) ──
-let _grpSheetGid = null, _grpSheetHtml = '';
+let _grpSheetGid = null, _grpSheetHtml = '', _grpSheetPending = null;
 function groupSheetBody(gid) {
   const d = groupDataOf(gid);
   if(!d) return '';
@@ -8043,6 +8083,10 @@ function groupSheetBody(gid) {
 }
 // Překreslí otevřený detail (jen při změně, fokus zůstane na stejném prvku podle data-fk)
 function renderGroupSheet() {
+  // Po změně kódu: detail znovu pod novým kódem, jakmile dorazí data skupiny (okno změny kódu si fokus nechá)
+  const pg = _grpSheetPending;
+  if(pg && (!CU || !myGroupIds().includes(pg))) _grpSheetPending = null;
+  else if(pg && groupDataOf(pg)) { _grpSheetPending = null; window.openGroupSheet(pg, !!document.getElementById('m-rotcode')); return; }
   const m = document.getElementById('m-group');
   if(!m) return;
   const gid = _grpSheetGid;
@@ -8058,7 +8102,7 @@ function renderGroupSheet() {
   const box = m.querySelector('.modal'); if(box) box.scrollTop = st;
   if(fk) [...body.querySelectorAll('[data-fk]')].find(el => el.dataset.fk === fk)?.focus({preventScroll: true});
 }
-window.openGroupSheet = (gid) => {
+window.openGroupSheet = (gid, keepFocus) => {
   if(!CU || !myGroupIds().includes(gid) || !groupDataOf(gid)) return;
   document.getElementById('m-group')?.remove();
   _grpSheetGid = gid; _grpSheetHtml = '';
@@ -8070,8 +8114,9 @@ window.openGroupSheet = (gid) => {
     _grpSheetGid = null;
     return [...document.querySelectorAll('#family-extra-groups .grp-card')].find(b => b.dataset.gid === gid) || null;
   }, true);
+  m.addEventListener('keydown', e => trapTab(m, e));
   renderGroupSheet();
-  m.querySelector('#grp-sheet-t')?.focus();
+  if(!keepFocus) m.querySelector('#grp-sheet-t')?.focus();
 };
 window.closeGroupSheet = () => document.getElementById('m-group')?.remove();
 
@@ -8185,7 +8230,7 @@ function syncNewGroup() {
 }
 window.pickNewGroupEmoji = (e) => { if(!_ng || !okGroupEmoji(e)) return; _ng.em = e; _ng.emTouched = true; syncNewGroup(); };
 window.pickNewGroupTpl = (k) => {
-  if(!_ng || !GROUP_TEMPLATES[k]) return;
+  if(!_ng || !Object.hasOwn(GROUP_TEMPLATES, k)) return;
   _ng.tpl = k; _ng.flags = groupTemplateFlags(k);
   if(!_ng.emTouched) _ng.em = GROUP_TEMPLATES[k].em; // emoji vybrané ručně šablona nepřepíše
   syncNewGroup();
@@ -8245,6 +8290,7 @@ async function setMainGroupTx(gid) {
 // Přepne lokální stav: nová hlavní (listenery hlavní skupiny, zásoby), stará mezi vedlejší
 function applyMainSwitchLocal(gid, r) {
   const newData = groupDataOf(gid), oldMain = familyId, oldData = familyData;
+  if(oldMain) fillChecklistSharedGid(oldMain); // starší sdílené seznamy patří staré hlavní, do nové se nepřenesou
   flushAllGroupActivity(); // čekající aktivita ještě do obou skupin
   forgetExtraGroupLocal(gid);
   if(oldMain) resetFamilyLocal();
@@ -8274,7 +8320,7 @@ window.openSetMainGroup = (gid) => {
     old ? tH('grp.mainLi2', {old}) : '',
     off.length ? tH('grp.mainLi3', {name, list: off.join(', ')}) : '',
     tH('grp.mainLi4', {name}),
-    tH('grp.mainLi5'),
+    tH('grp.mainLi5', {name}),
   ].filter(Boolean);
   document.getElementById('m-setmain')?.remove();
   const m = document.createElement('div');
@@ -9119,7 +9165,7 @@ window.openChal = gid => {
   _chFix = null;
   renderChalSheet();
   const ov = document.getElementById('m-chal');
-  if(ov && !ov.classList.contains('open')) om('m-chal');
+  if(ov && !ov.classList.contains('open')) { om('m-chal'); focusOverlay(ov); }
 };
 function renderChalSheet() {
   const tEl = document.getElementById('chal-title'), bEl = document.getElementById('chal-body');
@@ -9200,7 +9246,7 @@ window.openChalNew = gid => {
     <div class="macts"><button type="button" class="btn-s" onclick="cm('m-chal')">${tH('common.cancel')}</button>
       <button type="button" class="btn-p" id="ch-f-go" data-a0="${esc(gid)}" onclick="chCreate(this.dataset.a0)">🚀 ${tH('ch.start')}</button></div>`;
   const ov = document.getElementById('m-chal');
-  if(ov && !ov.classList.contains('open')) om('m-chal');
+  if(ov && !ov.classList.contains('open')) { om('m-chal'); focusOverlay(ov); }
 };
 window.chKind = k => {
   if(!CH_KINDS.includes(k)) return;
@@ -10367,8 +10413,10 @@ window.openGroupFeed = (gid, mod) => {
   }
   _gf.mod = mod;
   const ov = document.getElementById('m-grpfeed');
-  if(ov && !ov.classList.contains('open')) om('m-grpfeed');
+  const opening = ov && !ov.classList.contains('open');
+  if(opening) om('m-grpfeed');
   loadGroupFeed(gid);
+  if(opening) focusOverlay(ov);
 };
 window.gfPickGroup = gid => { if(myGroupIds().includes(gid) && gid !== _gf.gid) loadGroupFeed(gid); };
 window.gfPickMod = m => { _gf.mod = GA_MODS.includes(m) ? m : null; renderGroupFeed(); };
@@ -11349,6 +11397,7 @@ function subChecklist() {
     query(collection(db,'users',CU.uid,'checklists'), orderBy('createdAt','asc')),
     snap => {
       checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
+      if (familyId && familyData) fillChecklistSharedGid(familyId); // starší sdílené bez sharedGid
       if (!checklists.length) {
         // Výchozí seznam jen podle odpovědi serveru (prázdná cache ≠ prázdný účet) a jen jednou za relaci
         if (!snap.metadata.fromCache && _defChecklistUid !== CU.uid) {
@@ -11426,7 +11475,7 @@ function renderChecklist() {
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
-        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${list.shared?'rgba(76,217,100,.15)':'none'};border:1px solid ${list.shared?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${list.shared?'var(--green)':'var(--text3)'};cursor:pointer" title="${list.shared?tH('cl.unshare'):tH('cl.shareFam')}">${list.shared?tH('cl.sharedLbl'):tH('cl.private')}</button>` : ''}
+        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${clSharedHere(list)?'rgba(76,217,100,.15)':'none'};border:1px solid ${clSharedHere(list)?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${clSharedHere(list)?'var(--green)':'var(--text3)'};cursor:pointer" title="${clSharedHere(list)?tH('cl.unshare'):tH('cl.shareFam')}">${clSharedHere(list)?tH('cl.sharedLbl'):tH('cl.private')}</button>` : ''}
         ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}</button>` : ''}
@@ -12932,7 +12981,7 @@ function buildChatContext(){
   add('CHECKLISTY (nesplněné položky)',false,()=>{
     const map=new Map();
     const famCl=famOk&&familyData.shareChecklist!==false; // stejně jako UI / odběr sdílených seznamů
-    checklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:famCl&&!!c.shared}); });
+    checklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:famCl&&clSharedHere(c)}); });
     if(famCl) familyChecklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:true}); });
     const all=[...map.values()];
     return [...all.slice(0,8).map(({c,fam})=>{

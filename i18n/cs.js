@@ -1636,7 +1636,7 @@ export default {
   'grp.mainLi2': 'Ty ze skupiny {old} zůstanou uložené a vrátí se, když ji zase nastavíš jako hlavní.',
   'grp.mainLi3': 'Skupina {name} teď nesdílí: {list}. Zapneš to v jejím detailu.',
   'grp.mainLi4': 'Domů a AI budou vycházet ze skupiny {name}.',
-  'grp.mainLi5': 'Nákupy, kalendář, výzvy a členové zůstávají beze změny. Ostatních členů se to netýká.',
+  'grp.mainLi5': 'Výchozí nákupní seznam i cíl pro přidávání z receptů, jídelníčku a zásob bude seznam skupiny {name}, pokud sdílí nákupy (jinak tvůj osobní). Kalendář, výzvy a členové zůstávají beze změny. Ostatních členů se to netýká.',
   'grp.mainBusy': '⏳ Měním hlavní skupinu…',
   'grp.mainNotMember': 'V této skupině už nejsi.',
   'grp.mainStale': 'Seznam skupin se mezitím změnil na jiném zařízení. Zavři okno a zkus to znovu.',

@@ -1630,7 +1630,7 @@ export default {
   'grp.mainLi2': 'Those of {old} stay saved and come back when you set it as main again.',
   'grp.mainLi3': '{name} does not share: {list} yet. Turn it on in its detail.',
   'grp.mainLi4': 'Home and AI will use {name}.',
-  'grp.mainLi5': 'Shopping, calendar, challenges and members stay the same. Other members are not affected.',
+  'grp.mainLi5': 'The default shopping list, and where items from recipes, meal plan and pantry go, will be the list of {name} if it shares shopping (otherwise your personal one). Calendar, challenges and members stay the same. Other members are not affected.',
   'grp.mainBusy': '⏳ Changing the main group…',
   'grp.mainNotMember': 'You are no longer in this group.',
   'grp.mainStale': 'Your groups changed on another device. Close this window and try again.',
