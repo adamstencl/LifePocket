@@ -6517,6 +6517,8 @@ function syncSeg(id, show, mode) {
 const shopGrp = {};
 const SHOP_VIEW_KEY = 'lp_view_shop';
 let shopViewSel; // undefined = nenačteno, null = výchozí, '' = Moje, jinak gid (pamatuje se na zařízení)
+let _recShopWait = false; // pravidelné nákupy čekají na načtení cílového seznamu (checkRecurringShop)
+const _recShopBusy = new Set(); // pravidelné položky, které se právě přidávají (souběžná volání)
 function shopGroups() { return myGroupIds().filter(g => groupModShared(g, 'shop')); }
 function shopViewStored() {
   // Uloženo s uid: jiný účet na stejném zařízení volbu nepřebírá
@@ -6531,6 +6533,11 @@ function shopGid() {
   return gs.includes(familyId) ? familyId : null;
 }
 function isShopShared() { return !!shopGid(); }
+// Cíl zásob a jídelníčku (patří hlavní skupině): hlavní skupina, pokud sdílí nákupy, jinak Moje
+function shopHomeGid() { return groupModShared(familyId, 'shop') ? familyId : null; }
+function shopItemsOf(gid) { return gid ? shopGrpItems(gid) : shopItems; }
+// Přípona toastu s cílovým seznamem („ → 👥 Tým“); Moje jen když je zobrazená skupina
+function shopToSfx(gid) { return gid ? ' → ' + grpLabel(gid) : (shopGid() ? ' → ' + shopViewLabel(null) : ''); }
 function shopGrpItems(gid) { return (gid && shopGrp[gid]?.items) || []; }
 function shopGrpFreq(gid) { return (gid && shopGrp[gid]?.freq) || {}; }
 // Položky zobrazeného seznamu
@@ -6592,6 +6599,19 @@ window.openShopViewSheet = (mode) => {
           + '<span class="grp-pick-lbl">'+esc(shopViewLabel(g))+'</span>'+(sel?'<span aria-hidden="true">✓</span>':'')+'</button>';
       }).join('')
     + '</div><div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.close')+'</button></div></div>';
+  // Po zavření (výběr, Zavřít, klik vedle, Esc, Zpět) vrátit fokus na přepínač (po překreslení)
+  const opener = document.activeElement;
+  const rm = Element.prototype.remove;
+  m.remove = () => {
+    if(!m.isConnected) return;
+    rm.call(m);
+    setTimeout(() => {
+      if(document.getElementById('m-shopview')) return; // mezitím otevřen nový sheet
+      const p = (!move && document.querySelector('#shop-view-toggle .grp-pick')) || (opener?.isConnected ? opener : null);
+      p?.focus?.();
+    }, 0);
+  };
+  m.addEventListener('keydown', e => { if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.remove(); } });
   m.addEventListener('click', e => { if(e.target === m) m.remove(); });
   // Zpět (cm() jen sundá .open) → odstranit celé
   new MutationObserver(() => { if(!m.classList.contains('open')) m.remove(); }).observe(m, { attributes: true, attributeFilter: ['class'] });
@@ -6608,7 +6628,11 @@ function shopViewCheck() {
   if(!gone && !off) return;
   const name = groupDataOf(v) ? grpName(v) : t('grp.defName');
   shopViewSel = null; lsSave(SHOP_VIEW_KEY, null);
-  toast(t('shop.viewGone', {name, to: shopViewLabel(shopGid())}), 5000);
+  if(!_leavingGids.has(v)) toast(t('shop.viewGone', {name, to: shopViewLabel(shopGid())}), 5000); // při odchodu stačí hláška o odchodu
+}
+// Dobrovolný odchod: vybraný seznam skupiny tiše zpět na výchozí (bez toastu shop.viewGone)
+function shopViewForget(gid) {
+  if(shopViewStored() === gid) { shopViewSel = null; lsSave(SHOP_VIEW_KEY, null); }
 }
 function subscribeGroupShop(gid) {
   if(!gid || !CU || shopGrp[gid]?.unsub) return;
@@ -6616,6 +6640,8 @@ function subscribeGroupShop(gid) {
   const u1 = onSnapshot(collection(db,'families',gid,'shopItems'), snap => {
     if(shopGrp[gid] !== e) return;
     e.items = snap.docs.map(d=>({id:d.id,...d.data()}));
+    e.loaded = true;
+    if(_recShopWait && gid === shopGid()) checkRecurringShop(); // odložené pravidelné přidání
     if(gid === shopGid()) {
       renderShop();
       if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); // widget Nákupy
@@ -6963,6 +6989,7 @@ async function leaveFamilyNow(fid) {
     try { await clearProfileFamilyIdIf(fid); }
     catch(e) { profOk = false; console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); }
     if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
+    shopViewForget(fid);
     resetFamilyLocal();
     initPantry(); // zpět na lokální zásoby
     renderAfterFamilyChange();
@@ -7073,7 +7100,7 @@ window.confirmLeaveGroup = async (gid) => {
 };
 
 // Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
-// Hlavní skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby; vedlejší: události.
+// Hlavní skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby; vedlejší: události a nekoupené nákupy.
 // Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
 async function copyGroupToPersonal(gid, mode) {
   const uid = CU.uid;
@@ -7094,17 +7121,17 @@ async function copyGroupToPersonal(gid, mode) {
       writes.push([doc(collection(db,'users',uid,'events')), {...ev, copiedFrom: src}]);
     });
   }
+  // Nákupy (hlavní i vedlejší skupina): jen nekoupené (koupené by osobní seznam zahltily)
+  if(gData.shareShop) {
+    const sn = await getDocs(collection(db,'families',gid,'shopItems'));
+    sn.docs.forEach(d => {
+      const it = d.data() || {};
+      if(it.done || !it.name || !mine(it)) return;
+      writes.push([doc(collection(db,'users',uid,'shopItems')),
+        {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
+    });
+  }
   if(isMain) {
-    // Nákupy: jen nekoupené (koupené by osobní seznam zahltily)
-    if(gData.shareShop) {
-      const sn = await getDocs(collection(db,'families',gid,'shopItems'));
-      sn.docs.forEach(d => {
-        const it = d.data() || {};
-        if(it.done || !it.name || !mine(it)) return;
-        writes.push([doc(collection(db,'users',uid,'shopItems')),
-          {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
-      });
-    }
     // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → přeskočit; cizí jen při 'all'
     if(gData.shareChecklist !== false) {
       const sn = await getDocs(collection(db,'families',gid,'checklists'));
@@ -7346,6 +7373,7 @@ window.toggleFamilyModule = async (key, gid = null) => {
       delete extraGroupEvents[gid]; renderCal();
     }
   }
+  if(gid && key === 'shareShop' && !newVal) unsubGroupShop(gid); // seznam už se nezobrazí
   if(key === 'shareShop') renderShop(); // přepínač seznamů (4.50)
   renderFamilySettings();
 };
@@ -7439,6 +7467,7 @@ async function leaveExtraGroupNow(gid) {
     }
   } catch(e){ _leavingGids.delete(gid); toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
   rememberFormerGroup(gid);
+  shopViewForget(gid);
   try {
     await dropExtraGroupLocal(gid);
     toast(t('grp.leave.done'));
@@ -7460,7 +7489,7 @@ function forgetExtraGroupLocal(gid) {
 // Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
 async function dropExtraGroupLocal(gid) {
   forgetExtraGroupLocal(gid);
-  renderFamilySettings(); renderCal();
+  renderFamilySettings(); renderCal(); renderShop(); // i přepínač seznamů nákupů
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
 }
@@ -7514,6 +7543,8 @@ function switchGroupLocal(oldGid, newGid) {
     changed = true;
   }
   if(selEvShareGroupId === oldGid) selEvShareGroupId = newGid;
+  // Vybraný seznam nákupů na novém kódu (jinak by shopViewCheck hlásil „seznam zmizel“)
+  if(shopViewStored() === oldGid) { shopViewSel = newGid; lsSave(SHOP_VIEW_KEY, {u: CU?.uid, g: newGid}); }
   if(changed) renderAfterFamilyChange();
   return changed;
 }
@@ -7688,10 +7719,13 @@ function subscribeExtraGroup(gid) {
       toast(t('grp.removed'));
       return;
     }
-    const prevShop = !!extraGroupsData[gid]?.shareShop;
+    const prevShop = !!extraGroupsData[gid]?.shareShop, prevLbl = extraGroupsData[gid] && grpLabel(gid);
     extraGroupsData[gid] = snap.data();
+    if (prevShop && !extraGroupsData[gid].shareShop) unsubGroupShop(gid); // nákupy vypnul jiný člen
     // Nákupy (4.50): změna sdílení nebo načtení skupiny, jejíž seznam je vybraný
-    if (prevShop !== !!extraGroupsData[gid].shareShop || shopViewStored() === gid) renderShop();
+    if (prevShop !== !!extraGroupsData[gid].shareShop || shopViewStored() === gid
+      || (extraGroupsData[gid].shareShop && prevLbl !== grpLabel(gid))) renderShop(); // i přejmenování
+    if (_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
     if (!_gfUnsub[gid]) startGroupUnread(gid);
     startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -7730,9 +7764,11 @@ function subscribeFamily() {
       toast(t('grp.removed'));
       return;
     }
-    const prevShop = !!familyData?.shareShop;
+    const prevShop = !!familyData?.shareShop, prevLbl = familyData && grpLabel(fid);
     familyData = snap.data();
-    if(prevShop !== !!familyData.shareShop) renderShop(); // přepínač Moje / skupiny (4.50)
+    // Přepínač Moje / skupiny (4.50): změna sdílení nebo přejmenování
+    if(prevShop !== !!familyData.shareShop || (familyData.shareShop && prevLbl !== grpLabel(fid))) renderShop();
+    if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
     if(!_gfUnsub[fid]) startGroupUnread(fid);
     startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -8006,7 +8042,9 @@ function restoreErrText(e) {
 }
 window.confirmRestoreGroup = async (gid) => {
   if(!CU || _restoreBusy || !okFamilyCode(gid)) return;
-  if(!myGroupIds().includes(gid) && groupCount() >= GROUP_MAX) { restoreSetBody(tH('grp.maxGroups', {n: GROUP_MAX})); return; }
+  // Bez platné hlavní skupiny (neexistuje, nejsem v ní) se obnoví jako hlavní a limit neplatí (jako server)
+  const mainOk = !!(familyId && familyId === prof?.familyId && familyData?.members?.[CU.uid]);
+  if(mainOk && !myGroupIds().includes(gid) && groupCount() >= GROUP_MAX) { restoreSetBody(tH('grp.maxGroups', {n: GROUP_MAX})); return; }
   _restoreBusy = true;
   document.querySelectorAll('#m-restoregrp .restore-btn, #restore-close').forEach(b => { b.disabled = true; });
   const btn = document.querySelector('#m-restoregrp .restore-btn[data-a0="' + gid + '"]');
@@ -10747,8 +10785,8 @@ window.mealplanToShopping = async () => {
 
   if(!mealNames.length){ toast(t('mp.emptyFirst')); return; }
 
-  const shopFid = shopGid(), isSharedShop = !!shopFid; // zobrazený seznam (4.50)
-  const shopActive = activeShopItems();
+  const shopFid = shopHomeGid(), isSharedShop = !!shopFid; // hlavní skupina, jinak Moje (4.50)
+  const shopActive = shopItemsOf(shopFid);
 
   let addedCount = 0, firstAdded = '';
   let foundRecipes = [];
@@ -10790,7 +10828,7 @@ window.mealplanToShopping = async () => {
   );
 
   if(addedCount > 0 || foundRecipes.length > 0) {
-    let msg = tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)});
+    let msg = tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)}) + (addedCount ? shopToSfx(shopFid) : '');
     if(withoutRecipe.length) msg += tN('mp.noRecipeN', withoutRecipe.length);
     toast(msg);
     sp('shopping');
@@ -12877,7 +12915,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
   const {row:doneRow,bubble:done}=makeBotBubble(`✅ ${tNH('chat.ingAdded', added)} <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">${tH('ck.showShop')}</button>`,avCur.emoji,avCur.name);
   c.appendChild(doneRow);scrollChat();
-  toast(tN('chat.ingAddedToast', added));
+  toast(tN('chat.ingAddedToast', added) + (added ? shopToSfx(shopFid) : ''));
 };
 
 
@@ -12923,6 +12961,7 @@ function renderShop(){
   const empty=document.getElementById('shop-empty');
   if(!list||!empty)return;
   shopViewCheck();
+  if(_recShopWait) checkRecurringShop(); // odložené pravidelné přidání (např. skupina po úklidu)
   const gid = shopGid(), isShared = !!gid;
   if(gid) subscribeGroupShop(gid); // seznam skupiny se načte při prvním zobrazení
   renderShopViewToggle(gid);
@@ -13380,13 +13419,26 @@ function subRecurringShop() {
   );
 }
 
+// Start: cíl (zobrazený seznam) a jeho položky ještě nemusí být načtené → přidání odložit,
+// jinak by šlo do špatného seznamu nebo by kontrola duplicit proběhla proti prázdnému seznamu
+function recShopReady() {
+  const v = shopViewStored();
+  const pf = prof?.familyId;
+  if(v && (v === pf || (prof?.extraGroupIds || []).includes(v)) && !groupDataOf(v)) return false;
+  if(!v && pf && !familyData) return false; // výchozí seznam závisí na hlavní skupině
+  const g = shopGid();
+  if(g && !shopGrp[g]?.loaded) { subscribeGroupShop(g); return false; }
+  return true;
+}
 function checkRecurringShop() {
   if (!recurringShopItems.length || !CU) return;
+  if (!recShopReady()) { _recShopWait = true; return; }
+  _recShopWait = false;
   const today = new Date();
   const todayISO = toDS(today);
   const todayDay = today.getDay();
   recurringShopItems.forEach(async item => {
-    if (item.lastAdded === todayISO) return;
+    if (item.lastAdded === todayISO || _recShopBusy.has(item.id)) return;
     let shouldAdd = false;
     if (item.freq === 'weekly') {
       shouldAdd = todayDay === item.day;
@@ -13400,15 +13452,19 @@ function checkRecurringShop() {
       shouldAdd = days >= 30;
     }
     if (!shouldAdd) return;
-    const fid = shopGid();
-    const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
-    if (!alreadyIn) {
-      const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
-      await addDoc(shopCol(fid),si);
-      if (fid) logGroupActivity(fid,'shop','add',item.name);
-      toast(t('shop.rec.autoAdded',{name:item.name}));
-    }
-    await updateDoc(doc(db,'users',CU.uid,'recurringShop',item.id),{lastAdded:todayISO});
+    _recShopBusy.add(item.id);
+    try {
+      const fid = shopGid();
+      const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
+      if (!alreadyIn) {
+        const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
+        await addDoc(shopCol(fid),si);
+        if (fid) logGroupActivity(fid,'shop','add',item.name);
+        toast(t('shop.rec.autoAdded',{name:item.name})+shopToSfx(fid));
+      }
+      await updateDoc(doc(db,'users',CU.uid,'recurringShop',item.id),{lastAdded:todayISO});
+      item.lastAdded = todayISO;
+    } finally { _recShopBusy.delete(item.id); }
   });
 }
 
@@ -13683,7 +13739,7 @@ window.addRecipeToShop = async function(recipeId, el) {
   }
   if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? tNH('shop.ingrAdded', added) : tH('shop.allInShop')}</div></div>`;
-  toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) : t('shop.allInShopToast'));
+  toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) + shopToSfx(shopFid) : t('shop.allInShopToast'));
 };
 
 window.clearDoneItems=async()=>{
@@ -14305,14 +14361,14 @@ window.pantryToShop = async function() {
   if (!low.length) { toast(t('pantry.noneLow')); return; }
   try {
     let added = 0;
-    const fid = shopGid(); // zobrazený seznam zachycený před cyklem (4.50)
+    const fid = shopHomeGid(); // zásoby patří hlavní skupině: její seznam, jinak Moje (4.50)
     for (const item of low) {
       const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: guessShopCategory(item.name), done: false, createdAt: new Date().toISOString() };
       await addDoc(shopCol(fid), shopItem);
       added++;
     }
     if (fid && added > 0) logGroupActivity(fid, 'shop', 'add', low[0].name, added);
-    toast(tN('shop.addedN', added));
+    toast(tN('shop.addedN', added) + shopToSfx(fid));
   } catch(e) { toast(t('pantry.toShopErr')); }
 };
 
@@ -14371,7 +14427,7 @@ window.aiShopAddAll = async function(items) {
   }
   if(shared && items.length) logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
   switchShopTab('list');
-  toast(tN('shop.addedN', items.length));
+  toast(tN('shop.addedN', items.length) + (items.length ? shopToSfx(fid) : ''));
 };
 
 function parseIngQty(qtyStr) {

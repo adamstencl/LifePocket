@@ -1060,7 +1060,7 @@ export default {
   'grp.leave.keepQ': 'Co si chceš ponechat?',
   'grp.leave.optAll': 'Zachovat si kopii sdíleného obsahu',
   'grp.leave.optAllD': 'Nákupy (nekoupené), události, jídelníček, checklisty a zásoby se zkopírují k tobě.',
-  'grp.leave.optAllCal': 'Sdílené události kalendáře se zkopírují k tobě.',
+  'grp.leave.optAllCal': 'Sdílené události kalendáře a nákupy (nekoupené) se zkopírují k tobě.',
   'grp.leave.optMine': 'Ponechat jen moje',
   'grp.leave.optMineD': 'Zkopírují se jen položky, které jsi do skupiny přidal/a ty.',
   'grp.leave.optNone': 'Nic nekopírovat',

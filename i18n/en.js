@@ -1054,7 +1054,7 @@ export default {
   'grp.leave.keepQ': 'What do you want to keep?',
   'grp.leave.optAll': 'Keep a copy of the shared content',
   'grp.leave.optAllD': 'Shopping (not yet bought), events, meal plan, checklists and pantry are copied to you.',
-  'grp.leave.optAllCal': 'Shared calendar events are copied to you.',
+  'grp.leave.optAllCal': 'Shared calendar events and shopping (not yet bought) are copied to you.',
   'grp.leave.optMine': 'Keep only mine',
   'grp.leave.optMineD': 'Only items you added to the group are copied.',
   'grp.leave.optNone': 'Copy nothing',
