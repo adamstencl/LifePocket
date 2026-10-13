@@ -249,7 +249,7 @@ try {
 } catch (e) { fail('inline handlery: ' + e.message); }
 
 // Ráčny vícejazyčnosti (docs/NAVRH-I18N.md): každá fáze překladu čísla sníží, nový český text mimo slovník CI shodí
-const I18N_ALLOW = { appCz: 851, htmlCz: 139, csCZ: 0, manualPlural: 0 };
+const I18N_ALLOW = { appCz: 808, htmlCz: 139, csCZ: 0, manualPlural: 0 };
 console.log('i18n: slovníky a použité klíče');
 // Slovník je ES modul „export default { … }“ s čistým objektem; načte se bez importu přes vm
 function loadDict(f) {

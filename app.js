@@ -1013,11 +1013,11 @@ function renderEntryList(filter=''){
   );
   if(!filtered.length){
     list.innerHTML=f
-      ? `<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px;font-style:italic">🔍 Žádné výsledky pro „${esc(f)}"</div>`
+      ? `<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px;font-style:italic">${tH('nt.noResults',{q:f})}</div>`
       : `<div style="text-align:center;padding:32px 16px">
           <div style="font-size:40px;margin-bottom:10px">✍️</div>
-          <div style="color:var(--text2);font-size:15px;margin-bottom:14px;font-style:italic">Zatím žádné zápisky</div>
-          <button class="btn-p" style="width:auto;padding:9px 22px;font-size:14px" onclick="newEntry()">+ Napsat první zápisek</button>
+          <div style="color:var(--text2);font-size:15px;margin-bottom:14px;font-style:italic">${tH('nt.empty')}</div>
+          <button class="btn-p" style="width:auto;padding:9px 22px;font-size:14px" onclick="newEntry()">${tH('nt.emptyBtn')}</button>
          </div>`;
     return;
   }
@@ -1026,7 +1026,7 @@ function renderEntryList(filter=''){
     const preview=(e.text||'').slice(0,50);
     return `<div class="j-item ${e.id===curEntryId?'active':''}" data-a0="${esc(e.id)}" onclick="openEntry(this.dataset.a0)">
       <div class="j-item-date">${d}</div>
-      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${esc(e.mood)}</span>`:''}${esc(e.title||'Bez názvu')}${e.photo?` <span style="font-size:11px">📷</span>`:''}${shBadgeHTML('n',e.id)}</div>
+      <div class="j-item-title">${e.mood?`<span class="j-item-mood">${esc(e.mood)}</span>`:''}${esc(e.title||t('nt.untitled'))}${e.photo?` <span style="font-size:11px">📷</span>`:''}${shBadgeHTML('n',e.id)}</div>
       ${preview?`<div class="j-item-preview">${esc(preview)}…</div>`:''}
     </div>`;
   }).join('');
@@ -1064,7 +1064,7 @@ window.removeEntryPhoto = () => {
 window.handleEntryPhotoInput = async function(input) {
   const file = input.files[0];
   if (!file) return;
-  toast('📷 Zpracovávám fotku…');
+  toast(t('nt.photoBusy'));
   try {
     curEntryPhoto = await compressImage(file);
     const p = document.getElementById('j-photo-preview');
@@ -1072,8 +1072,8 @@ window.handleEntryPhotoInput = async function(input) {
       <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
       <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
     </div>`;
-    toast('📷 Fotka připravena');
-  } catch(e) { toast('❌ Nepodařilo se načíst fotku'); }
+    toast(t('nt.photoReady'));
+  } catch(e) { toast(t('nt.photoFail')); }
   input.value = '';
 };
 // ─────────────────────────────────────────────────────────
@@ -1130,7 +1130,7 @@ window.openEntry=(id)=>{
   curEntryId=id; entryMood=e.mood||''; entryDirty=false; curEntryCreatedAt=e.createdAt||null;
   const jt=document.getElementById('j-title'); if(jt) jt.value=e.title||'';
   const jx=document.getElementById('j-text'); if(jx) jx.value=e.text||'';
-  const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?fmtDate(new Date(e.createdAt),'wdmy'):'Neznámé datum';
+  const jd=document.getElementById('j-date'); if(jd) jd.textContent=e.createdAt?fmtDate(new Date(e.createdAt),'wdmy'):t('nt.unknownDate');
   document.querySelectorAll('.j-mood-btn').forEach(b=>b.classList.toggle('sel',b.dataset.m===entryMood));
   // Load photo
   curEntryPhoto = e.photo || null;
@@ -1158,7 +1158,7 @@ window.saveEntry=async(opts)=>{
   if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
   if(!CU)return;
   const auto=opts?.auto===true;
-  const title=document.getElementById('j-title').value.trim()||'Bez názvu';
+  const title=document.getElementById('j-title').value.trim()||t('nt.untitled');
   const text=document.getElementById('j-text').value;
   const now=new Date().toISOString();
   let createdId=null;
@@ -1182,13 +1182,13 @@ window.saveEntry=async(opts)=>{
     syncShared('n',id); // sdílená poznámka: zrcadlo po 1,5 s (snapshot už má nový text), i offline
     await wr;
     renderEntryList();
-    if(!auto) toast('✓ Uloženo');
+    if(!auto) toast(t('nt.saved'));
     if(createdId) gameKick();   // nová poznámka → odznak Pisálek (vyhodnotí gameSync)
   }catch(e){
     entryDirty=true;
     if(runAI&&_aiHashPending[id]===h) delete _aiHashPending[id];
     if(createdId&&curEntryId===createdId){ curEntryId=null; curEntryCreatedAt=null; }
-    toast('❌ Uložení se nepovedlo: '+userErr(e,'zápisek'));
+    toast(t('nt.saveFail',{err:userErr(e,'zápisek')}));
     return;
   }
   // Jídla, návyky i nálada jedním dotazem na AI (nálada jen když není vybraná)
@@ -1196,7 +1196,7 @@ window.saveEntry=async(opts)=>{
 };
 
 window.deleteEntry=async()=>{
-  if(!CU||!curEntryId||!confirm('Smazat zápisek?'))return;
+  if(!CU||!curEntryId||!confirm(t('nt.delQ')))return;
   try{
     unshareAll('n',curEntryId); // zrcadla ve skupinách pryč dřív, než poznámka zmizí
     await deleteDoc(doc(db,'users',CU.uid,'entries',curEntryId));
@@ -1206,8 +1206,8 @@ window.deleteEntry=async()=>{
     document.getElementById('j-empty').style.display='flex';
     setJournalOpen(false);
     renderEntryList();
-    toast('Zápisek smazán');
-  }catch(e){toast('❌ Mazání se nepovedlo: '+userErr(e,'zápisek'));}
+    toast(t('nt.deleted'));
+  }catch(e){toast(t('nt.delFail',{err:userErr(e,'zápisek')}));}
 };
 
 window.setEntryMood=(m,btn)=>{
@@ -1295,7 +1295,7 @@ function startJRec(){
 
 window.toggleJournalMic=()=>{
   if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
-    toast('❌ Hlasový vstup vyžaduje Chrome'); return;
+    toast(t('nt.micChrome')); return;
   }
   if(jRecOn){ stopJournalMic(); return; }
   // Ulož aktuální obsah textarey jako základ
@@ -1303,7 +1303,7 @@ window.toggleJournalMic=()=>{
   jMicBase=ta.value;
   if(jMicBase&&!jMicBase.endsWith(' ')) jMicBase+=' ';
   startJRec();
-  toast('🎤 Poslouchám…');
+  toast(t('nt.listening'));
 };
 
 window.stopJournalMic=()=>{
@@ -11387,7 +11387,7 @@ window.selMood=em=>{
   const today = toDS();
   lsSave('lp_daily_mood', {emoji:em, date:today});
   rAvPage();
-  toast(`Nálada ${em} zaznamenána`);
+  toast(t('nt.moodLogged',{em}));
 };
 
 // ── Vision modal helpers ──
@@ -14077,18 +14077,18 @@ function showFoodDetectBanner(foods) {
   banner.id = 'food-detect-banner';
   banner.className = 'food-detect-banner';
   banner.innerHTML = `
-    <div class="food-detect-title">🍽️ Rex našel plánovaná jídla v poznámkách</div>
+    <div class="food-detect-title">${tH('nt.foodFound')}</div>
     <div class="food-detect-items">
       ${foods.map(f => `<span class="food-tag">🍳 ${esc(f)}</span>`).join('')}
     </div>
     <div class="food-detect-btns">
       <button data-a0="${esc(JSON.stringify(foods))}" onclick="addPlannedMeals(JSON.parse(this.dataset.a0),this.closest('.food-detect-banner'))"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:8px 16px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer">
-        ✅ Přidat do Vaření jako plánovaná
+        ${tH('nt.foodAdd')}
       </button>
       <button onclick="this.closest('.food-detect-banner').remove()"
         style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">
-        Přeskočit
+        ${tH('nt.skip')}
       </button>
     </div>`;
   entryArea.appendChild(banner);
@@ -14101,7 +14101,7 @@ window.addPlannedMeals = (foods, bannerEl) => {
   let added = 0;
   foods.forEach(food => {
     if (!existing.has(food.toLowerCase())) {
-      plannedMeals.push({name: food, source: `Poznámky ${today}`, date: new Date().toISOString()});
+      plannedMeals.push({name: food, source: t('nt.source',{date:today}), date: new Date().toISOString()});
       added++;
     }
   });
@@ -14144,7 +14144,7 @@ function renderPlannedMeals() {
         <div class="planned-meal-source">📓 ${esc(m.source)}</div>
       </div>
       <div class="planned-meal-btns">
-        <button class="pm-btn pm-btn-recipe" data-a0="${esc(m.name)}" onclick="cookPlanned(this.dataset.a0, ${i})">🍳 Vařit</button>
+        <button class="pm-btn pm-btn-recipe" data-a0="${esc(m.name)}" onclick="cookPlanned(this.dataset.a0, ${i})">${tH('nt.cook')}</button>
         <button class="pm-btn pm-btn-del" onclick="removePlanned(${i})">×</button>
       </div>
     </div>`).join('');
@@ -14166,7 +14166,7 @@ window.removePlanned = (idx) => {
 };
 
 window.clearPlannedMeals = () => {
-  if (!confirm('Vymazat všechna plánovaná jídla?')) return;
+  if (!confirm(t('nt.clearPlannedQ'))) return;
   plannedMeals = [];
   savePlannedMeals();
   renderPlannedMeals();
@@ -14183,12 +14183,12 @@ function showMoodSuggest(mood, reason) {
   suggest.innerHTML = `
       <span style="font-size:22px">${esc(mood)}</span>
       <div style="flex:1">
-        <div style="font-size:13px;color:var(--text);font-weight:600">Rex navrhuje: ${esc(mood)}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600">${tH('nt.moodSuggest',{mood})}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:1px">${esc(reason ?? '')}</div>
       </div>
       <button data-a0="${esc(mood)}" onclick="acceptMood(this.dataset.a0)"
         style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
-        ✓ Použít
+        ${tH('nt.use')}
       </button>
       <button onclick="document.getElementById('mood-suggest').style.display='none'"
         style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text3);font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer">
@@ -14264,7 +14264,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. ZAKÁZÁNO použít jakékoliv cizí slo
 
 window.autoDetectMood = async () => {
   const text = document.getElementById('j-text').value.trim();
-  if (text.length < 20) { toast('⚠️ Nejprve něco napiš'); return; }
+  if (text.length < 20) { toast(t('nt.writeFirst')); return; }
 
   const btn = document.getElementById('auto-mood-btn');
   btn.textContent = '⏳';
@@ -14279,7 +14279,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
 
   try {
     const rawM = await callClaude([{role:'system',content:sys},{role:'user',content:text}], 100);
-    if (!rawM) throw new Error('AI není k dispozici');
+    if (!rawM) throw new Error('AI unavailable');
     let raw = rawM.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const result = JSON.parse(raw);
 
@@ -14300,7 +14300,7 @@ window.acceptMood = (mood) => {
   });
   document.getElementById('mood-suggest').style.display = 'none';
   markDirty();
-  toast(`Nálada ${mood} nastavena!`);
+  toast(t('nt.moodSet',{mood}));
 };
 
 // ── ZÁPISNÍK → NÁVYKY PROPOJENÍ ───────────────────────
@@ -14313,28 +14313,28 @@ function showHabitDetectBanner(completed, newHabits) {
   banner.id = 'habit-detect-banner';
   banner.className = 'habit-detect-banner';
 
-  let html = '<div class="habit-detect-title">🎯 Rex našel aktivity v poznámkách</div>';
+  let html = `<div class="habit-detect-title">${tH('nt.actFound')}</div>`;
 
   // Splněné aktivity
   if (completed.length > 0) {
-    html += '<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Splněno dnes</div>';
+    html += `<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${tH('nt.doneToday')}</div>`;
     completed.forEach((item, i) => {
       const existingHabit = habits.find(h =>
         item.matchesHabit && (h.name||'').toLowerCase().includes(String(item.matchesHabit).toLowerCase())
       );
       const meta = item.type === 'count' && item.count
-        ? `${esc(item.count)}× dnes · počitatelný`
-        : 'splněno dnes · ano/ne';
+        ? tH('nt.metaCount',{n:item.count})
+        : tH('nt.metaCheck');
       html += `<div class="habit-detect-card">
         <div class="hdc-info">
           <div class="hdc-name">${esc(item.emoji||'✅')} ${esc(item.activity)}${item.count?` — ${esc(item.count)}×`:''}</div>
           <div class="hdc-meta">${meta}</div>
         </div>
-        <span class="hdc-type">${item.type==='count'?'počet':'ano/ne'}</span>
+        <span class="hdc-type">${item.type==='count'?tH('nt.typeCount'):tH('nt.typeCheck')}</span>
         <div class="hdc-btns">
           <button data-a0="${esc(JSON.stringify({item, existingHabitId: existingHabit?.id||null}))}" onclick="logHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
-            ✅ ${existingHabit ? 'Zaznamenat' : 'Vytvořit návyk'}
+            ✅ ${existingHabit ? tH('nt.log') : tH('nt.createHabit')}
           </button>
         </div>
       </div>`;
@@ -14343,20 +14343,20 @@ function showHabitDetectBanner(completed, newHabits) {
 
   // Nové záměry
   if (newHabits.length > 0) {
-    html += '<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">Nové návyky k vytvoření</div>';
+    html += `<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">${tH('nt.newHabits')}</div>`;
     newHabits.forEach((h, i) => {
       const alreadyExists = habits.some(ex => (ex.name||'').toLowerCase() === (h.name||'').toLowerCase());
       if (alreadyExists) return;
       html += `<div class="habit-detect-card">
         <div class="hdc-info">
           <div class="hdc-name">${esc(h.emoji||'🎯')} ${esc(h.name)}</div>
-          <div class="hdc-meta">${h.type==='count'?`počet · cíl ${esc(h.goal||'?')}×`:'ano/ne'} · každý den</div>
+          <div class="hdc-meta">${h.type==='count'?tH('nt.metaGoal',{goal:h.goal||'?'}):tH('nt.typeCheck')} · ${tH('hb.daily')}</div>
         </div>
-        <span class="hdc-type">${h.type==='count'?'počet':'ano/ne'}</span>
+        <span class="hdc-type">${h.type==='count'?tH('nt.typeCount'):tH('nt.typeCheck')}</span>
         <div class="hdc-btns">
           <button data-a0="${esc(JSON.stringify(h))}" onclick="createHabitFromEntry(this.dataset.a0)"
             style="background:var(--green);color:#1a1a1a;border:none;border-radius:8px;padding:7px 14px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
-            + Vytvořit návyk
+            + ${tH('nt.createHabit')}
           </button>
         </div>
       </div>`;
@@ -14365,7 +14365,7 @@ function showHabitDetectBanner(completed, newHabits) {
 
   html += `<button onclick="document.getElementById('habit-detect-banner').remove()"
     style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;margin-top:6px;font-family:'Crimson Pro',serif">
-    Přeskočit
+    ${tH('nt.skip')}
   </button>`;
 
   banner.innerHTML = html;
@@ -14386,7 +14386,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     const goal = Math.max(1, Math.floor(Number(habit.goal))||1);
     await putHabitLog({id:logId, habitId:existingHabitId, date:today, done:value>=goal, value});
     document.getElementById('habit-detect-banner')?.remove();
-    toast(`✅ "${habit.name}" zaznamenáno${item.count?' ('+item.count+'×)':''}!`);
+    toast(item.count ? t('nt.loggedN',{name:habit.name,n:item.count}) : t('nt.logged',{name:habit.name}));
     renderHabits();
   } else {
     // Vytvořit nový návyk a hned zaznamenat
@@ -14404,7 +14404,7 @@ window.logHabitFromEntry = async (dataEnc) => {
     const logId = ref.id + '_' + today;
     await putHabitLog({id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)});
     document.getElementById('habit-detect-banner')?.remove();
-    toast(`✅ Návyk "${item.activity}" vytvořen a zaznamenán!`);
+    toast(t('nt.habitCreatedLogged',{name:item.activity}));
   }
 };
 
@@ -14427,7 +14427,7 @@ window.createHabitFromEntry = async (dataEnc) => {
   }
   // Odstraň tuto kartu z banneru
   document.getElementById('habit-detect-banner')?.remove();
-  toast(`✅ Návyk "${h.name}" vytvořen! Najdeš ho v Návycích.`);
+  toast(t('nt.habitCreated',{name:h.name}));
 };
 
 
