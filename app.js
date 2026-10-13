@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.49';
+const APP_VERSION = '4.50';
 const CHANGELOG = [
+  { v:'4.50', items:[
+    '👥 Nákupní seznam teď můžeš sdílet v kterékoli skupině – rodina, spolubydlící, tým'
+  ], en:[
+    '👥 You can now share a shopping list in any group – family, flatmates, team'
+  ]},
   { v:'4.49', items:[
     '👉 Sdílení a společné výzvy najdeš snadněji – tlačítko Sdílet přímo na kartě a tipy'
   ], en:[
@@ -13500,7 +13505,8 @@ window.toggleShopItem=async(id,wasDone)=>{
     const name = item?.name; const shopQty = item?.qty||'';
     await toggleFamilyShopItem(fid,id,wasDone);
     if(item) bumpShopFreq(item, wasDone?-1:1, fid); // často nakupované (skupina)
-    if(!wasDone && name) offerPantryUpdate(name, shopQty);
+    // Zásoby jsou jen v hlavní skupině (domácnost): nákup v jiné skupině je nemění
+    if(!wasDone && name && fid === familyId) offerPantryUpdate(name, shopQty);
     return;
   }
   const item=shopItems.find(i=>i.id===id);
