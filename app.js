@@ -913,7 +913,7 @@ onAuthStateChanged(auth,async u=>{
     unsubFamily=null; unsubFamilyCal=null; unsubFamilyMeal=null; unsubFamilyChecklist=null;
     extraGroupIds=[]; extraGroupsData={}; extraGroupEvents={}; unsubExtraGroupDocs={}; unsubExtraGroupCals={};
     // Reset dat
-    entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
+    entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; shopItemsLoaded=false; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     clearUserSessionState();
     ss(_accDeleted?'s-deleted':'s-login');
   }
@@ -7025,6 +7025,11 @@ function leaveSetStatus(txt, isErr) {
   st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
 }
 window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById('m-leavegrp')?.remove(); };
+// Popis kopie u vedlejší skupiny podle toho, co sdílí (kopíruje se jen kalendář a nákupy)
+function leaveCopyKey(gData) {
+  const cal = !!gData?.shareCal, shop = !!gData?.shareShop;
+  return cal && shop ? 'grp.leave.optAllCal' : cal ? 'grp.leave.optAllCalOnly' : shop ? 'grp.leave.optAllShop' : 'grp.leave.optAllNone';
+}
 function openLeaveGroup(gid) {
   if(!CU || _leaveBusy || !okFamilyCode(gid)) return;
   const isMain = gid === familyId;
@@ -7046,7 +7051,7 @@ function openLeaveGroup(gid) {
       ? `<b style="color:var(--red)">${tH('grp.leave.last')}</b> ${tH('grp.leave.lastRestore')}`
       : tH('grp.leave.info')}</div>
     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${tH('grp.leave.keepQ')}</div>
-    ${opt('all', tH('grp.leave.optAll'), tH(isMain ? 'grp.leave.optAllD' : 'grp.leave.optAllCal'), true)}
+    ${opt('all', tH('grp.leave.optAll'), tH(isMain ? 'grp.leave.optAllD' : leaveCopyKey(gData)), true)}
     ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD'), false)}
     ${opt('none', tH('grp.leave.optNone'), '', false)}
     ${last ? `<label style="display:block;font-size:14px;margin:10px 0 4px;color:var(--red)">${tH('grp.leave.typeLabel', {word})}</label>
@@ -12924,6 +12929,7 @@ let cookPortions=2, cookType='any', cookMealType='any';
 let lastRecipe=null; // posledni vygenerovany recept
 
 let shopItems=[];
+let shopItemsLoaded=false; // osobní seznam přišel ze snapshotu (pravidelné nákupy až potom)
 let savedRecipes=[];
 
 function subSavedRecipes(){
@@ -12951,7 +12957,12 @@ function subShop(){
   if(_fireSubs['shop'])return; // už subscribed
   createFireSub('shop',
     collection(db,'users',CU.uid,'shopItems'),
-    snap=>{ shopItems=snap.docs.map(d=>({id:d.id,...d.data()})); renderShop(); }
+    snap=>{
+      shopItems=snap.docs.map(d=>({id:d.id,...d.data()}));
+      shopItemsLoaded=true;
+      if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na osobní seznam
+      renderShop();
+    }
   );
 }
 
@@ -13425,9 +13436,12 @@ function recShopReady() {
   const v = shopViewStored();
   const pf = prof?.familyId;
   if(v && (v === pf || (prof?.extraGroupIds || []).includes(v)) && !groupDataOf(v)) return false;
-  if(!v && pf && !familyData) return false; // výchozí seznam závisí na hlavní skupině
   const g = shopGid();
+  // Hlavní skupina se načítá: cíl je jistý jen u Moje ('') nebo u načtené vybrané skupiny,
+  // jinak (výchozí volba, skupina už nákupy nesdílí → náhradní výchozí) závisí na hlavní skupině
+  if(pf && !familyData && v !== '' && !(v && g === v)) return false;
   if(g && !shopGrp[g]?.loaded) { subscribeGroupShop(g); return false; }
+  if(!g && !shopItemsLoaded) return false; // osobní seznam ještě nedorazil (kontrola duplicit)
   return true;
 }
 function checkRecurringShop() {
