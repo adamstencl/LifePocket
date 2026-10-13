@@ -1923,3 +1923,42 @@ label.sc-tog{cursor:pointer;min-height:48px}
 .ch-row2[hidden]{display:none}
 .ch-row2 .fg{min-width:0}
 .ch-xp{font-size:15px;font-weight:700;color:var(--accent);margin-top:6px}
+/* Výzvy k akci pro sdílení a jednorázové tipy (4.49) */
+.cta-slot:empty{display:none}
+.cta-slot{margin:4px 0 2px}
+.cta-sh{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:2px 12px;border-radius:16px;border:1px solid var(--border2);background:var(--card2);color:var(--text2);font-family:'Crimson Pro',serif;font-size:13px;font-weight:600;cursor:pointer;max-width:100%;position:relative}
+.cta-sh::before{content:'';position:absolute;inset:-6px -2px}
+.cta-sh:focus-visible,.cta-tip-x:focus-visible,.cta-inv-b:focus-visible,.cta-ask-b:focus-visible,.cta-ask-x:focus-visible,.coach-ok:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ghdr .cta-slot{margin:8px 0 0}
+.cta-tip{display:flex;align-items:flex-start;gap:8px;background:var(--card2);border:1px dashed var(--border2);border-radius:12px;padding:8px 4px 8px 12px;margin-bottom:12px;font-size:14px;color:var(--text2);line-height:1.45}
+.cta-tip-em{font-size:18px;line-height:1.3;flex-shrink:0}
+.cta-tip-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.cta-tip-t b{color:var(--text)}
+.cta-tip-x{flex-shrink:0;width:44px;height:44px;margin:-6px 0;background:none;border:none;border-radius:10px;color:var(--text2);font-size:16px;cursor:pointer}
+.cta-inv-b{margin-top:8px;min-height:44px;padding:8px 16px;border:none;border-radius:10px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer;max-width:100%}
+.cta-ask{position:fixed;left:50%;bottom:136px;transform:translateX(-50%);z-index:998;display:flex;align-items:center;gap:6px;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;padding:6px 4px 6px 16px;background:var(--card);border:1px solid var(--accent);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.35);font-size:14px;color:var(--text)}
+.cta-ask-t{flex:1;min-width:0;line-height:1.35;overflow-wrap:anywhere}
+.cta-ask-b{flex:none;min-height:40px;padding:6px 14px;border:none;border-radius:10px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
+.cta-ask-x{flex:none;width:40px;height:40px;background:none;border:none;color:var(--text2);font-size:16px;cursor:pointer}
+.cta-ch .dw-head{align-items:flex-start}
+.cta-ch .cta-tip-x{margin:-10px -8px 0 0}
+.cta-ch-d{font-size:14px;color:var(--text2);line-height:1.45;margin:0 0 10px}
+.cta-ch .ch-pre{margin-bottom:0}
+.cta-ch .ch-pre-b{min-height:44px}
+.cta-what{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin:0 0 14px}
+.cta-what-t{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}
+.cta-what-d{font-size:14px;color:var(--text2);line-height:1.45}
+.cta-what-l{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.cta-what-l .gf-chip{min-height:44px}
+.coach{--cx:50%;position:relative;display:flex;align-items:center;gap:10px;margin:12px 0;padding:10px 8px 10px 14px;background:var(--accent);color:var(--on-accent);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.3);font-size:14px;line-height:1.4;z-index:5}
+.coach::before{content:'';position:absolute;top:-7px;left:var(--cx);width:14px;height:14px;margin-left:-7px;background:var(--accent);transform:rotate(45deg)}
+.coach--above::before{top:auto;bottom:-7px}
+.coach-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.coach-ok{flex:none;min-height:44px;padding:6px 14px;border:1px solid currentColor;border-radius:10px;background:transparent;color:inherit;font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
+.coach-ok:focus-visible{outline-color:var(--text)}
+@media (prefers-reduced-motion: no-preference){
+  .coach{animation:coachIn .3s ease}
+  .cta-ask{animation:ctaAskIn .3s ease}
+}
+@keyframes coachIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes ctaAskIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
