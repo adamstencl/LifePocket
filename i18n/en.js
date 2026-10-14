@@ -1591,6 +1591,7 @@ export default {
   'grp.removed': 'You were removed from the group',
   'cl.shared': '✅ “{name}” shared with family',
   'cl.unshared': '“{name}” is no longer shared',
+  'cl.loading': '⏳ Loading shared lists…',
   'grp.newCode': '🔄 New code',
   'grp.legacyWarn': '⚠️ This code is short and can be guessed – we recommend generating a new one',
   'grp.codeLbl': 'Send this code or link to the other members',

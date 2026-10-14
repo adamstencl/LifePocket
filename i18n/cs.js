@@ -1597,6 +1597,7 @@ export default {
   'grp.removed': 'Byl jsi odebrán ze skupiny',
   'cl.shared': '✅ „{name}“ sdíleno s rodinou',
   'cl.unshared': '„{name}“ odebráno ze sdílení',
+  'cl.loading': '⏳ Načítám sdílené seznamy…',
   'grp.newCode': '🔄 Nový kód',
   'grp.legacyWarn': '⚠️ Tento kód je krátký a dá se uhodnout – doporučujeme vygenerovat nový',
   'grp.codeLbl': 'Pošli tento kód nebo odkaz ostatním členům',

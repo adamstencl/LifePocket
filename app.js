@@ -957,7 +957,7 @@ function claimLocalDataOwner(uid){
 function clearUserSessionState(){
   try{
     if(pantryUnsub){pantryUnsub();pantryUnsub=null;} pantryFamilyId=null;
-    familyId=null; familyData=null; familyEvents=[]; familyChecklists=[]; familyMealPlan={};
+    familyId=null; familyData=null; familyEvents=[]; familyChecklists=[]; familyChecklistsReady=false; familyMealPlan={};
     extraGroupsData={}; extraGroupEvents={}; pantryItems=[]; _pantryFamilyReady=false; _pantryChatTried=false;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
@@ -6920,6 +6920,7 @@ function resetFamilyLocal() {
   if(unsubFamilyCal) { unsubFamilyCal(); unsubFamilyCal=null; }
   if(unsubFamilyMeal) { unsubFamilyMeal(); unsubFamilyMeal=null; }
   if(unsubFamilyChecklist) { unsubFamilyChecklist(); unsubFamilyChecklist=null; familyChecklists=[]; }
+  familyChecklistsReady = false;
 }
 // Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
 function renderAfterFamilyChange() {
@@ -7558,6 +7559,7 @@ function switchGroupLocal(oldGid, newGid) {
     for(const g of ids) subscribeExtraGroup(g);
     changed = true;
   }
+  remapChecklistSharedGid(oldGid, newGid); // sdílené seznamy patří skupině i pod novým kódem
   if(selEvShareGroupId === oldGid) selEvShareGroupId = newGid;
   // Vybraný seznam nákupů na novém kódu (jinak by shopViewCheck hlásil „seznam zmizel“)
   if(shopViewStored() === oldGid) { shopViewSel = newGid; lsSave(SHOP_VIEW_KEY, {u: CU?.uid, g: newGid}); }
@@ -7844,22 +7846,40 @@ function subscribeSharedMeal() {
 
 // ── SDÍLENÝ CHECKLIST ──────────────────────────────────────
 let familyChecklists = [];
+let familyChecklistsReady = false; // první snapshot sdílených seznamů hlavní skupiny dorazil
 let unsubFamilyChecklist = null;
 
 function subscribeSharedChecklist() {
   if(unsubFamilyChecklist) return;
+  familyChecklistsReady = false;
   unsubFamilyChecklist = onSnapshot(
     collection(db,'families',familyId,'checklists'),
     snap => {
       familyChecklists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true}));
+      familyChecklistsReady = true;
       renderChecklist();
     },
     familyListenErr
   );
 }
 
-// Seznam je sdílený jen v té hlavní skupině, kde byl sdílen (sharedGid); po změně hlavní skupiny se do nové nepřenese
-function clSharedHere(c) { return !!(c?.shared && familyId && c.sharedGid === familyId); }
+// Sdílený v hlavní skupině = ve skupině leží jeho kopie s mým owner (přežije i změnu kódu skupiny);
+// sharedGid je jen doplněk pro zobrazení, než dorazí data skupiny
+function clSharedHere(c) {
+  if(!c?.shared || !familyId) return false;
+  if(!familyChecklistsReady) return c.sharedGid === familyId;
+  return familyChecklists.some(f => f.id === c.id && f.owner === CU?.uid);
+}
+// Po změně kódu skupiny: sharedGid vlastních seznamů starý → nový kód
+function remapChecklistSharedGid(oldGid, newGid) {
+  if(!CU || !okFamilyCode(newGid)) return;
+  for(const c of checklists) {
+    if(!c?.id || c.sharedGid !== oldGid) continue;
+    c.sharedGid = newGid;
+    setDoc(doc(db,'users',CU.uid,'checklists',c.id), {sharedGid: newGid}, {merge:true})
+      .catch(e => console.warn('[LP] sharedGid checklistu:', e?.code || e?.name));
+  }
+}
 // Starší sdílené seznamy bez sharedGid patří skupině, ve které byly sdílené (jednorázové doplnění)
 function fillChecklistSharedGid(gid) {
   if(!CU || !okFamilyCode(gid)) return;
@@ -7871,27 +7891,19 @@ function fillChecklistSharedGid(gid) {
   }
 }
 
-async function syncChecklistToFamily() {
-  if(!familyId || familyData?.shareChecklist===false) return;
-  // Sync označených listů sdílených v této skupině do Firestore
-  const toShare = checklists.filter(clSharedHere);
-  for (const list of toShare) {
-    await setDoc(doc(db,'families',familyId,'checklists',list.id), {
-      name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
-    });
-  }
-}
-
 window.toggleChecklistShare = async function(listId) {
   const list = checklists.find(c => c.id === listId);
   if(!list || !familyId) return;
   const fid = familyId;
+  // Bez dat skupiny nevíme, zda kopie ve skupině existuje → nic nepřepisovat
+  if(!familyChecklistsReady) { toast(t('cl.loading')); return; }
   // Sdílený v jiné (dřívější hlavní) skupině = tady nesdílený → sdílet do aktuální
   if(clSharedHere(list)) { list.shared = false; delete list.sharedGid; }
   else { list.shared = true; list.sharedGid = fid; }
   saveChecklistDoc(list);
   if(list.shared) {
-    await setDoc(doc(db,'families',fid,'checklists',list.id), {
+    // Kopie už ve skupině leží (např. sdílená z jiného zařízení) → nepřepisovat ji starším obsahem
+    if(!familyChecklists.some(f => f.id === list.id)) await setDoc(doc(db,'families',fid,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
     });
     logGroupActivity(fid, 'check', 'share', list.name || '');
@@ -7917,7 +7929,7 @@ const GROUP_MOD_INFO = {shareShop:['🧺','shop'], shareCal:['🗓️','cal'], s
 function okGroupEmoji(e) { return GROUP_EMOJIS.includes(e); }
 // Příznaky modulů: šablona + ruční změny (over), vždy všechna 4 pole jako boolean
 function groupTemplateFlags(tpl, over) {
-  const base = Object.hasOwn(GROUP_TEMPLATES, tpl) ? GROUP_TEMPLATES[tpl] : GROUP_TEMPLATES.friends;
+  const base = Object.prototype.hasOwnProperty.call(GROUP_TEMPLATES, tpl) ? GROUP_TEMPLATES[tpl] : GROUP_TEMPLATES.friends;
   const out = {};
   for(const k of GROUP_MOD_KEYS) out[k] = typeof over?.[k] === 'boolean' ? over[k] : !!base[k];
   return out;
@@ -8090,7 +8102,7 @@ function renderGroupSheet() {
   const m = document.getElementById('m-group');
   if(!m) return;
   const gid = _grpSheetGid;
-  if(!gid || !myGroupIds().includes(gid)) { m.remove(); return; } // odchod, odebrání, změna kódu
+  if(!gid || !myGroupIds().includes(gid)) { m._keepPending = true; m.remove(); return; } // odchod, odebrání, změna kódu
   const html = groupSheetBody(gid);
   if(!html || html === _grpSheetHtml) return;
   const body = m.querySelector('.grp-sheet-body');
@@ -8110,6 +8122,7 @@ window.openGroupSheet = (gid, keepFocus) => {
   m.id = 'm-group'; m.className = 'moverlay open';
   m.innerHTML = '<div class="modal grp-sheet" role="dialog" aria-modal="true" aria-labelledby="grp-sheet-t"><div class="grp-sheet-body"></div></div>';
   mountGroupSheet(m, () => {
+    if(!m._keepPending) _grpSheetPending = null; // zavřel uživatel → po změně kódu už detail znovu neotvírat
     if(document.getElementById('m-group')) return null;
     _grpSheetGid = null;
     return [...document.querySelectorAll('#family-extra-groups .grp-card')].find(b => b.dataset.gid === gid) || null;
@@ -8230,7 +8243,7 @@ function syncNewGroup() {
 }
 window.pickNewGroupEmoji = (e) => { if(!_ng || !okGroupEmoji(e)) return; _ng.em = e; _ng.emTouched = true; syncNewGroup(); };
 window.pickNewGroupTpl = (k) => {
-  if(!_ng || !Object.hasOwn(GROUP_TEMPLATES, k)) return;
+  if(!_ng || !Object.prototype.hasOwnProperty.call(GROUP_TEMPLATES, k)) return;
   _ng.tpl = k; _ng.flags = groupTemplateFlags(k);
   if(!_ng.emTouched) _ng.em = GROUP_TEMPLATES[k].em; // emoji vybrané ručně šablona nepřepíše
   syncNewGroup();
