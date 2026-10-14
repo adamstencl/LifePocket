@@ -6,8 +6,9 @@ import CS from './i18n/cs.js';
 import AI_CS from './i18n/ai-cs.js';
 
 export const SUPPORTED = ['cs', 'en'];
-// Fáze 7: automatická volba podle jazyka telefonu. Do té doby jen ?lang=en nebo přepínač v Nastavení.
-const AUTO_DETECT = false;
+// Fáze 7 (4.56): bez uložené volby rozhoduje jazyk telefonu (cs/sk → čeština, ostatní → angličtina).
+// Přihlášený účet má vždy přednost (profile.lang, bez něj cs – řeší syncProfileLang v app.js).
+const AUTO_DETECT = true;
 const LOCALES = { cs: 'cs-CZ', en: 'en-GB' }; // en-GB: týden od pondělí, 24h čas
 
 export let LANG = 'cs', LOCALE = 'cs-CZ';
@@ -33,7 +34,7 @@ export const clearLangSync = () => lsDel('lp_lang_sync');
 // Odhlášení: jazyk patří účtu, zařízení se vrací na výchozí volbu
 export function clearLangLocal() { lsDel('lp_lang_sync'); lsDel('lp_lang'); }
 
-// Pořadí: ?lang= → lp_lang (kopie profile.lang) → jazyk telefonu (až od fáze 7) → čeština
+// Pořadí: ?lang= → lp_lang (kopie profile.lang) → jazyk telefonu
 export function resolveLang() {
   let q = null;
   try { q = new URLSearchParams(location.search).get('lang'); } catch (e) {}
@@ -41,8 +42,14 @@ export function resolveLang() {
   const ls = lsGet('lp_lang');
   if (SUPPORTED.includes(ls)) return ls;
   if (!AUTO_DETECT) return 'cs';
-  const nav = (navigator.languages || [navigator.language || '']).map(x => String(x).slice(0, 2).toLowerCase());
-  return nav.some(l => l === 'cs' || l === 'sk') ? 'cs' : 'en';
+  return navLang();
+}
+// Jazyk telefonu: čeština nebo slovenština kdekoli v seznamu preferencí → cs, jiný jazyk → en; bez údaje → cs
+function navLang() {
+  let list = [];
+  try { list = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || '']).map(x => String(x || '').slice(0, 2).toLowerCase()); } catch (e) {}
+  if (list.some(l => l === 'cs' || l === 'sk')) return 'cs';
+  return list.some(l => /^[a-z]{2}$/.test(l)) ? 'en' : 'cs';
 }
 
 // Adresa bez ?lang= (aby odkaz nepřebil pozdější přepnutí v Nastavení)
@@ -143,6 +150,13 @@ export function reloadWithLang(l) {
   try { sessionStorage.setItem('lp_lang_reload', l); } catch (e) {}
   location.replace(u.href);
 }
+// Volba jazyka na úvodní stránce (nepřihlášený): jen do zařízení, profil existujícího účtu nepřepisuje
+export function previewLang(l) {
+  if (!SUPPORTED.includes(l)) return;
+  const u = urlWithoutLang();
+  if (!rememberLang(l, false)) u.searchParams.set('lang', l);
+  location.replace(u.href);
+}
 // Profil má jiný jazyk než zařízení (přepnuto jinde) → převzít, nejvýš jednou za relaci (pojistka proti smyčce)
 export function reloadForProfileLang(l) {
   if (!SUPPORTED.includes(l) || l === LANG) return false;
@@ -150,7 +164,8 @@ export function reloadForProfileLang(l) {
   try { guard = sessionStorage.getItem('lp_lang_reload'); } catch (e) { return false; }
   if (guard === l) return false;
   try { sessionStorage.setItem('lp_lang_reload', l); } catch (e) { return false; }
-  if (!lsSet('lp_lang', l)) return false;
+  // Bez localStorage aspoň přes adresu (?lang= pak zůstane v adrese, jinak by vyhrál jazyk telefonu)
+  if (!lsSet('lp_lang', l)) { const u = urlWithoutLang(); u.searchParams.set('lang', l); location.replace(u.href); return true; }
   location.reload();
   return true;
 }

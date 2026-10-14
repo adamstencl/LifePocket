@@ -104,6 +104,8 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .lp-invite{display:flex;gap:8px;align-items:flex-start;background:var(--card2);border:1px solid var(--accent);border-radius:12px;padding:10px 12px;font-size:15px;color:var(--text);margin-bottom:14px}
 .lp-legal{text-align:center;font-size:13px;color:var(--text2);margin-top:10px}
 .lp-legal a{color:var(--text2);text-decoration:underline;display:inline-block;padding:10px 4px}
+.lp-lang{margin-top:0}
+.lp-lang a[aria-current]{font-weight:700;text-decoration:none;color:var(--text)}
 .lp-back{background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;min-height:44px;padding:0 8px 0 0;cursor:pointer;margin:6px 0 2px}
 .lp-auth-links{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px}
 .lp-link{background:none;border:none;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;min-height:44px;padding:0 4px;cursor:pointer}

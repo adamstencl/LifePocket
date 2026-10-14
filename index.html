@@ -37,7 +37,8 @@
 <link rel="stylesheet" href="style.css">
 <script src="pwa.js"></script>
 <!-- Jazyk: přednačtení slovníku (stejná logika jako resolveLang v i18n.js) -->
-<script>(function(){var l='cs';try{var q=new URLSearchParams(location.search).get('lang');l=(q==='en'||q==='cs')?q:(localStorage.getItem('lp_lang')==='en'?'en':'cs');}catch(e){}
+<script>(function(){var l='cs';try{var q=new URLSearchParams(location.search).get('lang'),s=null;try{s=localStorage.getItem('lp_lang');}catch(e){}
+l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'']).map(function(x){return String(x||'').slice(0,2).toLowerCase();});return n.some(function(x){return x==='cs'||x==='sk';})?'cs':n.some(function(x){return /^[a-z]{2}$/.test(x);})?'en':'cs';})();}catch(e){}
 ['/i18n.js','/i18n/cs.js'].concat(l==='en'?['/i18n/en.js']:[]).forEach(function(h){var k=document.createElement('link');k.rel='modulepreload';k.href=h;document.head.appendChild(k);});})();</script>
 </head>
 <body>
@@ -134,6 +135,11 @@
       <div class="lp-legal">
         <a href="privacy.html" target="_blank" rel="noopener" data-i18n="legal.privacy" data-i18n-attr="href:legal.privacyUrl">Ochrana osobních údajů</a> ·
         <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a>
+      </div>
+      <!-- Volba jazyka před přihlášením (jen zařízení; přihlášený účet má svůj jazyk v profilu) -->
+      <div class="lp-legal lp-lang" translate="no">
+        <a href="?lang=cs" lang="cs" hreflang="cs" data-lang="cs" onclick="return landLang(this.dataset.lang)">Čeština</a> ·
+        <a href="?lang=en" lang="en" hreflang="en" data-lang="en" onclick="return landLang(this.dataset.lang)">English</a>
       </div>
     </section>
 

@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.55';
+const APP_VERSION = '4.56';
 const CHANGELOG = [
+  { v:'4.56', items:[
+    '🌍 Appka se novým uživatelům automaticky přepne do jejich jazyka; oprava lžic v receptech'
+  ], en:[
+    '🌍 The app now switches to your language automatically for new users; spoon measures in recipes fixed'
+  ]},
   { v:'4.55', items:[
     '🌍 Upozornění chodí v jazyce appky – ranní a večerní přehled, připomínky, narozeniny i zprávy ze skupin'
   ], en:[
@@ -897,6 +902,9 @@ window.setLang=async l=>{
   }
   reloadWithLang(l);
 };
+// Úvodní stránka (nepřihlášený): jazyk jen pro zařízení, ostatní parametry adresy (pozvánka) zůstanou
+window.landLang=l=>{ if(l!==LANG) previewLang(l); return false; };
+document.querySelectorAll('.lp-lang a').forEach(a=>{ if(a.dataset.lang===LANG) a.setAttribute('aria-current','true'); });
 function renderLangSwitch(){
   document.querySelectorAll('.lang-btn').forEach(b=>{
     const on=b.dataset.lang===LANG;
