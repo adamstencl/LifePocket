@@ -182,6 +182,11 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <a href="privacy.html" target="_blank" rel="noopener" data-i18n="legal.privacy" data-i18n-attr="href:legal.privacyUrl">Ochrana osobních údajů</a> ·
         <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a>
       </div>
+      <!-- Volba jazyka i v přihlašovacím panelu (nainstalovaná PWA landing nezobrazuje) -->
+      <div class="lp-legal lp-lang" translate="no">
+        <a href="?lang=cs" lang="cs" hreflang="cs" data-lang="cs" onclick="return landLang(this.dataset.lang)">Čeština</a> ·
+        <a href="?lang=en" lang="en" hreflang="en" data-lang="en" onclick="return landLang(this.dataset.lang)">English</a>
+      </div>
     </section>
   </div>
 </div>

@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.56';
+const APP_VERSION = '4.57';
 const CHANGELOG = [
+  { v:'4.57', items:[
+    '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky'
+  ], en:[
+    '🌐 You can switch the app language on the sign-in screen of the installed app too'
+  ]},
   { v:'4.56', items:[
     '🌍 Appka se novým uživatelům automaticky přepne do jejich jazyka; oprava lžic v receptech'
   ], en:[
@@ -903,7 +908,13 @@ window.setLang=async l=>{
   reloadWithLang(l);
 };
 // Úvodní stránka (nepřihlášený): jazyk jen pro zařízení, ostatní parametry adresy (pozvánka) zůstanou
-window.landLang=l=>{ if(l!==LANG) previewLang(l); return false; };
+// Otevřený přihlašovací panel (a jeho režim) se po přepnutí jazyka obnoví
+window.landLang=l=>{
+  if(l===LANG) return false;
+  const a=document.getElementById('auth-panel');
+  try{ if(a&&!a.hidden) sessionStorage.setItem('lp_auth_panel',_authMode); }catch(e){}
+  previewLang(l); return false;
+};
 document.querySelectorAll('.lp-lang a').forEach(a=>{ if(a.dataset.lang===LANG) a.setAttribute('aria-current','true'); });
 function renderLangSwitch(){
   document.querySelectorAll('.lang-btn').forEach(b=>{
@@ -3799,8 +3810,10 @@ window.togglePassVis=()=>{
   if(btn){btn.textContent=inp.type==='password'?'👁️':'🙈';btn.setAttribute('aria-label',t(inp.type==='password'?'auth.showPass':'auth.hidePass'));}
 };
 
+let _authMode='login';
 window.toggleLoginMode=(mode)=>{
   const isReg=mode==='register';
+  _authMode=isReg?'register':'login';
   document.getElementById('email-login-btn').textContent=t(isReg?'auth.createAccount':'auth.login');
   document.getElementById('email-login-btn').onclick=isReg?window.doEmailRegister:window.doEmailLogin;
   document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
@@ -7717,7 +7730,9 @@ window.showLanding=()=>{
 // Kdo se tu už přihlásil nebo má appku na ploše, landing nevidí
 function initLoginScreen(){
   let known=false; try{ known=!!localStorage.getItem('lp_owner_uid'); }catch(e){}
-  if(known || isStandaloneApp()) showAuthPanel('login');
+  let back=null; try{ back=sessionStorage.getItem('lp_auth_panel'); sessionStorage.removeItem('lp_auth_panel'); }catch(e){}
+  if(back==='login'||back==='register') showAuthPanel(back);
+  else if(known || isStandaloneApp()) showAuthPanel('login');
   const hasInv=!!readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
 }
