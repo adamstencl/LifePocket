@@ -13434,8 +13434,9 @@ async function finishDS(text){
 // texty se zjednoduší na jeden řádek (nelze podvrhnout nadpis sekce), bez e-mailů, tokenů, ID a obrázků.
 // Každá sekce má vlastní try/catch (při chybě se vynechá); celek má strop CHAT_CTX_MAX znaků.
 const CHAT_CTX_MAX = 7000;
-const CTX_DOW = ['Ne','Po','Út','St','Čt','Pá','So'];
-const CTX_DOW_FULL = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
+// Texty kontextu jsou v jazyce uživatele (tA, i18n/ai-*.js); dny přes Intl (index = getDay(): „Po“/„Mon“, „pondělí“/„Monday“)
+const ctxDow=i=>lookupOr(dowNames('short'),i,'');
+const ctxDowFull=i=>{const w=weekdayNames('long',true);return lookupOr([w[6],...w.slice(0,6)],i,'');};
 // Jednořádkový ořez textu na max n znaků (bez řídicích znaků, base64 a data URL)
 // Odstraní sekvence, kterými by cizí text mohl podvrhnout ohraničení dat nebo akci chatu ([FOOD:, <data>, </data>)
 // Vstup se nejdřív ořízne na cap znaků (regex pak běží v lineárním čase), kvantifikátory jsou omezené
@@ -13458,55 +13459,80 @@ function ctxT(v,n){
   return s;
 }
 function ctxNum(v){const n=Number(v);return Number.isFinite(n)?n:0;}
-// "Po 12.10." z YYYY-MM-DD (lokální den)
-function ctxDay(ds){const d=new Date(ds+'T12:00:00');return isNaN(d)?ctxT(ds,12):CTX_DOW[d.getDay()]+' '+d.getDate()+'.'+(d.getMonth()+1)+'.';}
+// "Po 12.10." / "Mon 12/10" z YYYY-MM-DD (lokální den)
+function ctxDay(ds){const d=new Date(ds+'T12:00:00');return isNaN(d)?ctxT(ds,12):tA('aip.ctx.day',{dow:ctxDow(d.getDay()),d:d.getDate(),m:d.getMonth()+1});}
 // Rozdělí položky do řádků po per kusech (aby šlo zkracovat po částech); první řádek nese prefix
 function ctxList(prefix,arr,per=5){
   const out=[];
   for(let i=0;i<arr.length;i+=per) out.push((i===0?prefix:'  ')+arr.slice(i,i+per).join('; '));
   return out;
 }
-function ctxMore(total,shown){return total>shown?['… a '+(total-shown)+' dalších']:[];}
+function ctxMore(total,shown){return total>shown?[tA('aip.ctx.more',{n:total-shown})]:[];}
+// Název skupiny u sdílených dat (jednořádkový, zkrácený); hlavní skupina s ⭐
+function ctxGrp(gid){return tA('aip.ctx.g.tag',{name:ctxT(groupDataOf(gid)?.groupName||tA('aip.ctx.g.def'),30)})+(gid===familyId?' ⭐':'');}
 
 function buildChatContext(){
   const now=new Date(), today=toDS(now);
   const secs=[];
-  // Přidá sekci; při chybě ji vynechá (bez logování obsahu). protect = při zkracování se šetří
-  const add=(title,protect,fn)=>{
+  // Přidá sekci; při chybě ji vynechá (bez logování obsahu).
+  // lvl: 2 = při zkracování se šetří, 1 = běžná, 0 = další skupiny (zkracují se jako první)
+  const add=(title,lvl,fn)=>{
     try{
       const lines=(fn()||[]).filter(l=>typeof l==='string'&&l.trim());
-      secs.push({title,protect,lines,dropped:false});
+      secs.push({title,lvl,lines,dropped:false});
     }catch(e){}
   };
   // Rodinná data jen pokud do skupiny uživatel opravdu patří (stav po odhlášení se nemusí vyčistit)
   const famOk=!!(prof.familyId&&familyId===prof.familyId&&familyData);
   const extraIds=Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[];
+  const DN=weekdayNames('short'), todayIdx=(now.getDay()+6)%7; // jídelníček: d0 = pondělí
+  // Řádek checklistu: nesplněné položky (nejvýš max), tag = popisek za názvem
+  const clLine=(c,prefix,tag,max)=>{
+    const items=Array.isArray(c.items)?c.items.filter(i=>i&&i.text):[];
+    const open=items.filter(i=>!i.done);
+    const head=prefix+ctxT(c.name||tA('aip.ctx.cl.list'),40)+tag;
+    if(!items.length) return head+tA('aip.ctx.cl.empty');
+    if(!open.length) return head+tA('aip.ctx.cl.allDone',{n:items.length});
+    return head+tA('aip.ctx.cl.open',{open:open.length,n:items.length})+open.slice(0,max).map(i=>ctxT(i.text,60)).join('; ')+(open.length>max?'; … +'+(open.length-max):'');
+  };
+  // Jídelníček: řádky dnů (days = indexy dnů od pondělí), sn./ob./ve.
+  const fmtPlan=(plan,label,days)=>{
+    const out=[];
+    if(!plan||typeof plan!=='object') return out;
+    for(const di of days||[0,1,2,3,4,5,6]){
+      const dd=plan['d'+di];if(!dd||typeof dd!=='object') continue;
+      const parts=['m0','m1','m2'].map((k,i)=>dd[k]&&String(dd[k]).trim()?tA('aip.ctx.meal.m'+i)+' '+ctxT(dd[k],40):'').filter(Boolean);
+      if(parts.length) out.push('- '+label+DN[di]+(di===todayIdx?tA('aip.ctx.meal.today'):'')+': '+parts.join(' / '));
+    }
+    return out;
+  };
+  const shopFmt=i=>ctxT(i.name,40)+(i.qty?' ('+ctxT(i.qty,15)+')':'');
 
-  add('DNES',true,()=>[CTX_DOW_FULL[now.getDay()]+' '+today+', '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')]);
+  add(tA('aip.ctx.s.today'),2,()=>[tA('aip.ctx.now',{dow:ctxDowFull(now.getDay()),date:today,time:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')})]);
 
-  add('VIZE',false,()=>{
+  add(tA('aip.ctx.s.vision'),1,()=>{
     const a=(prof.visionAreas&&typeof prof.visionAreas==='object')?prof.visionAreas:{};
     const va=Object.entries(a).filter(([,v])=>v).map(([k,v])=>ctxT(k,20)+': '+ctxT(v,120)).join('; ');
     const t=ctxT(va||prof.vision,500);
     return t?[t]:[];
   });
 
-  add('CÍLE',false,()=>{
+  add(tA('aip.ctx.s.goals'),1,()=>{
     const arr=goals.filter(g=>g&&g.name);
     return [...arr.slice(0,15).map(g=>{
       const sg=Array.isArray(subs&&subs[g.id])?subs[g.id]:[];
-      return '- '+ctxT((g.emoji||'')+' '+g.name,60)+' ('+ctxNum(g.progress)+'%'+(g.category?', '+ctxT(g.category,20):'')+(g.deadline?', do '+ctxT(g.deadline,10):'')+(sg.length?', podcíle '+sg.filter(s=>s&&s.done).length+'/'+sg.length:'')+')';
+      return '- '+ctxT((g.emoji||'')+' '+g.name,60)+' ('+ctxNum(g.progress)+'%'+(g.category?', '+ctxT(g.category,20):'')+(g.deadline?tA('aip.ctx.goal.until',{d:ctxT(g.deadline,10)}):'')+(sg.length?tA('aip.ctx.goal.subs',{done:sg.filter(s=>s&&s.done).length,n:sg.length}):'')+')';
     }),...ctxMore(arr.length,15)];
   });
 
-  add('NÁVYKY (dnes, streak, připomínka)',true,()=>{
+  add(tA('aip.ctx.s.habits'),2,()=>{
     const act=habits.filter(h=>h&&h.name&&!h.archived);
     const dow=now.getDay();
     const done=new Set(), skip=new Set();
     habitLogs.forEach(l=>{ if(!l) return; const k=l.habitId+'|'+l.date; if(l.done) done.add(k); else if(l.skipped) skip.add(k); });
     const due=h=>{const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};return f.type!=='days'||(Array.isArray(f.days)?f.days:[]).includes(dow);};
     const dueAll=act.filter(due);
-    const lines=['Dnes splněno '+dueAll.filter(h=>done.has(h.id+'|'+today)).length+' z '+dueAll.length+' návyků'];
+    const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>done.has(h.id+'|'+today)).length,n:dueAll.length})];
     act.slice(0,20).forEach(h=>{
       const k=h.id+'|'+today;
       const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};
@@ -13517,16 +13543,16 @@ function buildChatContext(){
       if(f.type==='weekly'){
         const ws=new Date(now);ws.setDate(ws.getDate()-((now.getDay()+6)%7));
         let c=0;for(let i=0;i<7;i++){const d=new Date(ws);d.setDate(ws.getDate()+i);if(done.has(h.id+'|'+toDS(d)))c++;}
-        wk=' | týden '+c+'/'+(Number(f.times)||3);
+        wk=tA('aip.ctx.hab.week',{done:c,n:Number(f.times)||3});
       }
       const val=h.type==='count'?' ('+ctxNum((hLogHD(h.id,today)||{}).value)+'/'+ctxNum(h.goal)+')':'';
       const rt=/^([01]\d|2[0-3]):[0-5]\d$/.test(h.reminderTime||'')?' | 🔔 '+h.reminderTime:'';
-      lines.push('- '+mark+' '+ctxT((h.emoji||'')+' '+h.name,50)+val+(f.type==='weekly'?'':' | streak '+streak+' dní')+' | '+habitFreqLabel(h.freq)+wk+rt);
+      lines.push('- '+mark+' '+ctxT((h.emoji||'')+' '+h.name,50)+val+(f.type==='weekly'?'':tA('aip.ctx.hab.streak',{n:streak}))+' | '+habitFreqLabel(h.freq)+wk+rt);
     });
     return [...lines,...ctxMore(act.length,20)];
   });
 
-  add('ZÁPISKY (posledních 5, nálada 7 dní)',false,()=>{
+  add(tA('aip.ctx.s.notes'),1,()=>{
     const lines=[];
     const dm=lsGet('lp_daily_mood',null);
     const mh=[];
@@ -13534,9 +13560,9 @@ function buildChatContext(){
       const d=new Date(now);d.setDate(d.getDate()-i);const ds=toDS(d);
       const me=entries.find(e=>e&&e.mood&&entryDS(e)===ds);
       const m=(me&&me.mood)||(healthLogs&&healthLogs[ds]&&healthLogs[ds].mood)||((i===0&&dm&&dm.date===today&&dm.emoji)||'');
-      mh.push(CTX_DOW[d.getDay()]+' '+(ctxT(m,4)||'–'));
+      mh.push(ctxDow(d.getDay())+' '+(ctxT(m,4)||'–'));
     }
-    if(mh.some(x=>!x.endsWith('–'))) lines.push('Nálada 7 dní (od nejstarší): '+mh.join(', '));
+    if(mh.some(x=>!x.endsWith('–'))) lines.push(tA('aip.ctx.notes.mood')+mh.join(', '));
     entries.slice(0,5).forEach(e=>{
       if(!e) return;
       lines.push('['+(entryDS(e)||'?')+'] '+ctxT(e.mood,4)+' "'+ctxT(e.title,50)+'": '+ctxT(e.text,150));
@@ -13544,44 +13570,36 @@ function buildChatContext(){
     return lines;
   });
 
-  add('CHECKLISTY (nesplněné položky)',false,()=>{
+  add(tA('aip.ctx.s.check'),1,()=>{
     const map=new Map();
     const famCl=famOk&&familyData.shareChecklist!==false; // stejně jako UI / odběr sdílených seznamů
     // Můj sdílený seznam z kopie ve skupině (zdroj pravdy, kterákoli skupina), bez duplicit podle ID
-    checklists.forEach(c=>{ if(!c||!c.id) return; const sg=clSharedGid(c); map.set(c.id,{c:(sg&&clFind(c.id))||c,fam:!!sg}); });
-    if(famCl) (clGrp[familyId]?.lists||[]).forEach(c=>{ if(c&&c.id&&!map.has(c.id)) map.set(c.id,{c,fam:true}); });
+    checklists.forEach(c=>{ if(!c||!c.id) return; const sg=clSharedGid(c); map.set(c.id,{c:(sg&&clFind(c.id))||c,gid:sg||null}); });
+    if(famCl) (clGrp[familyId]?.lists||[]).forEach(c=>{ if(c&&c.id&&!map.has(c.id)) map.set(c.id,{c,gid:familyId}); });
     const all=[...map.values()];
-    return [...all.slice(0,8).map(({c,fam})=>{
-      const items=Array.isArray(c.items)?c.items.filter(i=>i&&i.text):[];
-      const open=items.filter(i=>!i.done);
-      const head='- '+ctxT(c.name||'Seznam',40)+(fam?' (sdílený)':'');
-      if(!items.length) return head+': prázdný';
-      if(!open.length) return head+': vše splněno ('+items.length+')';
-      return head+' ['+open.length+' z '+items.length+' nesplněno]: '+open.slice(0,15).map(i=>ctxT(i.text,60)).join('; ')+(open.length>15?'; … +'+(open.length-15):'');
-    }),...ctxMore(all.length,8)];
+    return [...all.slice(0,8).map(({c,gid})=>clLine(c,'- ',gid?tA('aip.ctx.cl.shared',{group:ctxGrp(gid)}):'',15)),...ctxMore(all.length,8)];
   });
 
-  add('NÁKUPY (nesplněné + pravidelné)',false,()=>{
-    const fmt=i=>ctxT(i.name,40)+(i.qty?' ('+ctxT(i.qty,15)+')':'');
+  add(tA('aip.ctx.s.shop'),1,()=>{
     const per=shopItems.filter(i=>i&&i.name&&!i.done);
-    const lines=[...ctxList('Osobní ('+per.length+'): ',per.slice(0,15).map(fmt)),...ctxMore(per.length,15)];
+    const lines=[...ctxList(tA('aip.ctx.shop.mine',{n:per.length}),per.slice(0,15).map(shopFmt)),...ctxMore(per.length,15)];
     if(famOk&&familyData.shareShop){
       const fam=shopGrpItems(familyId).filter(i=>i&&i.name&&!i.done);
-      if(fam.length) lines.push(...ctxList('Sdílený se skupinou ('+fam.length+'): ',fam.slice(0,15).map(fmt)),...ctxMore(fam.length,15));
+      if(fam.length) lines.push(...ctxList(tA('aip.ctx.shop.group',{group:ctxGrp(familyId),n:fam.length}),fam.slice(0,15).map(shopFmt)),...ctxMore(fam.length,15));
     }
-    const FQ={weekly:'týdně',biweekly:'2× měs.',monthly:'měsíčně'};
-    const rec=recurringShopItems.filter(i=>i&&i.name).slice(0,10).map(i=>ctxT(i.name,30)+' ('+lookupOr(FQ,i.freq,'')+(i.freq!=='monthly'&&i.day!=null?', '+lookupOr(CTX_DOW,i.day,''):'')+')');
-    if(rec.length) lines.push(...ctxList('Pravidelné: ',rec));
+    const FQ={weekly:tA('aip.ctx.shop.weekly'),biweekly:tA('aip.ctx.shop.biweekly'),monthly:tA('aip.ctx.shop.monthly')};
+    const rec=recurringShopItems.filter(i=>i&&i.name).slice(0,10).map(i=>ctxT(i.name,30)+' ('+lookupOr(FQ,i.freq,'')+(i.freq!=='monthly'&&i.day!=null?', '+ctxDow(i.day):'')+')');
+    if(rec.length) lines.push(...ctxList(tA('aip.ctx.shop.rec'),rec));
     return lines;
   });
 
-  add('KALENDÁŘ (dnes + 90 dní)',true,()=>{
+  add(tA('aip.ctx.s.cal'),2,()=>{
     const t0=new Date(now.getFullYear(),now.getMonth(),now.getDate());
     const t1=new Date(t0);t1.setDate(t1.getDate()+90);
     const isD=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'');
-    const fam=[];
-    if(famOk&&familyData.shareCal) fam.push(...familyEvents); // jen když skupina kalendář sdílí (jako UI)
-    extraIds.forEach(gid=>{ if(extraGroupsData[gid]&&extraGroupsData[gid].shareCal&&Array.isArray(extraGroupEvents[gid])) fam.push(...extraGroupEvents[gid]); });
+    const fam=[]; // {ev, gid}: události skupin s kalendářem (jako UI), u každé název skupiny
+    if(famOk&&familyData.shareCal) (Array.isArray(familyEvents)?familyEvents:[]).forEach(ev=>fam.push({ev,gid:familyId}));
+    extraIds.forEach(gid=>{ if(extraGroupsData[gid]&&extraGroupsData[gid].shareCal&&Array.isArray(extraGroupEvents[gid])) extraGroupEvents[gid].forEach(ev=>fam.push({ev,gid})); });
     const first=ev=>{ // první výskyt události v okně dnes..+90 dní
       if(!ev||!ev.name||!isD(ev.date)) return null;
       const [y,m,d]=ev.date.split('-').map(Number);
@@ -13597,94 +13615,83 @@ function buildChatContext(){
       return (s>=t0&&s<=t1)?s:null;
     };
     const list=[],seenId=new Set();
-    [...events.map(ev=>({ev,own:true})),...fam.map(ev=>({ev,own:false}))].forEach(({ev,own})=>{
+    [...events.map(ev=>({ev,own:true,gid:null})),...fam.map(({ev,gid})=>({ev,own:false,gid}))].forEach(({ev,own,gid})=>{
       if(ev&&ev.id){ if(seenId.has(ev.id)) return; seenId.add(ev.id); } // osobní + rodinná kopie téže události
-      const o=first(ev);if(o) list.push({ev,own,o,ds:toDS(o)});
+      const o=first(ev);if(o) list.push({ev,own,gid,o,ds:toDS(o)});
     });
     list.sort((a,b)=>a.ds.localeCompare(b.ds)||(okEvTime(a.ev.time)?a.ev.time:'').localeCompare(okEvTime(b.ev.time)?b.ev.time:''));
-    return [...list.slice(0,25).map(({ev,own,ds})=>{
+    return [...list.slice(0,25).map(({ev,own,gid,ds})=>{
       let author=null;
       if(!own){try{author=getEventAuthorName(ev);}catch(e){}}
-      return '- '+(ds===today?'DNES':ctxDay(ds))+(okEvTime(ev.time)?' '+ev.time:'')+' ['+ctxT(getEvLabel(ev.type),20)+'] '+ctxT(ev.name,60)
-        +(isD(ev.dateEnd)?' (do '+ctxDay(ev.dateEnd)+')':'')+(ev.repeat==='yes'?' (každý rok)':'')
-        +(!own?' · sdílená'+(author?', od '+ctxT(author,20):''):'');
+      return '- '+(ds===today?tA('aip.ctx.today'):ctxDay(ds))+(okEvTime(ev.time)?' '+ev.time:'')+' ['+ctxT(getEvLabel(ev.type),20)+'] '+ctxT(ev.name,60)
+        +(isD(ev.dateEnd)?tA('aip.ctx.cal.until',{d:ctxDay(ev.dateEnd)}):'')+(ev.repeat==='yes'?tA('aip.ctx.cal.yearly'):'')
+        +(!own?tA('aip.ctx.cal.shared',{group:ctxGrp(gid)})+(author?tA('aip.ctx.cal.from',{name:ctxT(author,20)}):''):'');
     }),...ctxMore(list.length,25)];
   });
 
-  add('ZÁSOBY (doma)',false,()=>{
+  add(tA('aip.ctx.s.pantry'),1,()=>{
     const arr=pantryItems.filter(i=>i&&i.name);
     const isLow=i=>i.minQty&&ctxNum(i.qty)<=ctxNum(i.minQty);
     const fmt=i=>ctxT(i.name,30)+' '+ctxNum(i.qty)+(i.unit?' '+ctxT(i.unit,8):'');
     const low=arr.filter(isLow);
-    const rest=arr.filter(i=>!isLow(i)).sort((a,b)=>String(a.name).localeCompare(String(b.name),'cs'));
+    const rest=arr.filter(i=>!isLow(i)).sort((a,b)=>String(a.name).localeCompare(String(b.name),LANG));
     return [
-      ...(low.length?ctxList('Dochází ('+low.length+'): ',low.slice(0,10).map(i=>fmt(i)+' [min '+ctxNum(i.minQty)+']')).concat(ctxMore(low.length,10)):[]),
-      ...(rest.length?ctxList('Máme ('+rest.length+'): ',rest.slice(0,12).map(fmt),6).concat(ctxMore(rest.length,12)):[])
+      ...(low.length?ctxList(tA('aip.ctx.pantry.low',{n:low.length}),low.slice(0,10).map(i=>fmt(i)+tA('aip.ctx.pantry.min',{n:ctxNum(i.minQty)}))).concat(ctxMore(low.length,10)):[]),
+      ...(rest.length?ctxList(tA('aip.ctx.pantry.have',{n:rest.length}),rest.slice(0,12).map(fmt),6).concat(ctxMore(rest.length,12)):[])
     ];
   });
 
-  add('JÍDELNÍČEK (týden)',false,()=>{
-    const DN=['Po','Út','St','Čt','Pá','So','Ne'], todayIdx=(now.getDay()+6)%7;
-    const fmtPlan=(plan,label)=>{
-      const out=[];
-      if(!plan||typeof plan!=='object') return out;
-      for(let di=0;di<7;di++){
-        const dd=plan['d'+di];if(!dd||typeof dd!=='object') continue;
-        const parts=['m0','m1','m2'].map((k,i)=>dd[k]&&String(dd[k]).trim()?['sn.','ob.','ve.'][i]+' '+ctxT(dd[k],40):'').filter(Boolean);
-        if(parts.length) out.push('- '+label+DN[di]+(di===todayIdx?' (dnes)':'')+': '+parts.join(' / '));
-      }
-      return out;
-    };
-    const lines=[...fmtPlan(prof.mealPlan,'osobní '),...(famOk&&familyData.shareMeal?fmtPlan(mealPlanOf(familyId),'skupina '):[])];
+  add(tA('aip.ctx.s.meal'),1,()=>{
+    const lines=[...fmtPlan(prof.mealPlan,tA('aip.ctx.meal.mine')),...(famOk&&familyData.shareMeal?fmtPlan(mealPlanOf(familyId),tA('aip.ctx.meal.group',{group:ctxGrp(familyId)})):[])];
     const pm=(Array.isArray(plannedMeals)?plannedMeals:[]).filter(m=>m&&m.name).slice(0,5).map(m=>ctxT(m.name,40));
-    if(pm.length) lines.push('Plánovaná jídla ze zápisků: '+pm.join(', '));
+    if(pm.length) lines.push(tA('aip.ctx.meal.planned')+pm.join(', '));
     return lines;
   });
 
-  add('RECEPTY (uložené)',false,()=>{
+  add(tA('aip.ctx.s.recipes'),1,()=>{
     const arr=savedRecipes.filter(r=>r&&r.name);
-    return arr.length?ctxList('Uložených '+arr.length+': ',arr.slice(0,15).map(r=>ctxT(r.name,40)),5).concat(ctxMore(arr.length,15)):[];
+    return arr.length?ctxList(tA('aip.ctx.rcp.saved',{n:arr.length}),arr.slice(0,15).map(r=>ctxT(r.name,40)),5).concat(ctxMore(arr.length,15)):[];
   });
 
-  add('JÍDLO DNES',false,()=>{
+  add(tA('aip.ctx.s.food'),1,()=>{
     const logs=foodLogs.filter(l=>l&&l.date===today);
     const goal=ctxNum(prof.kcalGoal)||2000;
     const sum=k=>Math.round(logs.reduce((s,l)=>s+ctxNum(l[k]),0));
-    if(!logs.length) return ['zatím nic zapsáno (cíl '+goal+' kcal)'];
-    return ['Snědeno '+sum('kcal')+' z '+goal+' kcal (bílkoviny '+sum('protein')+' g, sacharidy '+sum('carbs')+' g, tuky '+sum('fat')+' g)',
-      ...ctxList('Zapsáno: ',logs.slice(0,8).map(l=>ctxT(l.name,35)+' '+Math.round(ctxNum(l.kcal))+' kcal'),4)];
+    if(!logs.length) return [tA('aip.ctx.food.none',{goal})];
+    return [tA('aip.ctx.food.sum',{kcal:sum('kcal'),goal,p:sum('protein'),c:sum('carbs'),f:sum('fat')}),
+      ...ctxList(tA('aip.ctx.food.logged'),logs.slice(0,8).map(l=>ctxT(l.name,35)+' '+Math.round(ctxNum(l.kcal))+' kcal'),4)];
   });
 
-  add('ZDRAVÍ (posledních 7 dní)',false,()=>{
+  add(tA('aip.ctx.s.health'),1,()=>{
     const lines=[];
     for(let i=0;i<7;i++){
       const d=new Date(now);d.setDate(d.getDate()-i);const ds=toDS(d);
       const h=healthLogs&&healthLogs[ds];if(!h) continue;
       const p=[];
-      if(h.energy!=null) p.push('energie '+ctxNum(h.energy)+'/10');
-      if(h.sleepH!=null) p.push('spánek '+ctxNum(h.sleepH)+' h'+(h.sleepQ?' (kvalita '+ctxNum(h.sleepQ)+')':''));
-      if(h.stress!=null) p.push('stres '+ctxNum(h.stress)+'/10');
-      if(h.water!=null) p.push('voda '+ctxNum(h.water)+' skl.');
-      if(h.mood) p.push('nálada '+ctxT(h.mood,4));
-      if(p.length) lines.push('- '+(i===0?'DNES':ctxDay(ds))+': '+p.join(', '));
+      if(h.energy!=null) p.push(tA('aip.ctx.h.energy',{n:ctxNum(h.energy)}));
+      if(h.sleepH!=null) p.push(tA('aip.ctx.h.sleep',{n:ctxNum(h.sleepH)})+(h.sleepQ?tA('aip.ctx.h.sleepQ',{n:ctxNum(h.sleepQ)}):''));
+      if(h.stress!=null) p.push(tA('aip.ctx.h.stress',{n:ctxNum(h.stress)}));
+      if(h.water!=null) p.push(tA('aip.ctx.h.water',{n:ctxNum(h.water)}));
+      if(h.mood) p.push(tA('aip.ctx.h.mood',{m:ctxT(h.mood,4)}));
+      if(p.length) lines.push('- '+(i===0?tA('aip.ctx.today'):ctxDay(ds))+': '+p.join(', '));
     }
-    if(ctxNum(waterToday)>0) lines.push('Voda dnes (počítadlo na Domů): '+ctxNum(waterToday)+'/'+(ctxNum(waterGoal)||8)+' sklenic');
+    if(ctxNum(waterToday)>0) lines.push(tA('aip.ctx.h.waterToday',{n:ctxNum(waterToday),goal:ctxNum(waterGoal)||8}));
     return lines;
   });
 
-  add('FOKUS',false,()=>{
-    const lines=['Dnes: '+(dailyFocus?ctxT(dailyFocus,100)+(dailyFocusDone?' (splněno)':' (nesplněno)'):'nenastaven')];
-    if(tomorrowFocus) lines.push('Zítra: '+ctxT(tomorrowFocus,100));
+  add(tA('aip.ctx.s.focus'),1,()=>{
+    const lines=[tA('aip.ctx.f.today')+(dailyFocus?ctxT(dailyFocus,100)+tA(dailyFocusDone?'aip.ctx.f.done':'aip.ctx.f.notDone'):tA('aip.ctx.f.unset'))];
+    if(tomorrowFocus) lines.push(tA('aip.ctx.f.tomorrow')+ctxT(tomorrowFocus,100));
     const wk=getFocusWeek().map(d=>d.day+' '+(d.set?(d.done?'✅':'❌'):(d.isFuture?'–':'·')));
-    lines.push('Týden: '+wk.join(', '));
-    lines.push('Série dnů s fokusem: '+ctxNum(calcFocusStreak()));
+    lines.push(tA('aip.ctx.f.week')+wk.join(', '));
+    lines.push(tA('aip.ctx.f.streak')+ctxNum(calcFocusStreak()));
     const hist=(Array.isArray(focusHistory)?focusHistory:[]).filter(h=>h&&h.text&&!isNaN(new Date(h.date))).slice(0,5)
       .map(h=>ctxDay(toDS(new Date(h.date)))+' '+ctxT(h.text,60)+(h.done?' ✅':' ❌'));
-    if(hist.length) lines.push(...ctxList('Předchozí: ',hist,3));
+    if(hist.length) lines.push(...ctxList(tA('aip.ctx.f.prev'),hist,3));
     return lines;
   });
 
-  add('TÝDENNÍ REPORT',false,()=>{
+  add(tA('aip.ctx.s.report'),1,()=>{
     const r=lsGet('lp_weekly_report',null);
     if(!r||!r.text) return [];
     const rd=new Date(r.date);
@@ -13692,23 +13699,42 @@ function buildChatContext(){
     return ['('+toDS(rd)+') '+ctxT(aiPlain(r.text),300)];
   });
 
-  add('RODINA (skupiny)',false,()=>{
-    const cs=n=>n+(n===1?' člen':n>=2&&n<=4?' členové':' členů');
-    const shr=g=>[g.shareShop&&'nákupy',g.shareCal&&'kalendář',g.shareMeal&&'jídelníček',g.shareChecklist!==false&&'checklisty'].filter(Boolean).join(', ')||'nic';
-    const line=g=>'- „'+ctxT(g.groupName||'Skupina',40)+'“: '+cs(Object.keys(g.members||{}).length)+'; sdílí: '+shr(g);
+  add(tA('aip.ctx.s.groups'),1,()=>{
+    const shr=g=>[g.shareShop&&tA('aip.ctx.g.shop'),g.shareCal&&tA('aip.ctx.g.cal'),g.shareMeal&&tA('aip.ctx.g.meal'),g.shareChecklist!==false&&tA('aip.ctx.g.check')].filter(Boolean).join(', ')||tA('aip.ctx.g.nothing');
+    const line=(g,main)=>tA('aip.ctx.g.line',{name:ctxT(g.groupName||tA('aip.ctx.g.def'),40),main:main?tA('aip.ctx.g.main'):'',members:tA('aip.ctx.g.members',{n:Object.keys(g.members||{}).length}),mods:shr(g)});
     const lines=[];
-    if(famOk) lines.push(line(familyData));
-    extraIds.forEach(gid=>{ if(extraGroupsData[gid]) lines.push(line(extraGroupsData[gid])); });
+    if(famOk) lines.push(line(familyData,true));
+    extraIds.forEach(gid=>{ if(extraGroupsData[gid]) lines.push(line(extraGroupsData[gid],false)); });
     return lines;
   });
 
+  // ── Další skupiny (4.54): sdílené nákupy, jídelníček (dnes + 2 dny) a checklisty zkráceně, s názvem skupiny.
+  // Hlavní skupina je v sekcích výše; tyhle sekce se při překročení limitu zkracují jako první.
+  myGroupIds().filter(g=>g!==familyId&&extraGroupsData[g]).forEach(gid=>{
+    add(tA('aip.ctx.s.group',{name:ctxGrp(gid)}),0,()=>{
+      const lines=[];
+      if(groupModShared(gid,'shop')){
+        const it=shopGrpItems(gid).filter(i=>i&&i.name&&!i.done);
+        if(it.length) lines.push(...ctxList(tA('aip.ctx.grp.shop',{n:it.length}),it.slice(0,8).map(shopFmt),4),...ctxMore(it.length,8));
+      }
+      if(groupModShared(gid,'meal')) lines.push(...fmtPlan(mealPlanOf(gid),tA('aip.ctx.grp.meal'),[0,1,2].map(k=>(todayIdx+k)%7)));
+      if(groupModShared(gid,'check')){
+        const mine=new Set(checklists.map(c=>c&&c.id)); // můj sdílený seznam je už v CHECKLISTY
+        const ls=(clGrp[gid]?.lists||[]).filter(c=>c&&c.id&&!mine.has(c.id));
+        lines.push(...ls.slice(0,3).map(c=>clLine(c,tA('aip.ctx.grp.check'),'',6)),...ctxMore(ls.length,3));
+      }
+      return lines;
+    });
+  });
+
   // ── Sestavení + zkrácení na strop ──
-  const render=()=>secs.filter(s=>s.lines.length||s.dropped).map(s=>s.title+':\n'+s.lines.join('\n')+(s.dropped?'\n… (zkráceno)':'')).join('\n\n');
+  const render=()=>secs.filter(s=>s.lines.length||s.dropped).map(s=>s.title+':\n'+s.lines.join('\n')+(s.dropped?'\n'+tA('aip.ctx.cut'):'')).join('\n\n');
   const size=s=>s.lines.reduce((n,l)=>n+l.length+1,0);
   let out=render(),guard=600;
   while(out.length>CHAT_CTX_MAX&&guard-->0){
-    // nejdřív zkracujeme nechráněné sekce (největší první), chráněné až když už nic jiného nezbývá
-    let pool=secs.filter(s=>!s.protect&&s.lines.length);
+    // nejdřív další skupiny, pak nechráněné sekce (největší první), chráněné až když už nic jiného nezbývá
+    let pool=secs.filter(s=>s.lvl===0&&s.lines.length);
+    if(!pool.length) pool=secs.filter(s=>s.lvl===1&&s.lines.length);
     if(!pool.length) pool=secs.filter(s=>s.lines.length>1||(s.lines[0]||'').length>0);
     if(!pool.length) break;
     const t=pool.reduce((a,b)=>size(a)>=size(b)?a:b);
@@ -13724,12 +13750,28 @@ function buildChatContext(){
 
 // Před odesláním do chatu dotáhne data, která se načítají líně (zásoby skupiny se jinak načtou až po otevření kuchyně)
 let _pantryFamilyReady=false, _pantryChatTried=false;
+const _grpCtxWaited=new Set(); // sady skupin, na jejichž data už chat jednou čekal
 async function chatDataReady(){
   try{
     if(familyId&&prof.familyId===familyId&&!_pantryFamilyReady&&!_pantryChatTried){
       _pantryChatTried=true; // čekáme jen jednou, ať případná chyba nebrzdí každou zprávu
       if(!pantryUnsub) initPantry();
       for(let i=0;i<15&&!_pantryFamilyReady;i++) await new Promise(r=>setTimeout(r,100));
+    }
+  }catch(e){}
+  // Data všech skupin pro kontext (4.54): listenery nákupů, jídelníčku a checklistů vzniknou při první zprávě
+  // a drží do odhlášení (jako po otevření modulu). Na načtení se čeká nejvýš 1,5 s, pro danou sadu skupin jen jednou.
+  try{
+    const gs=myGroupIds(), wait=[];
+    gs.forEach(g=>{
+      if(groupModShared(g,'shop')){ subscribeGroupShop(g); wait.push(()=>!!shopGrp[g]?.loaded); }
+      if(groupModShared(g,'meal')){ subscribeGroupMeal(g); wait.push(()=>!!(mealGrp[g]?.loaded||mealGrp[g]?.err)); }
+      if(groupModShared(g,'check')){ subscribeGroupChecklist(g); wait.push(()=>!!(clGrp[g]?.ready||clGrp[g]?.err)); }
+    });
+    const key=(CU?.uid||'')+'|'+gs.join(',');
+    if(wait.length&&!_grpCtxWaited.has(key)){
+      _grpCtxWaited.add(key);
+      for(let i=0;i<15&&!wait.every(f=>f());i++) await new Promise(r=>setTimeout(r,100));
     }
   }catch(e){}
   // Zdraví za 7 dní (jednorázově); offline nebo pomalá síť chat nebrzdí déle než 3 s
