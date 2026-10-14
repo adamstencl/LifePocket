@@ -3656,12 +3656,12 @@ window.confirmDeleteAccount = async () => {
     delAccSetStatus(t('acc.del.deleting'));
     stopSessionActivity();
     // failed-precondition se znovu neověřuje hned (popup by byl mimo klepnutí) → _forceReauth a „Zkusit znovu“
-    const res = await deleteAccountFn({ confirm: 'SMAZAT' });
+    const res = await deleteAccountFn({ confirm: 'SMAZAT', lang: LANG }); // lang: jazyk chybových zpráv serveru
     if (!res?.data?.ok) throw Object.assign(new Error(''), { code: 'functions/internal' });
     await finishAccountDeleted();
   } catch (e) {
     if (e?.code === 'functions/failed-precondition') _forceReauth = true;
-    if (e?.code === 'functions/internal' && /Data jsou smazan/i.test(String(e?.message || ''))) _accDataGone = true;
+    if (e?.code === 'functions/internal' && (e?.details?.reason === 'dataGone' || /Data jsou smazan/i.test(String(e?.message || '')))) _accDataGone = true;
     _accDeleting = false; busy(false);
     if (cancel) cancel.style.display = _accDataGone ? 'none' : '';
     m?.classList.add('open'); // mohlo se skrýt tlačítkem Zpět
@@ -4415,7 +4415,7 @@ window.enableNotifications = async () => {
 window.sendTestServerPush = async () => {
   try {
     toast(t('notif.test.sending'));
-    const res = await testPushFn();
+    const res = await testPushFn({lang: LANG});
     const n = res?.data?.sent;
     toast(n > 1 ? t('notif.test.sentN', {n}) : t('notif.test.sent'));
   } catch(e) {
@@ -8098,7 +8098,7 @@ window.confirmRotateGroupCode = async (gid) => {
   let ok = false;
   rotSetStatus(t('grp.rot.moving'));
   try {
-    const res = await rotateGroupCodeFn({gid});
+    const res = await rotateGroupCodeFn({gid, lang: LANG});
     const code = String(res?.data?.code || '');
     if(!okFamilyCode(code)) throw Object.assign(new Error(''), {code:'functions/internal'});
     ok = true;
@@ -8944,7 +8944,7 @@ window.openRestoreGroup = async () => {
   }).observe(m, { attributes: true, attributeFilter: ['class'] });
   document.body.appendChild(m);
   try {
-    const res = await restoreGroupFn({});
+    const res = await restoreGroupFn({lang: LANG});
     const list = Array.isArray(res?.data?.groups) ? res.data.groups.filter(g => okFamilyCode(g?.id)) : [];
     if(!list.length) { restoreSetBody(tH('grp.restore.none')); return; }
     restoreSetBody(list.map(g => {
@@ -8976,7 +8976,7 @@ window.confirmRestoreGroup = async (gid) => {
   const btn = document.querySelector('#m-restoregrp .restore-btn[data-a0="' + gid + '"]');
   if(btn) btn.textContent = t('grp.restore.busy');
   try {
-    const res = await restoreGroupFn({gid});
+    const res = await restoreGroupFn({gid, lang: LANG});
     const d = res?.data || {};
     if(d.gid !== gid) throw Object.assign(new Error(''), {code: 'functions/internal'});
     // Lokálně přepnout: hlavní skupina (žádná platná nebyla), jinak vedlejší

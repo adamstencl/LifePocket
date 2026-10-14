@@ -4,6 +4,7 @@ const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue, FieldPath, Timestamp} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
 const {getAuth} = require('firebase-admin/auth');
+const {tS, normLang} = require('./i18n-server');
 
 initializeApp();
 const db = getFirestore();
@@ -416,17 +417,27 @@ async function sendPushToUser(uid, prof, title, body, tag = 'lifepocket', option
   return {sent, lastError};
 }
 
+// Jazyk odpovědi callable funkce: data.lang z klienta (jazyk appky), jinak profile.lang, výchozí cs
+function reqLang(request, prof) {
+  const l = request && request.data && typeof request.data === 'object' ? request.data.lang : undefined;
+  return normLang(l === 'cs' || l === 'en' ? l : (prof && prof.lang));
+}
+
 // ── Test Push — ověření že FCM funguje ───────────────────────────────────────
 exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  let L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
   const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
-  if (!profileSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
+  if (!profileSnap.exists) throw new HttpsError('not-found', tS(L, 'err.noProfile'));
   const prof = profileSnap.data();
-  if (!collectTokens(prof).length) throw new HttpsError('failed-precondition', 'FCM token není uložen. Znovu povol notifikace v nastavení.');
-  const {sent, lastError} = await sendPushToUser(uid, prof, '🧪 Test push', 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.', 'test-push');
+  L = reqLang(request, prof);
+  if (!collectTokens(prof).length) throw new HttpsError('failed-precondition', tS(L, 'err.noToken'));
+  // Push v jazyce profilu (stejně jako cron), chyby v jazyce appky, která volá
+  const PL = normLang(prof.lang);
+  const {sent, lastError} = await sendPushToUser(uid, prof, tS(PL, 'test.t'), tS(PL, 'test.b'), 'test-push');
   if (sent === 0) {
-    throw new HttpsError('internal', 'FCM chyba: ' + (lastError && lastError.message || 'push se nepodařilo odeslat') + ' — zkus kliknout "Obnovit token" a test opakovat.');
+    throw new HttpsError('internal', tS(L, 'err.fcm', {err: (lastError && lastError.message) || tS(L, 'err.fcmUnknown')}));
   }
   return {ok: true, sent};
 });
@@ -483,77 +494,57 @@ function inQuiet(h, m, q) {
   return f < t ? (n >= f && n < t) : (n >= f || n < t);
 }
 
-const czPlural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4) ? few : many;
-const dalsi = (k) => `a ${k} ${k >= 5 ? 'dalších' : 'další'}`;
-const GN_MOD = {shop: ['🧺', 'Nákupy'], cal: ['🗓️', 'Kalendář'], meal: ['🥗', 'Jídelníček'], check: ['📋', 'Checklist'], pantry: ['🧊', 'Zásoby'],
-  habit: ['🔥', 'Návyky'], goal: ['🎯', 'Cíle'], react: ['👏', 'Reakce'], challenge: ['🤝', 'Společné výzvy'],
-  note: ['📒', 'Poznámky'], recipe: ['👨‍🍳', 'Recepty']};
-const GN_IN = {shop: 'v nákupu', cal: 'v kalendáři', meal: 'v jídelníčku', check: 'v checklistu', pantry: 'v zásobách', habit: 'v návycích', goal: 'v cílech', react: '',
-  challenge: 've výzvách', note: 'v poznámkách', recipe: 'v receptech'};
-// [sloveso, zbytek]; ženský tvar = první slovo slovesa + 'a' („začal sdílet“ → „začala sdílet“)
-const GN_VERB = {
-  shop:   {add: ['přidal', 'do nákupu'], edit: ['upravil', 'v nákupu'], del: ['smazal', 'z nákupu'], done: ['koupil', ''], clear: ['vyčistil', 'koupené položky']},
-  cal:    {add: ['přidal', 'do kalendáře'], edit: ['změnil', 'událost'], del: ['zrušil', 'událost']},
-  meal:   {edit: ['naplánoval', ''], del: ['vymazal', 'z jídelníčku'], plan: ['vygeneroval', 'nový jídelníček']},
-  check:  {add: ['přidal', 'do checklistu'], edit: ['upravil', 'v checklistu'], del: ['smazal', 'z checklistu'], done: ['odškrtl', ''], clear: ['vyčistil', 'hotové položky'], share: ['začal sdílet', 'checklist']},
-  pantry: {add: ['přidal', 'do zásob'], edit: ['upravil', 'zásoby'], del: ['smazal', 'ze zásob']},
-  habit:  {done: ['splnil', '']},
-  goal:   {progress: ['posunul', 'cíl'], done: ['splnil', 'cíl']},
-  challenge: {add: ['založil', 'společnou výzvu'], done: ['dotáhl', 'společnou výzvu']},
-  note:   {share: ['nasdílel', 'poznámku']},
-  recipe: {share: ['nasdílel', 'recept']},
-};
+// Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
+const GN_EM = {shop: '🧺', cal: '🗓️', meal: '🥗', check: '📋', pantry: '🧊', habit: '🔥', goal: '🎯', react: '👏', challenge: '🤝',
+  note: '📒', recipe: '👨‍🍳'};
+const gnMore = (L, k) => tS(L, 'gn.more', {n: k});
+// „A, B a C“ (L = jazyk spojky)
+const gnList = (L, names) => names.length > 1 ? tS(L, 'gn.and', {a: names.slice(0, -1).join(', '), b: names[names.length - 1]}) : names[0];
 const RX_EM = {clap: '👏', fire: '🔥', heart: '❤️', strong: '💪'};
-// Titulek reakce podle prvního emoji (ženský tvar se tu nemění: „ti tleská“ platí pro oba)
-const RX_TITLE = {clap: 'ti tleská', fire: 'ti posílá 🔥', heart: 'ti posílá ❤️', strong: 'tě povzbuzuje 💪'};
 const gnEms = (a) => String(a.em || '').split(',').filter(k => RX_EM[k]);
 const gnRef = (a) => (typeof a.title === 'string' ? a.title.slice(0, 60).trim() : '');
 
-// Milník série / mezník cíle: vlastní push (titulek podle délky série nebo mezníku)
-function gnMilestonePush(a, fam) {
-  const name = gnAuthorName(fam, a), v = Number.isInteger(a.val) ? a.val : 0;
-  const what = gnRef(a);
+// Milník série / mezník cíle: vlastní push (titulek podle délky série nebo mezníku); rod podle autora (a.g)
+function gnMilestonePush(a, fam, L) {
+  const name = gnAuthorName(fam, a, L), v = Number.isInteger(a.val) ? a.val : 0;
+  const what = gnRef(a), g = a.g === 'f' ? 'f' : '';
   // Splněná společná výzva: úspěch celé skupiny, ne jednoho člověka
-  if (a.module === 'challenge') return ['🤝 Společná výzva splněna!', `${what ? what + ' – ' : ''}dali jste to spolu 🎉`.slice(0, GN_BODY_MAX)];
+  if (a.module === 'challenge') return [tS(L, 'gn.ms.chal.t'), tS(L, 'gn.ms.chal.b', {pre: what ? what + ' – ' : ''}).slice(0, GN_BODY_MAX)];
   if (a.module === 'goal') {
-    const jemu = a.g === 'f' ? 'jí' : 'mu';
     if (a.action === 'done' || v >= 100) {
-      return [`🏆 ${name} ${a.g === 'f' ? 'splnila' : 'splnil'} cíl!`, `${what ? what + ' 🎉 ' : '🎉 '}Pogratuluj ${jemu}.`.slice(0, GN_BODY_MAX)];
+      return [tS(L, 'gn.ms.goalDone.t', {name, g}), tS(L, 'gn.ms.goalDone.b', {pre: what ? what + ' 🎉 ' : '🎉 ', g}).slice(0, GN_BODY_MAX)];
     }
-    const phrase = v === 25 ? 'čtvrtina hotová' : v === 50 ? 'půlka hotová' : v === 75 ? 'tři čtvrtiny hotové, cíl je na dohled' : `${v} % hotovo`;
-    return [`🎯 ${name}: ${v} % cíle!`, `${what ? what + ' – ' : ''}${phrase}. Pošli ${jemu} 👏`.slice(0, GN_BODY_MAX)];
+    const phrase = v === 25 ? tS(L, 'gn.ms.goal25') : v === 50 ? tS(L, 'gn.ms.goal50') : v === 75 ? tS(L, 'gn.ms.goal75') : tS(L, 'gn.ms.goalN', {v});
+    return [tS(L, 'gn.ms.goal.t', {name, v}), tS(L, 'gn.ms.send', {pre: what ? what + ' – ' : '', phrase, g}).slice(0, GN_BODY_MAX)];
   }
-  const [title, phrase] = v === 7 ? [`🔥 ${name}: týden v řadě!`, 'celý týden bez přerušení']
-    : v === 30 ? [`🎉 ${name}: 30 dní v řadě!`, 'celý měsíc bez přerušení']
-    : v === 100 ? [`👑 ${name}: 100 dní v řadě!`, 'sto dní bez přerušení']
-    : [`🔥 ${name}: ${v} ${czPlural(v, 'den', 'dny', 'dní')} v řadě!`, 'bez přerušení'];
-  const body = `${what ? what + ' – ' : ''}${phrase}. Pošli ${a.g === 'f' ? 'jí' : 'mu'} 👏`;
+  const s = v === 7 || v === 30 || v === 100 ? 's' + v : 'sN';
+  const title = tS(L, `gn.ms.${s}.t`, {name, n: v});
+  const body = tS(L, 'gn.ms.send', {pre: what ? what + ' – ' : '', phrase: tS(L, `gn.ms.${s}.p`), g});
   return [title, body.slice(0, GN_BODY_MAX)];
 }
 // Reakce na mě: 1 reakce → „👏 Adam ti tleská / za 50 dřepů“, komentář → „💬 Adam:“, víc → souhrn
-function gnReactPush(acts, fam, groupName) {
+function gnReactPush(acts, fam, groupName, L) {
   if (acts.length === 1) {
-    const a = acts[0], name = gnAuthorName(fam, a), what = gnRef(a);
+    const a = acts[0], name = gnAuthorName(fam, a, L), what = gnRef(a);
     const msg = typeof a._msg === 'string' ? a._msg.trim() : '';
-    if (msg) return [`💬 ${name}:`, `„${msg.length > 120 ? msg.slice(0, 119) + '…' : msg}“${what ? ' · k ' + what : ''}`];
+    if (msg) return [`💬 ${name}:`, tS(L, 'gn.rx.quote', {msg: msg.length > 120 ? msg.slice(0, 119) + '…' : msg}) + (what ? ' · ' + tS(L, 'gn.rx.about', {what}) : '')];
     const ems = gnEms(a);
-    const title = `${RX_EM[ems[0]] || '👏'} ${name} ${RX_TITLE[ems[0]] || RX_TITLE.clap}`;
-    return [title, `${what ? 'za ' + what : ''}${ems.length > 1 ? ' ' + ems.map(k => RX_EM[k]).join('') : ''}`.trim() || '👏'];
+    const title = `${RX_EM[ems[0]] || '👏'} ${name} ${tS(L, 'gn.rx.' + (RX_EM[ems[0]] ? ems[0] : 'clap'))}`;
+    return [title, `${what ? tS(L, 'gn.rx.for', {what}) : ''}${ems.length > 1 ? ' ' + ems.map(k => RX_EM[k]).join('') : ''}`.trim() || '👏'];
   }
   const byAuthor = new Map();
   const whats = new Set();
   for (const a of acts) {
     let au = byAuthor.get(a.uid);
-    if (!au) { au = {name: gnAuthorName(fam, a), ems: [], c: false}; byAuthor.set(a.uid, au); }
+    if (!au) { au = {name: gnAuthorName(fam, a, L), ems: [], c: false}; byAuthor.set(a.uid, au); }
     for (const k of gnEms(a)) if (!au.ems.includes(k)) au.ems.push(k);
     if (typeof a._msg === 'string' && a._msg.trim()) au.c = true;
     const w = gnRef(a); if (w) whats.add(w);
   }
   const parts = [...byAuthor.values()].map(au => `${au.name} ${au.ems.map(k => RX_EM[k]).join('')}${au.c ? '💬' : ''}`.trim());
-  const who = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} a ${parts[parts.length - 1]}` : parts[0];
-  let body = who + (whats.size === 1 ? ` k ${[...whats][0]}` : '');
+  let body = gnList(L, parts) + (whats.size === 1 ? ' ' + tS(L, 'gn.rx.about', {what: [...whats][0]}) : '');
   if (body.length > GN_BODY_MAX) body = body.slice(0, GN_BODY_MAX - 1) + '…';
-  return [`👏 Reakce · ${groupName}`, body];
+  return [`${GN_EM.react} ${tS(L, 'gn.mod.react')} · ${groupName}`, body];
 }
 
 // Komentáře: aktivita nese jen rid, text se čte z reactions/{rid}. Smazaný (nebo cizí) komentář → push se nepošle.
@@ -574,10 +565,10 @@ async function gnResolveComments(gid, list, uid) {
 }
 
 // Jméno autora ze členů skupiny (server nevěří jménu z klienta); a.name jen pro bývalé členy
-function gnAuthorName(fam, a) {
+function gnAuthorName(fam, a, L) {
   const mem = fam && fam.members && fam.members[a.uid];
   const n = (mem && typeof mem === 'object' && typeof mem.name === 'string' && mem.name.trim())
-    || (typeof a.name === 'string' && a.name.trim()) || 'Někdo';
+    || (typeof a.name === 'string' && a.name.trim()) || tS(L, 'gn.someone');
   return n.slice(0, 40);
 }
 // Názvy ze záznamu: title = n názvů spojených „, “ (když nesedí počet, bere se celý title)
@@ -591,32 +582,38 @@ function gnCount(a) {
   const c = Number(a.count);
   return Number.isInteger(c) && c >= 1 ? Math.min(c, 500) : 1;
 }
+// Akce autora („přidal do nákupu“); neznámá akce = „upravil“ + „v nákupu“
+function gnActText(L, module, action, f) {
+  const key = `gn.act.${module}.${action}`;
+  const g = f ? 'f' : '';
+  if (tS(L, key) !== key) return tS(L, key, {g});
+  const inMod = tS(L, 'gn.in.' + module);
+  const verb = tS(L, 'gn.act.def', {g});
+  return inMod && inMod !== 'gn.in.' + module ? `${verb} ${inMod}` : verb;
+}
 
 // Text jednoho modulu: autor → akce, nejvýš 3 názvy + „a N další“; dlouhý text → „Adam a Jana: 9 změn v nákupu“
-function gnModuleText(module, acts, fam) {
+function gnModuleText(module, acts, fam, L) {
   const byAuthor = new Map();
   for (const a of acts) {
     let au = byAuthor.get(a.uid);
-    if (!au) { au = {name: gnAuthorName(fam, a), f: false, actions: new Map()}; byAuthor.set(a.uid, au); }
+    if (!au) { au = {name: gnAuthorName(fam, a, L), f: false, actions: new Map()}; byAuthor.set(a.uid, au); }
     if (a.g === 'f') au.f = true;
     let ac = au.actions.get(a.action);
     if (!ac) { ac = {titles: [], count: 0}; au.actions.set(a.action, ac); }
     for (const t of gnTitles(a)) if (!ac.titles.includes(t)) ac.titles.push(t);
     ac.count += gnCount(a);
   }
-  const verbs = GN_VERB[module] || {};
   const texts = [];
   for (const au of byAuthor.values()) {
     const parts = [];
     for (const [action, ac] of au.actions) {
-      const [verb, rest] = verbs[action] || ['upravil', GN_IN[module] || ''];
-      const v = au.f ? verb.replace(/^(\S+)/, '$1a') : verb;
-      let s = rest ? `${v} ${rest}` : v;
+      let s = gnActText(L, module, action, au.f);
       if (action === 'clear') { if (ac.count > 1) s += ` (${ac.count})`; }
       else if (action !== 'plan' && ac.titles.length) {
         const shown = ac.titles.slice(0, 3);
         const more = Math.max(0, ac.count - shown.length);
-        s += ': ' + shown.join(', ') + (more ? ' ' + dalsi(more) : '');
+        s += ': ' + shown.join(', ') + (more ? ' ' + gnMore(L, more) : '');
       }
       parts.push(s);
     }
@@ -625,19 +622,18 @@ function gnModuleText(module, acts, fam) {
   let body = texts.join(' · ');
   if (body.length > GN_BODY_MAX) {
     const names = [...byAuthor.values()].map(au => au.name);
-    const who = names.length === 1 ? names[0]
-      : names.length > 3 ? `${names.slice(0, 2).join(', ')} ${dalsi(names.length - 2)}`
-      : `${names.slice(0, -1).join(', ')} a ${names[names.length - 1]}`;
+    const who = names.length > 3 ? `${names.slice(0, 2).join(', ')} ${gnMore(L, names.length - 2)}` : gnList(L, names);
     const total = acts.reduce((s, a) => s + gnCount(a), 0);
-    body = `${who}: ${total} ${czPlural(total, 'změna', 'změny', 'změn')} ${GN_IN[module] || ''}`.trim();
+    body = `${who}: ${tS(L, 'gn.changes', {n: total})} ${tS(L, 'gn.in.' + module)}`.trim();
     if (body.length > GN_BODY_MAX) body = body.slice(0, GN_BODY_MAX - 1) + '…';
   }
   return body;
 }
 
 // Večerní souhrn skupiny: „🧺 5 změn · 🗓️ 1 nová událost · 📋 2 změny“
-function gnEveningBody(byModule) {
+function gnEveningBody(byModule, L) {
   const parts = [];
+  const tn = (key, n) => tS(L, key, {n});
   for (const mod of GN_MODULES) {
     const acts = byModule.get(mod);
     if (!acts || !acts.length) continue;
@@ -646,41 +642,38 @@ function gnEveningBody(byModule) {
     if (mod === 'cal') {
       const nAdd = sum(acts.filter(a => a.action === 'add'));
       const nOther = sum(acts.filter(a => a.action !== 'add'));
-      if (nAdd) sub.push(`${nAdd} ${czPlural(nAdd, 'nová událost', 'nové události', 'nových událostí')}`);
-      if (nOther) sub.push(`${nOther} ${czPlural(nOther, 'změna', 'změny', 'změn')}`);
+      if (nAdd) sub.push(tn('gn.ev.calNew', nAdd));
+      if (nOther) sub.push(tn('gn.changes', nOther));
     } else if (mod === 'habit') {
       // Lidi a počty, ne názvy (souhrn má zůstat krátký)
       const nDone = sum(acts.filter(a => a.action === 'done'));
       const nMs = acts.filter(a => a.action === 'streak').length;
       const people = new Set(acts.map(a => a.uid)).size;
-      if (nDone) sub.push(`${nDone} ${czPlural(nDone, 'splněný návyk', 'splněné návyky', 'splněných návyků')}`);
-      if (nMs) sub.push(`🎉 ${nMs} ${czPlural(nMs, 'milník', 'milníky', 'milníků')}`);
-      if (people > 1) sub.push(`od ${people} ${czPlural(people, 'člověka', 'lidí', 'lidí')}`);
+      if (nDone) sub.push(tn('gn.ev.habitDone', nDone));
+      if (nMs) sub.push(tn('gn.ev.ms', nMs));
+      if (people > 1) sub.push(tn('gn.ev.people', people));
     } else if (mod === 'goal') {
       // Jen mezníky: počty, ne názvy
       const nDone = acts.filter(a => a.action === 'done').length;
       const nMs = acts.filter(a => a.action === 'progress').length;
-      if (nDone) sub.push(`${nDone} ${czPlural(nDone, 'splněný cíl', 'splněné cíle', 'splněných cílů')}`);
-      if (nMs) sub.push(`${nMs} ${czPlural(nMs, 'mezník cíle', 'mezníky cílů', 'mezníků cílů')}`);
-      if (!sub.length) sub.push(`${acts.length} ${czPlural(acts.length, 'změna', 'změny', 'změn')}`);
+      if (nDone) sub.push(tn('gn.ev.goalDone', nDone));
+      if (nMs) sub.push(tn('gn.ev.goalMs', nMs));
+      if (!sub.length) sub.push(tn('gn.changes', acts.length));
     } else if (mod === 'challenge') {
       const nAdd = acts.filter(a => a.action === 'add').length;
       const nDone = acts.filter(a => a.action === 'done').length;
-      if (nAdd) sub.push(`${nAdd} ${czPlural(nAdd, 'nová výzva', 'nové výzvy', 'nových výzev')}`);
-      if (nDone) sub.push(`🎉 ${nDone} ${czPlural(nDone, 'splněná výzva', 'splněné výzvy', 'splněných výzev')}`);
+      if (nAdd) sub.push(tn('gn.ev.chalNew', nAdd));
+      if (nDone) sub.push(tn('gn.ev.chalDone', nDone));
     } else if (mod === 'note' || mod === 'recipe') {
       // Jen počet nasdílených položek (názvy jsou v historii změn)
       const n = acts.filter(a => a.action === 'share').length || acts.length;
-      sub.push(mod === 'note' ? `${n} ${czPlural(n, 'sdílená poznámka', 'sdílené poznámky', 'sdílených poznámek')}`
-        : `${n} ${czPlural(n, 'nový recept', 'nové recepty', 'nových receptů')}`);
+      sub.push(tn(mod === 'note' ? 'gn.ev.note' : 'gn.ev.recipe', n));
     } else if (mod === 'react') {
-      const n = acts.length;
-      sub.push(`${n} ${czPlural(n, 'reakce na tebe', 'reakce na tebe', 'reakcí na tebe')}`);
+      sub.push(tn('gn.ev.react', acts.length));
     } else {
-      const n = sum(acts);
-      sub.push(`${n} ${czPlural(n, 'změna', 'změny', 'změn')}`);
+      sub.push(tn('gn.changes', sum(acts)));
     }
-    parts.push(`${GN_MOD[mod][0]} ${sub.join(', ')}`);
+    parts.push(`${GN_EM[mod]} ${sub.join(', ')}`);
   }
   return parts.join(' · ');
 }
@@ -856,7 +849,7 @@ exports.sendScheduledNotifications = onSchedule(
       return rangeCache.get(key);
     };
 
-    const groupNotifs = async (uid, prof, ns, push) => {
+    const groupNotifs = async (uid, prof, ns, push, L) => {
       const gids = calGroupIds(prof); // stejný seznam skupin jako připomínky kalendáře
       if (!gids.length) return;
       const gp = groupNotifPrefs(prof);
@@ -913,7 +906,7 @@ exports.sendScheduledNotifications = onSchedule(
             && mods.includes(a.module)
             && (a.action !== 'done' || !(a.module === 'shop' || a.module === 'check') || gp.notifyChecked)
             && (a.module !== 'react' || a.to === uid);
-          const groupName = String(fam.groupName || 'Skupina').slice(0, 30);
+          const groupName = String(fam.groupName || tS(L, 'gn.groupDef')).slice(0, 30);
           for (const mode of due) {
             const {acts, end} = await loadRange(gid, from[mode]);
             // Kurzor se posune i bez odeslání (jinak by se backlog opakoval) a nikdy necouvá
@@ -924,23 +917,23 @@ exports.sendScheduledNotifications = onSchedule(
             const byModule = new Map();
             for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
             if (mode === 'evening') {
-              pushes.push([`👨‍👩‍👧 Dnes ve skupině ${groupName}`, gnEveningBody(byModule), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}, quiet: true}]);
+              pushes.push([tS(L, 'gn.evening.t', {group: groupName}), gnEveningBody(byModule, L), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}, quiet: true}]);
             } else {
               for (const [mod, la] of byModule) {
                 if (mod === 'react') {
-                  const [title, body] = gnReactPush(la, fam, groupName);
+                  const [title, body] = gnReactPush(la, fam, groupName, L);
                   pushes.push([title, body, `grp-${gid}-react`, {data: {open: 'grpfeed', gid, module: mod}}]);
                   continue;
                 }
                 // Milník má vlastní tag (další souhrn návyků ho nepřepíše; další mezník téhož cíle předchozí nahradí)
                 const rest = la.filter(a => !gnIsMs(a));
                 for (const a of la.filter(gnIsMs)) {
-                  const [title, body] = gnMilestonePush(a, fam);
+                  const [title, body] = gnMilestonePush(a, fam, L);
                   const ref = String(a.ref || a.uid).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
                   pushes.push([title, body, `grp-${gid}-ms-${ref}`, {data: {open: 'grpfeed', gid, module: mod}}]);
                 }
                 if (!rest.length) continue;
-                pushes.push([`${GN_MOD[mod][0]} ${GN_MOD[mod][1]} · ${groupName}`, gnModuleText(mod, rest, fam),
+                pushes.push([`${GN_EM[mod]} ${tS(L, 'gn.mod.' + mod)} · ${groupName}`, gnModuleText(mod, rest, fam, L),
                   `grp-${gid}-${mod}`, {data: {open: 'grpfeed', gid, module: mod}}]);
               }
             }
@@ -974,8 +967,10 @@ exports.sendScheduledNotifications = onSchedule(
         };
 
         const ns = prof.notifSettings || {};
-        const nickname = prof.prezdivka || prof.nickname || 'příteli';
-        const a = prof.gender === 'f' ? 'a' : '';
+        // Jazyk a rod příjemce (texty ze slovníku i18n-server.js)
+        const L = normLang(prof.lang);
+        const g = prof.gender === 'f' ? 'f' : '';
+        const nickname = prof.prezdivka || prof.nickname || tS(L, 'nick.friend');
         const morningTime = ns.morning || '08:00';
         // Dnešní návyky načteme nejvýš jednou na uživatele (sdílí ranní, večerní i připomínky)
         let dueCache = null;
@@ -990,10 +985,8 @@ exports.sendScheduledNotifications = onSchedule(
         // ── Ranní notifikace ──
         if (ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
           const total = (await getDueHabits()).length;
-          const body = total > 0
-            ? `Čeká tě ${total} návyk${total === 1 ? '' : total < 5 ? 'y' : 'ů'} na dnes. Pojď na to! ☀️`
-            : 'Nový den, nová šance. Otevři LifePocket a nastav si cíle! ☀️';
-          try { await push(`☀️ Dobré ráno, ${nickname}!`, body, 'morning', {data: {open: 'habits'}}); }
+          const body = total > 0 ? tS(L, 'morning.b', {n: total}) : tS(L, 'morning.empty');
+          try { await push(tS(L, 'morning.t', {name: nickname}), body, 'morning', {data: {open: 'habits'}}); }
           catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
         }
 
@@ -1012,17 +1005,17 @@ exports.sendScheduledNotifications = onSchedule(
               return dueIds.has(hid);
             }).length;
             let body;
-            if (total === 0) body = 'Přidej si první návyk a začni budovat lepší rutinu!';
-            else if (done === total) body = `🏆 Perfektní den! Splnil${a} jsi všech ${total} návyků!`;
-            else if (done === 0) body = `Dnes jsi nesplnil${a} žádný návyk. Zítra to vyjde! 💪`;
-            else body = `Splnil${a} jsi ${done} z ${total} návyků. Ještě ${total - done} zbývají!`;
-            try { await push('🌙 Večerní shrnutí', body, 'evening', {data: {open: 'habits'}}); }
+            if (total === 0) body = tS(L, 'evening.none');
+            else if (done === total) body = tS(L, 'evening.all', {n: total, g});
+            else if (done === 0) body = tS(L, 'evening.zero', {g});
+            else body = tS(L, 'evening.part', {done, n: total, left: total - done, g});
+            try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}}); }
             catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
           }
         }
 
         // ── Změny ve skupinách (za večerním shrnutím, ať skupinový souhrn přijde hned po něm) ──
-        try { await groupNotifs(uid, prof, ns, push); }
+        try { await groupNotifs(uid, prof, ns, push, L); }
         catch(e) { console.error(`[LP] Skupiny uid=${uid}:`, e.message); }
 
         // ── Připomínky návyků ──
@@ -1038,9 +1031,9 @@ exports.sendScheduledNotifications = onSchedule(
             try {
               await push(
                 `${habit.emoji || '🔔'} ${habit.name}`,
-                `${nickname}, ještě jsi dnes nesplnil${a} "${habit.name}". Teď je správný čas! 💪`,
+                tS(L, 'habit.nag', {name: nickname, habit: habit.name, g}),
                 `habit-${habitDoc.id}`,
-                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title:'✅ Splněno'}] }
+                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title: tS(L, 'habit.done')}] }
               );
             } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
@@ -1073,10 +1066,10 @@ exports.sendScheduledNotifications = onSchedule(
           if (!ev.date || ev.type !== 'birthday') continue;
           const bday = ev.date.slice(5);
           if (bday === todayMD) {
-            try { await push('🎂 Dnes jsou narozeniny!', `${nickname}, nezapomeň popřát: ${ev.name} 🎉`, `bday-${evDoc.id}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'bday.today.t'), tS(L, 'bday.today.b', {name: nickname, who: ev.name}), `bday-${evDoc.id}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] bday push:`, e.message); }
           } else if (bday === tmrwMD) {
-            try { await push('🎂 Zítra jsou narozeniny!', `${ev.name} slaví zítra — čas na přání nebo dárek! 🎁`, `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'bday.tmrw.t'), tS(L, 'bday.tmrw.b', {who: ev.name}), `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
           }
         }
@@ -1091,7 +1084,7 @@ exports.sendScheduledNotifications = onSchedule(
           const diffMin = Math.round((evTime - prague) / 60000);
           // Okno 5 minut = jeden běh cronu → upozornění jen jednou
           if (diffMin >= 58 && diffMin < 63) {
-            try { await push(`📌 Za hodinu: ${ev.name}`, `${nickname}, za hodinu tě čeká: ${ev.name} v ${ev.time}`, `ev-${evDoc.id}-${today}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${today}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] event push:`, e.message); }
           }
         }
@@ -1286,13 +1279,14 @@ async function deleteUserActivity(gid, uid) {
 }
 
 exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
   const data = request.data || {};
-  if (data.confirm !== 'SMAZAT') throw new HttpsError('invalid-argument', 'Chybí potvrzení smazání účtu.');
+  if (data.confirm !== 'SMAZAT') throw new HttpsError('invalid-argument', tS(L, 'err.delConfirm'));
   const authTime = Number(request.auth.token && request.auth.token.auth_time);
   if (!Number.isFinite(authTime) || Date.now() / 1000 - authTime > DELETE_REAUTH_SEC) {
-    throw new HttpsError('failed-precondition', 'Z bezpečnostních důvodů se znovu přihlas a zkus to hned potom.');
+    throw new HttpsError('failed-precondition', tS(L, 'err.delReauth'));
   }
 
   let step = 'a';
@@ -1326,7 +1320,7 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
     await db.doc(`rateLimits/${uid}`).delete();
   } catch (e) {
     console.error(`[LP] deleteAccount uid=${uid} krok ${step} selhal: ${e && e.code || ''} ${e && e.message || ''}`);
-    throw new HttpsError('internal', 'Smazání účtu se nepodařilo dokončit. Zkus to prosím znovu.');
+    throw new HttpsError('internal', tS(L, 'err.delFail'));
   }
 
   // (e) Auth účet až nakonec; už smazaný = hotovo (opakované volání)
@@ -1335,7 +1329,8 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
   } catch (e) {
     if (!(e && e.code === 'auth/user-not-found')) {
       console.error(`[LP] deleteAccount uid=${uid} krok e selhal: ${e && e.code || ''}`);
-      throw new HttpsError('internal', 'Data jsou smazaná, ale účet se nepodařilo odstranit. Zkus to prosím znovu.');
+      // details.reason: klient pozná stav bez ohledu na jazyk zprávy
+      throw new HttpsError('internal', tS(L, 'err.delAuthFail'), {reason: 'dataGone'});
     }
   }
   console.log(`[LP] deleteAccount uid=${uid} hotovo`);
@@ -1515,10 +1510,11 @@ async function deleteOldGroup(ref) {
 }
 
 exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
   const gid = String((request.data || {}).gid || '');
-  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', 'Neplatný kód skupiny.');
+  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', tS(L, 'err.grpCode'));
   const oldRef = db.doc(`families/${gid}`);
 
   // (1) oprávnění + zámek v jedné transakci; čas z budoucnosti (posunuté hodiny) se ignoruje
@@ -1526,20 +1522,20 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(oldRef);
-      if (!snap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
+      if (!snap.exists) throw new HttpsError('not-found', tS(L, 'err.grpNotFound'));
       const d = snap.data() || {};
       const me = d.members && d.members[uid];
-      if (!me || me.role !== 'admin') throw new HttpsError('permission-denied', 'Kód skupiny může změnit jen správce.');
+      if (!me || me.role !== 'admin') throw new HttpsError('permission-denied', tS(L, 'err.rotAdmin'));
       const lockAt = Number(d.codeRotation && d.codeRotation.at);
-      if (Number.isFinite(lockAt) && lockAt <= now && now - lockAt < ROTATE_LOCK_MS) throw new HttpsError('aborted', 'Kód skupiny se právě mění, zkus to za chvíli.');
+      if (Number.isFinite(lockAt) && lockAt <= now && now - lockAt < ROTATE_LOCK_MS) throw new HttpsError('aborted', tS(L, 'err.rotBusy'));
       const lastAt = Date.parse(d.codeRotatedAt);
-      if (Number.isFinite(lastAt) && lastAt <= now && now - lastAt < ROTATE_COOLDOWN_MS) throw new HttpsError('resource-exhausted', 'Kód skupiny jde změnit nejvýš jednou za 2 minuty.');
+      if (Number.isFinite(lastAt) && lastAt <= now && now - lastAt < ROTATE_COOLDOWN_MS) throw new HttpsError('resource-exhausted', tS(L, 'err.rotCooldown'));
       tx.update(oldRef, {codeRotation: {at: now, by: uid}});
     });
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error(`[LP] rotateGroupCode uid=${uid} krok 1 selhal: ${e && e.code || ''}`);
-    throw new HttpsError('unavailable', 'Kód skupiny se teď nepodařilo změnit, skupina zůstala beze změny. Zkus to prosím znovu.');
+    throw new HttpsError('unavailable', tS(L, 'err.rotUnavail'));
   }
 
   let step = '2';
@@ -1615,8 +1611,8 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSec
     try { await oldRef.update({codeRotation: FieldValue.delete()}); }
     catch (e2) { console.error(`[LP] rotateGroupCode uvolnění zámku selhalo: ${e2 && e2.code || ''}`); } // vyprší sám
     if (!cleanOk) console.error(`[LP] rotateGroupCode úklid neúplný`);
-    if (e && e.code === 'deadline') throw new HttpsError('deadline-exceeded', 'Přesun skupiny trval příliš dlouho, skupina zůstala beze změny. Zkus to prosím později.');
-    throw new HttpsError('internal', 'Kód se nepodařilo změnit, skupina zůstala beze změny. Zkus to prosím znovu.');
+    if (e && e.code === 'deadline') throw new HttpsError('deadline-exceeded', tS(L, 'err.rotDeadline'));
+    throw new HttpsError('internal', tS(L, 'err.rotFail'));
   }
 
   // ── Od tady se nic nevrací zpět: starý kód neplatí, zbytek jen dotahuje stav ──
@@ -1708,7 +1704,8 @@ function canRestore(d, uid, former, gid) {
 }
 
 exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 60}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  const L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
   const profRef = db.doc(`users/${uid}/profile/main`);
   const rawGid = (request.data || {}).gid;
@@ -1747,25 +1744,25 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error(`[LP] restoreGroup uid=${uid} seznam selhal: ${e && e.code || ''}`);
-      throw new HttpsError('unavailable', 'Seznam skupin se teď nepodařilo načíst. Zkus to prosím znovu.');
+      throw new HttpsError('unavailable', tS(L, 'err.resList'));
     }
   }
 
   // (2) Obnova jedné skupiny
   const gid = String(rawGid);
-  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', 'Neplatný kód skupiny.');
+  if (!GROUP_ID_RE.test(gid)) throw new HttpsError('invalid-argument', tS(L, 'err.grpCode'));
   const ref = db.doc(`families/${gid}`);
   const tokenName = request.auth.token && typeof request.auth.token.name === 'string' ? request.auth.token.name : '';
   try {
     const res = await db.runTransaction(async (tx) => {
       const gs = await tx.get(ref);
       const ps = await tx.get(profRef);
-      if (!gs.exists) throw new HttpsError('not-found', 'Skupina už neexistuje.');
-      if (!ps.exists) throw new HttpsError('failed-precondition', 'Nejdřív dokonči nastavení aplikace.');
+      if (!gs.exists) throw new HttpsError('not-found', tS(L, 'err.resGone'));
+      if (!ps.exists) throw new HttpsError('failed-precondition', tS(L, 'err.resSetup'));
       const d = gs.data() || {};
       const p = ps.data() || {};
-      if (!isEmptyGroup(d)) throw new HttpsError('failed-precondition', 'Ve skupině už někdo je. Připoj se k ní kódem.');
-      if (!canRestore(d, uid, formerGroupIds(p), gid)) throw new HttpsError('permission-denied', 'Tuhle skupinu obnovit nemůžeš.');
+      if (!isEmptyGroup(d)) throw new HttpsError('failed-precondition', tS(L, 'err.resTaken'));
+      if (!canRestore(d, uid, formerGroupIds(p), gid)) throw new HttpsError('permission-denied', tS(L, 'err.resDenied'));
       // Hlavní skupina: jen když v profilu žádná platná není (neexistuje nebo v ní nejsem)
       let asMain = true;
       if (typeof p.familyId === 'string' && p.familyId !== gid && GROUP_ID_RE.test(p.familyId)) {
@@ -1776,7 +1773,7 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
       if (!asMain) {
         const extra = Array.isArray(p.extraGroupIds) ? p.extraGroupIds : [];
         const mine = new Set([p.familyId, ...extra].filter(g => typeof g === 'string' && g !== gid && GROUP_ID_RE.test(g)));
-        if (mine.size >= GROUP_MAX) throw new HttpsError('failed-precondition', `Máš už ${GROUP_MAX} skupin. Nejdřív nějakou opusť.`);
+        if (mine.size >= GROUP_MAX) throw new HttpsError('failed-precondition', tS(L, 'err.resMax', {n: GROUP_MAX}));
       }
       const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || 'Člen';
       const avatar = typeof p.avatarId === 'string' && p.avatarId ? p.avatarId.slice(0, 40) : 'rex';
@@ -1795,6 +1792,6 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
   } catch (e) {
     if (e instanceof HttpsError) throw e;
     console.error(`[LP] restoreGroup uid=${uid} obnova selhala: ${e && e.code || ''}`);
-    throw new HttpsError('unavailable', 'Skupinu se teď nepodařilo obnovit. Zkus to prosím znovu.');
+    throw new HttpsError('unavailable', tS(L, 'err.resFail'));
   }
 });

@@ -57,6 +57,7 @@ checkSyntax('i18n/ai-en.js', true);
 checkSyntax('sw.js', false);
 checkSyntax('pwa.js', false);
 checkSyntax('functions/index.js', false);
+checkSyntax('functions/i18n-server.js', false);
 
 console.log('JSON');
 ['manifest.json', 'firebase.json', 'functions/package.json', 'support.json'].forEach(checkJson);
@@ -383,6 +384,42 @@ try {
   missA.forEach(k => fail('prompty: klíč neexistuje: ' + k));
   if (!missA.length) ok('všech ' + usedA.size + ' použitých klíčů tA() existuje');
 } catch (e) { fail('prompty AI: ' + e.message); }
+
+console.log('i18n: slovník serveru (functions/i18n-server.js)');
+try {
+  const { DICT, tS } = require(p('functions/i18n-server.js'));
+  const sc = DICT.cs, se = DICT.en;
+  const base = k => k.replace(/#f$/, '');
+  const kc = new Set(Object.keys(sc).map(base)), ke = new Set(Object.keys(se).map(base));
+  const onlyC = [...kc].filter(k => !ke.has(k)), onlyE = [...ke].filter(k => !kc.has(k));
+  onlyC.forEach(k => fail('functions/i18n-server.js: en chybí klíč ' + k));
+  onlyE.forEach(k => fail('functions/i18n-server.js: cs chybí klíč ' + k));
+  if (!onlyC.length && !onlyE.length) ok('server: cs a en mají stejné klíče (' + kc.size + ')');
+  const FORMS = { cs: ['one', 'few', 'other'], en: ['one', 'other'] };
+  const vars = v => JSON.stringify([...new Set(String(v && typeof v === 'object' ? Object.values(v).join(' ') : v).match(/\{\w+\}/g) || [])].sort());
+  let bad = 0;
+  for (const [lang, d] of [['cs', sc], ['en', se]]) {
+    for (const [k, v] of Object.entries(d)) {
+      if (v && typeof v === 'object') {
+        const miss = FORMS[lang].filter(f => typeof v[f] !== 'string');
+        if (miss.length) { fail('server ' + lang + ': plurál ' + k + ' nemá tvary ' + miss.join(',')); bad++; }
+      } else if (typeof v !== 'string') { fail('server ' + lang + ': ' + k + ' není text ani plurál'); bad++; }
+      // Varianta #f a druhý jazyk: stejný typ a stejné {proměnné} jako základní klíč v cs
+      const ref = sc[base(k)];
+      if (ref !== undefined && ((typeof ref === 'object') !== (typeof v === 'object') || vars(ref) !== vars(v))) {
+        fail('server ' + lang + ': ' + k + ' se liší od cs typem nebo proměnnými'); bad++;
+      }
+    }
+  }
+  if (!bad) ok('server: plurály a proměnné {…} shodné v cs a en');
+  // Použité klíče tS(L, '…') v functions/index.js musí existovat (dynamické klíče končí „.“ nebo jsou šablonou)
+  const fsrc = read('functions/index.js');
+  const usedS = new Set([...fsrc.matchAll(/\btS\(\s*\w+\s*,\s*'([\w.#-]+)'/g)].map(m => m[1]).filter(k => !k.endsWith('.')));
+  const missS = [...usedS].filter(k => !kc.has(k));
+  missS.forEach(k => fail('server: klíč neexistuje: ' + k));
+  if (!missS.length) ok('server: všech ' + usedS.size + ' použitých klíčů tS() existuje');
+  if (tS('cs', 'morning.b', { n: 3 }) !== 'Čeká tě 3 návyky na dnes. Pojď na to! ☀️' || tS('en', 'gn.act.def') !== 'changed') fail('server: tS() vrací neočekávaný text');
+} catch (e) { fail('slovník serveru: ' + e.message); }
 
 console.log('i18n: ráčny (český text mimo slovník)');
 // Řetězcové a šablonové literály mimo komentáře (zjednodušený lexer: řetězce, šablony s ${…}, komentáře, regexy)
