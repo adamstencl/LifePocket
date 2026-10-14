@@ -48,8 +48,21 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.58';
+const APP_VERSION = '4.59';
 const CHANGELOG = [
+  { v:'4.59', items:[
+    '🧭 Spodní lišta podle tvé šablony (Rodina má Nákupy hned v liště) a čitelnější popisky',
+    '👋 Nováček dostane kratší prohlídku a v jednu chvíli jen jedno okno',
+    '🏠 Karta Začínáme je na Domů nahoře',
+    '⚡ Úvodní stránka se načte rychleji a obrazovka při startu nebliká',
+    '✏️ Srozumitelnější texty bez anglicismů'
+  ], en:[
+    '🧭 The bottom bar follows your template (Family has Shopping right in the bar) and its labels are easier to read',
+    '👋 New users get a shorter tour and only one window at a time',
+    '🏠 The Getting started card is at the top of Home',
+    '⚡ The start page loads faster and the screen no longer flashes on launch',
+    '✏️ Clearer wording in a few places'
+  ]},
   { v:'4.58', items:[
     '🍳 Recepty od AI v lepší češtině – správné názvy surovin a „dochuťte solí“ místo nesmyslů'
   ], en:[
