@@ -267,18 +267,38 @@ function pragueDS(date) {
   return new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Prague'}).format(date);
 }
 
-// Pražský „nástěnný“ čas bez sekund: {prague (Date v lokální reprezentaci), h, m, today, dow, tmrwMD}
-function pragueNow(date = new Date()) {
-  const prague = new Date(date.toLocaleString('en-US', {timeZone: 'Europe/Prague'}));
+// Časové pásmo uživatele (profile.tz, IANA). Neplatné nebo chybějící = Europe/Prague (dřívější chování).
+const DEF_TZ = 'Europe/Prague';
+const TZ_CACHE_MAX = 500;
+const _tzFmt = new Map(); // zóna → Intl formatter (null = neplatná); formatter je drahý, tvoří se jednou na zónu
+function tzFormatter(tz) {
+  if (_tzFmt.has(tz)) return _tzFmt.get(tz);
+  let f = null;
+  try {
+    f = new Intl.DateTimeFormat('en-US', {timeZone: tz, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'});
+  } catch(e) { f = null; }
+  if (_tzFmt.size < TZ_CACHE_MAX) _tzFmt.set(tz, f);
+  return f;
+}
+function normTz(tz) {
+  return (typeof tz === 'string' && tz.length > 0 && tz.length <= 64 && tzFormatter(tz)) ? tz : DEF_TZ;
+}
+
+// „Nástěnný“ čas v zóně bez sekund: {wall (Date v lokální reprezentaci serveru), h, m, today, dow, tmrwMD, tz}
+function zoneNow(tz, date = new Date()) {
+  const zone = normTz(tz);
+  const p = {};
+  for (const x of tzFormatter(zone).formatToParts(date)) p[x.type] = x.value;
   // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
-  prague.setSeconds(0, 0);
+  const wall = new Date(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, 0, 0);
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const tmrw = new Date(prague);
+  const tmrw = new Date(wall);
   tmrw.setDate(tmrw.getDate() + 1);
   return {
-    prague, h: prague.getHours(), m: prague.getMinutes(),
-    today: ymd(prague), dow: prague.getDay(), // den v týdnu v Europe/Prague
-    tmrwMD: ymd(tmrw).slice(5),
+    wall, h: wall.getHours(), m: wall.getMinutes(),
+    today: ymd(wall), dow: wall.getDay(), // den v týdnu v zóně uživatele (0 = neděle)
+    tmrwMD: ymd(tmrw).slice(5), tz: zone,
   };
 }
 
@@ -730,7 +750,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   });
 
   // Pošli notifikaci všem zařízením všech členů kromě odesílatele
-  const {h, m} = pragueNow();
+  const sendDate = new Date();
   let sent = 0;
   let membersReached = 0;
   for (const memberUid of Object.keys(members)) {
@@ -743,6 +763,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
       // Preference příjemce: nákupy vypnuté nebo noční klid = nic neposílat
       const gp = groupNotifPrefs(memberProf);
       if (type === 'shop-update' && gp.shop === 'off') continue;
+      const {h, m} = zoneNow(memberProf.tz, sendDate); // noční klid v čase příjemce
       if (inQuiet(h, m, gp.quiet)) continue;
       const senderName = senderNick || tS(normLang(memberProf.lang), 'nf.member');
       const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, `fam-${type}`);
@@ -758,7 +779,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
 });
 
 // Je návyk dnes na řadě? Shodně s klientem (app.js): archivovaný a pozastavený ne,
-// frekvence „konkrétní dny“ jen ve vybrané dny (dow = den v týdnu v Europe/Prague, 0 = neděle)
+// frekvence „konkrétní dny“ jen ve vybrané dny (dow = den v týdnu v zóně uživatele, 0 = neděle)
 function isHabitDueToday(habit, today, dow) {
   if (habit.archived) return false;
   if (habit.pausedUntil && habit.pausedUntil >= today) return false;
@@ -789,10 +810,10 @@ const CRON_BATCH = 20;
 exports.sendScheduledNotifications = onSchedule(
   {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 240},
   async () => {
-    const {prague, h, m, today, dow, tmrwMD} = pragueNow();
-    const todayMD = today.slice(5);
-
-    console.log(`[LP] Cron: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}, datum: ${today}`);
+    // Jeden okamžik pro celý běh; čas, datum a den v týdnu se počítají pro každého uživatele v jeho zóně (profile.tz)
+    const runDate = new Date();
+    const pz = zoneNow(DEF_TZ, runDate);
+    console.log(`[LP] Cron: ${String(pz.h).padStart(2,'0')}:${String(pz.m).padStart(2,'0')}, datum: ${pz.today} (${DEF_TZ})`);
 
     // Klient zapisuje jen podkolekce (users/{uid}/profile/main …), kořenový dokument
     // neexistuje → get() by nic nevrátil. listDocuments() vrací i „chybějící“ rodiče.
@@ -857,7 +878,8 @@ exports.sendScheduledNotifications = onSchedule(
       return rangeCache.get(key);
     };
 
-    const groupNotifs = async (uid, prof, ns, push, L) => {
+    const groupNotifs = async (uid, prof, ns, push, L, zn) => {
+      const {h, m} = zn;
       const gids = calGroupIds(prof); // stejný seznam skupin jako připomínky kalendáře
       if (!gids.length) return;
       const gp = groupNotifPrefs(prof);
@@ -975,6 +997,10 @@ exports.sendScheduledNotifications = onSchedule(
         };
 
         const ns = prof.notifSettings || {};
+        // Čas, dnešní datum a den v týdnu v zóně uživatele (bez platné tz = Europe/Prague)
+        const zn = zoneNow(prof.tz, runDate);
+        const {wall, h, m, today, dow, tmrwMD} = zn;
+        const todayMD = today.slice(5);
         // Jazyk a rod příjemce (texty ze slovníku i18n-server.js)
         const L = normLang(prof.lang);
         const g = prof.gender === 'f' ? 'f' : '';
@@ -1023,7 +1049,7 @@ exports.sendScheduledNotifications = onSchedule(
         }
 
         // ── Změny ve skupinách (za večerním shrnutím, ať skupinový souhrn přijde hned po něm) ──
-        try { await groupNotifs(uid, prof, ns, push, L); }
+        try { await groupNotifs(uid, prof, ns, push, L, zn); }
         catch(e) { console.error(`[LP] Skupiny uid=${uid}:`, e.message); }
 
         // ── Připomínky návyků ──
@@ -1062,7 +1088,7 @@ exports.sendScheduledNotifications = onSchedule(
             const famSnap = await fe.doc;
             const fam = famSnap.exists ? famSnap.data() : null;
             if (fam && fam.members?.[uid] && fam.shareCal) {
-              evGroups.push(await lazy(fe, 'events', () => loadTimedEvents(`families/${fid}/events`, today)));
+              evGroups.push(await lazy(fe, 'events|' + today, () => loadTimedEvents(`families/${fid}/events`, today)));
               if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
             }
           } catch(e) { /* skupina nemusí existovat */ }
@@ -1089,7 +1115,7 @@ exports.sendScheduledNotifications = onSchedule(
           const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
           if (evDate !== today) continue;
           const evTime = new Date(`${today}T${ev.time}:00`);
-          const diffMin = Math.round((evTime - prague) / 60000);
+          const diffMin = Math.round((evTime - wall) / 60000);
           // Okno 5 minut = jeden běh cronu → upozornění jen jednou
           if (diffMin >= 58 && diffMin < 63) {
             try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${today}`, {data: {open: 'cal'}}); }

@@ -51,9 +51,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.57';
 const CHANGELOG = [
   { v:'4.57', items:[
-    '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky'
+    '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky',
+    '⏰ Připomínky a souhrny chodí podle časového pásma telefonu, i když jsi mimo Česko'
   ], en:[
-    '🌐 You can switch the app language on the sign-in screen of the installed app too'
+    '🌐 You can switch the app language on the sign-in screen of the installed app too',
+    '⏰ Reminders and summaries follow your phone time zone, even outside Czechia'
   ]},
   { v:'4.56', items:[
     '🌍 Appka se novým uživatelům automaticky přepne do jejich jazyka; oprava lžic v receptech'
@@ -852,6 +854,7 @@ async function startSession(u){
     if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true}).catch(e=>console.warn('[LP] migrace modulů:',e?.code||e?.name));
     selMods=new Set(prof.modules||[]);initApp();
     touchLastSeen(u.uid);
+    syncProfileTz(u.uid);
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast(t('auth.verifyEmail'),5000),1000);
     }
@@ -860,6 +863,18 @@ async function startSession(u){
 // Datum v pražském čase (YYYY-MM-DD), bez Intl jen lokální den
 function pragueDS(d=new Date()){
   try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague'}).format(d); }catch(e){ return toDS(d); }
+}
+// Časové pásmo zařízení (IANA) pro připomínky ze serveru; zapisuje se jen při změně
+function deviceTz(){
+  try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; return (typeof z==='string'&&z&&z.length<=64)?z:''; }catch(e){ return ''; }
+}
+function syncProfileTz(uid){
+  if(_accDeleting||_accDeleted||_accStopped) return;
+  const tz=deviceTz();
+  if(!tz||prof.tz===tz) return;
+  prof.tz=tz;
+  setDoc(doc(db,'users',uid,'profile','main'),{tz},{merge:true})
+    .catch(e=>console.warn('[LP] časové pásmo:',e?.code||e?.name));
 }
 // Poslední otevření appky do profilu (pro anonymní souhrn „aktivní za 1/7/30 dní“), nejvýš jednou za pražský den
 function touchLastSeen(uid){
@@ -3869,6 +3884,7 @@ window.finishOnboard=async()=>{
   const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
   if(selTpl) prof.template=selTpl;
   prof.lang=LANG;
+  const tz=deviceTz(); if(tz) prof.tz=tz;
   await setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
   clearLangSync();
   // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start
