@@ -1783,7 +1783,7 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
         const mine = new Set([p.familyId, ...extra].filter(g => typeof g === 'string' && g !== gid && GROUP_ID_RE.test(g)));
         if (mine.size >= GROUP_MAX) throw new HttpsError('failed-precondition', tS(L, 'err.resMax', {n: GROUP_MAX}));
       }
-      const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || tS(L, 'grp.member');
+      const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || tS('cs', 'grp.member'); // uložené jméno vidí všichni členové → neutrální česky jako dřív, ne v jazyce obnovujícího
       const avatar = typeof p.avatarId === 'string' && p.avatarId ? p.avatarId.slice(0, 40) : 'rex';
       tx.update(ref, new FieldPath('members', uid), {name, avatar, joinedAt: new Date().toISOString(), role: 'admin'});
       const upd = asMain

@@ -787,7 +787,7 @@ function userErr(e, ctx = '') {
   else if (navigator.onLine === false || ['unavailable', 'network-request-failed', 'deadline-exceeded'].includes(code) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
     txt = t('err.offline');
   else if (full === 'functions/resource-exhausted') txt = t('err.aiLimit');
-  // Proxy odmítla dotaz (česká hláška ze serveru); není to chyba appky, nelogovat
+  // Proxy odmítla dotaz (hláška ze serveru v jazyce uživatele, posíláme lang); není to chyba appky, nelogovat
   else if (full === 'functions/failed-precondition') txt = msg.slice(0, 200) || t('err.aiRefused');
   else if (full.startsWith('functions/') && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
     txt = t('err.aiBusy');
@@ -931,7 +931,7 @@ window.addEventListener('online',()=>{ if(CU&&document.getElementById('load-err'
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
   else{
-    if(CU) clearLangLocal(); // odhlášení (i z jiného místa): jazyk patří účtu; anonymní návštěva si ?lang= ponechá
+    if(CU) clearLangLocal(); // odhlášení (i z jiného místa): smazat jen údaje účtu, jazyk zařízení zůstává
     CU=null;
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
@@ -14583,6 +14583,7 @@ async function offerPantryUpdate(name, shopQty) {
   if(match){
     // Položka už v zásobách — přičti správné množství
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
+    if(!(ingAmt > 0)) return; // nulové množství nic nepřičítá
     const pantryUnit = (match.unit||'ks').toLowerCase();
     let delta = ingAmt;
     if(ingUnit !== pantryUnit){
@@ -15415,7 +15416,7 @@ window.aiShopAddAll = async function(items) {
 // Klíče bez diakritiky (vstup se normalizuje, „lzice“ z telefonu bez háčků projde také).
 // Lžíce 15 ml, lžička 5 ml, hrnek 250 ml (stejně jako normalizeIngQty)
 const ING_UNITS = (()=>{
-  const m = {};
+  const m = Object.create(null); // bez prototypu: „toString“ ani „constructor“ nejsou jednotky
   const add = (unit, k, words) => words.split(' ').forEach(w => { m[w] = [unit, k]; });
   add('ks', 1, 'ks kus kusy kusu pcs pc piece pieces x strouzek strouzky strouzku clove cloves platek platky platku slice slices bal baleni pack packs');
   add('g', 1, 'g gr gram gramy gramu grams');
@@ -15437,11 +15438,11 @@ function parseIngQty(qtyStr) {
   if (!qtyStr) return {amount:1, unit:'ks'};
   const m = String(qtyStr).match(/(\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
   if (!m) return {amount:1, unit:'ks'};
-  const amount = shopNum(m[1]) || 1;
+  const amount = shopNum(m[1]); // 0 (např. „0 g“) zůstává 0, volající ho přeskočí
   const w = (m[2]||'').toLowerCase();
   // ČL (čajová lžička) se bez diakritiky plete s cl (centilitr)
   const u = /^čl$/.test(w) ? ING_UNITS.tsp : ING_UNITS[w.normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
-  if (!u) return {amount, unit:'ks'}; // bez jednotky nebo neznámá („2 vejce“) → kusy
+  if (!Array.isArray(u)) return {amount, unit:'ks'}; // bez jednotky nebo neznámá („2 vejce“) → kusy
   return {amount: Math.round(amount * u[1] * 1000) / 1000, unit: u[0]};
 }
 
@@ -15491,6 +15492,7 @@ window.deductPantryIngredients = async function(ingredients) {
     const pantryItem = pantryItems.find(p => ingName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingName.split(' ')[0]));
     if (!pantryItem || pantryItem.qty <= 0) continue;
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(ing.qty);
+    if (!(ingAmt > 0)) continue; // nulové množství („0 g“) nic neodečítá
     const pantryUnit = (pantryItem.unit||'ks').toLowerCase();
     let deduct = ingAmt;
     if (ingUnit !== pantryUnit) {

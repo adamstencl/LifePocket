@@ -12,6 +12,9 @@ const AUTO_DETECT = true;
 const LOCALES = { cs: 'cs-CZ', en: 'en-GB' }; // en-GB: týden od pondělí, 24h čas
 
 export let LANG = 'cs', LOCALE = 'cs-CZ';
+// Pojistka reloadu bez sessionStorage: značka ?lp_rl= v adrese, po startu přesunutá sem (z adresy pryč)
+const RELOAD_PARAM = 'lp_rl';
+let _reloadMark = null;
 let D = CS, AID = AI_CS;
 let PR = null, PR_CS = null;
 const missing = new Set();
@@ -31,8 +34,13 @@ function rememberLang(l, sync) {
 // Čeká ruční volba jazyka na zápis do profilu?
 export const langSyncPending = () => lsGet('lp_lang_sync') === '1';
 export const clearLangSync = () => lsDel('lp_lang_sync');
-// Odhlášení: jazyk patří účtu, zařízení se vrací na výchozí volbu
-export function clearLangLocal() { lsDel('lp_lang_sync'); lsDel('lp_lang'); }
+// Odhlášení: lp_lang zůstává (poslední jazyk zařízení pro úvodní stránku), maže se jen to, co patří účtu.
+// Pojistka reloadu jde pryč, jinak by další účet ve stejné záložce nepřevzal svůj profile.lang.
+export function clearLangLocal() {
+  lsDel('lp_lang_sync');
+  try { sessionStorage.removeItem('lp_lang_reload'); } catch (e) {}
+  _reloadMark = null;
+}
 
 // Pořadí: ?lang= → lp_lang (kopie profile.lang) → jazyk telefonu
 export function resolveLang() {
@@ -56,6 +64,7 @@ function navLang() {
 function urlWithoutLang() {
   const u = new URL(location.href);
   u.searchParams.delete('lang');
+  u.searchParams.delete(RELOAD_PARAM);
   return u;
 }
 
@@ -74,6 +83,18 @@ export async function initI18n() {
   LOCALE = LOCALES[LANG];
   PR = LANG === 'cs' ? PR_CS : plural(LANG);
   try { document.documentElement.lang = LANG; } catch (e) {}
+  // Značka reloadu z adresy do proměnné (platí jen pro toto načtení stránky)
+  try {
+    const sp = new URLSearchParams(location.search);
+    if (sp.has(RELOAD_PARAM)) {
+      _reloadMark = sp.get(RELOAD_PARAM);
+      const u = new URL(location.href); u.searchParams.delete(RELOAD_PARAM);
+      history.replaceState(history.state, '', u.href);
+    }
+  } catch (e) {}
+  // Reload na jazyk proběhl úspěšně → pojistka pryč (pozdější změna profilu v jiné relaci se zase převezme).
+  // Nesouhlasí-li (např. slovník se nenačetl), pojistka zůstává a brání smyčce.
+  try { if (sessionStorage.getItem('lp_lang_reload') === LANG) sessionStorage.removeItem('lp_lang_reload'); } catch (e) {}
   // ?lang= už je uložené v zařízení → z adresy pryč (jinak by přebíjelo přepínač)
   try {
     if (new URLSearchParams(location.search).has('lang') && lsGet('lp_lang') === LANG)
@@ -158,15 +179,21 @@ export function previewLang(l) {
   location.replace(u.href);
 }
 // Profil má jiný jazyk než zařízení (přepnuto jinde) → převzít, nejvýš jednou za relaci (pojistka proti smyčce)
+// Bez sessionStorage drží pojistku značka ?lp_rl= v adrese (načtení se značkou už znovu nenačítá).
 export function reloadForProfileLang(l) {
   if (!SUPPORTED.includes(l) || l === LANG) return false;
-  let guard = null;
-  try { guard = sessionStorage.getItem('lp_lang_reload'); } catch (e) { return false; }
-  if (guard === l) return false;
-  try { sessionStorage.setItem('lp_lang_reload', l); } catch (e) { return false; }
+  if (_reloadMark === l) return false;
+  let ssOk = true;
+  try {
+    if (sessionStorage.getItem('lp_lang_reload') === l) return false;
+    sessionStorage.setItem('lp_lang_reload', l);
+  } catch (e) { ssOk = false; }
+  const u = urlWithoutLang();
+  if (!ssOk) u.searchParams.set(RELOAD_PARAM, l);
   // Bez localStorage aspoň přes adresu (?lang= pak zůstane v adrese, jinak by vyhrál jazyk telefonu)
-  if (!lsSet('lp_lang', l)) { const u = urlWithoutLang(); u.searchParams.set('lang', l); location.replace(u.href); return true; }
-  location.reload();
+  if (!lsSet('lp_lang', l)) u.searchParams.set('lang', l);
+  if (ssOk && u.href === location.href) location.reload();
+  else location.replace(u.href);
   return true;
 }
 
