@@ -874,7 +874,7 @@ function syncProfileTz(uid){
   if(!tz||prof.tz===tz) return;
   prof.tz=tz;
   setDoc(doc(db,'users',uid,'profile','main'),{tz},{merge:true})
-    .catch(e=>console.warn('[LP] časové pásmo:',e?.code||e?.name));
+    .catch(e=>console.warn('[LP] tz:',e?.code||e?.name));
 }
 // Poslední otevření appky do profilu (pro anonymní souhrn „aktivní za 1/7/30 dní“), nejvýš jednou za pražský den
 function touchLastSeen(uid){
