@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.53';
+const APP_VERSION = '4.54';
 const CHANGELOG = [
+  { v:'4.54', items:[
+    '🤖 Rex mluví tvým jazykem a vidí všechny tvé skupiny – nákupy, jídelníčky, checklisty a události každé skupiny i s jejím názvem'
+  ], en:[
+    '🤖 Rex speaks your language and sees all your groups – shopping lists, meal plans, checklists and events of every group, with its name'
+  ]},
   { v:'4.53', items:[
     '👥 Jídelníček, checklisty a kalendář teď fungují v každé skupině; připomínky událostí ze všech skupin',
     '🛠️ Opraveny sdílené checklisty – ty i ostatní ve skupině teď vidíte a upravujete stejný seznam. Aktualizuj appku na všech zařízeních'
@@ -13501,7 +13506,7 @@ function buildChatContext(){
     if(!plan||typeof plan!=='object') return out;
     for(const di of days||[0,1,2,3,4,5,6]){
       const dd=plan['d'+di];if(!dd||typeof dd!=='object') continue;
-      const parts=['m0','m1','m2'].map((k,i)=>dd[k]&&String(dd[k]).trim()?tA('aip.ctx.meal.m'+i)+' '+ctxT(dd[k],40):'').filter(Boolean);
+      const parts=['m0','m1','m2'].map((k,i)=>dd[k]&&String(dd[k]).trim()?tA('aip.ctx.meal.'+k)+' '+ctxT(dd[k],40):'').filter(Boolean);
       if(parts.length) out.push('- '+label+DN[di]+(di===todayIdx?tA('aip.ctx.meal.today'):'')+': '+parts.join(' / '));
     }
     return out;
@@ -13732,8 +13737,9 @@ function buildChatContext(){
   const size=s=>s.lines.reduce((n,l)=>n+l.length+1,0);
   let out=render(),guard=600;
   while(out.length>CHAT_CTX_MAX&&guard-->0){
-    // nejdřív další skupiny, pak nechráněné sekce (největší první), chráněné až když už nic jiného nezbývá
-    let pool=secs.filter(s=>s.lvl===0&&s.lines.length);
+    // nejdřív další skupiny (každé zůstanou aspoň 2 řádky), pak nechráněné sekce (největší první),
+    // chráněné a zbytek skupin až když už nic jiného nezbývá
+    let pool=secs.filter(s=>s.lvl===0&&s.lines.length>2);
     if(!pool.length) pool=secs.filter(s=>s.lvl===1&&s.lines.length);
     if(!pool.length) pool=secs.filter(s=>s.lines.length>1||(s.lines[0]||'').length>0);
     if(!pool.length) break;

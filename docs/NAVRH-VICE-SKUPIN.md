@@ -326,7 +326,7 @@ Volitelné zpřísnění (jedno ruční nasazení, **zeptat se uživatele**): v 
 
 **Fáze 3: Jídelníček a Checklisty** ve všech skupinách (přepínač, `isMealAdmin(gid)`, `toggleChecklistShare` s výběrem skupiny, `gaCheck` s `gid` listu). Kalendář: čipy v modalu a emoji u událostí. Server: body 2 a 3.
 
-**Fáze 4: dokončení**: `buildChatContext` uvádí názvy skupin a sdílené nákupy a události ze všech skupin (v limitu ~7000 znaků, hlavní má přednost). Postupně nahradit `familyData/familyShopItems…` registrem `GRP` (refaktor bez viditelné změny). Okno kalendáře (4b).
+**Fáze 4: dokončení**: `buildChatContext` uvádí názvy skupin a sdílené nákupy a události ze všech skupin (v limitu ~7000 znaků, hlavní má přednost). **Hotovo v 4.54:** hlavní skupina v běžných sekcích s názvem (⭐), každá další skupina má vlastní zkrácenou sekci (nákupy 8 položek, jídelníček dnes + 2 dny, 3 checklisty po 6 položkách), události s názvem skupiny; při překročení limitu se nejdřív zkracují další skupiny (zůstanou aspoň 2 řádky), pak ostatní sekce. Chat při první zprávě přihlásí listenery nákupů, jídelníčku a checklistů všech skupin (čeká max. 1,5 s). Postupně nahradit `familyData/familyShopItems…` registrem `GRP` (refaktor bez viditelné změny). Okno kalendáře (4b).
 
 Každá fáze = `APP_VERSION` + `CHANGELOG` + bump `CACHE`. Návrh changelogu pro fázi 1: „🧺 Nákupní seznam teď můžeš sdílet v každé skupině, třeba zvlášť s rodinou a se spolubydlícími. Přepneš ho nahoře v Nákupech.“
 
