@@ -203,34 +203,25 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
     <div class="stitle" data-i18n="onb.s1.title">Jak ti máme říkat?</div>
     <div class="ssub" data-i18n="onb.s1.sub">Tvůj společník tě bude zdravit jménem.</div>
     <input class="name-inp" type="text" id="u-nick" placeholder="Tvoje jméno…" data-i18n-attr="placeholder:onb.namePh" maxlength="30" oninput="v1()">
-    <div class="ssub" style="margin-top:14px;margin-bottom:8px;" data-i18n="onb.s1.gender">Tvoje pohlaví:</div>
-    <div class="gender-row">
-      <button class="gender-btn" id="gm" onclick="sg(&#39;m&#39;)"><span class="ge">👨</span><span data-i18n="onb.s1.male">Muž</span></button>
-      <button class="gender-btn" id="gf" onclick="sg(&#39;f&#39;)"><span class="ge">👩</span><span data-i18n="onb.s1.female">Žena</span></button>
+    <div class="ssub" style="margin-top:14px;margin-bottom:4px;" data-i18n="onb.s1.gender">Oslovení (nepovinné):</div>
+    <div class="ssub gender-why" data-i18n="onb.s1.genderWhy">Jen aby ti appka psala správně česky.</div>
+    <div class="gender-row" role="group" aria-label="Oslovení" data-i18n-attr="aria-label:onb.s1.genderAria">
+      <button type="button" class="gender-btn" id="gm" aria-pressed="false" onclick="sg(&#39;m&#39;)"><span class="ge" aria-hidden="true">👨</span><span data-i18n="onb.s1.male">Muž</span></button>
+      <button type="button" class="gender-btn" id="gf" aria-pressed="false" onclick="sg(&#39;f&#39;)"><span class="ge" aria-hidden="true">👩</span><span data-i18n="onb.s1.female">Žena</span></button>
+      <button type="button" class="gender-btn" id="gx" aria-pressed="false" onclick="sg(&#39;x&#39;)"><span class="ge" aria-hidden="true">🙂</span><span data-i18n="onb.s1.none">Neuvádět</span></button>
     </div>
-    <button class="btn-s" onclick="ss(&#39;s-login&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
+    <button class="btn-s" onclick="onbBackToLogin()" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
     <button class="btn-p" id="btn-s1" onclick="gS2()" disabled="" data-i18n="onb.continue">Pokračovat →</button>
   </div>
 </div>
 
-<!-- STEP 2 -->
+<!-- STEP 2: k čemu appku chceš (šablona určuje moduly) -->
 <div class="screen" id="s-step2">
   <div class="card card-wide">
     <div class="steps"><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div></div>
-    <div class="stitle" data-i18n="onb.s2.title">Vyber si svého společníka</div>
-    <div class="ssub" data-i18n="onb.s2.sub">Kdo tě bude provázet životem?</div>
-    <div class="av-grid" id="av-grid"></div>
-    <button class="btn-s" onclick="ss(&#39;s-step1&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
-    <button class="btn-p" id="btn-s2" onclick="gS3()" disabled="" data-i18n="onb.continue">Pokračovat →</button>
-  </div>
-</div>
-
-<!-- STEP 3 -->
-<div class="screen" id="s-step3">
-  <div class="card card-wide">
-    <div class="steps"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div></div>
-    <div class="stitle" id="s3-title" data-i18n="onb.s3.title">Co chceš sledovat?</div>
-    <div class="ssub" data-i18n="onb.s3.sub">Předvybrali jsme to nejlepší. Klidně uprav.</div>
+    <div class="stitle" id="s2-title" data-i18n="onb.use.title">K čemu appku chceš?</div>
+    <div class="ssub" data-i18n="onb.use.sub">Vyber šablonu. Moduly můžeš kdykoli upravit v Nastavení.</div>
+    <div class="ssub tpl-inv-note" id="tpl-inv-note" hidden data-i18n="onb.tpl.invNote">🔗 Máš pozvánku do skupiny, proto je předvybraná Rodina. Připojit se můžeš hned po dokončení.</div>
     <div class="slabel" data-i18n="onb.tpl.title">🧩 Začni podle šablony</div>
     <div class="tpl-row" role="radiogroup" aria-label="Šablona" data-i18n-attr="aria-label:onb.tpl.aria">
       <button type="button" class="tpl-card" role="radio" aria-checked="false" data-a0="family" onclick="pickTpl(this.dataset.a0)">
@@ -247,7 +238,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       <input type="checkbox" id="tpl-samples-chk" checked>
       <span><span data-i18n="onb.samples">Přidat ukázkové návyky:</span> <span id="tpl-samples-list"></span></span>
     </label>
-    <button type="button" class="lp-link" id="tpl-clear" hidden onclick="pickTpl(null)" data-i18n="onb.tpl.none">Bez šablony</button>
+    <button type="button" class="lp-link" id="tpl-clear" hidden onclick="pickTpl(null)" data-i18n="onb.tpl.none">Vlastní výběr</button>
     <div class="slabel" data-i18n="onb.picked">⭐ Připraveno pro tebe</div>
     <div class="mod-grid" id="mods-primary"></div>
     <button class="more-tog" id="more-tog" onclick="togMore()" data-i18n="onb.more">+ Zobrazit další možnosti</button>
@@ -255,6 +246,18 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       <div class="slabel" style="margin-top:14px" data-i18n="onb.extraMods">➕ Další moduly</div>
       <div class="mod-grid" id="mods-extra"></div>
     </div>
+    <button class="btn-s" onclick="ss(&#39;s-step1&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
+    <button class="btn-p" id="btn-s2" style="margin-top:6px" onclick="gS3()" data-i18n="onb.continue">Pokračovat →</button>
+  </div>
+</div>
+
+<!-- STEP 3: parťák (moduly nemění) -->
+<div class="screen" id="s-step3">
+  <div class="card card-wide">
+    <div class="steps"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div></div>
+    <div class="stitle" data-i18n="onb.buddy.title">Vyber si parťáka</div>
+    <div class="ssub" data-i18n="onb.buddy.sub">Jen vzhled a styl, jakým ti bude psát. Jednoho jsme ti doporučili, klidně vyber jiného.</div>
+    <div class="av-grid" id="av-grid"></div>
     <button class="btn-s" onclick="ss(&#39;s-step2&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
     <button class="btn-p" id="onb-finish-btn" style="margin-top:6px" onclick="finishOnboard()" data-i18n="onb.finish">🚀 Jdeme na to!</button>
   </div>

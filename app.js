@@ -646,7 +646,10 @@ const MODS=[
   {id:'mealplan',emoji:'🥗'},
   {id:'checklist',emoji:'✅'},
 ];
-const AVMODS={rex:['habits','goals','journal'],sage:['journal','goals'],ash:['habits','goals'],nora:['cooking','shopping','calendar'],rio:['journal','calendar']};
+// Onboarding (4.60): moduly určuje jen šablona, parťák je jen vzhled a styl řeči.
+// Bez šablony („Vlastní výběr“) tyto moduly; doporučený parťák podle šablony.
+const ONB_BASE_MODS=['habits','shopping','calendar','goals'];
+const AV_REC={family:'nora',student:'rio',health:'ash'};
 // Šablony onboardingu (krok 3): předvybrané moduly + ukázkové návyky (pole jako v saveHabit; days: 0 = neděle; název tpl.<id>.hN)
 const ONB_TPLS = {
   family: { mods:['shopping','mealplan','cooking','calendar','habits'], habits:[
@@ -3939,17 +3942,33 @@ window.toggleLoginMode=(mode)=>{
 };
 
 let selAddr='jmeno';
-window.sg=g=>{selG=g;document.getElementById('gm').classList.toggle('sel',g==='m');document.getElementById('gf').classList.toggle('sel',g==='f');v1();};
+// Oslovení je nepovinné: m / f / x (Neuvádět); nevybrané = x → výchozí (neutrální) tvary textů
+window.sg=g=>{selG=(g==='m'||g==='f'||g==='x')?g:'';['m','f','x'].forEach(k=>{const b=document.getElementById('g'+k);if(b){b.classList.toggle('sel',selG===k);b.setAttribute('aria-pressed',String(selG===k));}});v1();};
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
-window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!(nick&&selG);};
-window.gS2=()=>{prof.nickname=cutName(document.getElementById('u-nick').value,40);prof.gender=selG;prof.addrMode='jmeno';prof.prezdivka=prof.nickname;rAvGrid('av-grid',false);ss('s-step2');};
+window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
+// Zpět z 1. kroku: profil ještě neexistuje → jen odhlásit, nic nezapisovat (doLogout by profil založil); pozvánka zůstane
+window.onbBackToLogin=async()=>{try{await signOut(auth);}catch(e){}location.reload();};
+// Krok 2 = šablona. Poprvé: s pozvánkou do skupiny předvybraná Rodina (Nákupy, Kalendář)
+let _onbTplInit=false, _selAvTouched=false;
+window.gS2=()=>{
+  const nick=cutName(document.getElementById('u-nick').value,40); if(!nick) return;
+  prof.nickname=nick;prof.gender=selG||'x';prof.addrMode='jmeno';prof.prezdivka=prof.nickname;
+  const inv=!!readPendingJoin();
+  if(!_onbTplInit){_onbTplInit=true;window.pickTpl(inv?'family':null);}else window.pickTpl(selTpl,true);
+  ss('s-step2');
+};
 function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${avVibe(a).replace('\n','<br>')}</div></div>`).join('');}
-window.selAv2=id=>{selAv=id;rAvGrid('av-grid',false);document.getElementById('btn-s2').disabled=false;};
+window.selAv2=id=>{if(!AVS.some(a=>a.id===id))return;selAv=id;_selAvTouched=true;rAvGrid('av-grid',false);};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
-window.gS3=()=>{prof.avatarId=selAv;window.pickTpl(null);ss('s-step3');}; // pickTpl(null) = moduly podle avatara, bez šablony
+// Krok 3 = parťák: předvybraný podle šablony (dokud ho uživatel sám nezměnil), „Jdeme na to!“ aktivní hned
+window.gS3=()=>{
+  if(selMods.size===0){toast(t('onb.pickOne'));return;}
+  if(!_selAvTouched) selAv=(selTpl&&AV_REC[selTpl])||'rex';
+  rAvGrid('av-grid',false);ss('s-step3');
+};
 function rMods(){
-  const s3t=document.getElementById('s3-title'); if(s3t) s3t.textContent=t('onb.s3.titleName',{name:prof.nickname});
-  const p=selTpl?ONB_TPLS[selTpl].mods:(AVMODS[prof.avatarId]||[]);
+  const s2t=document.getElementById('s2-title'); if(s2t) s2t.textContent=prof.nickname?t('onb.use.titleName',{name:prof.nickname}):t('onb.use.title');
+  const p=selTpl?ONB_TPLS[selTpl].mods:ONB_BASE_MODS;
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
 }
@@ -3957,14 +3976,16 @@ function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=t(el.classList.contains('open')?'onb.less':'onb.more');};
 // Šablona: přepíše předvybrané moduly a nabídne ukázkové návyky (id null = bez šablony)
-window.pickTpl=id=>{
-  selTpl=ONB_TPLS[id]?id:null;
-  selMods=new Set(selTpl?ONB_TPLS[selTpl].mods:(AVMODS[selAv]||[]));
+// keep = jen překreslit (návrat do kroku 2), ručně upravené moduly zůstanou
+window.pickTpl=(id,keep)=>{
+  selTpl=Object.prototype.hasOwnProperty.call(ONB_TPLS,id)?id:null;
+  if(keep!==true) selMods=new Set(selTpl?ONB_TPLS[selTpl].mods:ONB_BASE_MODS);
   rMods();
+  const n=document.getElementById('tpl-inv-note'); if(n) n.hidden=!(selTpl==='family'&&readPendingJoin());
   document.querySelectorAll('.tpl-card').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.a0===selTpl)));
   const s=document.getElementById('tpl-samples'), c=document.getElementById('tpl-clear');
   if(s) s.hidden=!selTpl; if(c) c.hidden=!selTpl;
-  const chk=document.getElementById('tpl-samples-chk'); if(chk) chk.checked=true;
+  const chk=document.getElementById('tpl-samples-chk'); if(chk&&keep!==true) chk.checked=true;
   const l=document.getElementById('tpl-samples-list');
   if(l) l.textContent=selTpl?ONB_TPLS[selTpl].habits.map((h,i)=>h.emoji+' '+tplHabitName(selTpl,i)).join(', '):'';
 };
@@ -3976,6 +3997,8 @@ window.finishOnboard=async()=>{
   _onbBusy=true;
   const fb=document.getElementById('onb-finish-btn'); if(fb) fb.disabled=true;
   try{
+  prof.avatarId=AVS.some(a=>a.id===selAv)?selAv:'rex'; // parťák jen vzhled, moduly nemění
+  if(!prof.gender) prof.gender='x';
   selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();
   prof.lastSeen=prof.createdAt;
   const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
