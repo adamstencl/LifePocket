@@ -858,7 +858,7 @@ async function startSession(u){
     if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true}).catch(e=>console.warn('[LP] migrace modulů:',e?.code||e?.name));
     selMods=new Set(prof.modules||[]);initApp();
     touchLastSeen(u.uid);
-    syncProfileTz(u.uid);
+    _tzUid=u.uid; syncProfileTz(u.uid);
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
       setTimeout(()=>toast(t('auth.verifyEmail'),5000),1000);
     }
@@ -873,13 +873,18 @@ function deviceTz(){
   try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone; return (typeof z==='string'&&z&&z.length<=64)?z:''; }catch(e){ return ''; }
 }
 function syncProfileTz(uid){
-  if(_accDeleting||_accDeleted||_accStopped) return;
+  if(_accDeleting||_accDeleted||_accStopped||!uid||!prof) return;
   const tz=deviceTz();
   if(!tz||prof.tz===tz) return;
+  // UTC/GMT/Etc/* (zařízení bez zóny, resistFingerprinting) nepřepíše skutečnou zónu, zapíše se jen do prázdného profilu
+  if(prof.tz&&/^(UTC|GMT|Etc\/)/i.test(tz)) return;
   prof.tz=tz;
   setDoc(doc(db,'users',uid,'profile','main'),{tz},{merge:true})
     .catch(e=>console.warn('[LP] tz:',e?.code||e?.name));
 }
+// Návrat appky z pozadí (cesta do jiné zóny): zápis jen při změně a až po načtení profilu (_tzUid)
+let _tzUid='';
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&CU&&CU.uid===_tzUid) syncProfileTz(CU.uid); });
 // Poslední otevření appky do profilu (pro anonymní souhrn „aktivní za 1/7/30 dní“), nejvýš jednou za pražský den
 function touchLastSeen(uid){
   if(_accDeleting||_accDeleted||_accStopped) return; // mazání účtu: žádné zápisy
@@ -6739,7 +6744,8 @@ window.openShopViewSheet = (mode) => {
     }, 0);
   };
   m.addEventListener('keydown', e => { if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.remove(); } });
-  m.addEventListener('click', e => { if(e.target === m) m.remove(); });
+  const t0 = Date.now(); // recept: druhý klik dvojkliku na tlačítko nesmí sheet hned zavřít
+  m.addEventListener('click', e => { if(e.target === m && !(recipe && Date.now() - t0 < 300)) m.remove(); });
   // Zpět (cm() jen sundá .open) → odstranit celé
   new MutationObserver(() => { if(!m.classList.contains('open')) m.remove(); }).observe(m, { attributes: true, attributeFilter: ['class'] });
   document.body.appendChild(m);
@@ -14125,18 +14131,18 @@ window.editShopCat=(id, currentCat)=>{
 
 // ── MNOŽSTVÍ PŘI PSANÍ (4.45) ── „2 mléka“, „mléko 2l“, „3x rohlík“, „500 g mouky“ → {name, qty}
 // Název se ukládá, jak ho uživatel napsal (bez skloňování), jen se oddělí množství. qty zůstává volný řetězec.
-// Číslo: smíšené „1 1/2“ a „1½“, tisíce „1 000“ / „1.000“ (přesně 3 číslice za oddělovačem), zlomek, desetinné
-const SHOP_NUM_RE = '(\\d{1,3}(?: \\d{1,2}\\/\\d{1,3}| ?[½¼¾])|[1-9]\\d{0,2}(?:[. ]\\d{3})+(?![\\d.,/])|\\d{1,4}\\/\\d{1,3}|[½¼¾]|\\d{1,5}(?:[.,]\\d{1,3})?)';
+// Číslo: smíšené „1 1/2“ a „1½“, tisíce s mezerou jen „1 000“ / „1 500“ („2 100 g“ jako dřív), zlomek, desetinné (tečka = čárka)
+const SHOP_NUM_RE = '(\\d{1,2}(?: \\d{1,2}\\/[1-9]\\d{0,2}| ?[½¼¾])|1(?: \\d{3})+(?![\\d.,/])|\\d{1,4}\\/\\d{1,3}|[½¼¾]|\\d{1,5}(?:[.,]\\d{1,3})?)';
 const SHOP_UNIT_RE = '(kusy|kusů|kusu|kus|ks|pcs|pc|kilogramy|kilogramů|kilo|kila|kg|dkg|deka|deko|gramy|gramů|gramu|g|ml|dl|cl|litry|litrů|litru|litr|l|balení|bal|packs|pack|x|×)\\.?'; // tečka za jednotkou („2 l.“) se ignoruje
 const SHOP_FRAC = {'½':.5,'¼':.25,'¾':.75};
 function shopNum(s){
   s = String(s||'').replace(/\s+/g,' ').trim();
   if(SHOP_FRAC[s]) return SHOP_FRAC[s];
   let n, m;
-  if((m = s.match(/^(\d{1,3})(?: (\d{1,2})\/(\d{1,3})| ?([½¼¾]))$/))) // smíšené číslo „1 1/2“, „1½“
-    n = Number(m[1]) + (m[4] ? SHOP_FRAC[m[4]] : (Number(m[3]) ? Number(m[2])/Number(m[3]) : 0));
-  else if((m = s.match(/^[1-9]\d{0,2}(?:([. ])\d{3})+$/)) && !(m[1]==='.' && LANG==='en')) // tisíce; v angličtině je tečka desetinná
-    n = Number(s.replace(/[. ]/g,''));
+  if((m = s.match(/^(\d{1,2})(?: (\d{1,2})\/(\d{1,3})| ?([½¼¾]))$/))) // smíšené číslo „1 1/2“, „1½“; nulový jmenovatel = 0
+    n = m[4] ? Number(m[1]) + SHOP_FRAC[m[4]] : (Number(m[3]) ? Number(m[1]) + Number(m[2])/Number(m[3]) : 0);
+  else if(/^[1-9]\d{0,2}(?: \d{3})+$/.test(s)) // tisíce s mezerou („1 000“); tečka je vždy desetinná
+    n = Number(s.replace(/ /g,''));
   else {
     const f = s.match(/^(\d+)\/(\d+)$/);
     n = f ? (Number(f[2]) ? Number(f[1])/Number(f[2]) : 0) : parseFloat(s.replace(',','.'));
@@ -14181,7 +14187,7 @@ function parseShopInput(raw){
   // „3x rohlík“, „2×mléko“
   if((m = s.match(new RegExp('^'+N+'\\s*([x×])\\s*(\\p{L}.*)$','iu'))) && (r = ok(m[3], shopNum(m[1]), m[2]))) return r;
   // „2 mléka“, „1/2 chleba“, „½ melounu“ (počet nejvýš 3 číslice: „2024 kalendář“ zůstane)
-  if((m = s.match(/^(\d{1,2}(?: \d{1,2}\/\d{1,3}| ?[½¼¾])|\d{1,3}\/\d{1,3}|[½¼¾]|\d{1,3}(?:[.,]\d{1,3})?)\s+(\p{L}.*)$/iu)) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
+  if((m = s.match(/^(\d{1,2}(?: \d{1,2}\/[1-9]\d{0,2}| ?[½¼¾])|\d{1,3}\/\d{1,3}|[½¼¾]|\d{1,3}(?:[.,]\d{1,3})?)\s+(\p{L}.*)$/iu)) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
   // „mléko 2l“, „rohlíky 10 ks“, „pivo 0,5 l“, „mléko 2x“
   if((m = s.match(new RegExp('^(.+?)\\s+'+N+'\\s*'+U+'$','iu'))) && (r = ok(m[1], shopNum(m[2]), m[3]))) return r;
   // „mléko x2“
@@ -15090,8 +15096,14 @@ window.sendToShopping=async(target)=>{
   if(_sendShopBusy) return;
   const gs=shopGroups();
   if(target===undefined&&gs.length){ window.openShopViewSheet('recipe'); return; }
-  const gid=(typeof target==='string'&&gs.includes(target))?target:null;
-  if(gid&&!shopGrp[gid]?.loaded){ subscribeGroupShop(gid); toast(t('mp.shopLoading')); return; } // bez načteného seznamu by vznikly duplicity
+  // Zvolená skupina mezitím nákupy nesdílí (vypnutý modul, odchod) → nic nepřidávat
+  if(typeof target==='string'&&target&&!gs.includes(target)){ toast(t('ck.shopTargetGone',{name:groupDataOf(target)?grpName(target):t('grp.defName')}),5000); return; }
+  const gid=(typeof target==='string'&&target)||null;
+  if(gid&&!shopGrp[gid]?.loaded){
+    const e=shopGrp[gid];
+    if(e&&e.err&&grpSubBlocked(e)){ toast(t('ck.shopGrpErr'),5000); return; } // listener po chybě čeká na nový pokus
+    subscribeGroupShop(gid); toast(t('mp.shopLoading')); return; // bez načteného seznamu by vznikly duplicity
+  }
   _sendShopBusy=true;
   try{
   const listItems=shopItemsOf(gid);
@@ -15113,7 +15125,7 @@ window.sendToShopping=async(target)=>{
         category:shopCatOf(ing.category),
         done:false,
         fromRecipe:lastRecipe.name,
-        ...(gid?{addedBy:CU.uid}:{}),
+        ...(gid?{addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||''}:{}),
         createdAt:new Date().toISOString()
       });
       if(!added) firstAdded=String(ing.name);
@@ -15498,8 +15510,8 @@ const ING_UNITS = (()=>{
 })();
 function parseIngQty(qtyStr) {
   if (!qtyStr) return {amount:1, unit:'ks'};
-  // Smíšené číslo („1 1/2“, „1½“) a tisíce („1 000“, „1.000“) jako v nákupu (shopNum)
-  const m = String(qtyStr).replace(/\s+/g,' ').match(/(\d{1,3}(?: \d{1,2}\/\d{1,3}| ?[½¼¾])|[1-9]\d{0,2}(?:[. ]\d{3})+(?![\d.,/])|\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
+  // Smíšené číslo („1 1/2“, „1½“) a tisíce s mezerou („1 000“, „2 500“); tečka je desetinná (shopNum)
+  const m = String(qtyStr).replace(/\s+/g,' ').match(/(\d{1,2}(?: \d{1,2}\/[1-9]\d{0,2}| ?[½¼¾])|[1-9]\d{0,2}(?: \d{3})+(?![\d.,/])|\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
   if (!m) return {amount:1, unit:'ks'};
   const amount = shopNum(m[1]); // 0 (např. „0 g“) zůstává 0, volající ho přeskočí
   const w = (m[2]||'').toLowerCase();

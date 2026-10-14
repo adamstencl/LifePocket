@@ -1436,6 +1436,8 @@ export default {
   'ck.steps': 'Postup',
   'ck.genFirst': 'Nejprve vygeneruj recept',
   'ck.shopTarget': 'Do kterého seznamu přidat?',
+  'ck.shopTargetGone': 'Seznam skupiny {name} už není sdílený, suroviny jsem nepřidal',
+  'ck.shopGrpErr': '❌ Nákupní seznam skupiny se nepodařilo načíst, zkus to později',
   'ck.sAdded': '{n} přidáno',
   'ck.sSkipped': '{n} už v seznamu',
   'ck.sHave': '{n} máš doma',

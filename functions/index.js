@@ -270,14 +270,15 @@ function pragueDS(date) {
 // Časové pásmo uživatele (profile.tz, IANA). Neplatné nebo chybějící = Europe/Prague (dřívější chování).
 const DEF_TZ = 'Europe/Prague';
 const TZ_CACHE_MAX = 500;
-const _tzFmt = new Map(); // zóna → Intl formatter (null = neplatná); formatter je drahý, tvoří se jednou na zónu
+const _tzFmt = new Map(); // zóna → Intl formatter; formatter je drahý, tvoří se jednou na zónu (neplatné se necachují)
 function tzFormatter(tz) {
-  if (_tzFmt.has(tz)) return _tzFmt.get(tz);
-  let f = null;
+  const c = _tzFmt.get(tz);
+  if (c) return c;
+  let f;
   try {
     f = new Intl.DateTimeFormat('en-US', {timeZone: tz, hourCycle: 'h23',
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'});
-  } catch(e) { f = null; }
+  } catch(e) { return null; } // neplatná zóna: necachovat (cache by šla zaplnit odpadem)
   if (_tzFmt.size < TZ_CACHE_MAX) _tzFmt.set(tz, f);
   return f;
 }

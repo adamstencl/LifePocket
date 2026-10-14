@@ -1430,6 +1430,8 @@ export default {
   'ck.steps': 'Method',
   'ck.genFirst': 'Generate a recipe first',
   'ck.shopTarget': 'Add to which list?',
+  'ck.shopTargetGone': 'The {name} list is no longer shared, no ingredients were added',
+  'ck.shopGrpErr': '❌ Couldn’t load the group shopping list, try again later',
   'ck.sAdded': '{n} added',
   'ck.sSkipped': '{n} already on the list',
   'ck.sHave': '{n} you have at home',
