@@ -51,9 +51,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.51';
 const CHANGELOG = [
   { v:'4.51', items:[
-    '👥 Přehlednější skupiny – emoji, šablony a volba hlavní skupiny'
+    '👥 Přehlednější skupiny – emoji, šablony a volba hlavní skupiny',
+    '🛠️ Opravena karta pozdravu na Domů – text se už neláme po písmenech a Rex zdraví ve tvém jazyce'
   ], en:[
-    '👥 Clearer groups – emoji, templates and choosing the main group'
+    '👥 Clearer groups – emoji, templates and choosing the main group',
+    '🛠️ Fixed the greeting card on Home – text no longer breaks letter by letter and Rex greets you in your language'
   ]},
   { v:'4.50', items:[
     '👥 Nákupní seznam teď můžeš sdílet v kterékoli skupině – rodina, spolubydlící, tým'
@@ -4941,12 +4943,31 @@ Ráno pozdravi uživatele a zmíň 1-2 relevantní věci ze seznamu:
 - Vzory: ${weekPatterns || 'zatím málo dat'}
 Buď konkrétní, ne obecný. Nezačínej s "Ahoj".
 PRAVIDLO JMÉNO: Oslovuj uživatele PŘESNĚ jako "${prof?.nickname || ''}" — neupravuj, nezdrobňuj, nepřekládej.
-PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Žádná anglická, německá ani jiná cizí slova.`;
+${t('ai.greet.lang')}`;
 
   try {
-    const msg = await callClaude([{role:'system',content:sys},{role:'user',content:'ranní pozdrav'}], 150);
+    const q = [{role:'system',content:sys},{role:'user',content:t('ai.greet.ask')}];
+    let msg = await callClaude(q, 150);
+    // Cizí pozdrav latinkou (guten Morgen, buenos días…) písmo nechytí → 1 opakování, pak raději nic (zůstane pevný text karty)
+    if (msg && aiForeignGreeting(msg)) {
+      q[0] = {role:'system', content: sys + '\n\n' + t('ai.greet.retry')};
+      msg = await callClaude(q, 150);
+      if (msg && aiForeignGreeting(msg)) return;
+    }
     if (msg) showRexDashboardMessage(aiPlain(msg));
-  } catch(e) { console.warn('[LP] rexProactiveGreeting selhalo:', e.message); }
+  } catch(e) { console.warn('[LP] rexProactiveGreeting selhalo:', e?.code || e?.name); }
+}
+// Nejčastější cizí pozdravy v jazyce uživatele (latinkou); hranice slova bez lookbehind (starší Safari)
+const AI_FOREIGN_GREET = {
+  cs: 'guten|morgen|gute|buenos|buenas|bonjour|bonsoir|hola|ciao|hallo|hello|good|morning|dzie[nń]',
+  en: 'guten|morgen|gute|buenos|buenas|bonjour|bonsoir|hola|ciao|hallo|ahoj|dobr[ée]|r[áa]no|dzie[nń]',
+};
+const AI_FOREIGN_GREET_RE = Object.fromEntries(Object.entries(AI_FOREIGN_GREET)
+  .map(([k, w]) => [k, new RegExp('(?:^|[^A-Za-z\\u00C0-\\u024F])(?:' + w + ')(?![A-Za-z\\u00C0-\\u024F])', 'i')]));
+// Oslovení (přezdívka) se nekontroluje – může znít cize
+function aiForeignGreeting(text) {
+  const re = AI_FOREIGN_GREET_RE[LANG], nick = String(prof?.nickname || '').trim();
+  return !!re && re.test(nick ? String(text ?? '').split(nick).join(' ') : String(text ?? ''));
 }
 
 function analyzeWeekPatterns() {
@@ -4990,7 +5011,7 @@ function showRexDashboardMessage(msg) {
 
   const msgEl = document.createElement('div');
   msgEl.id = 'rex-dash-msg';
-  msgEl.style.cssText = `margin-top:10px;padding:12px 14px;background:rgba(245,200,66,0.06);border:1px solid rgba(245,200,66,0.15);border-radius:12px;font-size:15px;color:var(--text2);line-height:1.6;font-style:italic;`;
+  msgEl.className = 'rex-dash-msg'; // celý řádek pod avatarem a textem (karta je flex v řádku)
   msgEl.innerHTML = `<span style="color:var(--accent);font-style:normal;font-weight:600">${av.emoji} ${av.name}:</span> ${esc(msg)}`;
   dashCard.appendChild(msgEl);
 }
