@@ -917,12 +917,13 @@ onAuthStateChanged(auth,async u=>{
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
     clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
-    [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal,unsubFamilyMeal,unsubFamilyChecklist].forEach(u=>{if(u)u();});
+    [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
+    unsubAllGroupMeals(); mealViewSel=undefined; unsubAllGroupChecks();
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
     unsub=null; unsubHabits=null; unsubLogs=null;
-    unsubFamily=null; unsubFamilyCal=null; unsubFamilyMeal=null; unsubFamilyChecklist=null;
+    unsubFamily=null; unsubFamilyCal=null;
     extraGroupIds=[]; extraGroupsData={}; extraGroupEvents={}; unsubExtraGroupDocs={}; unsubExtraGroupCals={};
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; shopItemsLoaded=false; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
@@ -964,7 +965,7 @@ function claimLocalDataOwner(uid){
 function clearUserSessionState(){
   try{
     if(pantryUnsub){pantryUnsub();pantryUnsub=null;} pantryFamilyId=null;
-    familyId=null; familyData=null; familyEvents=[]; familyChecklists=[]; familyChecklistsReady=false; familyMealPlan={};
+    familyId=null; familyData=null; familyEvents=[];
     extraGroupsData={}; extraGroupEvents={}; pantryItems=[]; _pantryFamilyReady=false; _pantryChatTried=false;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
@@ -3516,12 +3517,12 @@ function stopSessionActivity() {
   _accStopped = true;
   destroyAllFireSubs();
   clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv = null; clearTimeout(_foodDayTimer);
-  [unsub, unsubHabits, unsubLogs, unsubFamily, unsubFamilyCal, unsubFamilyMeal, unsubFamilyChecklist].forEach(u => { if (u) u(); });
-  unsubAllGroupShops();
+  [unsub, unsubHabits, unsubLogs, unsubFamily, unsubFamilyCal].forEach(u => { if (u) u(); });
+  unsubAllGroupShops(); unsubAllGroupMeals(); unsubAllGroupChecks();
   Object.values(unsubExtraGroupDocs).forEach(u => u && u());
   Object.values(unsubExtraGroupCals).forEach(u => u && u());
   unsub = null; unsubHabits = null; unsubLogs = null;
-  unsubFamily = null; unsubFamilyCal = null; unsubFamilyMeal = null; unsubFamilyChecklist = null;
+  unsubFamily = null; unsubFamilyCal = null;
   unsubExtraGroupDocs = {}; unsubExtraGroupCals = {};
   if (pantryUnsub) { pantryUnsub(); pantryUnsub = null; }
   entryDirty = false; _chatDirty = false;  // automatické uložení zápisku a chatu nic nezapíše
@@ -6532,11 +6533,7 @@ function checkInactivity() {
 let familyId = null;
 let familyData = null;
 let unsubFamily = null;
-let unsubFamilyMeal = null;
 let unsubFamilyCal = null;
-let familyMealPlan = {};
-let mealViewMode = 'shared'; // 'shared' | 'personal'
-window.setMealView = (mode) => { mealViewMode = mode === 'personal' ? 'personal' : 'shared'; renderMealPlan(); };
 // Segmentový přepínač: zobrazí/skryje a označí aktivní volbu (bez inline stylů)
 function syncSeg(id, show, mode) {
   const w = document.getElementById(id);
@@ -6695,6 +6692,109 @@ function subscribeGroupShop(gid) {
 }
 function unsubGroupShop(gid) { const e = shopGrp[gid]; if(e?.unsub) e.unsub(); delete shopGrp[gid]; }
 function unsubAllGroupShops() { Object.keys(shopGrp).forEach(unsubGroupShop); }
+// ── Výběr skupiny (4.53): volby '' (Moje / Jen já) + skupiny; 1–3 volby segment, 4+ tlačítko se sheetem (vzor Nákupů 4.50)
+// cfg: {opts, cur, label(g), aria, pick: název window funkce volané s data-gid, sheet: název window funkce sheetu, disabled}
+function grpChoiceHTML(cfg) {
+  const cur = cfg.cur || '', dis = cfg.disabled ? ' disabled' : '';
+  if(cfg.opts.length <= 3) return '<div class="seg seg--block seg--grp" role="group" aria-label="'+esc(cfg.aria)+'">'
+    + cfg.opts.map(g => '<button type="button" class="seg-btn'+(g===cur?' active':'')+'" data-gid="'+esc(g)+'" aria-pressed="'+(g===cur)+'"'+dis
+      + ' onclick="'+cfg.pick+'(this.dataset.gid)">'+esc(cfg.label(g))+'</button>').join('')
+    + '</div>';
+  return '<button type="button" class="grp-pick" aria-haspopup="dialog" aria-label="'+esc(cfg.aria)+': '+esc(cfg.label(cur))+'"'+dis+' onclick="'+cfg.sheet+'()">'
+    + '<span class="grp-pick-lbl">'+esc(cfg.label(cur))+'</span><span aria-hidden="true">▾</span></button>';
+}
+// Sheet se seznamem voleb; výběr zavolá cfg.onPick(gid). Fokus po zavření na cfg.focusSel, jinak na původní prvek.
+let _grpChoice = null;
+function openGrpChoiceSheet(cfg) {
+  document.getElementById('m-grpchoice')?.remove();
+  const cur = cfg.cur || '';
+  _grpChoice = cfg;
+  const m = document.createElement('div');
+  m.id = 'm-grpchoice'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="grpchoice-t" style="max-width:420px">'
+    + '<div class="mtitle" id="grpchoice-t">'+esc(cfg.aria)+'</div>'
+    + '<div class="grp-pick-list">'
+    + cfg.opts.map(g => {
+        const sel = g === cur;
+        return '<button type="button" class="grp-pick-row'+(sel?' sel':'')+'" data-gid="'+esc(g)+'"'+(sel?' aria-current="true"':'')+' onclick="grpChoicePick(this.dataset.gid)">'
+          + '<span class="grp-pick-lbl">'+esc(cfg.label(g))+'</span>'+(sel?'<span aria-hidden="true">✓</span>':'')+'</button>';
+      }).join('')
+    + '</div><div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.close')+'</button></div></div>';
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => (cfg.focusSel && document.querySelector(cfg.focusSel)) || (opener?.isConnected ? opener : null));
+  m.querySelector('.grp-pick-row.sel, .grp-pick-row')?.focus();
+}
+window.grpChoicePick = (gid) => {
+  const c = _grpChoice;
+  document.getElementById('m-grpchoice')?.remove();
+  _grpChoice = null;
+  if(c && c.opts.includes(gid)) c.onPick(gid);
+};
+function grpMineLabel(gid) { return gid ? grpLabel(gid) : '🙂 ' + t('shop.viewMine'); }
+
+// ── JÍDELNÍČEK VE SKUPINÁCH (4.53) ── plán „Moje“ nebo kterékoli skupiny se zapnutým shareMeal.
+// Zobrazený plán je zároveň cíl zápisu. mealGrp: gid → {plan, loaded, unsub}; listener vzniká při prvním zobrazení
+// a drží do odhlášení (hlavní skupina hned kvůli AI kontextu).
+const mealGrp = {};
+const MEAL_VIEW_KEY = 'lp_view_meal';
+let mealViewSel; // undefined = nenačteno, null = výchozí, '' = Moje, jinak gid (pamatuje se na zařízení)
+function mealGroups() { return myGroupIds().filter(g => groupModShared(g, 'meal')); }
+function mealViewStored() {
+  if(mealViewSel === undefined) { const v = lsGet(MEAL_VIEW_KEY, null); mealViewSel = (v && v.u === CU?.uid && typeof v.g === 'string') ? v.g : null; }
+  return mealViewSel;
+}
+function mealViewSave(gid) { mealViewSel = gid; lsSave(MEAL_VIEW_KEY, gid === null ? null : {u: CU?.uid, g: gid}); }
+// Zobrazený plán: gid, nebo null = Moje. Výchozí = hlavní skupina, pokud v ní jídelníček sdílí.
+function mealGid() {
+  const v = mealViewStored(), gs = mealGroups();
+  if(v === '') return null;
+  if(v && gs.includes(v)) return v;
+  return gs.includes(familyId) ? familyId : null;
+}
+function mealPlanOf(gid) { return gid ? (mealGrp[gid]?.plan || {}) : (prof?.mealPlan || {}); }
+window.setMealView = (gid) => {
+  gid = typeof gid === 'string' ? gid : '';
+  if(gid && !mealGroups().includes(gid)) return;
+  mealViewSave(gid);
+  renderMealPlan();
+};
+window.openMealViewSheet = () => openGrpChoiceSheet({
+  opts: ['', ...mealGroups()], cur: mealGid() || '', label: grpMineLabel, aria: t('mp.viewAria'),
+  focusSel: '#meal-view-toggle .grp-pick', onPick: g => window.setMealView(g)
+});
+function renderMealViewToggle(cur) {
+  const w = document.getElementById('meal-view-toggle');
+  if(!w) return;
+  const gs = mealGroups();
+  const html = gs.length ? grpChoiceHTML({opts: ['', ...gs], cur, label: grpMineLabel, aria: t('mp.viewAria'), pick: 'setMealView', sheet: 'openMealViewSheet'}) : '';
+  w.hidden = !html;
+  if(w.innerHTML !== html) w.innerHTML = html; // beze změny nepřekreslovat (fokus klávesnice)
+}
+// Uložená skupina už jídelníček nesdílí (vypnutý modul, odchod) → zpět na výchozí s upozorněním
+function mealViewCheck() {
+  const v = mealViewStored();
+  if(!v || !prof) return;
+  const member = myGroupIds().includes(v);
+  const gone = !member && prof.familyId !== v && !(prof.extraGroupIds || []).includes(v);
+  const off = member && !!groupDataOf(v) && !groupModShared(v, 'meal');
+  if(!gone && !off) return;
+  const name = groupDataOf(v) ? grpName(v) : t('grp.defName');
+  mealViewSave(null);
+  if(!_leavingGids.has(v)) toast(t('mp.viewGone', {name, to: grpMineLabel(mealGid())}), 5000);
+}
+function mealViewForget(gid) { if(mealViewStored() === gid) mealViewSave(null); }
+function subscribeGroupMeal(gid) {
+  if(!gid || !CU || mealGrp[gid]?.unsub) return;
+  const e = mealGrp[gid] = {plan: {}, loaded: false, unsub: null};
+  e.unsub = onSnapshot(doc(db,'families',gid,'mealplan','week'), snap => {
+    if(mealGrp[gid] !== e) return;
+    e.plan = snap.exists() ? normMealPlan(snap.data()) : {};
+    e.loaded = true;
+    if(gid === mealGid()) renderMealPlan();
+  }, familyListenErr);
+}
+function unsubGroupMeal(gid) { const e = mealGrp[gid]; if(e?.unsub) e.unsub(); delete mealGrp[gid]; }
+function unsubAllGroupMeals() { Object.keys(mealGrp).forEach(unsubGroupMeal); }
 function isCalShared() {
   return !!(familyId && familyData?.shareCal) ||
          extraGroupIds.some(gid => !!(extraGroupsData[gid]?.shareCal));
@@ -6940,13 +7040,11 @@ function resetFamilyLocal() {
   flushAllGroupActivity(); // čekající aktivita ještě do staré skupiny
   stopGroupUnread(familyId);
   unsubGroupShop(familyId); // nákupy staré hlavní skupiny
+  unsubGroupMeal(familyId); unsubGroupCheck(familyId); // jídelníček a checklisty (4.53)
   familyId = null; familyData = null;
-  familyEvents = []; familyMealPlan = {};
+  familyEvents = [];
   if(unsubFamily) { unsubFamily(); unsubFamily=null; }
   if(unsubFamilyCal) { unsubFamilyCal(); unsubFamilyCal=null; }
-  if(unsubFamilyMeal) { unsubFamilyMeal(); unsubFamilyMeal=null; }
-  if(unsubFamilyChecklist) { unsubFamilyChecklist(); unsubFamilyChecklist=null; familyChecklists=[]; }
-  familyChecklistsReady = false;
 }
 // Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
 function renderAfterFamilyChange() {
@@ -7032,7 +7130,7 @@ async function leaveFamilyNow(fid) {
     try { await clearProfileFamilyIdIf(fid); }
     catch(e) { profOk = false; console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); }
     if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
-    shopViewForget(fid);
+    shopViewForget(fid); mealViewForget(fid);
     resetFamilyLocal();
     initPantry(); // zpět na lokální zásoby
     renderAfterFamilyChange();
@@ -7068,10 +7166,11 @@ function leaveSetStatus(txt, isErr) {
   st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
 }
 window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById('m-leavegrp')?.remove(); };
-// Popis kopie u vedlejší skupiny podle toho, co sdílí (kopíruje se jen kalendář a nákupy)
-function leaveCopyKey(gData) {
-  const cal = !!gData?.shareCal, shop = !!gData?.shareShop;
-  return cal && shop ? 'grp.leave.optAllCal' : cal ? 'grp.leave.optAllCalOnly' : shop ? 'grp.leave.optAllShop' : 'grp.leave.optAllNone';
+// Popis kopie u vedlejší skupiny podle toho, co sdílí (kalendář, nákupy, jídelníček, checklisty; zásoby jen hlavní)
+function leaveCopyText(gData) {
+  const parts = [gData?.shareCal && t('grp.leave.cpCal'), gData?.shareShop && t('grp.leave.cpShop'),
+    gData?.shareMeal && t('grp.leave.cpMeal'), gData?.shareChecklist !== false && t('grp.leave.cpCheck')].filter(Boolean);
+  return parts.length ? t('grp.leave.optAllList', {list: parts.join(', ')}) : t('grp.leave.optAllNone');
 }
 function openLeaveGroup(gid) {
   if(!CU || _leaveBusy || !okFamilyCode(gid)) return;
@@ -7094,7 +7193,7 @@ function openLeaveGroup(gid) {
       ? `<b style="color:var(--red)">${tH('grp.leave.last')}</b> ${tH('grp.leave.lastRestore')}`
       : tH('grp.leave.info')}</div>
     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${tH('grp.leave.keepQ')}</div>
-    ${opt('all', tH('grp.leave.optAll'), tH(isMain ? 'grp.leave.optAllD' : leaveCopyKey(gData)), true)}
+    ${opt('all', tH('grp.leave.optAll'), (isMain ? tH('grp.leave.optAllD') : esc(leaveCopyText(gData))), true)}
     ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD'), false)}
     ${opt('none', tH('grp.leave.optNone'), '', false)}
     ${last ? `<label style="display:block;font-size:14px;margin:10px 0 4px;color:var(--red)">${tH('grp.leave.typeLabel', {word})}</label>
@@ -7149,7 +7248,7 @@ window.confirmLeaveGroup = async (gid) => {
 };
 
 // Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
-// Hlavní skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby; vedlejší: události a nekoupené nákupy.
+// Každá skupina: nekoupené nákupy, události, checklisty, (all) jídelníček podle sdílených modulů; hlavní navíc (all) zásoby.
 // Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
 async function copyGroupToPersonal(gid, mode) {
   const uid = CU.uid;
@@ -7180,19 +7279,17 @@ async function copyGroupToPersonal(gid, mode) {
         {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
     });
   }
-  if(isMain) {
-    // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → přeskočit; cizí jen při 'all'
-    if(gData.shareChecklist !== false) {
-      const sn = await getDocs(collection(db,'families',gid,'checklists'));
-      const ownIds = new Set(checklists.map(c => c.id));
-      sn.docs.forEach(d => {
-        const l = d.data() || {};
-        const own = l.owner === uid;
-        if(own ? ownIds.has(d.id) : mode !== 'all') return;
-        const id = own ? d.id : genId();
-        writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items: Array.isArray(l.items) ? l.items : [], shared: false, createdAt: Date.now(), copiedFrom: src}]);
-      });
-    }
+  // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → přeskočit; cizí jen při 'all'
+  if(gData.shareChecklist !== false) {
+    const sn = await getDocs(collection(db,'families',gid,'checklists'));
+    const ownIds = new Set(checklists.map(c => c.id));
+    sn.docs.forEach(d => {
+      const l = d.data() || {};
+      const own = l.owner === uid;
+      if(own ? ownIds.has(d.id) : mode !== 'all') return;
+      const id = own ? d.id : genId();
+      writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items: Array.isArray(l.items) ? l.items : [], shared: false, createdAt: Date.now(), copiedFrom: src}]);
+    });
   }
   // Zápis po dávkách (limit 500 operací); čeká na potvrzení serveru
   for(let i = 0; i < writes.length; i += 400) {
@@ -7201,7 +7298,7 @@ async function copyGroupToPersonal(gid, mode) {
     await b.commit();
   }
   n += writes.length;
-  if(isMain && mode === 'all') {
+  if(mode === 'all') {
     // Jídelníček: doplní jen prázdná políčka osobního plánu (vlastní plán se nepřepíše)
     if(gData.shareMeal) {
       const ms = await getDoc(doc(db,'families',gid,'mealplan','week'));
@@ -7223,19 +7320,21 @@ async function copyGroupToPersonal(gid, mode) {
         n += filled;
       }
     }
-    // Zásoby: osobní zásoby jsou jen v tomto zařízení (lp_pantry); stejný název se nepřidá dvakrát
-    const ps = await getDocs(collection(db,'families',gid,'pantry'));
-    const local = lsGet('lp_pantry', []);
-    const have = new Set((Array.isArray(local) ? local : []).map(p => String(p?.name || '').trim().toLowerCase()));
-    const add = [];
-    ps.docs.forEach(d => {
-      const p = d.data() || {};
-      const key = String(p.name || '').trim().toLowerCase();
-      if(!key || have.has(key)) return;
-      have.add(key);
-      add.push({id: genId(), name: String(p.name), qty: p.qty ?? 1, unit: p.unit || 'ks', minQty: p.minQty ?? null, updatedAt: Date.now()});
-    });
-    if(add.length) { lsSave('lp_pantry', [...(Array.isArray(local) ? local : []), ...add]); n += add.length; }
+    // Zásoby (jen hlavní skupina): osobní zásoby jsou jen v tomto zařízení (lp_pantry); stejný název se nepřidá dvakrát
+    if(isMain) {
+      const ps = await getDocs(collection(db,'families',gid,'pantry'));
+      const local = lsGet('lp_pantry', []);
+      const have = new Set((Array.isArray(local) ? local : []).map(p => String(p?.name || '').trim().toLowerCase()));
+      const add = [];
+      ps.docs.forEach(d => {
+        const p = d.data() || {};
+        const key = String(p.name || '').trim().toLowerCase();
+        if(!key || have.has(key)) return;
+        have.add(key);
+        add.push({id: genId(), name: String(p.name), qty: p.qty ?? 1, unit: p.unit || 'ks', minQty: p.minQty ?? null, updatedAt: Date.now()});
+      });
+      if(add.length) { lsSave('lp_pantry', [...(Array.isArray(local) ? local : []), ...add]); n += add.length; }
+    }
   }
   return n;
 }
@@ -7637,6 +7736,9 @@ window.toggleFamilyModule = async (key, gid = null) => {
   }
   if(gid && key === 'shareShop' && !newVal) unsubGroupShop(gid); // seznam už se nezobrazí
   if(key === 'shareShop') renderShop(); // přepínač seznamů (4.50)
+  // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener, přepínač plánů a štítky seznamů překreslit
+  if(key === 'shareMeal') { if(!newVal) unsubGroupMeal(targetGid); renderMealPlan(); }
+  if(key === 'shareChecklist') { if(!newVal) unsubGroupCheck(targetGid); renderChecklist(); }
   renderFamilySettings();
 };
 
@@ -7725,7 +7827,7 @@ async function leaveExtraGroupNow(gid) {
     }
   } catch(e){ _leavingGids.delete(gid); toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
   rememberFormerGroup(gid);
-  shopViewForget(gid);
+  shopViewForget(gid); mealViewForget(gid);
   try {
     await dropExtraGroupLocal(gid);
     toast(t('grp.leave.done'));
@@ -7741,13 +7843,13 @@ function forgetExtraGroupLocal(gid) {
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
-  unsubGroupShop(gid);
+  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid);
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
 }
 // Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
 async function dropExtraGroupLocal(gid) {
   forgetExtraGroupLocal(gid);
-  renderFamilySettings(); renderCal(); renderShop(); // i přepínač seznamů nákupů
+  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); // i přepínače seznamů a plánů
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
 }
@@ -7804,6 +7906,7 @@ function switchGroupLocal(oldGid, newGid) {
   if(selEvShareGroupId === oldGid) selEvShareGroupId = newGid;
   // Vybraný seznam nákupů na novém kódu (jinak by shopViewCheck hlásil „seznam zmizel“)
   if(shopViewStored() === oldGid) { shopViewSel = newGid; lsSave(SHOP_VIEW_KEY, {u: CU?.uid, g: newGid}); }
+  if(mealViewStored() === oldGid) mealViewSave(newGid); // vybraný jídelníček také
   if(changed) renderAfterFamilyChange();
   return changed;
 }
@@ -7985,12 +8088,19 @@ function subscribeExtraGroup(gid) {
       return;
     }
     const prevShop = !!extraGroupsData[gid]?.shareShop, prevLbl = extraGroupsData[gid] && grpLabel(gid);
+    const prevMeal = !!extraGroupsData[gid]?.shareMeal, prevCheck = extraGroupsData[gid] ? extraGroupsData[gid].shareChecklist !== false : null;
     extraGroupsData[gid] = snap.data();
     if (prevShop && !extraGroupsData[gid].shareShop) unsubGroupShop(gid); // nákupy vypnul jiný člen
     // Nákupy (4.50): změna sdílení nebo načtení skupiny, jejíž seznam je vybraný
     if (prevShop !== !!extraGroupsData[gid].shareShop || shopViewStored() === gid
       || (extraGroupsData[gid].shareShop && prevLbl !== grpLabel(gid))) renderShop(); // i přejmenování
     if (_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
+    // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener; změna sdílení, vybraný plán nebo přejmenování → překreslit
+    const xd = extraGroupsData[gid], xMeal = !!xd.shareMeal, xCheck = xd.shareChecklist !== false;
+    if (!xMeal) unsubGroupMeal(gid);
+    if (!xCheck) unsubGroupCheck(gid);
+    if (prevMeal !== xMeal || mealViewStored() === gid || (xMeal && prevLbl !== grpLabel(gid))) renderMealPlan();
+    if (prevCheck !== xCheck || (xCheck && prevLbl !== grpLabel(gid))) renderChecklist();
     if (!_gfUnsub[gid]) startGroupUnread(gid);
     startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -8030,11 +8140,18 @@ function subscribeFamily() {
       return;
     }
     const prevShop = !!familyData?.shareShop, prevLbl = familyData && grpLabel(fid);
+    const prevMeal = !!familyData?.shareMeal, prevCheck = familyData ? familyData.shareChecklist !== false : null;
     familyData = snap.data();
     if(familyId === fid) fillChecklistSharedGid(fid); // starší sdílené checklisty bez sharedGid (jednorázově)
     // Přepínač Moje / skupiny (4.50): změna sdílení nebo přejmenování
     if(prevShop !== !!familyData.shareShop || (familyData.shareShop && prevLbl !== grpLabel(fid))) renderShop();
     if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
+    // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener (zapnutý znovu přihlásí konec snapshotu)
+    const fMeal = !!familyData.shareMeal, fCheck = familyData.shareChecklist !== false;
+    if(!fMeal) unsubGroupMeal(fid);
+    if(!fCheck) unsubGroupCheck(fid);
+    if(prevMeal !== fMeal || (fMeal && prevLbl !== grpLabel(fid))) renderMealPlan();
+    if(prevCheck !== fCheck || (fCheck && prevLbl !== grpLabel(fid))) renderChecklist();
     if(!_gfUnsub[fid]) startGroupUnread(fid);
     startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -8077,40 +8194,43 @@ function normMealPlan(raw) {
   return out;
 }
 
-function subscribeSharedMeal() {
-  if(unsubFamilyMeal) return;
-  unsubFamilyMeal = onSnapshot(doc(db,'families',familyId,'mealplan','week'), snap => {
-    familyMealPlan = snap.exists() ? normMealPlan(snap.data()) : {};
-    renderMealPlan();
+// Hlavní skupina se odebírá hned (AI kontext, výchozí plán), ostatní až při zobrazení
+function subscribeSharedMeal() { subscribeGroupMeal(familyId); }
+
+// ── SDÍLENÝ CHECKLIST (4.53: v každé skupině se zapnutým shareChecklist) ──────────
+// clGrp: gid → {lists, ready, unsub}. Hlavní skupina se odebírá hned (AI kontext), ostatní při otevření Checklistů
+// a drží do odhlášení. Seznam se sdílí do jedné skupiny: ve skupině leží jeho kopie s mým owner.
+const clGrp = {};
+function checkGroups() { return myGroupIds().filter(g => groupModShared(g, 'check')); }
+function subscribeGroupChecklist(gid) {
+  if(!gid || !CU || clGrp[gid]?.unsub) return;
+  const e = clGrp[gid] = {lists: [], ready: false, unsub: null};
+  e.unsub = onSnapshot(collection(db,'families',gid,'checklists'), snap => {
+    if(clGrp[gid] !== e) return;
+    e.lists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true, _gid: gid}));
+    e.ready = true;
+    renderChecklist();
   }, familyListenErr);
 }
+function unsubGroupCheck(gid) { const e = clGrp[gid]; if(e?.unsub) e.unsub(); delete clGrp[gid]; }
+function unsubAllGroupChecks() { Object.keys(clGrp).forEach(unsubGroupCheck); }
+function subscribeSharedChecklist() { subscribeGroupChecklist(familyId); }
+// Při otevření Checklistů: seznamy všech skupin, které checklisty sdílí
+function ensureCheckSubs() { checkGroups().forEach(subscribeGroupChecklist); }
+// Seznamy skupin (hlavní první), jen ze skupin, kde je modul zapnutý
+function groupChecklists() { return checkGroups().flatMap(g => clGrp[g]?.lists || []); }
+// Osobní seznamy první (sdílený seznam má ve skupině kopii se stejným ID)
+function allChecklists() { return [...checklists, ...groupChecklists()]; }
 
-// ── SDÍLENÝ CHECKLIST ──────────────────────────────────────
-let familyChecklists = [];
-let familyChecklistsReady = false; // první snapshot sdílených seznamů hlavní skupiny dorazil
-let unsubFamilyChecklist = null;
-
-function subscribeSharedChecklist() {
-  if(unsubFamilyChecklist) return;
-  familyChecklistsReady = false;
-  unsubFamilyChecklist = onSnapshot(
-    collection(db,'families',familyId,'checklists'),
-    snap => {
-      familyChecklists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true}));
-      familyChecklistsReady = true;
-      renderChecklist();
-    },
-    familyListenErr
-  );
-}
-
-// Sdílený v hlavní skupině = ve skupině leží jeho kopie s mým owner (přežije i změnu kódu skupiny);
+// Skupina, do které je můj seznam sdílený = leží v ní jeho kopie s mým owner (přežije i změnu kódu skupiny);
 // sharedGid je jen doplněk pro zobrazení, než dorazí data skupiny
-function clSharedHere(c) {
-  if(!c?.shared || !familyId) return false;
-  if(!familyChecklistsReady) return c.sharedGid === familyId;
-  return familyChecklists.some(f => f.id === c.id && f.owner === CU?.uid);
+function clSharedGid(c) {
+  if(!c?.shared || !CU) return null;
+  const gs = checkGroups();
+  for(const g of gs) { const e = clGrp[g]; if(e?.ready && e.lists.some(f => f.id === c.id && f.owner === CU.uid)) return g; }
+  return (c.sharedGid && gs.includes(c.sharedGid) && !clGrp[c.sharedGid]?.ready) ? c.sharedGid : null;
 }
+function clSharedHere(c, gid) { return !!gid && clSharedGid(c) === gid; }
 // Po změně kódu skupiny: sharedGid vlastních seznamů starý → nový kód
 function remapChecklistSharedGid(oldGid, newGid) {
   if(!CU || !okFamilyCode(newGid)) return;
@@ -8132,30 +8252,47 @@ function fillChecklistSharedGid(gid) {
   }
 }
 
+// Sdílet / přestat sdílet: sdílený seznam se odebere ze své skupiny; nesdílený jde do jediné skupiny,
+// nebo se skupina vybere v sheetu
 window.toggleChecklistShare = async function(listId) {
   const list = checklists.find(c => c.id === listId);
-  if(!list || !familyId) return;
-  const fid = familyId;
-  // Bez dat skupiny nevíme, zda kopie ve skupině existuje → nic nepřepisovat
-  if(!familyChecklistsReady) { toast(t('cl.loading')); return; }
-  // Sdílený v jiné (dřívější hlavní) skupině = tady nesdílený → sdílet do aktuální
-  if(clSharedHere(list)) { list.shared = false; delete list.sharedGid; }
-  else { list.shared = true; list.sharedGid = fid; }
+  const gs = checkGroups();
+  if(!list || !gs.length) return;
+  ensureCheckSubs();
+  // Bez dat skupin nevíme, zda kopie ve skupině existuje → nic nepřepisovat
+  if(gs.some(g => !clGrp[g]?.ready)) { toast(t('cl.loading')); return; }
+  const cur = clSharedGid(list);
+  if(cur) { await unshareChecklist(list, cur); return; }
+  if(gs.length === 1) { await window.shareChecklistTo(listId, gs[0]); return; }
+  openGrpChoiceSheet({opts: gs, cur: '', label: grpLabel, aria: t('cl.shareTo'), focusSel: '.cl-share-btn',
+    onPick: g => window.shareChecklistTo(listId, g)});
+};
+window.shareChecklistTo = async (listId, gid) => {
+  const list = checklists.find(c => c.id === listId);
+  const e = clGrp[gid];
+  if(!list || !checkGroups().includes(gid) || !e?.ready || clSharedGid(list)) return;
+  // Sdílený v jiné (dřívější) skupině bez kopie = tady nesdílený → sdílet do zvolené
+  list.shared = true; list.sharedGid = gid;
   saveChecklistDoc(list);
-  if(list.shared) {
+  try {
     // Kopie už ve skupině leží (např. sdílená z jiného zařízení) → nepřepisovat ji starším obsahem
-    if(!familyChecklists.some(f => f.id === list.id)) await setDoc(doc(db,'families',fid,'checklists',list.id), {
+    if(!e.lists.some(f => f.id === list.id)) await setDoc(doc(db,'families',gid,'checklists',list.id), {
       name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
     });
-    logGroupActivity(fid, 'check', 'share', list.name || '');
-    toast(t('cl.shared', {name: list.name}));
-  } else {
-    await deleteDoc(doc(db,'families',fid,'checklists',list.id));
-    logGroupActivity(fid, 'check', 'del', list.name || '');
-    toast(t('cl.unshared', {name: list.name}));
-  }
+  } catch(err) { toast('⚠️ '+userErr(err,'seznam')); renderChecklist(); return; }
+  logGroupActivity(gid, 'check', 'share', list.name || '');
+  toast(t('cl.shared', {name: list.name, to: grpLabel(gid)}));
   renderChecklist();
 };
+async function unshareChecklist(list, gid) {
+  list.shared = false; delete list.sharedGid;
+  saveChecklistDoc(list);
+  try { await deleteDoc(doc(db,'families',gid,'checklists',list.id)); }
+  catch(err) { toast('⚠️ '+userErr(err,'seznam')); renderChecklist(); return; }
+  logGroupActivity(gid, 'check', 'del', list.name || '');
+  toast(t('cl.unshared', {name: list.name, to: grpLabel(gid)}));
+  renderChecklist();
+}
 
 // ── SPRÁVA SKUPIN (4.51) ── krátké karty v Nastavení, detail ve sheetu, emoji, šablony, volba hlavní skupiny
 const GROUP_EMOJIS = ['🏠','💼','🎉','⚽','🏡','🎓','✈️','👥'];
@@ -8175,8 +8312,8 @@ function groupTemplateFlags(tpl, over) {
   for(const k of GROUP_MOD_KEYS) out[k] = typeof over?.[k] === 'boolean' ? over[k] : !!base[k];
   return out;
 }
-// Přepínače, které skupina v Nastavení ukazuje: hlavní všechny, vedlejší zatím nákupy a kalendář (fáze 3)
-function groupModKeys(isMain) { return isMain ? GROUP_MOD_KEYS : ['shareShop','shareCal']; }
+// Přepínače, které skupina v Nastavení ukazuje: všechny moduly v každé skupině (4.53), zásoby zvlášť jen u hlavní
+function groupModKeys() { return GROUP_MOD_KEYS; }
 // Hodnota přepínače (checklist bez pole = zapnutý, stejně jako groupModShared)
 function groupModVal(d, key) { return key === 'shareChecklist' ? d?.shareChecklist !== false : !!d?.[key]; }
 function grpModName(key) { return t('gn.mod.' + GROUP_MOD_INFO[key][1]); }
@@ -8291,7 +8428,7 @@ function groupSheetBody(gid) {
     + '<span class="gf-count" data-gf-count data-gid="'+g+'"'+(unreadN?'':' hidden')+'>'+(unreadN>9?'9+':unreadN)+'</span></button>';
   // Co skupina sdílí
   h += '<div class="grp-sec-h">'+tH('grp.sharesH')+'</div>';
-  h += groupModKeys(isMain).map(k => {
+  h += groupModKeys().map(k => {
     const on = groupModVal(d, k);
     return '<button type="button" class="fshare-mod-row grp-mod" role="switch" aria-checked="'+on+'" data-fk="mod-'+k+'" data-gid="'+g+'" data-a0="'+k+'" onclick="toggleFamilyModule(this.dataset.a0,this.dataset.gid)">'
       + '<span class="grp-mod-em" aria-hidden="true">'+GROUP_MOD_INFO[k][0]+'</span><span class="grp-mod-l">'+esc(grpModName(k))+'</span>'
@@ -8451,7 +8588,7 @@ window.openNewGroup = () => {
     + tpls.map(([k, key]) => '<button type="button" class="seg-btn" data-a0="'+k+'" aria-pressed="false" onclick="pickNewGroupTpl(this.dataset.a0)">'+tH(key)+'</button>').join('')
     + '</div>'
     + '<div class="grp-ng-mods">'
-    + groupModKeys(isMain).map(k => '<button type="button" class="fshare-mod-row grp-mod" role="switch" aria-checked="false" data-a0="'+k+'" onclick="toggleNewGroupMod(this.dataset.a0)">'
+    + groupModKeys().map(k => '<button type="button" class="fshare-mod-row grp-mod" role="switch" aria-checked="false" data-a0="'+k+'" onclick="toggleNewGroupMod(this.dataset.a0)">'
         + '<span class="grp-mod-em" aria-hidden="true">'+GROUP_MOD_INFO[k][0]+'</span><span class="grp-mod-l">'+esc(grpModName(k))+'</span>'
         + '<span class="fshare-toggle" aria-hidden="true"><span class="fshare-thumb"></span></span></button>').join('')
     + '</div>'
@@ -8568,11 +8705,9 @@ window.openSetMainGroup = (gid) => {
   if(!d) return;
   const name = grpLabel(gid);
   const old = familyId && familyData ? grpLabel(familyId) : null;
-  const off = ['shareMeal','shareChecklist'].filter(k => !groupModVal(d, k)).map(grpModName);
   const li = [
     tH('grp.mainLi1', {name}),
     old ? tH('grp.mainLi2', {old}) : '',
-    off.length ? tH('grp.mainLi3', {name, list: off.join(', ')}) : '',
     tH('grp.mainLi4', {name}),
     tH('grp.mainLi5', {name}),
   ].filter(Boolean);
@@ -8742,23 +8877,21 @@ const GA_PERSONAL = ['habit','goal','note','recipe','react']; // osobní moduly:
 const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','streak','progress']);
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
 const _gaBuf = new Map();
-// Je modul ve skupině sdílený? Stejně jako server: kalendář a nákupy v každé skupině, ostatní jen hlavní skupina
+// Je modul ve skupině sdílený? Stejně jako server: kalendář, nákupy, jídelníček a checklisty podle příznaků
+// v každé skupině (4.53), zásoby jen hlavní skupina
 function groupModShared(gid, module) {
   if(!gid) return false;
-  if(GA_PERSONAL.includes(module) || module === 'challenge') return gid === familyId || extraGroupIds.includes(gid);
-  if(gid === familyId) {
-    const fd = familyData || {};
-    if(module === 'cal') return !!fd.shareCal;
-    if(module === 'shop') return !!fd.shareShop;
-    if(module === 'meal') return !!fd.shareMeal;
-    if(module === 'check') return fd.shareChecklist !== false;
-    return module === 'pantry';
-  }
-  if(!extraGroupIds.includes(gid)) return false;
-  // Vedlejší skupina (4.50): kalendář a nákupy podle příznaků; jídelníček a checklisty zatím jen hlavní
-  const xd = extraGroupsData[gid] || {};
-  if(module === 'cal') return !!xd.shareCal;
-  if(module === 'shop') return !!xd.shareShop;
+  const isMain = gid === familyId;
+  if(!isMain && !extraGroupIds.includes(gid)) return false;
+  if(GA_PERSONAL.includes(module) || module === 'challenge') return true;
+  if(module === 'pantry') return isMain;
+  // Vedlejší skupina bez načtených dat nesdílí nic (checklist bez pole by jinak vyšel zapnutý)
+  const d = isMain ? (familyData || {}) : extraGroupsData[gid];
+  if(!d) return false;
+  if(module === 'cal') return !!d.shareCal;
+  if(module === 'shop') return !!d.shareShop;
+  if(module === 'meal') return !!d.shareMeal;
+  if(module === 'check') return d.shareChecklist !== false;
   return false;
 }
 // Název do záznamu: hlavní část se zkrátí tak, aby se vešla i přípona („ · 12. 10.“), celkem ≤ 60
@@ -8768,9 +8901,9 @@ function gaTitle(main, suffix = '') {
   const sfx = suffix ? ' · ' + cutName(suffix, 30) : '';
   return cutName(main, 60 - sfx.length) + sfx;
 }
-// Checklist: jen rodinný seznam; název „položka · seznam“
+// Checklist: jen seznam skupiny (do jeho skupiny); název „položka · seznam“
 function gaCheck(list, action, text, count = 1) {
-  if(list?._family && familyId) logGroupActivity(familyId, 'check', action, gaTitle(text, list.name || ''), count);
+  if(list?._family && list._gid) logGroupActivity(list._gid, 'check', action, gaTitle(text, list.name || ''), count);
 }
 // Klíč bufferu: milník zvlášť pro každou položku, reakce podle adresáta, komentář vždy samostatně
 let _gaSeq = 0;
@@ -10636,18 +10769,19 @@ function updateGroupFeedBadges() {
   updateGroupFeedBells();
 }
 function updateGroupFeedBells() {
-  let checkFam = false;
+  let checkGid = ''; // skupina zobrazeného seznamu (vlastní sdílený seznam = skupina jeho kopie)
   try {
-    const allCl = [...checklists, ...familyChecklists];
+    const allCl = allChecklists();
     const l = allCl.find(c => c.id === activeChecklist) || allCl[0];
-    checkFam = !!(l?._family && familyId);
+    checkGid = l?._family ? l._gid : (clSharedGid(l) || '');
   } catch(e) {}
-  const show = {shop: isShopShared(), cal: isCalShared(), meal: isMealShared(), check: checkFam};
+  const show = {shop: isShopShared(), cal: isCalShared(), meal: isMealShared(), check: !!checkGid};
+  const feedGid = {shop: shopGid() || '', meal: mealGid() || '', check: checkGid};
   for(const m of Object.keys(show)) {
     const btn = document.getElementById('gf-bell-' + m);
     if(!btn) continue;
     btn.hidden = !show[m];
-    if(m === 'shop') btn.dataset.gid = shopGid() || ''; // feed zobrazené skupiny
+    if(m in feedGid) btn.dataset.gid = feedGid[m]; // feed zobrazené skupiny
     const n = myGroupIds().reduce((s, g) => s + (groupModShared(g, m) ? (_gfUnread[g]?.mods?.[m] || 0) : 0), 0);
     btn.toggleAttribute('data-dot', n > 0);
     btn.setAttribute('aria-label', n ? t('gf.bellAriaN', {n}) : t('gf.bellAria'));
@@ -11007,14 +11141,14 @@ const mpMeals = () => [0,1,2].map(i => t('mp.meal.'+i));
 // Slot do aktivity skupiny: „út oběd“ / „Tue lunch“ (čtenář si ho přeloží podle val = den*3+jídlo)
 const mpSlot = (di, mi) => t('mp.slot', {day: weekdayNames('short', true)[di] || '', meal: t('mp.mealLc.'+mi)});
 
-// Zobrazený jídelníček je sdílený rodinný (ne osobní)?
-function isMealShared() { return !!(familyId && familyData?.shareMeal) && mealViewMode === 'shared'; }
-// Sdílený jídelníček smí měnit jen admin skupiny, osobní vždy vlastník
-function isMealAdmin() { return familyData?.members?.[CU?.uid]?.role === 'admin'; }
+// Zobrazený jídelníček je plán skupiny (ne osobní)?
+function isMealShared() { return !!mealGid(); }
+// Plán skupiny smí měnit jen její správce (výchozí = zobrazená skupina), osobní vždy vlastník
+function isMealAdmin(gid = mealGid()) { return !!gid && groupDataOf(gid)?.members?.[CU?.uid]?.role === 'admin'; }
 function canEditMealPlan() { return !isMealShared() || isMealAdmin(); }
 
-// Jeden zdroj pravdy: právě zobrazený plán (rodinný, nebo osobní)
-function currentMealPlan() { return isMealShared() ? familyMealPlan : (prof.mealPlan || {}); }
+// Jeden zdroj pravdy: právě zobrazený plán (skupiny, nebo osobní)
+function currentMealPlan() { return mealPlanOf(mealGid()); }
 function mealPlanHasAny(plan) {
   return Object.values(plan || {}).some(day =>
     day && typeof day === 'object' && Object.values(day).some(v => typeof v === 'string' && v.trim()));
@@ -11043,10 +11177,13 @@ function renderMealPlan() {
   const el = document.getElementById('mealplan-content');
   if(!el) return;
 
-  const canShareMeal = !!(familyId && familyData?.shareMeal);
-  syncSeg('meal-view-toggle', canShareMeal, mealViewMode);
+  mealViewCheck();
+  const mg = mealGid();
+  if(mg) subscribeGroupMeal(mg); // plán skupiny se načte při prvním zobrazení
+  renderMealViewToggle(mg || '');
 
-  const isShared = isMealShared();
+  const isShared = !!mg;
+  const loading = isShared && !mealGrp[mg]?.loaded;
   const plan = currentMealPlan();
   const canEdit = canEditMealPlan();
   const hasAnyMeal = mealPlanHasAny(plan);
@@ -11059,7 +11196,7 @@ function renderMealPlan() {
     aiBtn.parentElement?.classList.toggle('mp-actions--one', aiBtn.hidden);
   }
 
-  const welcomeBanner = !hasAnyMeal && canEdit ? `
+  const welcomeBanner = !hasAnyMeal && canEdit && !loading ? `
     <div class="mp-empty">
       <div class="mp-empty-em" aria-hidden="true">🗓️</div>
       <div class="mp-empty-h">${tH('mp.emptyTitle')}</div>
@@ -11084,20 +11221,24 @@ function renderMealPlan() {
   }).join('');
 }
 
-// Zápis jednoho jídla. target: 'shared' | 'personal' (výchozí = zobrazený plán).
-// Rodinný plán smí měnit jen správce (hlídá aplikace, pravidla zápis členům povolují).
-// Zápis bez await: offline by Promise čekal na server; rodinný plán překreslí snapshot.
+// Cíl zápisu do jídelníčku: target undefined = zobrazený plán, '' = Moje, gid = plán skupiny (jen se sdíleným jídelníčkem)
+function mealTarget(target) {
+  if(target === undefined) return mealGid();
+  return (typeof target === 'string' && target && mealGroups().includes(target)) ? target : null;
+}
+// Zápis jednoho jídla do cíle podle mealTarget.
+// Plán skupiny smí měnit jen její správce (hlídá aplikace, pravidla zápis členům povolují).
+// Zápis bez await: offline by Promise čekal na server; plán skupiny překreslí snapshot.
 window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
   if(!CU) return false;
   if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return false;
   val = String(val || '').slice(0, 200);
-  const canShare = !!(familyId && familyData?.shareMeal);
-  const shared = target ? (target === 'shared' && canShare) : isMealShared();
-  if(shared) {
-    if(!isMealAdmin()) { toast(t('mp.adminOnlyMine')); return false; }
+  const gid = mealTarget(target);
+  if(gid) {
+    if(!isMealAdmin(gid)) { toast(t('mp.adminOnlyMine')); return false; }
     // Vnořená mapa (setDoc s merge bere tečku v klíči jako součást názvu pole)
     const update = {[dayKey]: {[mealKey]: val}};
-    const fid = familyId, prev = String(familyMealPlan?.[dayKey]?.[mealKey] || '').trim();
+    const fid = gid, prev = String(mealPlanOf(gid)?.[dayKey]?.[mealKey] || '').trim();
     setDoc(doc(db,'families',fid,'mealplan','week'), update, {merge:true})
       .catch(e => toast('❌ '+userErr(e,'jídelníček')));
     // Aktivita: „Svíčková · út oběd“; vymazání hlásí původní jídlo
@@ -11125,8 +11266,7 @@ window.generateMealPlanAI = async () => {
   if(mealPlanHasAny(currentMealPlan()) && !confirm(t('mp.aiOverwrite'))) return;
   _mealAiBusy = true;
   // Cíl se určí předem – přepnutí pohledu během generování nesmí změnit, kam se plán zapíše
-  const shared = isMealShared();
-  const fid = familyId;
+  const fid = mealGid(), shared = !!fid;
   toast(t('mp.aiGenerating'));
   try {
     const raw = await callClaude([
@@ -11138,7 +11278,7 @@ window.generateMealPlanAI = async () => {
     const plan = JSON.parse(text);
     // Uložit
     if(shared) {
-      if(!fid || fid !== familyId) { toast(t('mp.groupChanged')); return; }
+      if(!mealGroups().includes(fid) || !isMealAdmin(fid)) { toast(t('mp.groupChanged')); return; }
       await setDoc(doc(db,'families',fid,'mealplan','week'), plan);
       logGroupActivity(fid, 'meal', 'plan');
       renderMealPlan();
@@ -11412,7 +11552,10 @@ window.mealplanToShopping = async () => {
 
   if(!mealNames.length){ toast(t('mp.emptyFirst')); return; }
 
-  const shopFid = shopHomeGid(), isSharedShop = !!shopFid; // hlavní skupina, jinak Moje (4.50)
+  // Cíl: plán skupiny → nákupy té skupiny (když je sdílí, jinak Moje); osobní plán → hlavní skupina, jinak Moje (4.50)
+  const mg = mealGid();
+  const shopFid = mg ? (groupModShared(mg, 'shop') ? mg : null) : shopHomeGid(), isSharedShop = !!shopFid;
+  if(shopFid && !shopGrp[shopFid]?.loaded) { subscribeGroupShop(shopFid); toast(t('mp.shopLoading')); return; } // bez načteného seznamu by vznikly duplicity
   const shopActive = shopItemsOf(shopFid);
 
   let addedCount = 0, firstAdded = '';
@@ -11547,14 +11690,11 @@ window.openAddToMealplan = () => {
   if(!lastRecipe){ toast(t('mp.needRecipe')); return; }
   const existing = document.getElementById('add-to-mealplan-modal');
   if(existing) existing.remove();
-  // Ve skupině volba cíle: neadmin výchozí „Moje“ (rodinný plán mění jen správce)
-  const canShare = !!(familyId && familyData?.shareMeal);
-  _mealplanTarget = canShare && isMealAdmin() && mealViewMode === 'shared' ? 'shared' : 'personal';
-  const targetSeg = canShare ? `
-      <div class="seg seg--block" id="mp-target-seg" role="group" aria-label="${tH('mp.targetAria')}">
-        <button class="seg-btn" data-mode="shared" onclick="selectMealplanTarget(this.dataset.mode)">${tH('shop.viewFamily')}</button>
-        <button class="seg-btn" data-mode="personal" onclick="selectMealplanTarget(this.dataset.mode)">${tH('shop.viewMine')}</button>
-      </div>` : '';
+  // Ve skupinách volba cíle (Moje + skupiny se sdíleným jídelníčkem): výchozí zobrazený plán, když v něm smím psát
+  const canShare = mealGroups().length > 0;
+  const mg = mealGid();
+  _mealplanTarget = mg && isMealAdmin(mg) ? mg : '';
+  const targetSeg = canShare ? `<div id="mp-target-wrap" class="mp-target">${mealTargetPickHTML()}</div>` : '';
   const modal = document.createElement('div');
   modal.id = 'add-to-mealplan-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
@@ -11576,16 +11716,23 @@ window.openAddToMealplan = () => {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  if(canShare) syncSeg('mp-target-seg', true, _mealplanTarget);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
-let _mealplanSelDay = 0, _mealplanSelMeal = 1, _mealplanTarget = 'personal';
-window.selectMealplanTarget = (mode) => {
-  mode = mode === 'shared' ? 'shared' : 'personal';
-  if(mode === 'shared' && !isMealAdmin()) { toast(t('mp.adminOnlyMine')); return; }
-  _mealplanTarget = mode;
-  syncSeg('mp-target-seg', true, mode);
+let _mealplanSelDay = 0, _mealplanSelMeal = 1, _mealplanTarget = ''; // '' = Moje, jinak gid
+// Volba cíle v okně „Přidat do jídelníčku“: 1–3 volby segment, víc voleb nativní výběr (okno leží nad sheety)
+function mealTargetPickHTML() {
+  const opts = ['', ...mealGroups()], cur = opts.includes(_mealplanTarget) ? _mealplanTarget : '';
+  if(opts.length <= 3) return grpChoiceHTML({opts, cur, label: grpMineLabel, aria: t('mp.targetAria'), pick: 'selectMealplanTarget'});
+  return '<select class="finp" aria-label="'+tH('mp.targetAria')+'" onchange="selectMealplanTarget(this.value)">'
+    + opts.map(g => '<option value="'+esc(g)+'"'+(g===cur?' selected':'')+'>'+esc(grpMineLabel(g))+'</option>').join('')+'</select>';
+}
+window.selectMealplanTarget = (gid) => {
+  gid = typeof gid === 'string' && mealGroups().includes(gid) ? gid : '';
+  if(gid && !isMealAdmin(gid)) toast(t('mp.adminOnlyMine'));
+  else _mealplanTarget = gid;
+  const w = document.getElementById('mp-target-wrap');
+  if(w) w.innerHTML = mealTargetPickHTML(); // i po odmítnutí (vrátí výběr)
 };
 window.selectMealplanDay = (i, btn) => {
   _mealplanSelDay = i;
@@ -11599,14 +11746,14 @@ window.selectMealplanMeal = (i, btn) => {
 };
 window.confirmAddToMealplan = async () => {
   if(!lastRecipe) return;
-  const canShare = !!(familyId && familyData?.shareMeal);
-  const target = canShare ? _mealplanTarget : 'personal';
+  const canShare = mealGroups().length > 0;
+  const target = canShare && mealGroups().includes(_mealplanTarget) ? _mealplanTarget : '';
   if(!saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name, target)) return;
   document.getElementById('add-to-mealplan-modal')?.remove();
   // Jídelníček ukáže plán, kam se jídlo uložilo
-  if(canShare) mealViewMode = target;
+  if(canShare) mealViewSave(target);
   renderMealPlan();
-  toast(t('mp.addedTo',{where:canShare ? (target === 'shared' ? t('mp.whereFam') : t('mp.whereMine')) : '',day:mpDays()[_mealplanSelDay],meal:mpMeals()[_mealplanSelMeal]}));
+  toast(t('mp.addedTo',{where:canShare ? ' → '+grpMineLabel(target) : '',day:mpDays()[_mealplanSelDay],meal:mpMeals()[_mealplanSelMeal]}));
 };
 
 // ── STATISTIKY ────────────────────────────────────────
@@ -11661,8 +11808,8 @@ function subChecklist() {
         } else renderChecklist(); // bez založení výchozího zobraz aspoň aktuální stav (např. sdílené seznamy)
         return;
       }
-      const allCl = [...checklists, ...familyChecklists];
-      if (!activeChecklist || !allCl.find(c => c.id === activeChecklist)) activeChecklist = checklists[0]?.id || familyChecklists[0]?.id;
+      const allCl = allChecklists();
+      if (!activeChecklist || !allCl.find(c => c.id === activeChecklist)) activeChecklist = allCl[0]?.id;
       renderChecklist();
     }
   );
@@ -11695,9 +11842,10 @@ document.addEventListener('paste', async function(e) {
 
 async function saveChecklistDoc(list) {
   if (!CU || !list) return;
-  if (list._family && familyId) {
-    const {_family, ...data} = list;
-    await setDoc(doc(db,'families',familyId,'checklists',list.id), data);
+  if (list._family) {
+    if (!list._gid) return;
+    const {_family, _gid, ...data} = list;
+    await setDoc(doc(db,'families',_gid,'checklists',list.id), data);
   } else {
     await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
   }
@@ -11709,10 +11857,12 @@ function renderChecklist() {
   const el = document.getElementById('checklist-content');
   if (!el) return;
 
-  const allCl = [...checklists, ...familyChecklists];
+  if (document.getElementById('p-checklist')?.classList.contains('active')) ensureCheckSubs(); // seznamy skupin při otevření
+  const allCl = allChecklists();
   const list = allCl.find(c => c.id === activeChecklist) || allCl[0];
   if (!list) return;
   const isFamilyList = list._family === true;
+  const shGid = isFamilyList ? null : clSharedGid(list), canShare = !isFamilyList && checkGroups().length > 0;
 
   const done = list.items.filter(i => i.done).length;
   const total = list.items.length;
@@ -11722,14 +11872,14 @@ function renderChecklist() {
   el.innerHTML = `
     <div class="cl-tabs">
       ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)">${esc(c.name)}</button>`).join('')}
-      ${familyChecklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)" style="border-color:var(--green);color:${c.id===activeChecklist?'var(--on-accent)':'var(--green)'}">👨‍👩‍👧 ${esc(c.name)}</button>`).join('')}
+      ${groupChecklists().map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)" aria-label="${tH('cl.tabAria', {name: c.name || '', grp: grpName(c._gid)})}" style="border-color:var(--green);color:${c.id===activeChecklist?'var(--on-accent)':'var(--green)'}"><span aria-hidden="true">${esc(grpEmoji(c._gid))}</span> ${esc(c.name)}</button>`).join('')}
       <button class="cl-tab cl-tab-add" onclick="addChecklist()">+</button>
     </div>
     <div class="cl-header">
       <div class="cl-title-row">
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
-        ${familyId && familyData?.shareChecklist!==false ? `<button data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${clSharedHere(list)?'rgba(76,217,100,.15)':'none'};border:1px solid ${clSharedHere(list)?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${clSharedHere(list)?'var(--green)':'var(--text3)'};cursor:pointer" title="${clSharedHere(list)?tH('cl.unshare'):tH('cl.shareFam')}">${clSharedHere(list)?tH('cl.sharedLbl'):tH('cl.private')}</button>` : ''}
+        ${canShare ? `<button type="button" class="cl-share-btn" data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${shGid?'rgba(76,217,100,.15)':'none'};border:1px solid ${shGid?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${shGid?'var(--green)':'var(--text3)'};cursor:pointer;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${shGid?tH('cl.unshare'):tH('cl.shareFam')}" aria-label="${shGid?tH('cl.unshareAria', {name: grpName(shGid)}):tH('cl.shareFam')}">${shGid?'✓ '+esc(grpLabel(shGid)):tH('cl.private')}</button>` : ''}
         ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}</button>` : ''}
@@ -11776,7 +11926,7 @@ function renderChecklist() {
 
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === listId);
+  const list = allChecklists().find(c => c.id === listId);
   if (!list || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const undone = list.items.filter(i => !i.done);
   if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
@@ -11812,7 +11962,7 @@ window.handleClNewPhotoInput = async function(input) {
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
   if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
   if (clNewPhoto) { item.photos = [clNewPhoto]; clNewPhoto = null; }
@@ -11825,7 +11975,7 @@ window.addCheckItem = function() {
 };
 
 window.moveCheckItem = function(itemId, dir) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const undone = list.items.filter(i => !i.done);
   const idx = undone.findIndex(i => i.id === itemId);
@@ -11840,14 +11990,14 @@ window.moveCheckItem = function(itemId, dir) {
 };
 
 window.toggleCheckItem = function(itemId) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
   saveChecklistDoc(list);
   // Odškrtnutí → „hotovo“; vrácení zpět vyjme položku z čekajícího záznamu
   if (item?.done) gaCheck(list, 'done', item.text);
-  else if (item && list._family && familyId) unlogGroupActivity(familyId, 'check', 'done', gaTitle(item.text, list.name || ''));
+  else if (item && list._family && list._gid) unlogGroupActivity(list._gid, 'check', 'done', gaTitle(item.text, list.name || ''));
   renderChecklist();
 };
 
@@ -11865,7 +12015,7 @@ window.saveExpandedCheckItem = function(itemId) {
   if (!ta) return;
   const newText = ta.value.trim();
   if (!newText) return;
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   const changed = !!item && item.text !== newText;
@@ -11877,7 +12027,7 @@ window.saveExpandedCheckItem = function(itemId) {
 };
 
 window.deleteCheckItem = function(itemId) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const gone = list.items.find(i => i.id === itemId);
   list.items = list.items.filter(i => i.id !== itemId);
@@ -11899,7 +12049,7 @@ window.triggerClItemPhoto = function(itemId) {
     toast(t('cl.processing'));
     try {
       const photo = await compressImage(file, 900, 0.75);
-      const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+      const list = allChecklists().find(c => c.id === activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
       if (item) {
@@ -11913,7 +12063,7 @@ window.triggerClItemPhoto = function(itemId) {
   inp.click();
 };
 window.removeClItemPhoto = function(itemId, photoIdx=0) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (!item) return;
@@ -11923,7 +12073,7 @@ window.removeClItemPhoto = function(itemId, photoIdx=0) {
   saveChecklistDoc(list); renderChecklist();
 };
 window.showClItemPhoto = function(itemId, photoIdx=0) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   const item = list?.items.find(i => i.id === itemId);
   const photos = getItemPhotos(item);
   if (!photos.length) return;
@@ -11941,7 +12091,7 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
 // ─────────────────────────────────────────────────────────
 
 window.clearDoneChecklistItems = function() {
-  const list = [...checklists,...familyChecklists].find(c => c.id === activeChecklist);
+  const list = allChecklists().find(c => c.id === activeChecklist);
   if (!list) return;
   const nDone = list.items.filter(i => i.done).length;
   list.items = list.items.filter(i => !i.done);
@@ -11959,18 +12109,19 @@ window.addChecklist = function() {
 };
 
 window.deleteChecklist = async function(id) {
-  const list = [...checklists,...familyChecklists].find(c => c.id === id);
+  const list = allChecklists().find(c => c.id === id);
   const isFamilyList = list?._family === true;
   if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
   if (!confirm(t('cl.delQ', {name: list?.name}))) return;
-  if (isFamilyList && familyId) {
-    const fid = familyId;
+  if (isFamilyList) {
+    const fid = list._gid;
+    if (!fid) return;
     await deleteDoc(doc(db,'families',fid,'checklists',id));
     logGroupActivity(fid, 'check', 'del', list?.name || '');
   } else {
     await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
   }
-  activeChecklist = [...checklists,...familyChecklists].find(c => c.id !== id)?.id || null;
+  activeChecklist = allChecklists().find(c => c.id !== id)?.id || null;
 };
 
 
@@ -12063,7 +12214,7 @@ window.sp=id=>{
   if(id==='habits')renderHabits();
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
-  if(id==='checklist')renderChecklist();
+  if(id==='checklist'){ensureCheckSubs();renderChecklist();}
   if(id==='cooking'){initPantry();refreshCookChipFade();}
 };
 
@@ -13235,8 +13386,8 @@ function buildChatContext(){
   add('CHECKLISTY (nesplněné položky)',false,()=>{
     const map=new Map();
     const famCl=famOk&&familyData.shareChecklist!==false; // stejně jako UI / odběr sdílených seznamů
-    checklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:famCl&&clSharedHere(c)}); });
-    if(famCl) familyChecklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:true}); });
+    checklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:famCl&&clSharedHere(c,familyId)}); });
+    if(famCl) (clGrp[familyId]?.lists||[]).forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:true}); });
     const all=[...map.values()];
     return [...all.slice(0,8).map(({c,fam})=>{
       const items=Array.isArray(c.items)?c.items.filter(i=>i&&i.text):[];
@@ -13322,7 +13473,7 @@ function buildChatContext(){
       }
       return out;
     };
-    const lines=[...fmtPlan(prof.mealPlan,'osobní '),...(famOk&&familyData.shareMeal?fmtPlan(familyMealPlan,'skupina '):[])];
+    const lines=[...fmtPlan(prof.mealPlan,'osobní '),...(famOk&&familyData.shareMeal?fmtPlan(mealPlanOf(familyId),'skupina '):[])];
     const pm=(Array.isArray(plannedMeals)?plannedMeals:[]).filter(m=>m&&m.name).slice(0,5).map(m=>ctxT(m.name,40));
     if(pm.length) lines.push('Plánovaná jídla ze zápisků: '+pm.join(', '));
     return lines;

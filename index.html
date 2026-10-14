@@ -821,7 +821,7 @@
     <div class="page" id="p-mealplan">
       <div class="gh">
         <div class="mp-head"><span class="mp-head-em" aria-hidden="true">🥗</span><div class="ptitle" data-i18n="mod.mealplan">Jídelníček</div></div>
-        <button type="button" class="gf-bell" id="gf-bell-meal" hidden data-a0="meal" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
+        <button type="button" class="gf-bell" id="gf-bell-meal" hidden data-a0="meal" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
       </div>
       <div class="cook-tabs" role="tablist">
         <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" aria-controls="mp-section-plan" onclick="switchMealTab('plan')" data-i18n="mp.tabPlan">📅 Plán týdne</button>
@@ -829,11 +829,8 @@
       </div>
 
       <div id="mp-section-plan" role="tabpanel" aria-labelledby="mp-tab-plan">
-        <div class="seg seg--block" id="meal-view-toggle" role="group" aria-label="Čí jídelníček zobrazit" data-i18n-attr="aria-label:mp.viewAria" hidden>
-          <button class="seg-btn" data-mode="shared" onclick="setMealView(this.dataset.mode)">Rodina</button>
-          <button class="seg-btn" data-mode="personal" onclick="setMealView(this.dataset.mode)">Moje</button>
-        </div>
-        <p class="mp-note" id="mp-readonly-note" data-i18n="mp.roNote" hidden>👀 Rodinný jídelníček upravuje správce skupiny. Svůj vlastní si můžeš vést v „Moje“.</p>
+        <div id="meal-view-toggle" hidden></div>
+        <p class="mp-note" id="mp-readonly-note" data-i18n="mp.roNote" hidden>👀 Jídelníček skupiny upravuje její správce. Svůj vlastní si můžeš vést v „Moje“.</p>
         <div class="mp-actions">
           <button class="btn-s mp-act" id="mp-ai-btn" onclick="generateMealPlanAI()">✨ Navrhnout AI</button>
           <button class="btn-s mp-act" onclick="mealplanToShopping()" data-i18n="mp.toShopBtn">🛒 Do nákupu</button>
@@ -849,7 +846,7 @@
 
     <!-- CHECKLIST -->
     <div class="page" id="p-checklist">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle">Checklist</div><span style="margin-left:auto"></span><button type="button" class="gf-bell" id="gf-bell-check" hidden data-a0="check" onclick="openGroupFeed(null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle">Checklist</div><span style="margin-left:auto"></span><button type="button" class="gf-bell" id="gf-bell-check" hidden data-a0="check" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button></div>
       <div id="checklist-content"></div>
     </div>
 
