@@ -448,7 +448,7 @@ const GN_UPPER_LAG = 10000;                           // horní hranice dotazů 
 const GN_BODY_MAX = 180;
 const GN_MAX_GROUPS = 10;
 const GROUP_MAX = 5; // max. skupin na uživatele (klient GROUP_MAX v app.js); GN_MAX_GROUPS je pojistka pro starší klienty
-// Skupiny uživatele pro připomínky kalendáře: hlavní první, bez duplicit, jen platné kódy, nejvýš GN_MAX_GROUPS
+// Skupiny uživatele (připomínky kalendáře i upozornění skupin): hlavní první, bez duplicit, jen platné kódy, nejvýš GN_MAX_GROUPS
 function calGroupIds(prof) {
   const extra = Array.isArray(prof && prof.extraGroupIds) ? prof.extraGroupIds : [];
   return [...new Set([prof && prof.familyId, ...extra])]
@@ -857,9 +857,7 @@ exports.sendScheduledNotifications = onSchedule(
     };
 
     const groupNotifs = async (uid, prof, ns, push) => {
-      const extra = Array.isArray(prof.extraGroupIds) ? prof.extraGroupIds : [];
-      const gids = [...new Set([prof.familyId, ...extra])]
-        .filter(g => typeof g === 'string' && GROUP_ID_RE.test(g)).slice(0, GN_MAX_GROUPS);
+      const gids = calGroupIds(prof); // stejný seznam skupin jako připomínky kalendáře
       if (!gids.length) return;
       const gp = groupNotifPrefs(prof);
       const sentMap = (prof.groupNotifSent && typeof prof.groupNotifSent === 'object') ? prof.groupNotifSent : {};

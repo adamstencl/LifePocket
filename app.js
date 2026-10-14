@@ -51,9 +51,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.53';
 const CHANGELOG = [
   { v:'4.53', items:[
-    '👥 Jídelníček, checklisty a kalendář teď fungují v každé skupině; připomínky událostí ze všech skupin'
+    '👥 Jídelníček, checklisty a kalendář teď fungují v každé skupině; připomínky událostí ze všech skupin',
+    '🛠️ Opraveny sdílené checklisty – ty i ostatní ve skupině teď vidíte a upravujete stejný seznam'
   ], en:[
-    '👥 Meal plan, checklists and calendar now work in every group; event reminders come from all your groups'
+    '👥 Meal plan, checklists and calendar now work in every group; event reminders come from all your groups',
+    '🛠️ Fixed shared checklists – you and the rest of the group now see and edit the same list'
   ]},
   { v:'4.52', items:[
     '☕ Appka zůstává zdarma – kdo chce, může dobrovolně přispět přes QR platbu'
@@ -2512,6 +2514,7 @@ function renderArchivedHabits() {
 let events=[], calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
 let selEvType_val='event';
 let editingEventId = null;
+let editingEventGid = null; // skupina upravované sdílené události (zachycená při otevření), null = osobní
 let calFilter='all';
 
 const EV_ICONS={birthday:'🎂',event:'📌'};
@@ -2564,8 +2567,12 @@ function renderCal(){
   const cg=document.getElementById('cal-grid'); if(cg) cg.innerHTML=html;
   // Tlačítko migrace osobních událostí do sdíleného kalendáře
   const migrBtn=document.getElementById('cal-migrate-btn');
-  if(migrBtn) migrBtn.style.display=(isCalShared()&&events.length>0)?'':'none';
-  if(migrBtn) migrBtn.textContent=t('cal.migrateBtn',{n:events.length});
+  if(migrBtn) {
+    const mg=calMigrateGids();
+    migrBtn.style.display=(mg.length&&events.length>0)?'':'none';
+    // Jedna cílová skupina = její název přímo v tlačítku, víc skupin = výběr po klepnutí
+    migrBtn.textContent=mg.length===1?t('cal.migrateBtnTo',{n:events.length,to:grpLabel(mg[0])}):t('cal.migrateBtn',{n:events.length});
+  }
   renderEvList();
 }
 
@@ -2893,25 +2900,41 @@ function saveHabitOrder(ids){
   batch.commit().catch(e => toast(t('hb.orderFail',{err:userErr(e, 'návyk')})));
 }
 
-window.migrateCalEvents = async function() {
-  if(!isCalShared()||!events.length) return;
-  if(!confirm(t('cal.migrateQ',{n:events.length}))) return;
-  let ok=0, firstName='';
-  const fid=getCalShareGroups()[0]?.id; // hlavní skupina, pokud kalendář sdílí, jinak první další
-  if(!fid) return;
-  for(const ev of events) {
-    try {
-      const {id, ...data} = ev;
-      data.addedBy = CU.uid;
-      await addDoc(collection(db,'families',fid,'events'), data);
-      await deleteDoc(doc(db,'users',CU.uid,'events',id));
-      if(!ok) firstName=ev.name||'';
-      ok++;
-    } catch(e) { console.warn('migrate err', e?.code||e?.name); }
-  }
-  if(ok) logGroupActivity(fid, 'cal', 'add', firstName, ok);
-  toast(t('cal.migrated',{n:ok}));
+// Cíle přesunu osobních událostí: skupiny, kde kalendář opravdu sdílím (hlavní první)
+function calMigrateGids() { return getCalShareGroups().map(g => g.id).filter(g => groupModShared(g, 'cal')); }
+// Jedna skupina = rovnou dotaz s jejím názvem; víc skupin = výběr cíle (nikdy naslepo první)
+window.migrateCalEvents = function() {
+  if(!CU || !events.length || _calMigrating) return;
+  const gs = calMigrateGids();
+  if(!gs.length) return;
+  if(gs.length === 1) { migrateCalEventsTo(gs[0]); return; }
+  openGrpChoiceSheet({opts: gs, cur: '', label: grpLabel, aria: t('cal.migrateTo'), focusSel: '#cal-migrate-btn',
+    onPick: g => migrateCalEventsTo(g)});
 };
+let _calMigrating = false;
+async function migrateCalEventsTo(fid) {
+  if(!CU || !events.length || _calMigrating || !calMigrateGids().includes(fid)) return;
+  if(!confirm(t('cal.migrateQ',{n:events.length, to:grpLabel(fid)}))) return;
+  // Během dotazu mohla skupina kalendář vypnout → nepřesouvat
+  if(!groupModShared(fid, 'cal')) { toast(t('cal.grpGone')); return; }
+  _calMigrating = true;
+  let ok=0, firstName='';
+  try {
+    for(const ev of [...events]) { // snapshot během přesunu mění pole events
+      if(!groupModShared(fid, 'cal')) break;
+      try {
+        const {id, ...data} = ev;
+        data.addedBy = CU.uid;
+        await addDoc(collection(db,'families',fid,'events'), data);
+        await deleteDoc(doc(db,'users',CU.uid,'events',id));
+        if(!ok) firstName=ev.name||'';
+        ok++;
+      } catch(e) { console.warn('migrate err', e?.code||e?.name); }
+    }
+  } finally { _calMigrating = false; }
+  if(ok) logGroupActivity(fid, 'cal', 'add', firstName, ok);
+  toast(t('cal.migrated',{n:ok, to:grpLabel(fid)}));
+}
 window.calDayClick=(ds)=>{
   // Najdi události pro tento den
   const dayEvs = getEventsForDate(ds);
@@ -2985,6 +3008,7 @@ window.addEventForDay = (ds) => {
 
 window.openEditEvent = function(ev) {
   editingEventId = ev.id;
+  editingEventGid = ev.shared ? (ev.groupId || familyId || null) : null;
   document.getElementById('ev-name-inp').value = ev.name || '';
   document.getElementById('ev-date-inp').value = ev.date || '';
   document.getElementById('ev-repeat-inp').value = ev.repeat || 'no';
@@ -3109,21 +3133,21 @@ window.saveEvent=async()=>{
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
   if(editingEventId) {
-    const allFamEvs = getAllFamilyEvents();
-    const inFamily = allFamEvs.some(e => e.id === editingEventId);
-    const editGroupId = allFamEvs.find(e => e.id === editingEventId)?.groupId || familyId;
+    // Cíl úpravy = skupina zachycená při otevření; nesdílí-li už kalendář, neukládat (žádná osobní kopie se stejným ID)
+    const editGroupId = editingEventGid;
+    if(editGroupId && !groupModShared(editGroupId, 'cal')) { toast(t('cal.editGone')); return; }
     const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
     if(time) evUpdate.time = time;
     if(dateEnd) evUpdate.dateEnd = dateEnd;
     try {
-      if(inFamily && editGroupId) {
+      if(editGroupId) {
         await setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate);
         logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
       } else {
         await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
       }
     } catch(e) { toast('⚠️ '+userErr(e,'událost')); return; }
-    editingEventId = null;
+    editingEventId = null; editingEventGid = null;
     toast(t('cal.edited'));
   } else {
     const gid = selEvShare ? selEvShareGroupId : null;
@@ -6796,15 +6820,23 @@ function mealViewCheck() {
 // Přípona toastu s cílovým plánem („ → 👥 Tým“), jen když je zobrazený plán skupiny
 function mealToSfx() { const g = mealGid(); return g ? ' → ' + grpLabel(g) : ''; }
 function mealViewForget(gid) { if(mealViewStored() === gid) mealViewSave(null); }
+// Chyba listeneru skupiny (např. odebraný člen): záznam bez odběru a dat, nový pokus nejdřív po GRP_SUB_RETRY
+const GRP_SUB_RETRY = 60000;
+function grpSubBlocked(e) { return !!e && (!!e.unsub || (!!e.err && Date.now() - e.err < GRP_SUB_RETRY)); }
 function subscribeGroupMeal(gid) {
-  if(!gid || !CU || mealGrp[gid]?.unsub) return;
+  if(!gid || !CU || grpSubBlocked(mealGrp[gid])) return;
   const e = mealGrp[gid] = {plan: {}, loaded: false, unsub: null};
   e.unsub = onSnapshot(doc(db,'families',gid,'mealplan','week'), snap => {
     if(mealGrp[gid] !== e) return;
     e.plan = snap.exists() ? normMealPlan(snap.data()) : {};
-    e.loaded = true;
+    e.loaded = true; e.err = 0;
     if(gid === mealGid()) renderMealPlan();
-  }, familyListenErr);
+  }, err => {
+    familyListenErr(err);
+    if(mealGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.loaded = false; e.plan = {}; e.err = Date.now();
+  });
 }
 function unsubGroupMeal(gid) { const e = mealGrp[gid]; if(e?.unsub) e.unsub(); delete mealGrp[gid]; }
 function unsubAllGroupMeals() { Object.keys(mealGrp).forEach(unsubGroupMeal); }
@@ -7282,7 +7314,7 @@ async function copyGroupToPersonal(gid, mode) {
   const src = cutName(gData.groupName, 40) || gid;
   const mine = x => mode === 'all' || (x && x.addedBy === uid);
   const now = new Date().toISOString();
-  const writes = []; // [ref, data]
+  const writes = []; // [ref, data, merge]
   let n = 0;
   // Události (kalendář): stejné pole jako osobní události, bez příznaků skupiny
   if(gData.shareCal) {
@@ -7304,22 +7336,25 @@ async function copyGroupToPersonal(gid, mode) {
         {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
     });
   }
-  // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → přeskočit; cizí jen při 'all'
+  // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → do něj položky z kopie ve skupině
+  // (zdroj pravdy, i položky ostatních); vlastní bez originálu jako nový osobní; cizí jen při 'all'
   if(gData.shareChecklist !== false) {
     const sn = await getDocs(collection(db,'families',gid,'checklists'));
     const ownIds = new Set(checklists.map(c => c.id));
     sn.docs.forEach(d => {
       const l = d.data() || {};
       const own = l.owner === uid;
-      if(own ? ownIds.has(d.id) : mode !== 'all') return;
+      const items = Array.isArray(l.items) ? l.items : [];
+      if(own && ownIds.has(d.id)) { writes.push([doc(db,'users',uid,'checklists',d.id), {items}, true]); return; }
+      if(!own && mode !== 'all') return;
       const id = own ? d.id : genId();
-      writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items: Array.isArray(l.items) ? l.items : [], shared: false, createdAt: Date.now(), copiedFrom: src}]);
+      writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items, shared: false, createdAt: Date.now(), copiedFrom: src}]);
     });
   }
   // Zápis po dávkách (limit 500 operací); čeká na potvrzení serveru
   for(let i = 0; i < writes.length; i += 400) {
     const b = writeBatch(db);
-    writes.slice(i, i + 400).forEach(([ref, data]) => b.set(ref, data));
+    writes.slice(i, i + 400).forEach(([ref, data, merge]) => merge ? b.set(ref, data, {merge: true}) : b.set(ref, data));
     await b.commit();
   }
   n += writes.length;
@@ -8236,24 +8271,41 @@ function subscribeSharedMeal() { subscribeGroupMeal(familyId); }
 const clGrp = {};
 function checkGroups() { return myGroupIds().filter(g => groupModShared(g, 'check')); }
 function subscribeGroupChecklist(gid) {
-  if(!gid || !CU || clGrp[gid]?.unsub) return;
+  if(!gid || !CU || grpSubBlocked(clGrp[gid])) return;
   const e = clGrp[gid] = {lists: [], ready: false, unsub: null};
   e.unsub = onSnapshot(collection(db,'families',gid,'checklists'), snap => {
     if(clGrp[gid] !== e) return;
     e.lists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true, _gid: gid}));
-    e.ready = true;
+    e.ready = true; e.err = 0;
     renderChecklist();
-  }, familyListenErr);
+  }, err => {
+    familyListenErr(err);
+    if(clGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.ready = false; e.lists = []; e.err = Date.now();
+  });
 }
 function unsubGroupCheck(gid) { const e = clGrp[gid]; if(e?.unsub) e.unsub(); delete clGrp[gid]; }
 function unsubAllGroupChecks() { Object.keys(clGrp).forEach(unsubGroupCheck); }
 function subscribeSharedChecklist() { subscribeGroupChecklist(familyId); }
 // Při otevření Checklistů: seznamy všech skupin, které checklisty sdílí
 function ensureCheckSubs() { checkGroups().forEach(subscribeGroupChecklist); }
-// Seznamy skupin (hlavní první), jen ze skupin, kde je modul zapnutý
-function groupChecklists() { return checkGroups().flatMap(g => clGrp[g]?.lists || []); }
+// Seznamy skupin (hlavní první), jen ze skupin, kde je modul zapnutý. Kopie mého sdíleného seznamu se vynechá,
+// má ji na starosti záložka osobního originálu (jedna záložka s emoji skupiny, data přes clFind)
+function groupChecklists() {
+  return checkGroups().flatMap(g => (clGrp[g]?.lists || []).filter(c =>
+    !(CU && c.owner === CU.uid && checklists.some(p => p.id === c.id && clSharedGid(p) === g))));
+}
 // Osobní seznamy první (sdílený seznam má ve skupině kopii se stejným ID)
 function allChecklists() { return [...checklists, ...groupChecklists()]; }
+// Seznam k zobrazení a úpravám (4.53): u mého sdíleného seznamu je zdrojem pravdy kopie ve skupině
+// (vidí a mění ji všichni členové); osobní originál zůstává jen jako záloha. Jinak osobní nebo skupinový seznam.
+function clFind(id) {
+  const own = CU ? checklists.find(c => c.id === id) : null;
+  const g = own ? clSharedGid(own) : null;
+  const copy = g && clGrp[g]?.ready ? clGrp[g].lists.find(f => f.id === id && f.owner === CU.uid) : null;
+  return copy || allChecklists().find(c => c.id === id);
+}
 
 // Skupina, do které je můj seznam sdílený = leží v ní jeho kopie s mým owner (přežije i změnu kódu skupiny);
 // sharedGid je jen doplněk pro zobrazení, než dorazí data skupiny
@@ -8289,9 +8341,11 @@ function fillChecklistSharedGid(gid) {
 // nebo se skupina vybere v sheetu
 window.toggleChecklistShare = async function(listId) {
   const list = checklists.find(c => c.id === listId);
-  const gs = checkGroups();
-  if(!list || !gs.length) return;
+  if(!list || !checkGroups().length) return;
   ensureCheckSubs();
+  // Skupina s chybou načtení se ve výběru vynechá (jinak by „Načítám“ viselo navždy)
+  const gs = checkGroups().filter(g => !clGrp[g]?.err);
+  if(!gs.length) { toast(t('cl.loadFail')); return; }
   // Bez dat skupin nevíme, zda kopie ve skupině existuje → nic nepřepisovat
   if(gs.some(g => !clGrp[g]?.ready)) { toast(t('cl.loading')); return; }
   const cur = clSharedGid(list);
@@ -8318,6 +8372,9 @@ window.shareChecklistTo = async (listId, gid) => {
   renderChecklist();
 };
 async function unshareChecklist(list, gid) {
+  // Položky ze skupiny (i přidané ostatními) se vrátí do osobního seznamu, než se kopie smaže
+  const copy = clGrp[gid]?.lists.find(f => f.id === list.id && f.owner === CU?.uid);
+  if(copy && Array.isArray(copy.items)) list.items = copy.items.map(i => ({...i}));
   list.shared = false; delete list.sharedGid;
   saveChecklistDoc(list);
   try { await deleteDoc(doc(db,'families',gid,'checklists',list.id)); }
@@ -11659,6 +11716,7 @@ window.openMealPicker = (dayKey, mealKey) => {
   const dayLabel = mpDays()[+dayKey[1]], mealLabel = mpMeals()[+mealKey[1]];
   const existing = document.getElementById('meal-picker-modal');
   if(existing) existing.remove();
+  _mealPickTarget = mealGid() || ''; // cíl = plán zobrazený při otevření (přepnutí pohledu mezitím ho nemění)
 
   const recipes = savedRecipes || [];
   const recipesHTML = recipes.length
@@ -11703,20 +11761,27 @@ window.openMealPicker = (dayKey, mealKey) => {
   setTimeout(() => document.getElementById('meal-picker-manual')?.focus(), 100);
 };
 
+let _mealPickTarget = ''; // '' = Moje, jinak gid skupiny zachycený v openMealPicker
+// Zachycená skupina mezitím jídelníček nesdílí → neuložit potichu do osobního plánu
+function mealPickOk() {
+  if(_mealPickTarget && !mealGroups().includes(_mealPickTarget)) { toast(t('mp.grpGone')); return false; }
+  return true;
+}
+function mealPickSfx() { return _mealPickTarget ? ' → ' + grpLabel(_mealPickTarget) : ''; }
 window.pickMeal = async (dayKey, mealKey, name, el) => {
-  if(!saveMealPlanItem(dayKey, mealKey, name)) return;
+  if(!mealPickOk() || !saveMealPlanItem(dayKey, mealKey, name, _mealPickTarget)) return;
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
-  toast(t('mp.added',{name}) + mealToSfx());
+  toast(t('mp.added',{name}) + mealPickSfx());
 };
 
 window.pickMealManual = async (dayKey, mealKey) => {
   const val = document.getElementById('meal-picker-manual')?.value.trim();
   if(!val){ toast(t('mp.writeName')); return; }
-  if(!saveMealPlanItem(dayKey, mealKey, val)) return;
+  if(!mealPickOk() || !saveMealPlanItem(dayKey, mealKey, val, _mealPickTarget)) return;
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
-  toast(t('mp.added',{name:val}) + mealToSfx());
+  toast(t('mp.added',{name:val}) + mealPickSfx());
 };
 
 window.openAddToMealplan = () => {
@@ -11892,10 +11957,12 @@ function renderChecklist() {
 
   if (document.getElementById('p-checklist')?.classList.contains('active')) ensureCheckSubs(); // seznamy skupin při otevření
   const allCl = allChecklists();
-  const list = allCl.find(c => c.id === activeChecklist) || allCl[0];
-  if (!list) return;
-  const isFamilyList = list._family === true;
-  const shGid = isFamilyList ? null : clSharedGid(list), canShare = !isFamilyList && checkGroups().length > 0;
+  const base = allCl.find(c => c.id === activeChecklist) || allCl[0]; // záložka (osobní originál nebo seznam skupiny)
+  if (!base) return;
+  const list = clFind(base.id) || base; // data: u sdíleného seznamu kopie ve skupině
+  if (!Array.isArray(list.items)) list.items = [];
+  const isFamilyList = base._family === true;
+  const shGid = isFamilyList ? null : clSharedGid(base), canShare = !isFamilyList && checkGroups().length > 0;
 
   const done = list.items.filter(i => i.done).length;
   const total = list.items.length;
@@ -11904,7 +11971,7 @@ function renderChecklist() {
 
   el.innerHTML = `
     <div class="cl-tabs">
-      ${checklists.map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)">${esc(c.name)}</button>`).join('')}
+      ${checklists.map(c => { const sg = clSharedGid(c); return `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)"${sg ? ` aria-label="${tH('cl.tabAria', {name: c.name || '', grp: grpName(sg)})}"` : ''}>${sg ? `<span aria-hidden="true">${esc(grpEmoji(sg))}</span> ` : ''}${esc(c.name)}</button>`; }).join('')}
       ${groupChecklists().map(c => `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)" aria-label="${tH('cl.tabAria', {name: c.name || '', grp: grpName(c._gid)})}" style="border-color:var(--green);color:${c.id===activeChecklist?'var(--on-accent)':'var(--green)'}"><span aria-hidden="true">${esc(grpEmoji(c._gid))}</span> ${esc(c.name)}</button>`).join('')}
       <button class="cl-tab cl-tab-add" onclick="addChecklist()">+</button>
     </div>
@@ -11959,7 +12026,7 @@ function renderChecklist() {
 
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
-  const list = allChecklists().find(c => c.id === listId);
+  const list = clFind(listId);
   if (!list || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const undone = list.items.filter(i => !i.done);
   if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
@@ -11995,7 +12062,7 @@ window.handleClNewPhotoInput = async function(input) {
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
   if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
   if (clNewPhoto) { item.photos = [clNewPhoto]; clNewPhoto = null; }
@@ -12008,7 +12075,7 @@ window.addCheckItem = function() {
 };
 
 window.moveCheckItem = function(itemId, dir) {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const undone = list.items.filter(i => !i.done);
   const idx = undone.findIndex(i => i.id === itemId);
@@ -12023,7 +12090,7 @@ window.moveCheckItem = function(itemId, dir) {
 };
 
 window.toggleCheckItem = function(itemId) {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
@@ -12048,7 +12115,7 @@ window.saveExpandedCheckItem = function(itemId) {
   if (!ta) return;
   const newText = ta.value.trim();
   if (!newText) return;
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   const changed = !!item && item.text !== newText;
@@ -12060,7 +12127,7 @@ window.saveExpandedCheckItem = function(itemId) {
 };
 
 window.deleteCheckItem = function(itemId) {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const gone = list.items.find(i => i.id === itemId);
   list.items = list.items.filter(i => i.id !== itemId);
@@ -12082,7 +12149,7 @@ window.triggerClItemPhoto = function(itemId) {
     toast(t('cl.processing'));
     try {
       const photo = await compressImage(file, 900, 0.75);
-      const list = allChecklists().find(c => c.id === activeChecklist);
+      const list = clFind(activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
       if (item) {
@@ -12096,7 +12163,7 @@ window.triggerClItemPhoto = function(itemId) {
   inp.click();
 };
 window.removeClItemPhoto = function(itemId, photoIdx=0) {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (!item) return;
@@ -12106,7 +12173,7 @@ window.removeClItemPhoto = function(itemId, photoIdx=0) {
   saveChecklistDoc(list); renderChecklist();
 };
 window.showClItemPhoto = function(itemId, photoIdx=0) {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   const item = list?.items.find(i => i.id === itemId);
   const photos = getItemPhotos(item);
   if (!photos.length) return;
@@ -12124,7 +12191,7 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
 // ─────────────────────────────────────────────────────────
 
 window.clearDoneChecklistItems = function() {
-  const list = allChecklists().find(c => c.id === activeChecklist);
+  const list = clFind(activeChecklist);
   if (!list) return;
   const nDone = list.items.filter(i => i.done).length;
   list.items = list.items.filter(i => !i.done);
@@ -13419,8 +13486,9 @@ function buildChatContext(){
   add('CHECKLISTY (nesplněné položky)',false,()=>{
     const map=new Map();
     const famCl=famOk&&familyData.shareChecklist!==false; // stejně jako UI / odběr sdílených seznamů
-    checklists.forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:famCl&&clSharedHere(c,familyId)}); });
-    if(famCl) (clGrp[familyId]?.lists||[]).forEach(c=>{ if(c&&c.id) map.set(c.id,{c,fam:true}); });
+    // Můj sdílený seznam z kopie ve skupině (zdroj pravdy, kterákoli skupina), bez duplicit podle ID
+    checklists.forEach(c=>{ if(!c||!c.id) return; const sg=clSharedGid(c); map.set(c.id,{c:(sg&&clFind(c.id))||c,fam:!!sg}); });
+    if(famCl) (clGrp[familyId]?.lists||[]).forEach(c=>{ if(c&&c.id&&!map.has(c.id)) map.set(c.id,{c,fam:true}); });
     const all=[...map.values()];
     return [...all.slice(0,8).map(({c,fam})=>{
       const items=Array.isArray(c.items)?c.items.filter(i=>i&&i.text):[];
