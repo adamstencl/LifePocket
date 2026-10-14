@@ -7965,7 +7965,7 @@ async function checkPendingJoin() {
     if(!CU || !readPendingJoin()) return;
     if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); shown = true; return; }
     const d = snap.data() || {};
-    const who = (typeof d.createdBy === 'string' && d.createdBy !== CU.uid) ? cutName(d.members?.[d.createdBy]?.name, 40) : '';
+    const who = (typeof d.createdBy === 'string' && d.createdBy !== CU.uid) ? cutName(lookupOr(d.members||{}, d.createdBy, null)?.name, 40) : '';
     showJoinInviteModal(cutName(d.groupName,40) || t('grp.defName'), who);
     shown = true;
   } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště
@@ -12550,7 +12550,7 @@ async function initApp(){
   // Průvodce pro uživatele, kteří ho ještě neviděli (po onboardingu ho spouští finishOnboard)
   maybeStartTourOnInit();
   // Pozvánka do skupiny odkazem (?join=) – po changelogu, jen dotaz, nikdy automaticky
-  setTimeout(checkPendingJoin,2200);
+  clearTimeout(_pendingJoinTimer); _pendingJoinTimer=setTimeout(checkPendingJoin,2200);
 }
 
 function buildNav(){
