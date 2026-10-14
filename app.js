@@ -3476,7 +3476,7 @@ window.addEventListener('popstate', () => {
   // 1. Zavři otevřený modal
   // Poslední otevřený v DOM leží nahoře (stejný z-index); detail skupiny je vložený na začátek body (4.51)
   const openModal = [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop();
-  if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else if(openModal.id) cm(openModal.id); else openModal.remove(); return; }
+  if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else if(openModal.id==='join-invite-modal') window.laterPendingJoin(); else if(openModal.id) cm(openModal.id); else openModal.remove(); return; }
   // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
   if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
     window.closeEntry(); return;
@@ -4287,8 +4287,8 @@ window.setTheme = (id, silent) => {
 };
 
 window.toggleTheme = () => {
-  let cur = 'sunshine';
-  try { cur = localStorage.getItem('lp_theme') || 'sunshine'; } catch (e) {}
+  // Aktuální téma z dokumentu (funguje i bez localStorage)
+  let cur = document.documentElement.getAttribute('data-theme') || 'sunshine';
   const order = ['sunshine','tangerine','dark-gold'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
@@ -7926,7 +7926,7 @@ function showJoinInviteModal(name, who) {
       +'<div style="display:flex;gap:10px"><button class="btn-p" style="flex:1" onclick="confirmPendingJoin()">'+tH('grp.inv.join')+'</button>'
       +'<button class="btn-p" style="flex:1;background:var(--card2);color:var(--text2)" onclick="cancelPendingJoin()">'+tH('common.cancel')+'</button></div>';
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    '<div class="moverlay open" id="join-invite-modal" onclick="if(event.target===this)cancelPendingJoin()">'
+    '<div class="moverlay open" id="join-invite-modal" onclick="if(event.target===this)laterPendingJoin()">'
     +'<div class="modal" style="max-width:380px;gap:0"><div style="font-size:36px;text-align:center;margin-bottom:8px">🔗</div>'
     +'<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:14px">'+tH('grp.inv.modalTitle')+'</div>'
     +body+'</div></div>');
@@ -7972,6 +7972,8 @@ async function checkPendingJoin() {
   finally { _pendingJoinBusy = false; if(!shown && !waiting) tourAfterJoin(); }
 }
 window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); tourAfterJoin(); };
+// Klepnutí vedle okna nebo systémové Zpět: pozvánka zůstane (nabídne se znovu), průvodce pokračuje
+window.laterPendingJoin = () => { closeJoinInviteModal(); tourAfterJoin(); };
 window.confirmPendingJoin = async () => {
   const p = readPendingJoin();
   closeJoinInviteModal();
