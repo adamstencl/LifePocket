@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.51';
+const APP_VERSION = '4.52';
 const CHANGELOG = [
+  { v:'4.52', items:[
+    '☕ Appka zůstává zdarma – kdo chce, může dobrovolně přispět přes QR platbu'
+  ], en:[
+    '☕ The app stays free – if you like, you can contribute voluntarily via a Czech bank QR payment'
+  ]},
   { v:'4.51', items:[
     '👥 Přehlednější skupiny – emoji, šablony a volba hlavní skupiny',
     '🛠️ Opravena karta pozdravu na Domů – text se už neláme po písmenech a Rex zdraví ve tvém jazyce'
@@ -7267,6 +7272,220 @@ window.shareApp = async () => {
   catch(e) { prompt(t('set.share.copyPrompt'), url); }
 };
 
+// ── Dobrovolný příspěvek: IBAN, SPAYD (česká QR platba), QR generátor ──
+// Platný český IBAN: CZ + 22 číslic, kontrolní součet mod 97 == 1
+function normIban(s){ return String(s||'').replace(/\s+/g,'').toUpperCase(); }
+function isValidCzIban(s){
+  const v=normIban(s);
+  if(!/^CZ\d{22}$/.test(v)) return false;
+  const r=(v.slice(4)+v.slice(0,4)).replace(/[A-Z]/g,c=>String(c.charCodeAt(0)-55));
+  let m=0;
+  for(const ch of r) m=(m*10+(+ch))%97;
+  return m===1;
+}
+// Hodnota pole SPAYD: bez diakritiky a řídicích znaků, oříznutá na max. délku, '*' → %2A (oddělovač polí)
+function spaydVal(s,max){
+  const v=String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'').replace(/\s+/g,' ').trim().slice(0,max);
+  return v.replace(/\*/g,'%2A');
+}
+function buildSpayd(cfg,amount){
+  let s='SPD*1.0*ACC:'+normIban(cfg.iban)+'*AM:'+Math.round(amount)+'.00*CC:CZK';
+  const msg=spaydVal(cfg.message,60), rn=spaydVal(cfg.accountName,35);
+  if(msg) s+='*MSG:'+msg;
+  if(rn) s+='*RN:'+rn;
+  return s;
+}
+// Malý QR generátor: bajtový režim, úroveň opravy M, verze 1–15 (do 412 bajtů)
+const QR_EC_M=[null,[10,1,16,0,0],[16,1,28,0,0],[26,1,44,0,0],[18,2,32,0,0],[24,2,43,0,0],[16,4,27,0,0],[18,4,31,0,0],[22,2,38,2,39],[22,3,36,2,37],[26,4,43,1,44],[30,1,50,4,51],[22,6,36,2,37],[22,8,37,1,38],[24,4,40,5,41],[24,5,41,5,42]];
+const QR_ALIGN=[null,[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70]];
+function qrEncode(text){
+  const bytes=[...new TextEncoder().encode(text)];
+  let ver=0, info;
+  for(let v=1;v<=15;v++){
+    const e=QR_EC_M[v], cap=e[1]*e[2]+e[3]*e[4];
+    if(4+(v<10?8:16)+bytes.length*8<=cap*8){ ver=v; info=e; break; }
+  }
+  if(!ver) return null;
+  const [ecLen,b1,d1,b2,d2]=info, dataCap=b1*d1+b2*d2;
+  // Datové bity: režim 0100, délka, bajty, terminátor, doplnění 0xEC/0x11
+  const bits=[];
+  const put=(val,n)=>{ for(let i=n-1;i>=0;i--) bits.push((val>>>i)&1); };
+  put(4,4); put(bytes.length,ver<10?8:16); bytes.forEach(b=>put(b,8));
+  put(0,Math.min(4,dataCap*8-bits.length));
+  while(bits.length%8) bits.push(0);
+  const data=[];
+  for(let i=0;i<bits.length;i+=8){ let b=0; for(let j=0;j<8;j++) b=(b<<1)|bits[i+j]; data.push(b); }
+  for(let p=0;data.length<dataCap;p++) data.push(p%2?0x11:0xEC);
+  // Reed–Solomon nad GF(256), polynom 0x11D
+  const EXP=new Array(512), LOG=new Array(256);
+  for(let i=0,x=1;i<255;i++){ EXP[i]=x; LOG[x]=i; x<<=1; if(x&256) x^=0x11D; }
+  for(let i=255;i<512;i++) EXP[i]=EXP[i-255];
+  let gen=[1];
+  for(let i=0;i<ecLen;i++){
+    const g=new Array(gen.length+1).fill(0);
+    for(let j=0;j<gen.length;j++){ g[j]^=gen[j]; g[j+1]^=gen[j]?EXP[LOG[gen[j]]+i]:0; }
+    gen=g;
+  }
+  const rs=blk=>{
+    const r=blk.concat(new Array(ecLen).fill(0));
+    for(let i=0;i<blk.length;i++){
+      const c=r[i]; if(!c) continue;
+      for(let j=0;j<gen.length;j++) if(gen[j]) r[i+j]^=EXP[LOG[gen[j]]+LOG[c]];
+    }
+    return r.slice(blk.length);
+  };
+  const blocks=[], ecs=[];
+  let off=0;
+  for(let i=0;i<b1+b2;i++){ const n=i<b1?d1:d2; const blk=data.slice(off,off+n); off+=n; blocks.push(blk); ecs.push(rs(blk)); }
+  const cw=[];
+  for(let i=0;i<Math.max(d1,d2);i++) blocks.forEach(b=>{ if(i<b.length) cw.push(b[i]); });
+  for(let i=0;i<ecLen;i++) ecs.forEach(e=>cw.push(e[i]));
+  // Matice: funkční vzory
+  const N=ver*4+17;
+  const M=Array.from({length:N},()=>new Array(N).fill(0));
+  const F=Array.from({length:N},()=>new Array(N).fill(false));
+  const set=(r,c,v)=>{ M[r][c]=v?1:0; F[r][c]=true; };
+  const finder=(r,c)=>{
+    for(let i=-1;i<=7;i++) for(let j=-1;j<=7;j++){
+      const y=r+i,x=c+j; if(y<0||x<0||y>=N||x>=N) continue;
+      const d=Math.max(Math.abs(i-3),Math.abs(j-3));
+      set(y,x,d!==2&&d!==4);
+    }
+  };
+  finder(0,0); finder(0,N-7); finder(N-7,0);
+  for(let i=8;i<N-8;i++){ set(6,i,i%2===0); set(i,6,i%2===0); }
+  const al=QR_ALIGN[ver];
+  const na=al.length;
+  al.forEach((r,ai)=>al.forEach((c,aj)=>{
+    if((ai===0&&aj===0)||(ai===0&&aj===na-1)||(ai===na-1&&aj===0)) return; // rohy s vyhledávacími vzory
+    for(let i=-2;i<=2;i++) for(let j=-2;j<=2;j++) set(r+i,c+j,Math.max(Math.abs(i),Math.abs(j))!==1);
+  }));
+  // Rezervace formátu, tmavý modul, informace o verzi
+  for(let i=0;i<9;i++){ if(!F[8][i]) set(8,i,0); if(!F[i][8]) set(i,8,0); }
+  for(let i=0;i<8;i++){ set(8,N-1-i,0); set(N-1-i,8,0); }
+  set(N-8,8,1);
+  if(ver>=7){
+    let rem=ver; for(let i=0;i<12;i++) rem=(rem<<1)^((rem>>>11)*0x1F25);
+    const vb=(ver<<12)|rem;
+    for(let i=0;i<18;i++){ const b=(vb>>>i)&1, a=N-11+(i%3), c=Math.floor(i/3); set(c,a,b); set(a,c,b); }
+  }
+  // Data cikcak zprava zdola
+  const dbits=[]; cw.forEach(b=>{ for(let i=7;i>=0;i--) dbits.push((b>>>i)&1); });
+  let k=0;
+  for(let right=N-1;right>=1;right-=2){
+    if(right===6) right=5;
+    for(let vert=0;vert<N;vert++) for(let j=0;j<2;j++){
+      const c=right-j, up=((right+1)&2)===0, r=up?N-1-vert:vert;
+      if(F[r][c]) continue;
+      M[r][c]=k<dbits.length?dbits[k]:0; k++;
+    }
+  }
+  const MASKS=[(r,c)=>(r+c)%2===0,(r)=>r%2===0,(r,c)=>c%3===0,(r,c)=>(r+c)%3===0,(r,c)=>(Math.floor(r/2)+Math.floor(c/3))%2===0,(r,c)=>r*c%2+r*c%3===0,(r,c)=>(r*c%2+r*c%3)%2===0,(r,c)=>((r+c)%2+r*c%3)%2===0];
+  const withMask=m=>{
+    const G=M.map(row=>row.slice());
+    for(let r=0;r<N;r++) for(let c=0;c<N;c++) if(!F[r][c]&&MASKS[m](r,c)) G[r][c]^=1;
+    // Formát: úroveň M (00) + maska, BCH(15,5), XOR 0x5412
+    const d=m; let rem=d; for(let i=0;i<10;i++) rem=(rem<<1)^((rem>>>9)*0x537);
+    const fb=((d<<10)|rem)^0x5412;
+    for(let i=0;i<15;i++){
+      const b=(fb>>>i)&1;
+      if(i<6) G[i][8]=b; else if(i<8) G[i+1][8]=b; else if(i===8) G[8][7]=b; else G[8][14-i]=b;
+      if(i<8) G[8][N-1-i]=b; else G[N-15+i][8]=b;
+    }
+    G[N-8][8]=1;
+    return G;
+  };
+  // Penalizace dle normy (pravidla 1–4), vybere se nejnižší
+  const penalty=G=>{
+    let p=0;
+    for(let t=0;t<2;t++) for(let i=0;i<N;i++){
+      let run=1;
+      for(let j=1;j<=N;j++){
+        const a=j<N?(t?G[j][i]:G[i][j]):-1, b=t?G[j-1][i]:G[i][j-1];
+        if(a===b) run++; else { if(run>=5) p+=run-2; run=1; }
+      }
+    }
+    for(let r=0;r<N-1;r++) for(let c=0;c<N-1;c++){ const v=G[r][c]; if(v===G[r][c+1]&&v===G[r+1][c]&&v===G[r+1][c+1]) p+=3; }
+    const P1=[1,0,1,1,1,0,1,0,0,0,0], P2=[0,0,0,0,1,0,1,1,1,0,1];
+    for(let r=0;r<N;r++) for(let c=0;c+11<=N;c++){
+      let h1=true,h2=true,v1=true,v2=true;
+      for(let i=0;i<11;i++){
+        if(G[r][c+i]!==P1[i]) h1=false; if(G[r][c+i]!==P2[i]) h2=false;
+        if(G[c+i][r]!==P1[i]) v1=false; if(G[c+i][r]!==P2[i]) v2=false;
+      }
+      p+=40*(h1+h2+v1+v2);
+    }
+    let dark=0; G.forEach(row=>row.forEach(v=>dark+=v));
+    p+=Math.floor(Math.abs(dark*20-N*N*10)/(N*N))*10;
+    return p;
+  };
+  let best=null, bestP=Infinity;
+  for(let m=0;m<8;m++){ const G=withMask(m), p=penalty(G); if(p<bestP){ bestP=p; best=G; } }
+  return best;
+}
+// QR jako SVG (bílé pozadí a okraj 4 moduly i v tmavém režimu, jinak ho banky nenačtou)
+function qrSvg(text,px){
+  const G=qrEncode(text); if(!G) return '';
+  const N=G.length, S=N+8;
+  let d='';
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++) if(G[r][c]) d+='M'+(c+4)+' '+(r+4)+'h1v1h-1z';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+S+' '+S+'" width="'+px+'" height="'+px+'" shape-rendering="crispEdges" role="img"><rect width="'+S+'" height="'+S+'" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>';
+}
+// Sekce „Podpořit LifePocket“: config z /support.json (docs/PRISPEVKY.md), bez enabled:true a platného IBAN skrytá.
+// V TWA se nenačítá (podpora tam je skrytá). Chyba sítě / JSON = sekce se tiše nezobrazí.
+let supCfg=null, supAmt=0, supLoading=false;
+function czAccountFromIban(iban){
+  const v=normIban(iban), pre=v.slice(8,14).replace(/^0+/,''), num=v.slice(14).replace(/^0+/,'');
+  return (pre?pre+'-':'')+num+'/'+v.slice(4,8);
+}
+async function loadSupport(){
+  const box=document.getElementById('support-bank');
+  if(!box||IS_TWA||supLoading) return;
+  supLoading=true;
+  try{
+    const r=await fetch('/support.json',{cache:'no-store'});
+    const c=r.ok?await r.json():null;
+    if(!c||c.enabled!==true||!isValidCzIban(c.iban)){ supCfg=null; box.hidden=true; return; }
+    let amts=(Array.isArray(c.amounts)?c.amounts:[]).filter(n=>Number.isInteger(n)&&n>=1&&n<=100000).slice(0,6);
+    if(!amts.length) amts=[50,100,200];
+    supCfg={iban:normIban(c.iban),accountName:typeof c.accountName==='string'?c.accountName:'',message:typeof c.message==='string'?c.message:'LifePocket',amounts:amts};
+    if(!amts.includes(supAmt)) supAmt=amts[Math.min(1,amts.length-1)];
+    const inp=document.getElementById('support-custom'); if(inp) inp.value='';
+    renderSupport();
+    box.hidden=false;
+  }catch(e){ supCfg=null; box.hidden=true; }
+  finally{ supLoading=false; }
+}
+function renderSupport(){
+  if(!supCfg) return;
+  const custom=supCustomVal();
+  const amt=custom||supAmt;
+  document.getElementById('support-amts').innerHTML=supCfg.amounts.map(n=>
+    `<button type="button" class="sup-amt${!custom&&n===supAmt?' on':''}" aria-pressed="${!custom&&n===supAmt}" onclick="pickSupportAmt(this.dataset.a1)" data-a1="${n}">${tH('set.support.amt',{n})}</button>`).join('');
+  const qr=document.getElementById('support-qr');
+  qr.innerHTML=qrSvg(buildSpayd(supCfg,amt),200);
+  const svg=qr.querySelector('svg'); if(svg) svg.setAttribute('aria-label',t('set.support.qrAlt',{n:amt}));
+  document.getElementById('support-acc').textContent=czAccountFromIban(supCfg.iban)+(supCfg.accountName?' · '+supCfg.accountName:'');
+  document.getElementById('support-iban').textContent='IBAN '+supCfg.iban.replace(/(.{4})/g,'$1 ').trim();
+}
+// Vlastní částka: celé Kč 1–100 000, jinak se použije předvolba
+function supCustomVal(){
+  const v=Number(String(document.getElementById('support-custom')?.value||'').replace(',','.'));
+  return Number.isInteger(v)&&v>=1&&v<=100000?v:0;
+}
+window.pickSupportAmt=n=>{
+  supAmt=Number(n)||supAmt;
+  const inp=document.getElementById('support-custom'); if(inp) inp.value='';
+  renderSupport();
+};
+window.supportCustom=()=>renderSupport();
+window.copySupportAccount=async()=>{
+  if(!supCfg) return;
+  const acc=czAccountFromIban(supCfg.iban);
+  try{ await navigator.clipboard.writeText(acc); toast(t('set.support.copied')); }
+  catch(e){ prompt(t('set.support.copyPrompt'), acc); }
+};
+
 // ── Pozvánka do skupiny odkazem (?join=WORD-XXXXXX, starší WORD-NNNN) ─────────
 // Při startu (i před přihlášením) se kód z URL ověří, uloží i s časem a z adresy se smaže.
 // Po přihlášení se appka zeptá; připojení se děje jen po kliknutí na „Připojit se“.
@@ -11827,7 +12046,7 @@ window.sp=id=>{
   const pg=document.getElementById('p-'+id);if(pg)pg.classList.add('active');
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
   document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
-  if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();}
+  if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();loadSupport();}
   if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();}
   if(id==='mealplan'){
     const tab=getMealTab();

@@ -1009,7 +1009,19 @@
         <button type="button" class="share-app-btn" onclick="shareApp()" data-i18n="set.share.btn">📤 Sdílet LifePocket</button>
         <!-- Podpora projektu: v aplikaci z Google Play (TWA) skrytá přes html.is-twa -->
         <div class="lp-support">
-        <div class="setsec-t" data-i18n="set.support.title">☕ Podpořit projekt</div>
+        <!-- Dobrovolný příspěvek českou QR platbou: jen při enabled:true a platném IBAN v support.json (docs/PRISPEVKY.md) -->
+        <div id="support-bank" hidden>
+          <div class="setsec-t" data-i18n="set.support.bankTitle">☕ Podpořit LifePocket</div>
+          <div class="setsec-d" data-i18n="set.support.bankDesc">Appka je a zůstane zdarma. Dobrovolný příspěvek pomůže pokrýt náklady na servery a AI. Nic se za něj neodemyká, je to čistě dobrovolné.</div>
+          <div class="sup-amts" id="support-amts" role="group" data-i18n-attr="aria-label:set.support.amtLabel" aria-label="Částka příspěvku"></div>
+          <input class="finp sup-custom" id="support-custom" type="number" inputmode="numeric" min="1" max="100000" step="1" oninput="supportCustom()" placeholder="Vlastní částka v Kč" aria-label="Vlastní částka v Kč" data-i18n-attr="placeholder:set.support.customPh;aria-label:set.support.customPh">
+          <div class="sup-qr" id="support-qr"></div>
+          <div class="sup-note" data-i18n="set.support.qrNote">Česká QR platba: naskenuj kód v aplikaci své banky a platbu tam potvrď.</div>
+          <div class="sup-acc" id="support-acc" translate="no"></div>
+          <div class="sup-iban" id="support-iban" translate="no"></div>
+          <button type="button" class="btn-s sup-copy" onclick="copySupportAccount()" data-i18n="set.support.copy">📋 Zkopírovat číslo účtu</button>
+        </div>
+        <div class="setsec-t" style="margin-top:20px" data-i18n="set.support.title">⚡ Podpořit projekt</div>
         <div class="setsec-d" data-i18n="set.support.desc">LifePocket vznikl jako osobní projekt a zůstává zdarma a bez reklam. Každý příspěvek pomáhá pokrýt náklady na provoz a motivuje k dalšímu vývoji nových funkcí. Pokud ti appka usnadňuje každodenní život, budu rád za jakoukoli podporu. Díky moc! 🙏</div>
         <div style="margin-top:12px">
           <div style="background:var(--card2);border:1px solid rgba(245,200,66,.25);border-radius:14px;padding:16px;text-align:center;max-width:220px;margin:0 auto 12px">
