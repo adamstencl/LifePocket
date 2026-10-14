@@ -182,7 +182,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         </div>
       </div>
       <div class="err" id="login-err" role="alert"></div>
-      <div class="privacy" data-i18n="auth.note">🔒 Zdarma · Data ve Firebase · AI přes Anthropic</div>
+      <div class="privacy" data-i18n="auth.note">🔒 Zdarma a bez reklam · Tvoje data patří jen tobě a tvé skupině</div>
       <div class="lp-legal">
         <a href="privacy.html" target="_blank" rel="noopener" data-i18n="legal.privacy" data-i18n-attr="href:legal.privacyUrl">Ochrana osobních údajů</a> ·
         <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a>
@@ -549,7 +549,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
               <span id="j-voice-txt" data-i18n="nt.voiceTxt">Poslouchám… mluv volně.</span>
               <button class="vstop" onclick="stopJournalMic()">⏹ Hotovo</button>
             </div>
-            <textarea class="j-textarea" id="j-text" placeholder="Piš co tě napadá… nebo klikni na 🎤 a mluv." data-i18n-attr="placeholder:nt.textPh" oninput="markDirty()"></textarea>
+            <textarea class="j-textarea" id="j-text" placeholder="Piš co tě napadá… nebo klepni na 🎤 a mluv." data-i18n-attr="placeholder:nt.textPh" oninput="markDirty()"></textarea>
             <div id="j-photo-preview"></div>
             <div class="j-photo-bar">
               <button class="j-photo-btn" onclick="triggerEntryPhoto()" title="Přidat fotku" data-i18n="nt.photoBtn" data-i18n-attr="title:cl.addPhoto">📷 Fotka</button>
@@ -766,7 +766,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       </div>
       <div class="vcard">
         <div class="vlbl">✦ Moje vize</div>
-        <div id="vision-areas"><div class="vtxt empty" data-i18n="goal.vm.empty">Klikni ✏️ a napiš svoji vizi pro každou oblast…</div></div>
+        <div id="vision-areas"><div class="vtxt empty" data-i18n="goal.vm.empty">Klepni na ✏️ a napiš svoji vizi pro každou oblast…</div></div>
         <button class="vedit" onclick="openVM()">✏️ Upravit</button>
       </div>
       <div id="goals-list"></div>
@@ -797,7 +797,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <!-- Day summary bar -->
         <div class="asstop">
           <div class="dsum-bar">
-            <span>🎙️ <strong data-i18n="chat.ds.title">Přehled dne</strong> <span data-i18n="chat.ds.desc">— řekni co jsi dělal a já to zaznamenám</span></span>
+            <span>🎙️ <strong data-i18n="chat.ds.title">Přehled dne</strong> <span data-i18n="chat.ds.desc">— řekni, co se dnes dělo, a já to zaznamenám</span></span>
             <button class="btn-rec" id="dsBtn" onclick="togDS()" data-i18n="chat.dsBtn">🎤 Nahrát přehled dne</button>
           </div>
           <div class="vrec-banner" id="vrec-banner">
@@ -815,7 +815,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
             <div class="chips">
               <div class="chip" onclick="getRexWeeklyReport()" data-i18n="chat.chip.report">📊 Týdenní report</div>
               <div class="chip" data-q="Jak plním své cíle?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.goals" data-i18n-attr="data-q:chat.q.goals">Jak plním cíle?</div>
-              <div class="chip" data-q="Co bych měl dnes udělat pro svou vizi?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.today" data-i18n-attr="data-q:chat.q.today">Co dělat dnes?</div>
+              <div class="chip" data-q="Co mám dnes udělat pro svou vizi?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.today" data-i18n-attr="data-q:chat.q.today">Co dělat dnes?</div>
               <div class="chip" data-q="Poraď mi jak zůstat motivovaný" onclick="askC(this.dataset.q)" data-i18n="chat.chip.motiv" data-i18n-attr="data-q:chat.q.motiv">Jak být motivovaný?</div>
               <div class="chip" data-q="Shrň moje cíle a pokrok" onclick="askC(this.dataset.q)" data-i18n="chat.chip.progress" data-i18n-attr="data-q:chat.q.progress">Shrnutí pokroku</div>
               <div class="chip" data-q="Jaká je moje nálada tento týden?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.mood" data-i18n-attr="data-q:chat.q.mood">Moje nálada</div>
@@ -825,7 +825,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <div class="typing" id="typing"><div class="td"></div><div class="td"></div><div class="td"></div></div>
         <div class="cinput-bar">
           <div class="cinput-inner">
-            <textarea class="cta" id="c-inp" placeholder="Napiš zprávu nebo klikni 🎤…" data-i18n-attr="placeholder:chat.inpPh" rows="1" onkeydown="ck(event)" oninput="ar(this)"></textarea>
+            <textarea class="cta" id="c-inp" placeholder="Napiš zprávu nebo klepni na 🎤…" data-i18n-attr="placeholder:chat.inpPh" rows="1" onkeydown="ck(event)" oninput="ar(this)"></textarea>
             <button class="btn-mic" id="mic-btn" onclick="togMic()" title="Hlasový vstup" data-i18n-attr="title:chat.micTitle">🎤</button>
           </div>
           <button class="btn-send" id="send-btn" onclick="send()">➤</button>
@@ -932,7 +932,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
 
       <!-- NOTIFIKACE -->
       <div class="setsec">
-        <div class="setsec-t" data-i18n="set.notif.title">🔔 Push notifikace</div>
+        <div class="setsec-t" data-i18n="set.notif.title">🔔 Upozornění</div>
         <div class="setsec-d" data-i18n="set.notif.desc">Připomínky návyků a denní přehled přímo do telefonu nebo prohlížeče. Funguje na Android a PC (Chrome/Edge). iPhone má omezení.</div>
         <div id="notif-status-box" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:var(--card2);border:1px solid var(--border);font-size:14px;color:var(--text2)" data-i18n="set.notif.checking">
           ⏳ Zjišťuji stav notifikací…
@@ -1050,8 +1050,8 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <a href="privacy.html" target="_blank" data-i18n-attr="href:legal.privacyUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.privacyIcon">🔒 Ochrana osobních údajů</a>
           <a href="terms.html" target="_blank" data-i18n-attr="href:legal.termsUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.termsIcon">📋 Podmínky použití</a>
         </div>
-                <div class="setsec-t" style="margin-top:20px" data-i18n="set.contact.title">📬 Napište nám</div>
-        <div class="setsec-d" data-i18n="set.contact.desc">Máte dotaz, nápad nebo narazili jste na chybu? Napište nám!</div>
+                <div class="setsec-t" style="margin-top:20px" data-i18n="set.contact.title">📬 Napiš nám</div>
+        <div class="setsec-d" data-i18n="set.contact.desc">Máš dotaz, nápad nebo chybu v appce? Napiš nám!</div>
         <div style="margin-top:10px">
           <form class="contact-form" action="https://formspree.io/f/xlgpyjaa" method="POST" onsubmit="handleContactSubmit(event)">
             <input type="hidden" name="_replyto" value="">

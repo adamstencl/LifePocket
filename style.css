@@ -650,6 +650,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 @media(max-width:640px){
   .nbtn .nl{display:none}
   .hnav{display:none}
+  .hdr .lbtn{display:none} /* odhlášení je v Nastavení, v hlavičce se trefí omylem */
   .bottom-nav{display:block}
   .page{padding:14px 14px 90px}
   .frow{grid-template-columns:1fr}
