@@ -52,10 +52,12 @@ const APP_VERSION = '4.57';
 const CHANGELOG = [
   { v:'4.57', items:[
     '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky',
-    '⏰ Připomínky a souhrny chodí podle časového pásma telefonu, i když jsi mimo Česko'
+    '⏰ Připomínky a souhrny chodí podle časového pásma telefonu, i když jsi mimo Česko',
+    '🧮 Nákup a recepty rozumí množstvím jako 1 1/2 hrnku, 1½ kg nebo 1 000 g'
   ], en:[
     '🌐 You can switch the app language on the sign-in screen of the installed app too',
-    '⏰ Reminders and summaries follow your phone time zone, even outside Czechia'
+    '⏰ Reminders and summaries follow your phone time zone, even outside Czechia',
+    '🧮 Shopping and recipes understand amounts like 1 1/2 cups, 1½ kg or 1 000 g'
   ]},
   { v:'4.56', items:[
     '🌍 Appka se novým uživatelům automaticky přepne do jejich jazyka; oprava lžic v receptech'
@@ -14118,14 +14120,22 @@ window.editShopCat=(id, currentCat)=>{
 
 // ── MNOŽSTVÍ PŘI PSANÍ (4.45) ── „2 mléka“, „mléko 2l“, „3x rohlík“, „500 g mouky“ → {name, qty}
 // Název se ukládá, jak ho uživatel napsal (bez skloňování), jen se oddělí množství. qty zůstává volný řetězec.
-const SHOP_NUM_RE = '(\\d{1,4}\\/\\d{1,3}|[½¼¾]|\\d{1,5}(?:[.,]\\d{1,3})?)';
+// Číslo: smíšené „1 1/2“ a „1½“, tisíce „1 000“ / „1.000“ (přesně 3 číslice za oddělovačem), zlomek, desetinné
+const SHOP_NUM_RE = '(\\d{1,3}(?: \\d{1,2}\\/\\d{1,3}| ?[½¼¾])|[1-9]\\d{0,2}(?:[. ]\\d{3})+(?![\\d.,/])|\\d{1,4}\\/\\d{1,3}|[½¼¾]|\\d{1,5}(?:[.,]\\d{1,3})?)';
 const SHOP_UNIT_RE = '(kusy|kusů|kusu|kus|ks|pcs|pc|kilogramy|kilogramů|kilo|kila|kg|dkg|deka|deko|gramy|gramů|gramu|g|ml|dl|cl|litry|litrů|litru|litr|l|balení|bal|packs|pack|x|×)\\.?'; // tečka za jednotkou („2 l.“) se ignoruje
 const SHOP_FRAC = {'½':.5,'¼':.25,'¾':.75};
 function shopNum(s){
-  s = String(s||'');
+  s = String(s||'').replace(/\s+/g,' ').trim();
   if(SHOP_FRAC[s]) return SHOP_FRAC[s];
-  const f = s.match(/^(\d+)\/(\d+)$/);
-  const n = f ? (Number(f[2]) ? Number(f[1])/Number(f[2]) : 0) : parseFloat(s.replace(',','.'));
+  let n, m;
+  if((m = s.match(/^(\d{1,3})(?: (\d{1,2})\/(\d{1,3})| ?([½¼¾]))$/))) // smíšené číslo „1 1/2“, „1½“
+    n = Number(m[1]) + (m[4] ? SHOP_FRAC[m[4]] : (Number(m[3]) ? Number(m[2])/Number(m[3]) : 0));
+  else if((m = s.match(/^[1-9]\d{0,2}(?:([. ])\d{3})+$/)) && !(m[1]==='.' && LANG==='en')) // tisíce; v angličtině je tečka desetinná
+    n = Number(s.replace(/[. ]/g,''));
+  else {
+    const f = s.match(/^(\d+)\/(\d+)$/);
+    n = f ? (Number(f[2]) ? Number(f[1])/Number(f[2]) : 0) : parseFloat(s.replace(',','.'));
+  }
   return Number.isFinite(n) ? Math.round(n*1000)/1000 : 0;
 }
 // Jednotka do jednotného tvaru (ks/kg/dkg/g/ml/dl/cl/l/bal); počet kusů v angličtině „pcs“
@@ -14166,7 +14176,7 @@ function parseShopInput(raw){
   // „3x rohlík“, „2×mléko“
   if((m = s.match(new RegExp('^'+N+'\\s*([x×])\\s*(\\p{L}.*)$','iu'))) && (r = ok(m[3], shopNum(m[1]), m[2]))) return r;
   // „2 mléka“, „1/2 chleba“, „½ melounu“ (počet nejvýš 3 číslice: „2024 kalendář“ zůstane)
-  if((m = s.match(/^(\d{1,3}\/\d{1,3}|[½¼¾]|\d{1,3}(?:[.,]\d{1,3})?)\s+(\p{L}.*)$/iu)) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
+  if((m = s.match(/^(\d{1,2}(?: \d{1,2}\/\d{1,3}| ?[½¼¾])|\d{1,3}\/\d{1,3}|[½¼¾]|\d{1,3}(?:[.,]\d{1,3})?)\s+(\p{L}.*)$/iu)) && (r = ok(m[2], shopNum(m[1]), 'ks'))) return r;
   // „mléko 2l“, „rohlíky 10 ks“, „pivo 0,5 l“, „mléko 2x“
   if((m = s.match(new RegExp('^(.+?)\\s+'+N+'\\s*'+U+'$','iu'))) && (r = ok(m[1], shopNum(m[2]), m[3]))) return r;
   // „mléko x2“
@@ -15467,7 +15477,8 @@ const ING_UNITS = (()=>{
 })();
 function parseIngQty(qtyStr) {
   if (!qtyStr) return {amount:1, unit:'ks'};
-  const m = String(qtyStr).match(/(\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
+  // Smíšené číslo („1 1/2“, „1½“) a tisíce („1 000“, „1.000“) jako v nákupu (shopNum)
+  const m = String(qtyStr).replace(/\s+/g,' ').match(/(\d{1,3}(?: \d{1,2}\/\d{1,3}| ?[½¼¾])|[1-9]\d{0,2}(?:[. ]\d{3})+(?![\d.,/])|\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
   if (!m) return {amount:1, unit:'ks'};
   const amount = shopNum(m[1]); // 0 (např. „0 g“) zůstává 0, volající ho přeskočí
   const w = (m[2]||'').toLowerCase();
