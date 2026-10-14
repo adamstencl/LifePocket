@@ -1168,6 +1168,10 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .grp-pick-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:0 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;font-weight:600;cursor:pointer;text-align:left}
 .grp-pick-row.sel{border-color:var(--accent);color:var(--accent)}
 .grp-pick:focus-visible,.grp-pick-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Jídelníček a kalendář ve skupinách (4.53): cíl v okně receptu, poznámka u uložené události */
+.mp-target .finp{margin-bottom:14px}
+.ev-share-note{font-size:13px;color:var(--text2);margin-top:-4px}
+.seg-btn:disabled,.grp-pick:disabled{cursor:default}
 /* Správa skupin (4.51): krátké karty, detail ve sheetu, nová skupina */
 .grp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:4px 0 8px;font-size:15px;font-weight:700;color:var(--text)}
 .grp-cnt{font-size:13px;font-weight:400;color:var(--text2)}

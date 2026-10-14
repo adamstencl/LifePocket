@@ -1294,7 +1294,6 @@ export default {
   'cal.all': 'Vše',
   'cal.none14': 'Žádné události v příštích 14 dnech',
   'cal.noneType14': 'Žádné události tohoto typu v příštích 14 dnech',
-  'cal.sharedBadge': '👨‍👩‍👧 sdílené',
   'cal.yearly': 'každý rok',
   'cal.migrateQ': 'Přesunout {n} osobních událostí do sdíleného kalendáře?',
   'cal.migrated': '✓ {n} událostí přesunuto do sdíleného kalendáře',
@@ -1312,6 +1311,10 @@ export default {
   'cal.endBad': '⚠️ Datum konce musí být po začátku',
   'cal.edited': '✓ Událost upravena',
   'cal.added': '✓ Událost přidána',
+  'cal.addedTo': '✓ Událost přidána → {to}',
+  'cal.grpGone': '⚠️ Skupina už kalendář nesdílí, vyber jinou nebo „Jen já“',
+  'cal.f.visAria': 'Kde bude událost vidět',
+  'cal.f.visEdit': 'U uložené události se skupina nemění.',
   'cal.delQ': 'Smazat událost?',
   'cal.deleted': 'Smazáno',
   'tp.title': 'Vyber čas',
@@ -1877,8 +1880,7 @@ export default {
   'cal.f.repeat': 'Opakovat každý rok',
   'cal.f.repeatNo': 'Ne (jednorázová událost)',
   'cal.f.repeatYes': 'Ano (narozeniny, výročí…)',
-  'cal.f.private': '🔒 Soukromá',
-  'cal.f.shared': '👨‍👩‍👧 Sdílená',
+  'cal.f.private': '🔒 Jen já',
   'cal.f.save': 'Uložit událost',
 
   // ── Chat (4.48) ──

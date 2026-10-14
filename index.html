@@ -1308,11 +1308,7 @@
     </div>
     <div class="fg" id="ev-share-row" style="display:none">
       <label class="flbl">👁️ Viditelnost</label>
-      <div class="ev-type-row">
-        <button class="ev-share-btn ev-type-btn sel" data-s="0" onclick="setEvShare(false)" data-i18n="cal.f.private">🔒 Soukromá</button>
-        <button class="ev-share-btn ev-type-btn" data-s="1" onclick="setEvShare(true)" data-i18n="cal.f.shared">👨‍👩‍👧 Sdílená</button>
-      </div>
-      <select class="finp" id="ev-share-group-sel" style="display:none;margin-top:6px" onchange="onEvShareGroupChange()"></select>
+      <div id="ev-share-pick"></div>
     </div>
     <div class="macts">
       <button class="btn-s" onclick="resetAndCloseEventModal()" data-i18n="common.cancel">Zrušit</button>

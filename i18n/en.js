@@ -1288,7 +1288,6 @@ export default {
   'cal.all': 'All',
   'cal.none14': 'No events in the next 14 days',
   'cal.noneType14': 'No events of this type in the next 14 days',
-  'cal.sharedBadge': '👨‍👩‍👧 shared',
   'cal.yearly': 'every year',
   'cal.migrateQ': 'Move {n} personal events to the shared calendar?',
   'cal.migrated': '✓ {n} events moved to the shared calendar',
@@ -1306,6 +1305,10 @@ export default {
   'cal.endBad': '⚠️ The end date must be after the start',
   'cal.edited': '✓ Event updated',
   'cal.added': '✓ Event added',
+  'cal.addedTo': '✓ Event added → {to}',
+  'cal.grpGone': '⚠️ The group no longer shares its calendar, pick another one or “Just me”',
+  'cal.f.visAria': 'Where the event will be visible',
+  'cal.f.visEdit': 'The group of a saved event does not change.',
   'cal.delQ': 'Delete this event?',
   'cal.deleted': 'Deleted',
   'tp.title': 'Pick a time',
@@ -1871,8 +1874,7 @@ export default {
   'cal.f.repeat': 'Repeat every year',
   'cal.f.repeatNo': 'No (one-off event)',
   'cal.f.repeatYes': 'Yes (birthdays, anniversaries…)',
-  'cal.f.private': '🔒 Private',
-  'cal.f.shared': '👨‍👩‍👧 Shared',
+  'cal.f.private': '🔒 Just me',
   'cal.f.save': 'Save event',
 
   // ── Chat (4.48) ──

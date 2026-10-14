@@ -2629,7 +2629,7 @@ function renderEvList(){
     return '<div class="ev-card">'
       +'<div class="ev-icon">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div class="ev-info">'
-      +'<div class="ev-name">'+esc(ev.name)+(ev.shared?'<span class="ev-badge" style="background:rgba(245,200,66,.15);color:var(--accent)">'+tH('cal.sharedBadge')+'</span>':'')+'</div>'
+      +'<div class="ev-name">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
         ?fmtDate(ev._date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
         :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
@@ -2892,7 +2892,8 @@ window.migrateCalEvents = async function() {
   if(!isCalShared()||!events.length) return;
   if(!confirm(t('cal.migrateQ',{n:events.length}))) return;
   let ok=0, firstName='';
-  const fid=familyId;
+  const fid=getCalShareGroups()[0]?.id; // hlavní skupina, pokud kalendář sdílí, jinak první další
+  if(!fid) return;
   for(const ev of events) {
     try {
       const {id, ...data} = ev;
@@ -2914,6 +2915,7 @@ window.calDayClick=(ds)=>{
     showDayEventsModal(ds, dayEvs);
   } else {
     // Prázdný den - otevři formulář pro novou událost
+    editingEventId = null;
     const edi=document.getElementById('ev-date-inp'); if(edi) edi.value=ds;
     const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
     const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
@@ -2938,7 +2940,7 @@ function showDayEventsModal(ds, dayEvs) {
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
       +'<div style="font-size:22px">'+esc(getEvIcon(ev.type))+'</div>'
       +'<div style="flex:1">'
-      +'<div style="font-weight:600;color:var(--text1)">'+esc(ev.name)+(ev.shared?'<span style="font-size:10px;color:var(--accent);margin-left:6px">👨‍👩‍👧</span>':'')+'</div>'
+      +'<div style="font-weight:600;color:var(--text1)">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
       +'</div>'
       +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
@@ -2995,7 +2997,7 @@ window.openEditEvent = function(ev) {
     const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = ev.dateEnd || '';
   }
   document.getElementById('m-event').querySelector('.mtitle').textContent = t('cal.editTitle');
-  updateEvShareUI(!!(ev.shared));
+  updateEvShareUI(!!(ev.shared), ev.groupId || (ev.shared ? familyId : null));
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
@@ -3119,14 +3121,18 @@ window.saveEvent=async()=>{
     editingEventId = null;
     toast(t('cal.edited'));
   } else {
-    if(selEvShare && selEvShareGroupId) {
-      const gid=selEvShareGroupId;
-      await addDoc(collection(db,'families',gid,'events'),ev);
+    const gid = selEvShare ? selEvShareGroupId : null;
+    if(gid) {
+      // Skupina mezitím kalendář vypnula nebo jsem z ní odešel → neuložit potichu jinam
+      if(!groupModShared(gid, 'cal')) { toast(t('cal.grpGone')); updateEvShareUI(false); return; }
+      try { await addDoc(collection(db,'families',gid,'events'),ev); }
+      catch(e) { toast('⚠️ '+userErr(e,'calendar')); return; }
       logGroupActivity(gid, 'cal', 'add', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
+      toast(t('cal.addedTo', {to: grpLabel(gid)}));
     } else {
       await addDoc(collection(db,'users',CU.uid,'events'),ev);
+      toast(t('cal.added'));
     }
-    toast(t('cal.added'));
   }
   cm('m-event');
 };
@@ -6808,8 +6814,14 @@ let unsubExtraGroupCals = {}; // { gid: unsubFn }
 let selEvShare = false; // event modal share toggle
 let selEvShareGroupId = null; // which group to share event to
 
+// Sloučený kalendář (4.53): události všech skupin, které kalendář sdílí (vypnutý modul = události zmizí hned)
 function getAllFamilyEvents() {
-  return [...familyEvents, ...Object.values(extraGroupEvents).flat()];
+  return [...familyEvents, ...Object.values(extraGroupEvents).flat()].filter(e => groupModShared(e.groupId, 'cal'));
+}
+// Emoji skupiny před názvem sdílené události (název skupiny pro čtečku)
+function evGrpPrefix(ev) {
+  if(!ev?.shared || !ev.groupId || !groupDataOf(ev.groupId)) return '';
+  return '<span aria-hidden="true">'+esc(grpEmoji(ev.groupId))+'</span> <span class="sr-only">'+esc(grpName(ev.groupId))+': </span>';
 }
 function getCalShareGroups() {
   const groups = [];
@@ -6827,34 +6839,40 @@ function getEventAuthorName(ev) {
   }
   return t('grp.member');
 }
-function updateEvShareUI(isShared) {
+// Kam událost patří (4.53): „🔒 Jen já“ + skupiny se sdíleným kalendářem (vzor přepínače Nákupů).
+// Uložená událost skupinu nemění (výběr se jen ukáže); gid = skupina události, nová sdílená bez gid = první skupina
+function evShareLabel(g) { return g ? grpLabel(g) : t('cal.f.private'); }
+function updateEvShareUI(isShared, gid) {
   const row = document.getElementById('ev-share-row');
   if (!row) return;
-  const shareGroups = getCalShareGroups();
-  if (!shareGroups.length) { row.style.display = 'none'; return; }
+  const gs = getCalShareGroups().map(g => g.id);
+  if (editingEventId) selEvShareGroupId = isShared && gid ? gid : null;
+  else selEvShareGroupId = isShared ? (gid && gs.includes(gid) ? gid : gs[0] || null) : null;
+  selEvShare = !!selEvShareGroupId;
+  if (!gs.length && !selEvShare) { row.style.display = 'none'; return; }
   row.style.display = '';
-  selEvShare = isShared;
-  selEvShareGroupId = isShared ? (shareGroups[0]?.id || null) : null;
-  document.querySelectorAll('.ev-share-btn').forEach(b =>
-    b.classList.toggle('sel', (b.dataset.s === '1') === isShared)
-  );
-  const grpSel = document.getElementById('ev-share-group-sel');
-  if (grpSel) {
-    if (isShared && shareGroups.length > 1) {
-      grpSel.style.display = '';
-      grpSel.innerHTML = shareGroups.map(g =>
-        '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>'
-      ).join('');
-      selEvShareGroupId = shareGroups[0].id;
-    } else {
-      grpSel.style.display = 'none';
-    }
-  }
+  renderEvSharePick();
 }
-window.setEvShare = (shared) => updateEvShareUI(shared);
-window.onEvShareGroupChange = () => {
-  const sel = document.getElementById('ev-share-group-sel');
-  if (sel) selEvShareGroupId = sel.value || null;
+function renderEvSharePick() {
+  const w = document.getElementById('ev-share-pick');
+  if (!w) return;
+  const editing = !!editingEventId, cur = selEvShareGroupId || '';
+  const hadFocus = w.contains(document.activeElement);
+  const opts = editing ? [cur] : ['', ...getCalShareGroups().map(g => g.id)];
+  w.innerHTML = grpChoiceHTML({opts, cur, label: evShareLabel, aria: t('cal.f.visAria'), pick: 'setEvShareGroup', sheet: 'openEvShareSheet', disabled: editing})
+    + (editing ? '<div class="ev-share-note">'+tH('cal.f.visEdit')+'</div>' : '');
+  if (hadFocus) w.querySelector('.seg-btn.active, .grp-pick')?.focus(); // fokus zůstane na výběru
+}
+window.setEvShareGroup = (gid) => {
+  if (editingEventId) return;
+  gid = typeof gid === 'string' && getCalShareGroups().some(g => g.id === gid) ? gid : '';
+  selEvShareGroupId = gid || null; selEvShare = !!gid;
+  renderEvSharePick();
+};
+window.openEvShareSheet = () => {
+  if (editingEventId) return;
+  openGrpChoiceSheet({opts: ['', ...getCalShareGroups().map(g => g.id)], cur: selEvShareGroupId || '', label: evShareLabel,
+    aria: t('cal.f.visAria'), focusSel: '#ev-share-pick .grp-pick', onPick: g => window.setEvShareGroup(g)});
 };
 
 // Slova kódu skupiny – seznam musí odpovídat firestore.rules (families create)
@@ -7723,12 +7741,13 @@ window.toggleFamilyModule = async (key, gid = null) => {
     return;
   }
   // Handle extra group cal subscription changes
+  if(key === 'shareCal') renderCal(); // sloučený kalendář (4.53): události skupiny se ukážou / skryjí
   if(gid && key === 'shareCal') {
     if(newVal && !unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap => {
         extraGroupEvents[gid] = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
         renderCal();
-      });
+      }, familyListenErr);
     } else if(!newVal && unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid];
       delete extraGroupEvents[gid]; renderCal();
@@ -8101,6 +8120,7 @@ function subscribeExtraGroup(gid) {
     if (!xCheck) unsubGroupCheck(gid);
     if (prevMeal !== xMeal || mealViewStored() === gid || (xMeal && prevLbl !== grpLabel(gid))) renderMealPlan();
     if (prevCheck !== xCheck || (xCheck && prevLbl !== grpLabel(gid))) renderChecklist();
+    if (xd.shareCal && prevLbl && prevLbl !== grpLabel(gid)) renderCal(); // emoji skupiny u událostí
     if (!_gfUnsub[gid]) startGroupUnread(gid);
     startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -8109,7 +8129,11 @@ function subscribeExtraGroup(gid) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap2 => {
         extraGroupEvents[gid] = snap2.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
         renderCal();
-      });
+      }, familyListenErr);
+    } else if (!extraGroupsData[gid]?.shareCal && unsubExtraGroupCals[gid]) {
+      // Kalendář vypnul jiný člen → listener zrušit, události zmizí ze sloučeného pohledu
+      unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid];
+      delete extraGroupEvents[gid]; renderCal();
     }
     renderFamilySettings();
   });
@@ -8152,6 +8176,7 @@ function subscribeFamily() {
     if(!fCheck) unsubGroupCheck(fid);
     if(prevMeal !== fMeal || (fMeal && prevLbl !== grpLabel(fid))) renderMealPlan();
     if(prevCheck !== fCheck || (fCheck && prevLbl !== grpLabel(fid))) renderChecklist();
+    if(familyData.shareCal && prevLbl && prevLbl !== grpLabel(fid)) renderCal(); // emoji skupiny u událostí
     if(!_gfUnsub[fid]) startGroupUnread(fid);
     startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
@@ -8173,8 +8198,9 @@ function subscribeSharedShop() { subscribeGroupShop(familyId); }
 
 function subscribeSharedCal() {
   if(unsubFamilyCal) return;
-  unsubFamilyCal = onSnapshot(collection(db,'families',familyId,'events'), snap => {
-    familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true}));
+  const fid = familyId;
+  unsubFamilyCal = onSnapshot(collection(db,'families',fid,'events'), snap => {
+    familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:fid}));
     // Sloučit s osobními eventi
     renderCal();
   }, familyListenErr);
@@ -12452,7 +12478,7 @@ function rDash(){
         return `<div class="dw-ev-row">
           <div class="dw-ev-ico">${esc(getEvIcon(ev.type))}</div>
           <div style="flex:1">
-            <div class="dw-ev-name">${esc(ev.name)}</div>
+            <div class="dw-ev-name">${evGrpPrefix(ev)}${esc(ev.name)}</div>
             <div class="dw-ev-date">${ev._date.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'long'})}</div>
           </div>
           ${isSoon?`<span class="dw-ev-badge">${diffLbl}</span>`:`<span style="font-size:12px;color:var(--text3)">${diffLbl}</span>`}
