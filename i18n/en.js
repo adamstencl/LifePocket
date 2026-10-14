@@ -1588,6 +1588,7 @@ export default {
   'grp.inv.copyFail': '❌ Could not copy the link',
   'grp.inv.gone': 'This invite is no longer valid, ask for a new one.',
   'grp.inv.q1': 'Do you want to join the group',
+  'grp.inv.from': '👋 {who} is inviting you.',
   'grp.inv.join': 'Join',
   'grp.inv.modalTitle': 'Group invite',
   'grp.shareToggleFail': '❌ Could not change sharing, try again',

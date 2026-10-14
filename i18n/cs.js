@@ -1594,6 +1594,7 @@ export default {
   'grp.inv.copyFail': '❌ Odkaz se nepodařilo zkopírovat',
   'grp.inv.gone': 'Pozvánka už neplatí, požádej o novou.',
   'grp.inv.q1': 'Chceš se připojit do skupiny',
+  'grp.inv.from': '👋 Zve tě {who}.',
   'grp.inv.join': 'Připojit se',
   'grp.inv.modalTitle': 'Pozvánka do skupiny',
   'grp.shareToggleFail': '❌ Nepodařilo se změnit sdílení, zkus to znovu',

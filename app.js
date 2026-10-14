@@ -7904,12 +7904,14 @@ function readPendingJoin() {
   return null;
 }
 function closeJoinInviteModal() { document.getElementById('join-invite-modal')?.remove(); }
-function showJoinInviteModal(name) {
+// who = jméno zakladatele skupiny (z dokumentu skupiny), když je známé
+function showJoinInviteModal(name, who) {
   closeJoinInviteModal();
   const body = name === null
     ? '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">'+tH('grp.inv.gone')+'</div>'
       +'<button class="btn-p" onclick="cancelPendingJoin()">'+tH('common.close')+'</button>'
-    : '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">'+tH('grp.inv.q1')+' <b>'+esc(name)+'</b>?</div>'
+    : (who ? '<div style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:8px">'+tH('grp.inv.from',{who})+'</div>' : '')
+      +'<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">'+tH('grp.inv.q1')+' <b>'+esc(name)+'</b>?</div>'
       +'<div style="display:flex;gap:10px"><button class="btn-p" style="flex:1" onclick="confirmPendingJoin()">'+tH('grp.inv.join')+'</button>'
       +'<button class="btn-p" style="flex:1;background:var(--card2);color:var(--text2)" onclick="cancelPendingJoin()">'+tH('common.cancel')+'</button></div>';
   document.getElementById('app').insertAdjacentHTML('beforeend',
@@ -7929,12 +7931,16 @@ function resumePendingJoin() {
 async function checkPendingJoin() {
   if(_pendingJoinBusy) return;
   _pendingJoinBusy = true;
+  let shown = false, waiting = false; // bez okna → průvodce čekající na pozvánku se spustí hned (finally)
   try {
-    if(!CU || !prof || document.getElementById('join-invite-modal')) return;
+    if(!CU || !prof) return;
+    if(document.getElementById('join-invite-modal')) { shown = true; return; }
     const p = readPendingJoin();
     if(!p) return;
-    // Průvodce (naplánovaný nebo otevřený) má přednost, dotaz na pozvánku počká, až skončí
+    // Otevřený průvodce (spuštěný dřív) má přednost, dotaz na pozvánku počká, až skončí.
+    // Po onboardingu s pozvánkou je to naopak (4.60): nejdřív dotaz, průvodce až po odpovědi (_joinBeforeTour).
     if(tourActive()) {
+      waiting = true;
       clearTimeout(_pendingJoinTimer);
       if(!_pendingJoinWait) _pendingJoinWait = Date.now();
       if(Date.now() - _pendingJoinWait < PENDING_JOIN_MAX_WAIT) _pendingJoinTimer = setTimeout(checkPendingJoin, 1500);
@@ -7946,20 +7952,27 @@ async function checkPendingJoin() {
     }
     const snap = await getDoc(doc(db,'families',p.code));
     if(!CU || !readPendingJoin()) return;
-    if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); return; }
-    showJoinInviteModal(cutName(snap.data().groupName,40) || t('grp.defName'));
+    if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); shown = true; return; }
+    const d = snap.data() || {};
+    const who = (typeof d.createdBy === 'string' && d.createdBy !== CU.uid) ? cutName(d.members?.[d.createdBy]?.name, 40) : '';
+    showJoinInviteModal(cutName(d.groupName,40) || t('grp.defName'), who);
+    shown = true;
   } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště
-  finally { _pendingJoinBusy = false; }
+  finally { _pendingJoinBusy = false; if(!shown && !waiting) tourAfterJoin(); }
 }
-window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); };
+window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); tourAfterJoin(); };
 window.confirmPendingJoin = async () => {
   const p = readPendingJoin();
   closeJoinInviteModal();
-  if(!p) return;
+  if(!p) { tourAfterJoin(); return; }
   // Hlavní skupinu ještě nemám → hlavní, jinak přidaná
-  const res = familyId ? await window.joinExtraGroup(p.code) : await window.joinFamily(p.code);
-  // Pozvánku smaž po úspěchu i trvalém selhání; při dočasné chybě (null) zůstane na příště
-  if(res !== null) clearPendingJoin();
+  let res = null;
+  try { res = familyId ? await window.joinExtraGroup(p.code) : await window.joinFamily(p.code); }
+  finally {
+    // Pozvánku smaž po úspěchu i trvalém selhání; při dočasné chybě (null) zůstane na příště
+    if(res !== null) clearPendingJoin();
+    tourAfterJoin(); // po odpovědi průvodce (po připojení rovnou ukáže sdílený nákup)
+  }
 };
 
 window.toggleFamilyModule = async (key, gid = null) => {
@@ -16142,9 +16155,18 @@ TOUR_MODULES.avatar = {
 
 // Spustit uvítací tour pro nového uživatele
 // Průvodce je naplánovaný nebo běží (uvítání, kroky, závěrečné okno) → nepřekrývat ho dalšími okny
-let _tourPlanned = false, _tourFromOnboard = false;
+let _tourPlanned = false, _tourFromOnboard = false, _joinBeforeTour = false;
 function tourActive() {
   return _tourPlanned || !!document.querySelector('#tour-welcome,#tour-step,#tour-overlay,#tour-done');
+}
+// Pozvaný nováček (4.60): průvodce čeká na odpověď na pozvánku do skupiny, pak se spustí (jen jednou)
+function tourAfterJoin() {
+  if(!_joinBeforeTour) return;
+  _joinBeforeTour = false;
+  if(!CU || tourActive()) return;
+  let done = false; try { done = !!localStorage.getItem('lp_tour_done'); } catch(e) {}
+  if(done) return;
+  _tourPlanned = true; setTimeout(startWelcomeTour, 900);
 }
 function startWelcomeTour() {
   _tourPlanned = false;
@@ -16179,7 +16201,9 @@ const TOUR_MAIN = {family:'shopping', student:'calendar', health:'habits'};
 const TOUR_FALLBACK = ['habits','shopping','calendar','journal','goals','cooking','mealplan'];
 function tourSteps() {
   const mods = prof?.modules || [];
-  const main = [Object.prototype.hasOwnProperty.call(TOUR_MAIN, prof?.template) ? TOUR_MAIN[prof.template] : null, ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
+  // Člen skupiny s Nákupy (pozvaný) uvidí hned sdílený nákup
+  const grpShop = !!(familyId || extraGroupIds.length) && mods.includes('shopping') ? 'shopping' : null;
+  const main = [grpShop, Object.prototype.hasOwnProperty.call(TOUR_MAIN, prof?.template) ? TOUR_MAIN[prof.template] : null, ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
   return ['dashboard', ...(main ? [main] : []), ...(mods.includes('rex') ? ['avatar'] : [])];
 }
 let _tourStep = 0;
@@ -16320,7 +16344,9 @@ window.finishOnboard = async () => {
   _tourFromOnboard = true;
   try { localStorage.setItem('lp_tour_pending', '1'); } catch(e) {}
   const ok = await _origFinishOnboard();
-  if(ok) { _tourPlanned = true; setTimeout(startWelcomeTour, 1000); }
+  // S pozvánkou nejdřív dotaz na připojení ke skupině, průvodce až po odpovědi (tourAfterJoin)
+  if(ok && readPendingJoin()) { _joinBeforeTour = true; clearTimeout(_pendingJoinTimer); _pendingJoinTimer = setTimeout(checkPendingJoin, 800); }
+  else if(ok) { _tourPlanned = true; setTimeout(startWelcomeTour, 1000); }
   else { _tourFromOnboard = false; try { localStorage.removeItem('lp_tour_pending'); } catch(e) {} }
 };
 
@@ -16335,7 +16361,10 @@ function maybeStartTourOnInit() {
   // Existující účet na novém zařízení průvodce nedostane: jen čekající, nebo účet mladší 7 dní
   const created = prof?.createdAt ? new Date(prof.createdAt).getTime() : NaN;
   const isNew = Number.isFinite(created) && Date.now() - created < 7 * 86400000;
-  if(pending || isNew) { _tourPlanned = true; setTimeout(startWelcomeTour, 2000); }
+  if(pending || isNew) {
+    if(readPendingJoin()) { _joinBeforeTour = true; return; } // pozvánka má přednost, průvodce po odpovědi (checkPendingJoin z initApp)
+    _tourPlanned = true; setTimeout(startWelcomeTour, 2000);
+  }
   else { try { localStorage.setItem('lp_tour_done', '1'); } catch(e) {} }
 }
 
