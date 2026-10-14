@@ -52,11 +52,11 @@ const APP_VERSION = '4.61';
 const CHANGELOG = [
   { v:'4.61', items:[
     '🔔 Appka ti sama nabídne upozornění ve chvíli, kdy se hodí (po připojení ke skupině, po 3. splněném návyku, u události s připomínkou); na iPhonu ukáže, jak ji přidat na plochu',
-    '🙂 S oslovením „Neuvádět“ ti parťák i upozornění píšou neutrálně',
+    '🙂 S oslovením „Neuvádět“ ti parťák i tvoje upozornění píšou neutrálně',
     '🔗 Po přijetí pozvánky se průvodce spustí hned, i bez připojení k internetu'
   ], en:[
     '🔔 The app offers notifications when they make sense (after joining a group, after your 3rd completed habit, for an event with a reminder); on iPhone it shows how to add it to your home screen',
-    '🙂 With “Prefer not to say” your buddy and notifications use neutral wording',
+    '🙂 With “Prefer not to say” your buddy and your notifications use neutral wording',
     '🔗 After accepting an invite, the tour starts right away, even offline'
   ]},
   { v:'4.60', items:[
@@ -4620,7 +4620,13 @@ function notifAskOk(pre) {
   if (!pre && !document.getElementById('app')?.classList.contains('active')) return false;
   if (!pre) { try { if (tourActive() || !localStorage.getItem('lp_tour_done')) return false; } catch (e) { return false; } } // nikdy během průvodce
   if (Date.now() < (Number(lsGet('lp_na_snooze', 0)) || 0)) return false;
+  if (!pre && naCovered()) return false; // instalační banner / výzva ke sdílení dole: tentokrát ne (nabídne se při další příležitosti)
   return !!notifAskMode();
+}
+// Viditelný prvek u spodního okraje, se kterým by se karta překryla
+function naCovered() {
+  return ['pwa-banner', 'ios-banner'].some(id => { const el = document.getElementById(id); return el && el.getClientRects().length && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden'; })
+    || !!document.querySelector('.cta-ask');
 }
 // why: 'group' | 'habit' | 'event'
 function notifAskSoon(why) {
@@ -4628,7 +4634,7 @@ function notifAskSoon(why) {
   whenUiFree(() => {
     if (why === 'habit' && habitLogs.filter(l => l.done).length < 3) return;
     if (notifAskOk()) notifAskShow(why);
-  }, 300000);
+  });
 }
 function notifAskShow(why) {
   const mode = notifAskMode();
@@ -4655,7 +4661,7 @@ window.notifAskLater = () => { lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS)
 window.notifAskEnable = () => {
   lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); // zamítnutí v systémovém okně = už se neptat (permission 'denied')
   notifAskClose();
-  window.enableNotifications(); // stávající povolení + registrace FCM (checkNotifStatus)
+  Promise.resolve(window.enableNotifications()).catch(() => {}); // stávající povolení + registrace FCM (checkNotifStatus)
 };
 
 // ── Testovací notifikace ──
