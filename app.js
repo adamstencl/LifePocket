@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.52';
+const APP_VERSION = '4.53';
 const CHANGELOG = [
+  { v:'4.53', items:[
+    '👥 Jídelníček, checklisty a kalendář teď fungují v každé skupině; připomínky událostí ze všech skupin'
+  ], en:[
+    '👥 Meal plan, checklists and calendar now work in every group; event reminders come from all your groups'
+  ]},
   { v:'4.52', items:[
     '☕ Appka zůstává zdarma – kdo chce, může dobrovolně přispět přes QR platbu'
   ], en:[
@@ -6746,7 +6751,7 @@ const MEAL_VIEW_KEY = 'lp_view_meal';
 let mealViewSel; // undefined = nenačteno, null = výchozí, '' = Moje, jinak gid (pamatuje se na zařízení)
 function mealGroups() { return myGroupIds().filter(g => groupModShared(g, 'meal')); }
 function mealViewStored() {
-  if(mealViewSel === undefined) { const v = lsGet(MEAL_VIEW_KEY, null); mealViewSel = (v && v.u === CU?.uid && typeof v.g === 'string') ? v.g : null; }
+  if(mealViewSel === undefined) { if(!CU) return null; const v = lsGet(MEAL_VIEW_KEY, null); mealViewSel = (v && v.u === CU?.uid && typeof v.g === 'string') ? v.g : null; }
   return mealViewSel;
 }
 function mealViewSave(gid) { mealViewSel = gid; lsSave(MEAL_VIEW_KEY, gid === null ? null : {u: CU?.uid, g: gid}); }
@@ -6788,6 +6793,8 @@ function mealViewCheck() {
   mealViewSave(null);
   if(!_leavingGids.has(v)) toast(t('mp.viewGone', {name, to: grpMineLabel(mealGid())}), 5000);
 }
+// Přípona toastu s cílovým plánem („ → 👥 Tým“), jen když je zobrazený plán skupiny
+function mealToSfx() { const g = mealGid(); return g ? ' → ' + grpLabel(g) : ''; }
 function mealViewForget(gid) { if(mealViewStored() === gid) mealViewSave(null); }
 function subscribeGroupMeal(gid) {
   if(!gid || !CU || mealGrp[gid]?.unsub) return;
@@ -8679,7 +8686,7 @@ function joinCodeInp(id) { return document.getElementById('grp-join-code') || do
 
 // ── ⭐ Nastavit jako hlavní ──
 // Profil: prohození familyId a extraGroupIds v jedné transakci (starší verze čtou familyId beze změny).
-// Data se nepřesouvají: zásoby, jídelníček a checklisty se berou z nové hlavní, ty staré zůstanou ve staré skupině.
+// Data se nepřesouvají: zásoby se berou z nové hlavní, ty staré zůstanou ve staré skupině (jídelníček a checklisty má každá skupina svoje).
 let _setMainBusy = false;
 // Nový stav profilu (čistá funkce): null = skupina v profilu není; already = už je hlavní (jiné zařízení)
 function swapMainGroupIds(p, gid) {
@@ -11700,7 +11707,7 @@ window.pickMeal = async (dayKey, mealKey, name, el) => {
   if(!saveMealPlanItem(dayKey, mealKey, name)) return;
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
-  toast(t('mp.added',{name}));
+  toast(t('mp.added',{name}) + mealToSfx());
 };
 
 window.pickMealManual = async (dayKey, mealKey) => {
@@ -11709,7 +11716,7 @@ window.pickMealManual = async (dayKey, mealKey) => {
   if(!saveMealPlanItem(dayKey, mealKey, val)) return;
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
-  toast(t('mp.added',{name:val}));
+  toast(t('mp.added',{name:val}) + mealToSfx());
 };
 
 window.openAddToMealplan = () => {
