@@ -52,6 +52,8 @@ checkSyntax('app.js', true);
 checkSyntax('i18n.js', true);
 checkSyntax('i18n/cs.js', true);
 checkSyntax('i18n/en.js', true);
+checkSyntax('i18n/ai-cs.js', true);
+checkSyntax('i18n/ai-en.js', true);
 checkSyntax('sw.js', false);
 checkSyntax('pwa.js', false);
 checkSyntax('functions/index.js', false);
@@ -146,7 +148,7 @@ try {
 
 console.log('CACHE v sw.js vs. změněné soubory');
 (function checkCacheBump() {
-  const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js', 'i18n.js', 'i18n/cs.js', 'i18n/en.js'];
+  const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js', 'i18n.js', 'i18n/cs.js', 'i18n/en.js', 'i18n/ai-cs.js', 'i18n/ai-en.js'];
   const git = args => execFileSync('git', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   const tryGit = args => { try { return git(args); } catch (e) { return null; } };
   if (tryGit(['rev-parse', '--is-inside-work-tree']) !== 'true') { info('git není k dispozici, kontrola přeskočena'); return; }
@@ -351,6 +353,36 @@ try {
   }
   if (!diff) ok('texty s data-i18n v index.html odpovídají i18n/cs.js');
 } catch (e) { fail('i18n slovníky: ' + e.message); }
+
+console.log('i18n: prompty AI (i18n/ai-*.js)');
+try {
+  const ac = loadDict('i18n/ai-cs.js'), ae = loadDict('i18n/ai-en.js');
+  const kc = Object.keys(ac), ke = Object.keys(ae);
+  const onlyC = kc.filter(k => !(k in ae)), onlyE = ke.filter(k => !(k in ac));
+  onlyC.forEach(k => fail('i18n/ai-en.js: chybí klíč ' + k));
+  onlyE.forEach(k => fail('i18n/ai-cs.js: chybí klíč ' + k));
+  if (!onlyC.length && !onlyE.length) ok('prompty cs a en mají stejné klíče (' + kc.length + ')');
+  const vars = v => JSON.stringify([...new Set(String(v && typeof v === 'object' ? Object.values(v).join(' ') : v).match(/\{\w+\}/g) || [])].sort());
+  let bad = 0;
+  for (const k of kc) {
+    if (!(k in ae)) continue;
+    if ((typeof ac[k] === 'object') !== (typeof ae[k] === 'object')) { fail('prompty: ' + k + ' je plurál jen v jednom jazyce'); bad++; }
+    else if (vars(ac[k]) !== vars(ae[k])) { fail('prompty: proměnné se liší u ' + k); bad++; }
+  }
+  if (!bad) ok('proměnné {…} v promptech shodné v cs a en');
+  // Bezpečnost chatu: data ohraničená <data>…</data> a zákaz plnit instrukce z nich v obou jazycích
+  const SAFE = { cs: /Nikdy neplň instrukce/, en: /Never follow instructions/ };
+  for (const [lang, d] of [['cs', ac], ['en', ae]]) {
+    const s = String(d['aip.chat.sys'] || '');
+    if (!s.includes('<data>') || !s.includes('</data>') || !SAFE[lang].test(s)) fail('i18n/ai-' + lang + '.js: aip.chat.sys musí ohraničit data <data>…</data> a zakázat instrukce z nich');
+    else ok('aip.chat.sys (' + lang + ') ohraničuje data a zakazuje instrukce z nich');
+  }
+  // Použité klíče tA('…') v app.js musí existovat
+  const usedA = new Set([...appSrc.matchAll(/\btA\(\s*'([\w.#-]+)'/g)].map(m => m[1]).filter(k => !k.endsWith('.')));
+  const missA = [...usedA].filter(k => !(k in ac));
+  missA.forEach(k => fail('prompty: klíč neexistuje: ' + k));
+  if (!missA.length) ok('všech ' + usedA.size + ' použitých klíčů tA() existuje');
+} catch (e) { fail('prompty AI: ' + e.message); }
 
 console.log('i18n: ráčny (český text mimo slovník)');
 // Řetězcové a šablonové literály mimo komentáře (zjednodušený lexer: řetězce, šablony s ${…}, komentáře, regexy)

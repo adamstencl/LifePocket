@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v47';
+const CACHE = 'lifepocket-v48';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -57,6 +57,8 @@ const OFFLINE_URLS = [
   '/i18n.js',
   '/i18n/cs.js',
   '/i18n/en.js', // oba slovníky kvůli přepnutí jazyka offline
+  '/i18n/ai-cs.js', // prompty AI (fáze 5)
+  '/i18n/ai-en.js',
   '/style.css',
   '/manifest.json',
   '/icon-192.png',

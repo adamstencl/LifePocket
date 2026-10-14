@@ -2,6 +2,8 @@
 // Čeština je výchozí a statická (texty zůstávají i v index.html), angličtina se načte jen když je zvolená.
 // Slovníky: i18n/cs.js a i18n/en.js (stejné klíče, hlídá ci-check).
 import CS from './i18n/cs.js';
+// AI prompty (fáze 5): vlastní slovníky, smí obsahovat < a " (do HTML nejdou, jen do dotazu na AI)
+import AI_CS from './i18n/ai-cs.js';
 
 export const SUPPORTED = ['cs', 'en'];
 // Fáze 7: automatická volba podle jazyka telefonu. Do té doby jen ?lang=en nebo přepínač v Nastavení.
@@ -9,7 +11,7 @@ const AUTO_DETECT = false;
 const LOCALES = { cs: 'cs-CZ', en: 'en-GB' }; // en-GB: týden od pondělí, 24h čas
 
 export let LANG = 'cs', LOCALE = 'cs-CZ';
-let D = CS;
+let D = CS, AID = AI_CS;
 let PR = null, PR_CS = null;
 const missing = new Set();
 
@@ -56,6 +58,11 @@ export async function initI18n() {
   if (LANG !== 'cs') {
     try { D = (await import('./i18n/' + LANG + '.js')).default; }
     catch (e) { console.warn('[i18n] slovník se nenačetl, zůstává čeština'); LANG = 'cs'; D = CS; }
+    // Prompty AI v jazyce uživatele; bez nich zůstanou české (AI pak odpoví česky, appka funguje dál)
+    if (LANG !== 'cs') {
+      try { AID = (await import('./i18n/ai-' + LANG + '.js')).default; }
+      catch (e) { console.warn('[i18n] prompty AI se nenačetly, zůstává čeština'); AID = AI_CS; }
+    }
   }
   LOCALE = LOCALES[LANG];
   PR = LANG === 'cs' ? PR_CS : plural(LANG);
@@ -86,6 +93,18 @@ export function t(key, vars) {
     return key;
   }
   return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? numStr(vars[k]) : ''));
+}
+// tA(): text promptu pro AI (i18n/ai-*.js). Proměnné beze změny (String, žádné formátování čísel ani escapování),
+// výsledek nikdy nejde do HTML. Plurál jako u t() (objekt, vars.n). Chybějící → čeština → klíč.
+export function tA(key, vars) {
+  vars = vars || {};
+  let v = pick(AID, PR || PR_CS || plural('cs'), key, vars);
+  if (v == null && AID !== AI_CS) v = pick(AI_CS, PR_CS || plural('cs'), key, vars);
+  if (v == null) {
+    if (!missing.has(key)) { missing.add(key); console.warn('[i18n] chybí klíč', key); }
+    return key;
+  }
+  return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : ''));
 }
 // tN(): plurál podle čísla n (cs one/few/many/other, en one/other), {n} v textu = n. Jediná cesta pro „1 den / 2 dny / 5 dní“.
 export const tN = (key, n, vars) => t(key, Object.assign({}, vars, { n }));

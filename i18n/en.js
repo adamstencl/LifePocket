@@ -393,7 +393,7 @@ export default {
   'ai.wr.user': 'Weekly report',
   'ai.wr.userSilent': 'Weekly summary',
   'ai.retryLatin': 'IMPORTANT: Your previous answer contained characters of a foreign script (e.g. Cyrillic). Answer again using only the Latin alphabet, in English, without a single word in Cyrillic, Greek or any other script. Keep the required answer format.',
-  'ai.greet.lang': 'LANGUAGE RULE: Write ONLY in English, Latin alphabet only. No words from other languages – no “guten Morgen”, “buenos días”, “bonjour” or “ahoj”. Greet in English (e.g. “Good morning”).',
+  'ai.greet.lang': 'LANGUAGE RULE: Write ONLY in English, Latin alphabet only. No words from other languages – no Czech (“ahoj”, “dobré ráno”), no “guten Morgen”, “buenos días” or “bonjour”. Greet in English (e.g. “Good morning”).',
   'ai.greet.ask': 'morning greeting',
   'ai.greet.retry': 'IMPORTANT: Your previous answer contained a foreign greeting or words from another language. Write it again entirely in English, without a single foreign word.',
   'quote.0': 'Every great result starts with the decision to try again.',
