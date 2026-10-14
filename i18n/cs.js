@@ -1683,6 +1683,7 @@ export default {
   'cl.empty': 'Žádné úkoly. Přidej první!',
   'cl.newPrompt': 'Název nového seznamu:',
   'cl.delQ': 'Smazat seznam „{name}“? Tato akce je nevratná.',
+  'cl.delSharedQ': 'Smazat sdílený seznam „{name}“? Zmizí i ostatním ve skupině {grp}. Tato akce je nevratná.',
 
   // ── Domů, společník, průvodce (4.48) ──
   'av.rex.msg0': 'Dnes je čas tvrdě makat! 💪',

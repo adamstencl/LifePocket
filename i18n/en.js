@@ -1677,6 +1677,7 @@ export default {
   'cl.empty': 'No tasks. Add the first one!',
   'cl.newPrompt': 'New list name:',
   'cl.delQ': 'Delete the list “{name}”? This cannot be undone.',
+  'cl.delSharedQ': 'Delete the shared list “{name}”? It will also disappear for everyone in {grp}. This cannot be undone.',
 
   // ── Domů, společník, průvodce (4.48) ──
   'av.rex.msg0': 'Today is the day to work hard! 💪',

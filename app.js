@@ -52,10 +52,10 @@ const APP_VERSION = '4.53';
 const CHANGELOG = [
   { v:'4.53', items:[
     '👥 Jídelníček, checklisty a kalendář teď fungují v každé skupině; připomínky událostí ze všech skupin',
-    '🛠️ Opraveny sdílené checklisty – ty i ostatní ve skupině teď vidíte a upravujete stejný seznam'
+    '🛠️ Opraveny sdílené checklisty – ty i ostatní ve skupině teď vidíte a upravujete stejný seznam. Aktualizuj appku na všech zařízeních'
   ], en:[
     '👥 Meal plan, checklists and calendar now work in every group; event reminders come from all your groups',
-    '🛠️ Fixed shared checklists – you and the rest of the group now see and edit the same list'
+    '🛠️ Fixed shared checklists – you and the rest of the group now see and edit the same list. Update the app on all your devices'
   ]},
   { v:'4.52', items:[
     '☕ Appka zůstává zdarma – kdo chce, může dobrovolně přispět přes QR platbu'
@@ -7336,8 +7336,8 @@ async function copyGroupToPersonal(gid, mode) {
         {name: String(it.name), done: false, category: it.category || 'Ostatní', qty: it.qty || '', createdAt: now, copiedFrom: src}]);
     });
   }
-  // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → do něj položky z kopie ve skupině
-  // (zdroj pravdy, i položky ostatních); vlastní bez originálu jako nový osobní; cizí jen při 'all'
+  // Checklisty: vlastní sdílený seznam má osobní originál se stejným ID → do něj sloučení podle id (kopie ve skupině
+  // má přednost, osobní položky navíc zůstanou); vlastní bez originálu jako nový osobní; cizí jen při 'all'
   if(gData.shareChecklist !== false) {
     const sn = await getDocs(collection(db,'families',gid,'checklists'));
     const ownIds = new Set(checklists.map(c => c.id));
@@ -7345,7 +7345,11 @@ async function copyGroupToPersonal(gid, mode) {
       const l = d.data() || {};
       const own = l.owner === uid;
       const items = Array.isArray(l.items) ? l.items : [];
-      if(own && ownIds.has(d.id)) { writes.push([doc(db,'users',uid,'checklists',d.id), {items}, true]); return; }
+      if(own && ownIds.has(d.id)) {
+        const mine0 = checklists.find(c => c.id === d.id);
+        writes.push([doc(db,'users',uid,'checklists',d.id), {items: clMergeItems(items, mine0?.items)}, true]);
+        return;
+      }
       if(!own && mode !== 'all') return;
       const id = own ? d.id : genId();
       writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items, shared: false, createdAt: Date.now(), copiedFrom: src}]);
@@ -8277,6 +8281,7 @@ function subscribeGroupChecklist(gid) {
     if(clGrp[gid] !== e) return;
     e.lists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true, _gid: gid}));
     e.ready = true; e.err = 0;
+    clMigrate53();
     renderChecklist();
   }, err => {
     familyListenErr(err);
@@ -8305,6 +8310,56 @@ function clFind(id) {
   const g = own ? clSharedGid(own) : null;
   const copy = g && clGrp[g]?.ready ? clGrp[g].lists.find(f => f.id === id && f.owner === CU.uid) : null;
   return copy || allChecklists().find(c => c.id === id);
+}
+// Sloučení položek: vše z kopie ve skupině (u stejného id má přednost) + osobní položky, které v ní chybí.
+// Položky mají id od první verze checklistu; případná položka bez id se páruje podle textu.
+function clItemKey(i) { return i?.id ? 'i:' + i.id : 't:' + String(i?.text ?? ''); }
+function clMergeItems(groupItems, ownItems) {
+  const g = (Array.isArray(groupItems) ? groupItems : []).filter(i => i && typeof i === 'object');
+  const seen = new Set(g.map(clItemKey));
+  const extra = (Array.isArray(ownItems) ? ownItems : []).filter(i => i && typeof i === 'object' && !seen.has(clItemKey(i)) && seen.add(clItemKey(i)));
+  return [...g, ...extra].map(i => ({...i}));
+}
+// Seznam k úpravě: můj sdílený seznam se mění jen v kopii ve skupině. Dokud se skupina nenačte (nebo běží
+// migrace), úprava se zablokuje – zápis do osobní zálohy by se ve skupině neprojevil.
+function clEditFind(id) {
+  const own = CU ? checklists.find(c => c.id === id) : null;
+  if(own?.shared) {
+    const gs = checkGroups(), g = clSharedGid(own);
+    if(_clMigBusy.has(id) || (g ? !clGrp[g]?.ready : gs.some(x => !clGrp[x]?.ready))) {
+      ensureCheckSubs();
+      toast(t(gs.some(x => clGrp[x]?.err) ? 'cl.loadFail' : 'cl.loading'));
+      return null;
+    }
+  }
+  return clFind(id);
+}
+// Jednorázová migrace po upgradu na 4.53: ve 4.52 vlastník upravoval jen osobní originál a kopie ve skupině
+// se rozjela. Do kopie se doplní osobní položky, které v ní chybí (podle id), originál dostane clMerged53.
+// Transakce + sloučení podle id = idempotentní, bez duplicit i při souběhu dvou zařízení vlastníka.
+// Starší klient (4.52) dál zapisuje do originálu; migrace je jen jednou → changelog žádá aktualizaci všude.
+const _clMigBusy = new Set();
+function clMigrate53() {
+  if(!CU) return;
+  const uid = CU.uid;
+  for(const c of checklists) {
+    if(!c?.id || !c.shared || c.clMerged53 || _clMigBusy.has(c.id)) continue;
+    const g = clSharedGid(c);
+    if(!g || !clGrp[g]?.ready) continue;
+    _clMigBusy.add(c.id);
+    const ref = doc(db,'families',g,'checklists',c.id), own = Array.isArray(c.items) ? c.items : [];
+    runTransaction(db, async tx => {
+      const s = await tx.get(ref);
+      if(!s.exists() || s.data()?.owner !== uid) return false;
+      const cur = Array.isArray(s.data().items) ? s.data().items : [];
+      const merged = clMergeItems(cur, own);
+      if(merged.length !== cur.length) tx.update(ref, {items: merged, updatedAt: Date.now()});
+      return true;
+    }).then(okMig => okMig && setDoc(doc(db,'users',uid,'checklists',c.id), {clMerged53: true}, {merge: true})
+      .then(() => { c.clMerged53 = true; }))
+      .catch(e => console.warn('[LP] migrace checklistu:', e?.code || e?.name))
+      .finally(() => { _clMigBusy.delete(c.id); renderChecklist(); });
+  }
 }
 
 // Skupina, do které je můj seznam sdílený = leží v ní jeho kopie s mým owner (přežije i změnu kódu skupiny);
@@ -8372,13 +8427,16 @@ window.shareChecklistTo = async (listId, gid) => {
   renderChecklist();
 };
 async function unshareChecklist(list, gid) {
-  // Položky ze skupiny (i přidané ostatními) se vrátí do osobního seznamu, než se kopie smaže
-  const copy = clGrp[gid]?.lists.find(f => f.id === list.id && f.owner === CU?.uid);
-  if(copy && Array.isArray(copy.items)) list.items = copy.items.map(i => ({...i}));
-  list.shared = false; delete list.sharedGid;
-  saveChecklistDoc(list);
-  try { await deleteDoc(doc(db,'families',gid,'checklists',list.id)); }
-  catch(err) { toast('⚠️ '+userErr(err,'seznam')); renderChecklist(); return; }
+  // Položky ze skupiny (i přidané ostatními) se sloučí s osobním seznamem (podle id), než se kopie smaže.
+  // Kopie se čte čerstvě ze serveru; osobní seznam se uloží dřív, než se kopie smaže.
+  try {
+    const s = await getDoc(doc(db,'families',gid,'checklists',list.id));
+    const copy = s.exists() ? s.data() : null;
+    if(copy && copy.owner === CU?.uid) list.items = clMergeItems(copy.items, list.items);
+    list.shared = false; delete list.sharedGid;
+    await saveChecklistDoc(list);
+    await deleteDoc(doc(db,'families',gid,'checklists',list.id));
+  } catch(err) { toast('⚠️ '+userErr(err,'seznam')); renderChecklist(); return; }
   logGroupActivity(gid, 'check', 'del', list.name || '');
   toast(t('cl.unshared', {name: list.name, to: grpLabel(gid)}));
   renderChecklist();
@@ -11897,6 +11955,7 @@ function subChecklist() {
     snap => {
       checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
       if (familyId && familyData) fillChecklistSharedGid(familyId); // starší sdílené bez sharedGid
+      clMigrate53(); // 4.53: jednorázové doplnění kopie ve skupině
       if (!checklists.length) {
         // Výchozí seznam jen podle odpovědi serveru (prázdná cache ≠ prázdný účet) a jen jednou za relaci
         if (!snap.metadata.fromCache && _defChecklistUid !== CU.uid) {
@@ -12026,7 +12085,7 @@ function renderChecklist() {
 
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
-  const list = clFind(listId);
+  const list = clEditFind(listId);
   if (!list || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const undone = list.items.filter(i => !i.done);
   if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
@@ -12062,7 +12121,7 @@ window.handleClNewPhotoInput = async function(input) {
 window.addCheckItem = function() {
   const inp = document.getElementById('cl-new-inp');
   if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
   if (clNewPhoto) { item.photos = [clNewPhoto]; clNewPhoto = null; }
@@ -12075,7 +12134,7 @@ window.addCheckItem = function() {
 };
 
 window.moveCheckItem = function(itemId, dir) {
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const undone = list.items.filter(i => !i.done);
   const idx = undone.findIndex(i => i.id === itemId);
@@ -12090,7 +12149,7 @@ window.moveCheckItem = function(itemId, dir) {
 };
 
 window.toggleCheckItem = function(itemId) {
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (item) { item.done = !item.done; }
@@ -12115,7 +12174,7 @@ window.saveExpandedCheckItem = function(itemId) {
   if (!ta) return;
   const newText = ta.value.trim();
   if (!newText) return;
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   const changed = !!item && item.text !== newText;
@@ -12127,7 +12186,7 @@ window.saveExpandedCheckItem = function(itemId) {
 };
 
 window.deleteCheckItem = function(itemId) {
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const gone = list.items.find(i => i.id === itemId);
   list.items = list.items.filter(i => i.id !== itemId);
@@ -12149,7 +12208,7 @@ window.triggerClItemPhoto = function(itemId) {
     toast(t('cl.processing'));
     try {
       const photo = await compressImage(file, 900, 0.75);
-      const list = clFind(activeChecklist);
+      const list = clEditFind(activeChecklist);
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
       if (item) {
@@ -12163,7 +12222,7 @@ window.triggerClItemPhoto = function(itemId) {
   inp.click();
 };
 window.removeClItemPhoto = function(itemId, photoIdx=0) {
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (!item) return;
@@ -12191,7 +12250,7 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
 // ─────────────────────────────────────────────────────────
 
 window.clearDoneChecklistItems = function() {
-  const list = clFind(activeChecklist);
+  const list = clEditFind(activeChecklist);
   if (!list) return;
   const nDone = list.items.filter(i => i.done).length;
   list.items = list.items.filter(i => !i.done);
@@ -12212,8 +12271,16 @@ window.deleteChecklist = async function(id) {
   const list = allChecklists().find(c => c.id === id);
   const isFamilyList = list?._family === true;
   if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
-  if (!confirm(t('cl.delQ', {name: list?.name}))) return;
-  if (isFamilyList) {
+  // Vlastní sdílený seznam: smaže se i kopie ve skupině (zmizí i ostatním); bez načtené skupiny nic
+  const shGid = !isFamilyList && list?.shared ? clSharedGid(list) : null;
+  if (!isFamilyList && list?.shared && !clEditFind(id)) return;
+  if (!confirm(t(shGid ? 'cl.delSharedQ' : 'cl.delQ', {name: list?.name, grp: shGid ? grpLabel(shGid) : ''}))) return;
+  if (shGid) {
+    try { await deleteDoc(doc(db,'families',shGid,'checklists',id)); }
+    catch(err) { toast('⚠️ '+userErr(err,'seznam')); return; }
+    logGroupActivity(shGid, 'check', 'del', list?.name || '');
+    await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
+  } else if (isFamilyList) {
     const fid = list._gid;
     if (!fid) return;
     await deleteDoc(doc(db,'families',fid,'checklists',id));
