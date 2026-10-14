@@ -48,8 +48,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.59';
+const APP_VERSION = '4.60';
 const CHANGELOG = [
+  { v:'4.60', items:[
+    '👋 Nový průvodce: jméno, k čemu appku chceš a nakonec parťák',
+    '🙂 Oslovení je nepovinné, můžeš zvolit „Neuvádět“',
+    '🧩 Moduly vybírá jen šablona, parťák mění jen vzhled a styl řeči',
+    '🔗 Kdo přijde přes pozvánku, má předvybranou Rodinu a ke skupině se připojí hned po založení profilu'
+  ], en:[
+    '👋 New setup guide: your name, what you want the app for and finally your buddy',
+    '🙂 Gender is optional, you can choose “Prefer not to say”',
+    '🧩 Modules come only from the template, your buddy only changes the look and tone',
+    '🔗 If you come from an invite, Family is preselected and you can join the group right after creating your profile'
+  ]},
   { v:'4.59', items:[
     '🧭 Spodní lišta podle tvé šablony (Rodina má Nákupy hned v liště) a čitelnější popisky',
     '👋 Nováček dostane kratší prohlídku a v jednu chvíli jen jedno okno',
