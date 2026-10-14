@@ -12483,19 +12483,32 @@ async function initApp(){
 function buildNav(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const showRex=(prof.modules||[]).includes('rex');
-  const fixed=showRex
-    ?[{id:'dashboard',emoji:'🏠',label:t('nav.home')},{id:'avatar',emoji:av.emoji,label:av.name}]
-    :[{id:'dashboard',emoji:'🏠',label:t('nav.home')}];
+  const home={id:'dashboard',emoji:'🏠',label:t('nav.home')};
+  const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
-  const all=[...fixed,...uMods,{id:'settings',emoji:'🔧',label:t('nav.settings')}];
+  // Šablona (4.59): Domů · hlavní moduly šablony · parťák · ostatní; bez šablony Domů · parťák · moduly
+  const first=(NAV_TPL[prof.template]||[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
+  const all=[home,...first,...rex,...uMods.filter(m=>!first.includes(m)),{id:'settings',emoji:'🔧',label:t('nav.settings')}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span class="bn-em">${p.emoji}</span><span class="bn-lbl">${p.label}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
   const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
+  const cur=document.querySelector('.page.active')?.id?.slice(2); if(cur) markBn(cur); // přestavba lišty (změna modulů)
+}
+// Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
+const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','goals']};
+// Aktivní položka spodní lišty (stránka z „Více“ zvýrazní „Více“)
+function markBn(id){
+  const inMore=!!document.getElementById('bnm-'+id);
+  document.querySelectorAll('.bnbtn').forEach(b=>{
+    const on=b.id==='bn-'+id||(b.id==='bn-more'&&inMore);
+    b.classList.toggle('active',on);
+    if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
 }
 
 window.togBnMore=()=>{
@@ -12515,6 +12528,7 @@ window.sp=id=>{
   document.querySelectorAll('.nbtn').forEach(b=>b.classList.remove('active'));
   const pg=document.getElementById('p-'+id);if(pg)pg.classList.add('active');
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
+  markBn(id);
   document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
   if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();loadSupport();}
   if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();}

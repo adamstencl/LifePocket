@@ -113,6 +113,7 @@ export default {
   'nav.home': 'Domů',
   'nav.settings': 'Nastavení',
   'nav.more': 'Více',
+  'nav.rexAria': 'AI parťák {av}',
 
   // ── Moduly (MODS[].id) ──
   'mod.rex': 'AI asistent',

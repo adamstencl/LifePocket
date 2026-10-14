@@ -112,6 +112,7 @@ export default {
   'nav.home': 'Home',
   'nav.settings': 'Settings',
   'nav.more': 'More',
+  'nav.rexAria': 'AI companion {av}',
 
   // ── Modules (MODS[].id) ──
   'mod.rex': 'AI assistant',
