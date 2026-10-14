@@ -1064,7 +1064,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -4041,6 +4041,14 @@ function getRexEnergy() {
 
   if (!hasAnyActivity && !active.length) return null;
   return Math.min(100, score);
+}
+
+// Energie parťáka na Domů: starší účty vždy, nováček po první aktivitě (splněný návyk, záznam, odškrtnutá položka)
+function rexEnergyVisible() {
+  if (!accNew(7) || lsGet('lp_first_act')) return true;
+  const act = habitLogs.some(l => l.done) || entries.length > 0 || checklists.some(c => (c.items || []).some(i => i.done));
+  if (act) lsSave('lp_first_act', 1);
+  return act;
 }
 
 function getRexState(energy) {
@@ -11419,6 +11427,7 @@ window.openGroupNotifSettings = () => {
 // Jednorázová karta na Domů: představí upozornění ze skupin (zavření se pamatuje v lp_gn_intro)
 function groupNotifIntroHTML() {
   if(lsGet('lp_gn_intro') || !(familyId || prof?.familyId || extraGroupIds.length || prof?.extraGroupIds?.length)) return '';
+  if(accNew(7)) return ''; // „Nově …“ nováčkovi nedává smysl
   return `<div class="invite-hint gn-intro" id="gn-intro-card" role="region" aria-label="${tH('gn.intro.t')}">
     <span class="invite-hint-em" aria-hidden="true">🔔</span>
     <div class="invite-hint-body">
@@ -12638,10 +12647,8 @@ function rDash(){
 
   const today=toDS();
   const mods=prof.modules||[];
-  // Focus widget always at top
-  let html=focusWidgetHTML();
-  // Quick Start karta pro nové uživatele
-  html+=quickStartHTML();
+  // Karta Začínáme (nováček) nahoře, pod ní hlavní úkol dne
+  let html=quickStartHTML()+focusWidgetHTML();
   // Jednorázová karta: upozornění ze skupin (novinka 4.38)
   html+=groupNotifIntroHTML();
   // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
@@ -12651,10 +12658,10 @@ function rDash(){
   // Společné výzvy ve skupinách (4.43)
   html+='<div id="ch-dash">'+chDashHTML()+'</div>';
 
-  // Mini Rex energy widget
+  // Mini Rex energy widget; nováček ho uvidí až po první aktivitě (prázdný ukazatel nemotivuje)
   const rexEn = getRexEnergy();
   const rexSt = getRexState(rexEn);
-  html += `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
+  if (rexEnergyVisible()) html += `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
     <div class="dw-head">
       <div class="dw-title">${av.emoji||'⭐'} ${av.name||'Rex'}</div>
       <div class="dw-arrow">→</div>
