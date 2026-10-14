@@ -662,7 +662,7 @@ export default {
   'game.goal.badNum': '⚠️ Enter a number',
   'game.goal.badRange': '⚠️ Enter a starting value and a target (they must differ)',
   'game.goal.saved': '✓ Value logged',
-  'game.intro.title': '🌱 New: grow with {av}',
+  'game.intro.title': '🌱 {av} grows with you',
   'game.intro.text': { one: 'I counted your progress so far: {n} completed habit. You are level {lvl}!', other: 'I counted your progress so far: {n} completed habits. You are level {lvl}!' },
   'game.intro.how': 'You now earn points for every completed habit and I grow with you.',
   'game.intro.show': 'Show me',

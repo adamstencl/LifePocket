@@ -2048,3 +2048,5 @@ label.sc-tog{cursor:pointer;min-height:48px}
 }
 @keyframes coachIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @keyframes ctaAskIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+/* Instalační banner: skrytý, dokud ho appka nepovolí (třída lp-noinstall, app.js installGate) */
+html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!important}

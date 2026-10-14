@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v52';
+const CACHE = 'lifepocket-v53';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -64,7 +64,9 @@ const OFFLINE_URLS = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-maskable-192.png',
-  '/icon-maskable-512.png'
+  '/icon-maskable-512.png',
+  '/img/app-icon.jpg', // ikona na úvodní stránce
+  '/img/ln-qr.jpg'     // QR v Nastavení (dřív base64 v index.html)
 ];
 
 self.addEventListener('install', e => {

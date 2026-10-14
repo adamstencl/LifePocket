@@ -665,7 +665,7 @@ export default {
   'game.goal.badNum': '⚠️ Zadej číslo',
   'game.goal.badRange': '⚠️ Zadej začáteční hodnotu a cíl (musí se lišit)',
   'game.goal.saved': '✓ Hodnota zapsána',
-  'game.intro.title': '🌱 Nově: růst s {av}',
+  'game.intro.title': '🌱 {av} roste s tebou',
   'game.intro.text': { one: 'Spočítal jsem tvoji dosavadní práci: {n} splněný návyk. Jsi na úrovni {lvl}!', few: 'Spočítal jsem tvoji dosavadní práci: {n} splněné návyky. Jsi na úrovni {lvl}!', other: 'Spočítal jsem tvoji dosavadní práci: {n} splněných návyků. Jsi na úrovni {lvl}!' },
   'game.intro.how': 'Za každý splněný návyk teď sbíráš body a já s tebou rostu.',
   'game.intro.show': 'Ukaž mi to',

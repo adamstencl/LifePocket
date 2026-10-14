@@ -530,6 +530,9 @@ const CHANGELOG = [
 function checkChangelog() {
   const seen = lsGet('lp_seen_version', '');
   if (seen === APP_VERSION) return;
+  // Nový účet (nebo první spuštění na zařízení): novinky nemají smysl, jen si verzi zapamatovat
+  if (!seen || accNew(1)) { lsSave('lp_seen_version', APP_VERSION); return; }
+  if (uiBusy()) { whenUiFree(checkChangelog); return; } // jedno okno naráz
   // Při update vymaž cached citát aby se vygeneroval nový
   localStorage.removeItem('lp_daily_quote');
   const entry = CHANGELOG.find(c => c.v === APP_VERSION);
@@ -554,6 +557,49 @@ window.closeChangelog = function() {
   lsSave('lp_seen_version', APP_VERSION);
   document.getElementById('changelog-modal')?.remove();
 };
+
+// ── První dojem (4.59): nováček vidí v jednu chvíli nejvýš jedno okno ──
+// Účet mladší než `days` dní (bez createdAt = starší účet)
+function accNew(days) {
+  const c = prof?.createdAt ? new Date(prof.createdAt).getTime() : NaN;
+  return Number.isFinite(c) && Date.now() - c < days * 86400000;
+}
+// Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
+function uiBusy() {
+  return tourActive() || !!document.querySelector('.moverlay.open,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
+}
+// Fronta: fn se spustí, až nebude otevřené jiné okno (kontrola po 1,5 s, nejdéle maxMs, pak se vzdá)
+function whenUiFree(fn, maxMs = 600000) {
+  const uid = CU?.uid, t0 = Date.now();
+  const tick = () => {
+    if (!CU || CU.uid !== uid) return; // odhlášení / jiný účet
+    if (!uiBusy()) { fn(); return; }
+    if (Date.now() - t0 < maxMs) setTimeout(tick, 1500);
+  };
+  setTimeout(tick, 0);
+}
+// Instalační banner (pwa.js) jen v appce po první užitečné akci nebo při další návštěvě (lp_inst_ok).
+// Na úvodní stránce a v registraci ho skrývá třída lp-noinstall na <html> (nastaví ji už inline skript v index.html).
+function installGate() {
+  let ok = false;
+  try { ok = !!localStorage.getItem('lp_inst_ok'); } catch (e) {}
+  const inApp = !!document.getElementById('app')?.classList.contains('active');
+  document.documentElement.classList.toggle('lp-noinstall', !(ok && inApp));
+}
+function installUnlock() {
+  try { if (!localStorage.getItem('lp_inst_ok')) localStorage.setItem('lp_inst_ok', '1'); } catch (e) {}
+  installGate();
+}
+// Další návštěva = nové spuštění appky aspoň 30 min po prvním (lp_first_open, jen zařízení)
+function installVisitCheck() {
+  try {
+    if (sessionStorage.getItem('lp_open_counted')) return;
+    sessionStorage.setItem('lp_open_counted', '1');
+    const first = Number(localStorage.getItem('lp_first_open')) || 0;
+    if (!first) localStorage.setItem('lp_first_open', String(Date.now()));
+    else if (Date.now() - first > 30 * 60000) localStorage.setItem('lp_inst_ok', '1');
+  } catch (e) {}
+}
 
 const AVS=[
   {id:'rex',emoji:'⚔️',name:'Rex'},
@@ -885,7 +931,7 @@ async function startSession(u){
     touchLastSeen(u.uid);
     _tzUid=u.uid; syncProfileTz(u.uid);
     if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
-      setTimeout(()=>toast(t('auth.verifyEmail'),5000),1000);
+      setTimeout(()=>whenUiFree(()=>toast(t('auth.verifyEmail'),5000)),1000);
     }
   }else ss('s-step1');
 }
@@ -1063,7 +1109,7 @@ function clearUserSessionState(){
   }catch(e){}
 }
 
-function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}}
+function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}installGate();}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
@@ -2248,6 +2294,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
+    installUnlock(); // první užitečná akce → může se nabídnout instalace
   }
   renderHabits();
   rAvPage();
@@ -2375,6 +2422,7 @@ window.saveHabit=async()=>{
   const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
   const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,goalId:selGoalId||null,order:maxOrder+1,createdAt:new Date().toISOString()};
   const hRef=await addDoc(collection(db,'users',CU.uid,'habits'),h);
+  installUnlock();
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
   const hnt=document.getElementById('habit-notif-time'); if(hnt) hnt.value='';
@@ -3921,6 +3969,7 @@ window.finishOnboard=async()=>{
   const tz=deviceTz(); if(tz) prof.tz=tz;
   await setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
   clearLangSync();
+  lsSave('lp_seen_version',APP_VERSION); // nový účet: bez okna „Co je nového“
   // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start
   if(addSamples){
     try{
@@ -5036,6 +5085,7 @@ async function rexProactiveGreeting() {
   const lastGreet = localStorage.getItem('lp_rex_greet');
   const today = toDS();
   if (lastGreet === today) return; // jednou denně
+  if (accNew(1)) return; // první den: bez AI pozdravu (průvodce, žádná data, šetří denní limit)
   localStorage.setItem('lp_rex_greet', today);
 
   const today_date = new Date();
@@ -5985,6 +6035,7 @@ window.setGameOn=on=>{
 // Úvodní karta po prvním spuštění (jednou na zařízení, bez oslav)
 function gameIntroHTML(){
   if(!gameOn()||lsGet('lp_game_intro')) return '';
+  if(accNew(7)) return ''; // nováček: „novinka“ nedává smysl, body vysvětlí průvodce a Rex
   const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
   let n=0; const today=toDS();
   for(const l of habitLogs) if(l&&l.done&&l.date>=_hlCutoff&&l.date<=today) n++;
@@ -6639,13 +6690,13 @@ function checkInactivity() {
   if(localStorage.getItem(k)) return;
   localStorage.setItem(k, '1');
 
-  // Zobrazit až po chvíli
-  setTimeout(() => {
+  // Zobrazit až po chvíli, a jen když není otevřené jiné okno
+  setTimeout(() => whenUiFree(() => {
     showAvReaction(av.emoji,
       tN('inact.title', lastActive),
       `${av.name}: ${tN('inact.' + inactKey, lastActive, {g: prof?.gender})}`
     );
-  }, 6000);
+  }), 6000);
 }
 
 
@@ -12396,6 +12447,7 @@ async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
   initWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subShopFreq();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
+  installVisitCheck(); installGate();
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
   // Ranní pozdrav až po prvním snapshotu návyků (nejdéle 15 s), jinak by Rex hlásil 0 návyků
@@ -14297,9 +14349,11 @@ async function addShopEntry({name, category, qty}){
       createdAt:new Date().toISOString()
     });
     logGroupActivity(fid, 'shop', 'add', name);
+    installUnlock();
     return true;
   }
   await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category:cat,qty,createdAt:new Date().toISOString()});
+  installUnlock();
   return false;
 }
 
@@ -16059,8 +16113,14 @@ function startWelcomeTour() {
   document.body.appendChild(modal);
 }
 
-// Tour po modulech — spotlight + popis
-const TOUR_STEPS = ['dashboard','habits','journal','cooking','shopping','goals'];
+// Tour po modulech — spotlight + popis. Nejvýš 3 kroky (4.59): Domů, hlavní modul šablony, AI parťák
+const TOUR_MAIN = {family:'shopping', student:'calendar', health:'habits'};
+const TOUR_FALLBACK = ['habits','shopping','calendar','journal','goals','cooking','mealplan'];
+function tourSteps() {
+  const mods = prof?.modules || [];
+  const main = [TOUR_MAIN[prof?.template], ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
+  return ['dashboard', ...(main ? [main] : []), ...(mods.includes('rex') ? ['avatar'] : [])];
+}
 let _tourStep = 0;
 
 window.startModuleTour = () => {
@@ -16073,8 +16133,7 @@ function showTourStep() {
   document.getElementById('tour-step')?.remove();
   document.getElementById('tour-overlay')?.remove();
 
-  const activeModules = [...(prof.modules || []), 'dashboard', 'avatar'];
-  const steps = TOUR_STEPS.filter(s => activeModules.includes(s) || s === 'dashboard');
+  const steps = tourSteps();
 
   if(_tourStep >= steps.length) {
     finishTour();
@@ -16082,8 +16141,11 @@ function showTourStep() {
   }
 
   const moduleId = steps[_tourStep];
-  const info = TOUR_MODULES[moduleId];
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  // Parťák: titulek podle zvoleného avatara (TOUR_MODULES vzniká před načtením profilu)
+  const info = moduleId === 'avatar' ? {title: esc(av.emoji + ' ' + av.name), text: TOUR_MODULES.avatar.text} : TOUR_MODULES[moduleId];
+  // Nápověda modulu by po prohlídce zopakovala stejný text
+  try { localStorage.setItem('lp_hint_' + moduleId, '1'); } catch(e) {}
 
   // Přepni na danou stránku
   sp(moduleId);
@@ -16166,6 +16228,7 @@ function showModuleHint(moduleId) {
   const key = 'lp_hint_' + moduleId;
   if(localStorage.getItem(key)) return; // už viděl
   if(!localStorage.getItem('lp_tour_done')) return; // probíhá tour, nepřekrývat
+  if(uiBusy() && !document.getElementById('module-hint')) return; // jiné okno, nápověda se ukáže při další návštěvě
   const info = TOUR_MODULES[moduleId];
   if(!info) return;
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
