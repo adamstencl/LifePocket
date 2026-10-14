@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.57';
+const APP_VERSION = '4.58';
 const CHANGELOG = [
+  { v:'4.58', items:[
+    '🍳 Recepty od AI v lepší češtině – správné názvy surovin a „dochuťte solí“ místo nesmyslů'
+  ], en:[
+    '🍳 AI recipes in Czech now use more correct wording and ingredient names'
+  ]},
   { v:'4.57', items:[
     '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky',
     '⏰ Připomínky a souhrny chodí podle časového pásma telefonu, i když jsi mimo Česko',
@@ -695,6 +700,24 @@ function stripMd(text) {
 function aiPlain(text) {
   const s = String(text ?? '');
   return stripMd(AI_LATIN_LANGS.includes(LANG) ? aiStripForeign(s) : s);
+}
+// Recepty (jen cs): jistá oprava častých chyb AI. Hranice slov přes \p{L} (\b neumí diakritiku); jen jednoznačné náhrady.
+const AI_CS_FIX = [
+  [/(?<!\p{L})kaper[sn](?!\p{L})/giu, () => 'kapary'],
+  [/(?<!\p{L})křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)(?!\p{L}))/giu, () => 'krémov'],
+  [/(?<!\p{L})ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)(?!\p{L}))/giu, () => 'dochuťte'],
+  [/(?<!\p{L})paprikou\s+(sladkou|pálivou|uzenou)(?!\p{L})/giu, (m, a) => a + ' paprikou'],
+];
+function aiFixCs(text) {
+  if (LANG !== 'cs' || typeof text !== 'string') return text;
+  let s = text;
+  for (const [re, fn] of AI_CS_FIX) s = s.replace(re, (m, ...g) => {
+    const r = fn(m, ...g);
+    // velikost písmen podle originálu (KAPERS → KAPARY, Kapers → Kapary)
+    if (m === m.toUpperCase() && m.length > 1 && /\p{Lu}{2}/u.test(m)) return r.toUpperCase();
+    return /^\p{Lu}/u.test(m) ? r[0].toUpperCase() + r.slice(1).toLowerCase() : r.toLowerCase();
+  });
+  return s;
 }
 // Opakovaný dotaz: instrukce se připojí k systémové zprávě (server povolí jen jednu)
 function aiRetryMessages(messages) {
@@ -13898,7 +13921,7 @@ window.rexRecipe=async(food,btnEl)=>{
   try{
     const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food,n:4})}],1500);
     if(!rawRecipe)throw new Error('AI unavailable');
-    let raw=rawRecipe.trim();
+    let raw=aiFixCs(rawRecipe).trim();
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
@@ -14860,7 +14883,7 @@ window.askRecipe=async()=>{
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food:query,n:cookPortions})}],1500);
     if(!rawR)throw new Error('AI unavailable');
-    let raw=rawR.trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    let raw=aiFixCs(rawR).trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
@@ -14925,7 +14948,7 @@ window.aiSuggestSteps = async function() {
     const user = tA('aip.steps.user', {name, n: portions, ingr: ingr || tA('aip.steps.noIngr')});
     const result = await callClaude([{role:'system',content:sys},{role:'user',content:user}], 600);
     if (result && stepsEl) {
-      stepsEl.value = aiPlain(result);
+      stepsEl.value = aiFixCs(aiPlain(result));
       toast(t('ck.mr.stepsDone'));
     }
   } catch(e) {
