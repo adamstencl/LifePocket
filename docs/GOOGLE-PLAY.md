@@ -33,7 +33,7 @@ Google Play vyžaduje u aplikací s registrací:
 
 Teď je jen e-mail v `privacy.html` (bod 10 a 11). Bod 2 by šel splnit odkazem na `https://lifepocket.app/privacy.html` s kotvou na sekci o smazání, bod 1 potřebuje změnu v appce (viz seznam pro vedoucího na konci).
 
-### 0.3 Odkazy na podporu (Buy Me a Coffee, BTC)
+### 0.3 Odkazy na podporu (QR platba, BTC; dříve Buy Me a Coffee)
 Pravidla plateb Google Play zakazují v aplikaci z obchodu odkazovat na jiné platby za digitální obsah. Dobrovolné spropitné vývojáři je šedá zóna a recenze ho může zamítnout. Bezpečnější je sekci podpory **v TWA skrýt** (viz seznam pro vedoucího). Na webu zůstane.
 
 ---
@@ -233,7 +233,7 @@ Aplikace je určena lidem od 15 let. AI funkce mají denní limit, aby appka moh
 Povinné pro Play:
 1. **`_config.yml`** v kořeni s `include: [.well-known]` (krok 0.1). Bez toho TWA nebude ověřená.
 2. **Smazání účtu v appce:** v Nastavení tlačítko „Smazat účet“ (zatím stačí `mailto:` s předvyplněným předmětem, později skutečné smazání přes Cloud Function). Do `privacy.html` přidat kotvu (např. `id="smazani-uctu"`) pro webovou adresu v Data safety.
-3. **Skrýt podporu (Buy Me a Coffee, BTC) v TWA:** detekce `document.referrer.startsWith('android-app://app.lifepocket')` při prvním načtení, uložit do `sessionStorage`/`localStorage` a sekci nezobrazit.
+3. **Skrýt podporu (QR platba, BTC) v TWA:** detekce `document.referrer.startsWith('android-app://app.lifepocket')` při prvním načtení, uložit do `sessionStorage`/`localStorage` a sekci nezobrazit.
 4. **Nahlášení odpovědi AI:** u zprávy AI společníka malá akce „Nahlásit“ (pravidla Play pro generativní AI). Stačí zápis do Firestore nebo `mailto:`.
 
 Doporučené (manifest, vyžaduje reinstalaci PWA, dávkovat najednou):

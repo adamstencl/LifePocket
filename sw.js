@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v45';
+const CACHE = 'lifepocket-v46';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -62,8 +62,7 @@ const OFFLINE_URLS = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-maskable-192.png',
-  '/icon-maskable-512.png',
-  '/img/qr-podpora.png'
+  '/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', e => {

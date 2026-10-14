@@ -30,7 +30,7 @@ Zásada: **přihlášení a základ zůstávají zdarma.** Hlavní náklad je AI
 - **Google Play přes TWA** (PWABuilder, jednorázově 25 USD za vývojářský účet). Appka bude k nalezení v obchodě, kde lidi aplikace hledají. Kód zůstane stejný. Největší jednorázový efekt. App Store (iOS) stojí 99 USD/rok, ten až později.
 - **Krátká videa (Reels/TikTok/Shorts, 15–30 s):** jedno video = jedna funkce („nákupák, který vidí celá rodina“, „Rex mi připomněl návyk“). Natočit 5–10 kusů najednou.
 - **České komunity:** FB skupiny o organizaci domácnosti, maminky, minimalismus, vaření, plánování (Notion CZ). Psát jako autor („dělám to po večerech, zdarma, chci zpětnou vazbu“), ne jako reklama.
-- **Buy Me a Coffee stránka a „Proč je to zdarma“:** transparentnost (kolik stojí servery) motivuje k dobrovolné podpoře.
+- **Dobrovolný příspěvek (QR platba) a „Proč je to zdarma“:** transparentnost (kolik stojí servery) motivuje k dobrovolné podpoře.
 - **SEO:** jednoduchá statická stránka `lifepocket.app/o-aplikaci` s textem pro Seznam a Google („sdílený nákupní seznam pro rodinu“, „aplikace na návyky česky“).
 - **Zpětná vazba z appky:** tlačítko „Navrhni vylepšení“ (zápis do tvého e-mailu nebo Firestore). Kdo navrhne nápad a ten se objeví v CHANGELOGu, appku sám rád sdílí.
 
