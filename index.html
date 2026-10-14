@@ -35,7 +35,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap">
 <!-- Téma před prvním vykreslením (stejná logika jako loadTheme v app.js), ať obrazovka nebliká -->
-<script>(function(){var c={'dark-gold':'#0c0c10','sunshine':'#faf8f0','tangerine':'#fff1e6'},t='sunshine';try{var s=localStorage.getItem('lp_theme');if(c[s])t=s;}catch(e){}
+<script>(function(){var c={'dark-gold':'#0c0c10','sunshine':'#faf8f0','tangerine':'#fff1e6'},t='sunshine';try{var s=localStorage.getItem('lp_theme');if(Object.prototype.hasOwnProperty.call(c,s))t=s;}catch(e){}
 document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=c[t];
 /* Instalační banner: skrytý, dokud ho appka nepovolí (app.js, installGate) */
 document.documentElement.classList.add('lp-noinstall');})();</script>
@@ -1056,8 +1056,8 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <form class="contact-form" action="https://formspree.io/f/xlgpyjaa" method="POST" onsubmit="handleContactSubmit(event)">
             <input type="hidden" name="_replyto" value="">
             <div class="cf-field">
-              <label class="cf-label" data-i18n="set.contact.email">Váš e-mail</label>
-              <input type="email" name="email" class="cf-input" placeholder="vas@email.cz" data-i18n-attr="placeholder:set.contact.emailPh" required>
+              <label class="cf-label" data-i18n="set.contact.email">Tvůj e-mail</label>
+              <input type="email" name="email" class="cf-input" placeholder="tvuj@email.cz" data-i18n-attr="placeholder:set.contact.emailPh" required>
             </div>
             <div class="cf-field">
               <label class="cf-label" data-i18n="set.contact.msg">Zpráva</label>

@@ -2305,9 +2305,9 @@ window.toggleHabit=async(hid,date,currentState)=>{
     await delHabitLog(logId);
   } else {
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
+    installUnlock(); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
-    installUnlock(); // první užitečná akce → může se nabídnout instalace
   }
   renderHabits();
   rAvPage();
@@ -2319,7 +2319,7 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   const ex=habitLogs.find(l=>l.id===logId);
   const cur=ex?ex.value:0;
   const newVal=Math.max(0,cur+delta);
-  if(delta>0 && newVal>=goal && cur<goal) xpPop(hid, XP.habit);
+  if(delta>0 && newVal>=goal && cur<goal) { xpPop(hid, XP.habit); installUnlock(); }
   if(newVal===0){
     await delHabitLog(logId);
   } else {
@@ -2372,6 +2372,7 @@ window.toggleHabitDay=async(hid,date)=>{
   } else if(curState==='failed'){
     await delHabitLog(logId);
   } else {
+    installUnlock();
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
   }
   renderHabits();
@@ -2434,8 +2435,8 @@ window.saveHabit=async()=>{
   const selGoalId=document.getElementById('habit-goal-sel')?.value||null;
   const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
   const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,goalId:selGoalId||null,order:maxOrder+1,createdAt:new Date().toISOString()};
-  const hRef=await addDoc(collection(db,'users',CU.uid,'habits'),h);
   installUnlock();
+  const hRef=await addDoc(collection(db,'users',CU.uid,'habits'),h);
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
   const hnt=document.getElementById('habit-notif-time'); if(hnt) hnt.value='';
@@ -2488,6 +2489,7 @@ window.directInput=async(hid,date,curVal,goal)=>{
     const newVal = parseInt(inp.value);
     modal.remove();
     if(isNaN(newVal)||newVal<0){toast(t('hb.di.bad'));return;}
+    if(newVal>=goal) installUnlock();
     await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
     renderHabits();
     toast(t('hb.di.logged',{n:newVal}));
@@ -4235,8 +4237,8 @@ const THEMES = {
 };
 
 window.setTheme = (id, silent) => {
-  if (!THEMES[id]) id = 'sunshine';
-  localStorage.setItem('lp_theme', id);
+  if (!Object.prototype.hasOwnProperty.call(THEMES, id)) id = 'sunshine';
+  try { localStorage.setItem('lp_theme', id); } catch (e) {} // soukromý režim / zablokované úložiště
   document.documentElement.setAttribute('data-theme', id);
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.content = THEMES[id].tc;
@@ -4251,14 +4253,16 @@ window.setTheme = (id, silent) => {
 };
 
 window.toggleTheme = () => {
-  const cur = localStorage.getItem('lp_theme') || 'sunshine';
+  let cur = 'sunshine';
+  try { cur = localStorage.getItem('lp_theme') || 'sunshine'; } catch (e) {}
   const order = ['sunshine','tangerine','dark-gold'];
   const next = order[(order.indexOf(cur)+1) % order.length];
   window.setTheme(next);
 };
 
 function loadTheme() {
-  const saved = localStorage.getItem('lp_theme') || 'sunshine';
+  let saved = 'sunshine';
+  try { saved = localStorage.getItem('lp_theme') || 'sunshine'; } catch (e) {}
   window.setTheme(saved, true); // silent — bez toastu při startu
 }
 // Aplikuj téma hned při startu, ať i login obrazovka respektuje uložený vzhled
@@ -12510,14 +12514,14 @@ function buildNav(){
   const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
   // Šablona (4.59): Domů · hlavní moduly šablony · parťák · ostatní; bez šablony Domů · parťák · moduly
-  const first=(NAV_TPL[prof.template]||[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
+  const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof.template)?NAV_TPL[prof.template]:[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
   const all=[home,...first,...rex,...uMods.filter(m=>!first.includes(m)),{id:'settings',emoji:'🔧',label:t('nav.settings')}];
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em" aria-hidden="true">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
   const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
   const cur=document.querySelector('.page.active')?.id?.slice(2); if(cur) markBn(cur); // přestavba lišty (změna modulů)
 }
@@ -14376,6 +14380,7 @@ async function addShopEntry({name, category, qty}){
   const cat = category || guessShopCategory(name);
   qty = String(qty||'').trim();
   const fid = shopGid();
+  installUnlock(); // před await: offline zápis čeká na server
   if(fid) {
     await addDoc(shopCol(fid),{
       name, category:cat, done:false, qty,
@@ -14383,11 +14388,9 @@ async function addShopEntry({name, category, qty}){
       createdAt:new Date().toISOString()
     });
     logGroupActivity(fid, 'shop', 'add', name);
-    installUnlock();
     return true;
   }
   await addDoc(collection(db,'users',CU.uid,'shopItems'),{name,done:false,category:cat,qty,createdAt:new Date().toISOString()});
-  installUnlock();
   return false;
 }
 
@@ -14724,6 +14727,7 @@ window.saveRecurringItem = async function() {
 };
 
 window.toggleShopItem=async(id,wasDone)=>{
+  if(!wasDone) installUnlock(); // odškrtnutí = užitečná akce (před await)
   const fid = shopGid();
   if(fid) {
     const item = shopGrpItems(fid).find(i=>i.id===id);
@@ -16152,7 +16156,7 @@ const TOUR_MAIN = {family:'shopping', student:'calendar', health:'habits'};
 const TOUR_FALLBACK = ['habits','shopping','calendar','journal','goals','cooking','mealplan'];
 function tourSteps() {
   const mods = prof?.modules || [];
-  const main = [TOUR_MAIN[prof?.template], ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
+  const main = [Object.prototype.hasOwnProperty.call(TOUR_MAIN, prof?.template) ? TOUR_MAIN[prof.template] : null, ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
   return ['dashboard', ...(main ? [main] : []), ...(mods.includes('rex') ? ['avatar'] : [])];
 }
 let _tourStep = 0;
