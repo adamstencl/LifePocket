@@ -15403,16 +15403,35 @@ window.aiShopAddAll = async function(items) {
   toast(tN('shop.addedN', items.length) + (items.length ? shopToSfx(fid) : ''));
 };
 
+// Jednotky receptu → jednotky zásob (ks/g/kg/ml/l) a násobek. Celé slovo (u-příznak), aby „lžíce“ nebyla litr.
+// Lžíce 15 ml, lžička 5 ml, hrnek 250 ml (stejně jako normalizeIngQty)
+const ING_UNITS = (()=>{
+  const m = {};
+  const add = (unit, k, words) => words.split(' ').forEach(w => { m[w] = [unit, k]; });
+  add('ks', 1, 'ks kus kusy kusů kusu pcs pc piece pieces x stroužek stroužky stroužků stroužku clove cloves plátek plátky plátků slice slices bal balení pack packs');
+  add('g', 1, 'g gr gram gramy gramů gramu grams');
+  add('g', 10, 'dkg deka deko');
+  add('g', 2, 'špetka špetky špetek špetku pinch pinches');
+  add('g', 28, 'oz');
+  add('g', 454, 'lb lbs');
+  add('kg', 1, 'kg kilo kila kilogram kilogramy kilogramů kilogramu kilograms');
+  add('ml', 1, 'ml mililitr mililitry mililitrů mililitru millilitre millilitres milliliter milliliters');
+  add('ml', 10, 'cl');
+  add('ml', 100, 'dl dcl');
+  add('ml', 15, 'lžíce lžic lžíci lžícemi pl tbsp tbs tablespoon tablespoons');
+  add('ml', 5, 'lžička lžičky lžiček lžičku čl kl tsp teaspoon teaspoons');
+  add('ml', 250, 'hrnek hrnky hrnků hrnku cup cups');
+  add('l', 1, 'l litr litry litrů litru liter liters litre litres');
+  return m;
+})();
 function parseIngQty(qtyStr) {
   if (!qtyStr) return {amount:1, unit:'ks'};
-  const m = String(qtyStr).match(/(\d+(?:[.,]\d+)?)\s*(ks|kg|ml|grams|gram\b|litres|litre\b|liters|liter\b|g\b|l\b|kusy|kus|pcs|pc\b|pieces|piece)?/i);
+  const m = String(qtyStr).match(/(\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
   if (!m) return {amount:1, unit:'ks'};
-  const amount = parseFloat(m[1].replace(',','.'));
-  let unit = (m[2]||'ks').toLowerCase();
-  if(['kus','kusy','pcs','pc','piece','pieces'].includes(unit)) unit='ks'; // anglické recepty od AI (4.54)
-  else if(unit==='grams'||unit==='gram') unit='g';
-  else if(/^lit(re|er)s?$/.test(unit)) unit='l';
-  return {amount, unit};
+  const amount = shopNum(m[1]) || 1;
+  const u = ING_UNITS[(m[2]||'').toLowerCase()];
+  if (!u) return {amount, unit:'ks'}; // bez jednotky nebo neznámá („2 vejce“) → kusy
+  return {amount: Math.round(amount * u[1] * 1000) / 1000, unit: u[0]};
 }
 
 function convertUnits(amount, from, to) {
