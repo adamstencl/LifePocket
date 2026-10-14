@@ -120,6 +120,33 @@ const cs = {
   'err.resDenied': 'Tuhle skupinu obnovit nemůžeš.',
   'err.resMax': 'Máš už {n} skupin. Nejdřív nějakou opusť.',
   'err.resFail': 'Skupinu se teď nepodařilo obnovit. Zkus to prosím znovu.',
+  // ── Chyby AI (claudeProxy) ──
+  'err.aiCfg': 'Konfigurace AI není dostupná.',
+  'err.aiKey': 'Claude API klíč není nastaven.',
+  'err.aiNoMsgs': 'Chybí zprávy pro AI.',
+  'err.aiTooMany': 'Příliš mnoho zpráv (max. {n}).',
+  'err.aiBadMsg': 'Neplatná zpráva pro AI.',
+  'err.aiBadContent': 'Neplatný obsah zprávy (jen text).',
+  'err.aiOneSystem': 'Povolena je jen jedna systémová zpráva.',
+  'err.aiBadRole': 'Neplatná role zprávy.',
+  'err.aiNoUser': 'Chybí zpráva uživatele.',
+  'err.aiLastUser': 'Poslední zpráva musí být od uživatele.',
+  'err.aiTooLong': 'Text pro AI je příliš dlouhý. Zkrať ho prosím.',
+  'err.aiLimit': 'Denní limit {n} AI dotazů byl dosažen. Limit se obnoví zítra.',
+  'err.aiTimeout': 'AI neodpověděla včas. Zkus to prosím znovu.',
+  'err.aiUnavail': 'AI je teď nedostupná. Zkus to prosím za chvíli.',
+  'err.aiOverload': 'AI je teď přetížená. Zkus to prosím za chvíli (dotaz se nezapočítal).',
+  'err.aiHttp': 'Claude API chyba: {code}',
+  'err.aiRefused': 'AI na tento dotaz nemůže odpovědět. Zkus ho formulovat jinak.',
+  'err.aiMaxTok': 'AI nestihla odpověď dopsat (limit délky). Zkus to prosím znovu.',
+  'err.aiEmpty': 'Claude API: prázdná odpověď',
+  // ── notifyFamily, restoreGroup ──
+  'err.nfNoMsg': 'Chybí zpráva.',
+  'err.nfNoGroup': 'Nejsi v rodinné skupině.',
+  'err.nfNotMember': 'Nejsi členem této skupiny.',
+  'err.nfRate': 'Upozornění už bylo odesláno, zkus to za chvíli.',
+  'nf.member': 'Člen rodiny',
+  'grp.member': 'Člen',
 };
 // Ženské tvary akcí ve skupině: první slovo + „a“ (stejné pravidlo jako dřív v kódu)
 for (const k of Object.keys(cs)) if (k.startsWith('gn.act.')) cs[k + '#f'] = cs[k].replace(/^(\S+)/, '$1a');
@@ -227,6 +254,31 @@ const en = {
   'err.resDenied': 'You can’t restore this group.',
   'err.resMax': 'You already have {n} groups. Leave one first.',
   'err.resFail': 'The group could not be restored right now. Please try again.',
+  'err.aiCfg': 'AI configuration is not available.',
+  'err.aiKey': 'Claude API key is not set.',
+  'err.aiNoMsgs': 'No messages for the AI.',
+  'err.aiTooMany': 'Too many messages (max. {n}).',
+  'err.aiBadMsg': 'Invalid message for the AI.',
+  'err.aiBadContent': 'Invalid message content (text only).',
+  'err.aiOneSystem': 'Only one system message is allowed.',
+  'err.aiBadRole': 'Invalid message role.',
+  'err.aiNoUser': 'The user message is missing.',
+  'err.aiLastUser': 'The last message must be from the user.',
+  'err.aiTooLong': 'The text for the AI is too long. Please shorten it.',
+  'err.aiLimit': 'The daily limit of {n} AI requests has been reached. It resets tomorrow.',
+  'err.aiTimeout': 'The AI did not respond in time. Please try again.',
+  'err.aiUnavail': 'The AI is not available right now. Please try again in a moment.',
+  'err.aiOverload': 'The AI is overloaded right now. Please try again in a moment (this request was not counted).',
+  'err.aiHttp': 'Claude API error: {code}',
+  'err.aiRefused': 'The AI can’t answer this request. Try rephrasing it.',
+  'err.aiMaxTok': 'The AI could not finish the answer (length limit). Please try again.',
+  'err.aiEmpty': 'Claude API: empty response',
+  'err.nfNoMsg': 'The message is missing.',
+  'err.nfNoGroup': 'You are not in a family group.',
+  'err.nfNotMember': 'You are not a member of this group.',
+  'err.nfRate': 'A notification was already sent, try again in a moment.',
+  'nf.member': 'Family member',
+  'grp.member': 'Member',
 };
 
 const DICT = {cs, en};
@@ -238,7 +290,8 @@ function normLang(l) { return l === 'en' ? 'en' : 'cs'; }
 
 // Text v jazyce L; vars.g === 'f' vybere ženský tvar, vars.n plurál; chybějící klíč spadne na češtinu
 function tS(L, key, vars = {}) {
-  const d = DICT[L] || cs;
+  L = normLang(L); // neznámý jazyk (např. 'de' nebo '__proto__') → cs, plurál pak nespadne
+  const d = DICT[L];
   const pick = (o) => (vars.g === 'f' && has(o, key + '#f')) ? o[key + '#f'] : (has(o, key) ? o[key] : undefined);
   let v = pick(d);
   let lang = L;

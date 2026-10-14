@@ -87,13 +87,13 @@ function parseClaudeResponse(body) {
 
 // Klíč z config/secrets: načte se jednou za instanci, neúspěch se necachuje (příště znovu)
 let cachedClaudeKey = null;
-async function getClaudeKey() {
+async function getClaudeKey(L) {
   if (cachedClaudeKey) return cachedClaudeKey;
   const secretsSnap = await db.doc('config/secrets').get();
-  if (!secretsSnap.exists) throw new HttpsError('not-found', 'Konfigurace AI není dostupná.');
+  if (!secretsSnap.exists) throw new HttpsError('not-found', tS(L, 'err.aiCfg'));
   const secrets = secretsSnap.data();
   const claudeKey = secrets.claudeKey || secrets.cladeKey || secrets.ClaudeKey || secrets.claude_key;
-  if (!claudeKey) throw new HttpsError('not-found', 'Claude API klíč není nastaven.');
+  if (!claudeKey) throw new HttpsError('not-found', tS(L, 'err.aiKey'));
   cachedClaudeKey = claudeKey;
   return claudeKey;
 }
@@ -114,34 +114,35 @@ function normContent(c) {
 
 // Validace vstupu z klienta. Klient (callClaude v app.js) posílá systémový prompt jako zprávu
 // s rolí 'system' (nejvýš jednu); ostatní role jen user/assistant. Vrací {system, messages, maxTokens}.
-function validateClaudeInput(data) {
-  const bad = (msg) => new HttpsError('invalid-argument', msg);
+// L = jazyk chybových zpráv (cs/en)
+function validateClaudeInput(data, L) {
+  const bad = (key, vars) => new HttpsError('invalid-argument', tS(L, key, vars));
   const {messages, maxTokens} = data || {};
-  if (!Array.isArray(messages) || messages.length === 0) throw bad('Chybí zprávy pro AI.');
-  if (messages.length > MAX_MESSAGES) throw bad(`Příliš mnoho zpráv (max. ${MAX_MESSAGES}).`);
+  if (!Array.isArray(messages) || messages.length === 0) throw bad('err.aiNoMsgs');
+  if (messages.length > MAX_MESSAGES) throw bad('err.aiTooMany', {n: MAX_MESSAGES});
   let system = '';
   let hasSystem = false;
   let total = 0;
   const out = [];
   for (const m of messages) {
-    if (!m || typeof m !== 'object') throw bad('Neplatná zpráva pro AI.');
+    if (!m || typeof m !== 'object') throw bad('err.aiBadMsg');
     const norm = normContent(m.content);
-    if (!norm) throw bad('Neplatný obsah zprávy (jen text).');
+    if (!norm) throw bad('err.aiBadContent');
     total += norm.chars;
     if (m.role === 'system') {
-      if (hasSystem) throw bad('Povolena je jen jedna systémová zpráva.');
+      if (hasSystem) throw bad('err.aiOneSystem');
       hasSystem = true;
       system = norm.content;
     } else if (m.role === 'user' || m.role === 'assistant') {
       out.push({role: m.role, content: norm.content});
     } else {
-      throw bad('Neplatná role zprávy.');
+      throw bad('err.aiBadRole');
     }
   }
-  if (!out.length) throw bad('Chybí zpráva uživatele.');
+  if (!out.length) throw bad('err.aiNoUser');
   // Poslední zpráva musí být od uživatele (assistant prefill vrací u Haiku 5.5 chybu 400)
-  if (out[out.length - 1].role !== 'user') throw bad('Poslední zpráva musí být od uživatele.');
-  if (total > MAX_INPUT_CHARS) throw bad('Text pro AI je příliš dlouhý. Zkrať ho prosím.');
+  if (out[out.length - 1].role !== 'user') throw bad('err.aiLastUser');
+  if (total > MAX_INPUT_CHARS) throw bad('err.aiTooLong');
   const mt = (Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= MAX_TOKENS_CAP) ? maxTokens : DEFAULT_MAX_TOKENS;
   return {system, messages: out, maxTokens: mt};
 }
@@ -159,15 +160,16 @@ async function refundRate(rateRef, today) {
 }
 
 exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (request) => {
-  // 1. Auth check
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  // 1. Auth check (jazyk chyb z data.lang klienta, profil se kvůli tomu nenačítá)
+  const L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
 
   // 2. Validace vstupu — před odečtem limitu, neplatný dotaz limit nespotřebuje
-  const input = validateClaudeInput(request.data);
+  const input = validateClaudeInput(request.data, L);
 
   // 3. Claude API klíč a volba modelu (cache v instanci; admin přístup, klient config/** číst nemůže)
-  const claudeKey = await getClaudeKey();
+  const claudeKey = await getClaudeKey(L);
   const aiCfg = await getAiConfig();
 
   // 4. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
@@ -180,7 +182,7 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
     const rateData = rateSnap.exists ? rateSnap.data() : {};
     const count = rateData.date === today ? (rateData.count || 0) : 0;
     if (count >= DAILY_LIMIT) {
-      throw new HttpsError('resource-exhausted', `Denní limit ${DAILY_LIMIT} AI dotazů byl dosažen. Limit se obnoví zítra.`);
+      throw new HttpsError('resource-exhausted', tS(L, 'err.aiLimit', {n: DAILY_LIMIT}));
     }
     // merge: v dokumentu je i famNotify (omezení notifyFamily)
     tx.set(rateRef, {date: today, count: count + 1}, {merge: true});
@@ -227,8 +229,8 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
   } catch(e) {
     // Timeout nebo síťová chyba = dotaz neproběhl → vrať odečtený limit
     await refundRate(rateRef, today);
-    if (e && e.lpTimeout) throw new HttpsError('deadline-exceeded', 'AI neodpověděla včas. Zkus to prosím znovu.');
-    throw new HttpsError('unavailable', 'AI je teď nedostupná. Zkus to prosím za chvíli.');
+    if (e && e.lpTimeout) throw new HttpsError('deadline-exceeded', tS(L, 'err.aiTimeout'));
+    throw new HttpsError('unavailable', tS(L, 'err.aiUnavail'));
   }
 
   if (result.status !== 200) {
@@ -236,24 +238,24 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
     const overloaded = result.status >= 500 || result.status === 529 || errType === 'overloaded_error';
     if (overloaded) {
       await refundRate(rateRef, today);
-      throw new HttpsError('unavailable', 'AI je teď přetížená. Zkus to prosím za chvíli (dotaz se nezapočítal).');
+      throw new HttpsError('unavailable', tS(L, 'err.aiOverload'));
     }
     // Neplatný klíč → příště načíst config/secrets znovu (klíč mohl být vyměněn)
     if (result.status === 401 || result.status === 403) cachedClaudeKey = null;
-    const msg = result.body?.error?.message || `Claude API chyba: ${result.status}`;
+    const msg = result.body?.error?.message || tS(L, 'err.aiHttp', {code: result.status});
     throw new HttpsError('internal', msg);
   }
   const parsed = parseClaudeResponse(result.body);
   // Odmítnutí bezpečnostním filtrem (HTTP 200): dotaz proběhl, do limitu se nevrací. Loguje se jen kategorie.
   if (parsed.stopReason === 'refusal') {
     console.warn('[LP] AI odmítla dotaz, kategorie:', parsed.refusalCategory || '?');
-    throw new HttpsError('failed-precondition', 'AI na tento dotaz nemůže odpovědět. Zkus ho formulovat jinak.');
+    throw new HttpsError('failed-precondition', tS(L, 'err.aiRefused'));
   }
   if (!parsed.text.trim()) {
     if (parsed.stopReason === 'max_tokens') {
-      throw new HttpsError('internal', 'AI nestihla odpověď dopsat (limit délky). Zkus to prosím znovu.');
+      throw new HttpsError('internal', tS(L, 'err.aiMaxTok'));
     }
-    throw new HttpsError('internal', 'Claude API: prázdná odpověď');
+    throw new HttpsError('internal', tS(L, 'err.aiEmpty'));
   }
 
   return {text: parsed.text, remaining: DAILY_LIMIT - todayCount - 1};
@@ -584,8 +586,10 @@ function gnCount(a) {
 }
 // Akce autora („přidal do nákupu“); neznámá akce = „upravil“ + „v nákupu“
 function gnActText(L, module, action, f) {
-  const key = `gn.act.${module}.${action}`;
   const g = f ? 'f' : '';
+  // „#“ v modulu nebo akci (data z klienta) by sáhlo přímo na variantu '#f' slovníku → jen obecné „upravil“
+  if (String(module).includes('#') || String(action).includes('#')) return tS(L, 'gn.act.def', {g});
+  const key = `gn.act.${module}.${action}`;
   if (tS(L, key) !== key) return tS(L, key, {g});
   const inMod = tS(L, 'gn.in.' + module);
   const verb = tS(L, 'gn.act.def', {g});
@@ -684,30 +688,33 @@ function gnEveningBody(byModule, L) {
 // odesílatel smí volat nejvýš 1× za 2 min na skupinu (rateLimits/{uid}.famNotify, píše jen server)
 const FAM_NOTIFY_INTERVAL = 2 * 60000;
 exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Přihlašte se prosím.');
+  let L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
 
   const {message: rawMessage, type: rawType} = request.data || {};
-  if (!rawMessage || typeof rawMessage !== 'string') throw new HttpsError('invalid-argument', 'Chybí zpráva.');
+  if (!rawMessage || typeof rawMessage !== 'string') throw new HttpsError('invalid-argument', tS(L, 'err.nfNoMsg'));
   const message = rawMessage.slice(0, 200);
   // Typ z klienta jen z whitelistu a tag vždy s prefixem fam-, ať nejde přepsat cizí notifikaci (morning, habit-<id>…)
   const type = ['shop-update', 'family-notify'].includes(rawType) ? rawType : 'family-notify';
 
   // Načti profil odesílatele — potřebujeme familyId a jméno
   const senderSnap = await db.doc(`users/${uid}/profile/main`).get();
-  if (!senderSnap.exists) throw new HttpsError('not-found', 'Profil nenalezen.');
+  if (!senderSnap.exists) throw new HttpsError('not-found', tS(L, 'err.noProfile'));
   const senderProf = senderSnap.data();
+  L = reqLang(request, senderProf); // bez data.lang podle profilu odesílatele
   const familyId = senderProf.familyId;
-  if (!familyId) throw new HttpsError('failed-precondition', 'Nejsi v rodinné skupině.');
+  if (!familyId) throw new HttpsError('failed-precondition', tS(L, 'err.nfNoGroup'));
 
-  const senderName = String(senderProf.prezdivka || senderProf.nickname || 'Člen rodiny').slice(0, 40);
+  // Jméno odesílatele; bez jména výchozí text v jazyce příjemce (níže)
+  const senderNick = String(senderProf.prezdivka || senderProf.nickname || '').trim().slice(0, 40);
 
   // Načti členy skupiny
   const familySnap = await db.doc(`families/${familyId}`).get();
-  if (!familySnap.exists) throw new HttpsError('not-found', 'Skupina nenalezena.');
+  if (!familySnap.exists) throw new HttpsError('not-found', tS(L, 'err.grpNotFound'));
   const members = familySnap.data().members || {};
   // Odesílatel musí být členem skupiny (familyId v profilu si může nastavit sám)
-  if (!Object.prototype.hasOwnProperty.call(members, uid)) throw new HttpsError('permission-denied', 'Nejsi členem této skupiny.');
+  if (!Object.prototype.hasOwnProperty.call(members, uid)) throw new HttpsError('permission-denied', tS(L, 'err.nfNotMember'));
 
   // Omezení: 1× za 2 min na odesílatele a skupinu (atomicky, paralelní volání limit neobejdou)
   const nowMs = Date.now();
@@ -717,7 +724,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
     const fn = rs.exists ? (rs.data() || {}).famNotify : null;
     const last = fn && typeof fn === 'object' ? Number(fn[familyId]) : NaN;
     if (Number.isFinite(last) && last <= nowMs && nowMs - last < FAM_NOTIFY_INTERVAL) {
-      throw new HttpsError('resource-exhausted', 'Upozornění už bylo odesláno, zkus to za chvíli');
+      throw new HttpsError('resource-exhausted', tS(L, 'err.nfRate'));
     }
     tx.set(rateRef, {famNotify: {[familyId]: nowMs}}, {merge: true});
   });
@@ -737,6 +744,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
       const gp = groupNotifPrefs(memberProf);
       if (type === 'shop-update' && gp.shop === 'off') continue;
       if (inQuiet(h, m, gp.quiet)) continue;
+      const senderName = senderNick || tS(normLang(memberProf.lang), 'nf.member');
       const res = await sendPushToUser(memberUid, memberProf, `📣 ${senderName}`, message, `fam-${type}`);
       sent += res.sent;
       if (res.sent > 0) membersReached++;
@@ -1775,7 +1783,7 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
         const mine = new Set([p.familyId, ...extra].filter(g => typeof g === 'string' && g !== gid && GROUP_ID_RE.test(g)));
         if (mine.size >= GROUP_MAX) throw new HttpsError('failed-precondition', tS(L, 'err.resMax', {n: GROUP_MAX}));
       }
-      const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || 'Člen';
+      const name = String(p.prezdivka || p.nickname || tokenName || '').trim().slice(0, 40) || tS(L, 'grp.member');
       const avatar = typeof p.avatarId === 'string' && p.avatarId ? p.avatarId.slice(0, 40) : 'rex';
       tx.update(ref, new FieldPath('members', uid), {name, avatar, joinedAt: new Date().toISOString(), role: 'admin'});
       const upd = asMain

@@ -418,7 +418,28 @@ try {
   const missS = [...usedS].filter(k => !kc.has(k));
   missS.forEach(k => fail('server: klíč neexistuje: ' + k));
   if (!missS.length) ok('server: všech ' + usedS.size + ' použitých klíčů tS() existuje');
+  // Dynamické klíče (gn.mod.*, gn.in.*, gn.rx.*, gn.ms.*): výčet hodnot ze zdroje (GN_EM, RX_EM) a pevné milníky série
+  const objKeys = name => {
+    const m = fsrc.match(new RegExp('const ' + name + ' = \\{([\\s\\S]*?)\\};'));
+    return m ? [...m[1].matchAll(/(?:^|[,{\s])(\w+)\s*:/g)].map(x => x[1]) : null;
+  };
+  const gnMods = objKeys('GN_EM'), rxKeys = objKeys('RX_EM');
+  if (!gnMods || !gnMods.length || !rxKeys || !rxKeys.length) fail('server: nenalezen výčet GN_EM / RX_EM v functions/index.js');
+  else {
+    // Milníky série v gnMilestonePush: 7, 30, 100 a ostatní (sN); hlídá i to, že se výběr v kódu nezměnil
+    const MS = ['s7', 's30', 's100', 'sN'];
+    if (!/v === 7 \|\| v === 30 \|\| v === 100 \? 's' \+ v : 'sN'/.test(fsrc)) fail('server: změnil se výběr milníku série (gn.ms.*), uprav výčet v ci-check');
+    const dyn = [
+      ...gnMods.flatMap(m => ['gn.mod.' + m, 'gn.in.' + m]),
+      ...rxKeys.map(k => 'gn.rx.' + k),
+      ...MS.flatMap(s => ['gn.ms.' + s + '.t', 'gn.ms.' + s + '.p']),
+    ];
+    const missD = dyn.filter(k => !kc.has(k) || !ke.has(k));
+    missD.forEach(k => fail('server: dynamický klíč chybí v cs nebo en: ' + k));
+    if (!missD.length) ok('server: všech ' + dyn.length + ' dynamických klíčů tS() (gn.mod/in/rx/ms) existuje');
+  }
   if (tS('cs', 'morning.b', { n: 3 }) !== 'Čeká tě 3 návyky na dnes. Pojď na to! ☀️' || tS('en', 'gn.act.def') !== 'changed') fail('server: tS() vrací neočekávaný text');
+  if (tS('de', 'gn.ms.sN.t', { name: 'A', n: 3 }) !== '🔥 A: 3 dny v řadě!') fail('server: tS() s neznámým jazykem nespadne na češtinu');
 } catch (e) { fail('slovník serveru: ' + e.message); }
 
 console.log('i18n: ráčny (český text mimo slovník)');

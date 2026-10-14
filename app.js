@@ -599,7 +599,7 @@ let customReminders = [];
 async function callClaudeRaw(messages, maxTokens = 500, quiet = false) {
   if (_accDeleting || _accDeleted || _accStopped) throw new Error('AI není k dispozici'); // během mazání účtu žádné AI dotazy
   try {
-    const result = await claudeProxyFn({messages, maxTokens});
+    const result = await claudeProxyFn({messages, maxTokens, lang: LANG}); // lang: jazyk chybových zpráv serveru
     return result.data.text;
   } catch(e) {
     // Denní limit aplikace (claudeProxy vrací resource-exhausted); rate limit Anthropicu přijde jako internal
@@ -13783,7 +13783,7 @@ async function chatDataReady(){
   try{
     const gs=myGroupIds(), wait=[];
     gs.forEach(g=>{
-      if(groupModShared(g,'shop')){ subscribeGroupShop(g); wait.push(()=>!!shopGrp[g]?.loaded); }
+      if(groupModShared(g,'shop')){ subscribeGroupShop(g); wait.push(()=>!!(shopGrp[g]?.loaded||shopGrp[g]?.err)); }
       if(groupModShared(g,'meal')){ subscribeGroupMeal(g); wait.push(()=>!!(mealGrp[g]?.loaded||mealGrp[g]?.err)); }
       if(groupModShared(g,'check')){ subscribeGroupChecklist(g); wait.push(()=>!!(clGrp[g]?.ready||clGrp[g]?.err)); }
     });
@@ -15404,24 +15404,25 @@ window.aiShopAddAll = async function(items) {
 };
 
 // Jednotky receptu → jednotky zásob (ks/g/kg/ml/l) a násobek. Celé slovo (u-příznak), aby „lžíce“ nebyla litr.
+// Klíče bez diakritiky (vstup se normalizuje, „lzice“ z telefonu bez háčků projde také).
 // Lžíce 15 ml, lžička 5 ml, hrnek 250 ml (stejně jako normalizeIngQty)
 const ING_UNITS = (()=>{
   const m = {};
   const add = (unit, k, words) => words.split(' ').forEach(w => { m[w] = [unit, k]; });
-  add('ks', 1, 'ks kus kusy kusů kusu pcs pc piece pieces x stroužek stroužky stroužků stroužku clove cloves plátek plátky plátků slice slices bal balení pack packs');
-  add('g', 1, 'g gr gram gramy gramů gramu grams');
+  add('ks', 1, 'ks kus kusy kusu pcs pc piece pieces x strouzek strouzky strouzku clove cloves platek platky platku slice slices bal baleni pack packs');
+  add('g', 1, 'g gr gram gramy gramu grams');
   add('g', 10, 'dkg deka deko');
-  add('g', 2, 'špetka špetky špetek špetku pinch pinches');
+  add('g', 2, 'spetka spetky spetek spetku pinch pinches');
   add('g', 28, 'oz');
   add('g', 454, 'lb lbs');
-  add('kg', 1, 'kg kilo kila kilogram kilogramy kilogramů kilogramu kilograms');
-  add('ml', 1, 'ml mililitr mililitry mililitrů mililitru millilitre millilitres milliliter milliliters');
+  add('kg', 1, 'kg kilo kila kilogram kilogramy kilogramu kilograms');
+  add('ml', 1, 'ml mililitr mililitry mililitru millilitre millilitres milliliter milliliters');
   add('ml', 10, 'cl');
   add('ml', 100, 'dl dcl');
-  add('ml', 15, 'lžíce lžic lžíci lžícemi pl tbsp tbs tablespoon tablespoons');
-  add('ml', 5, 'lžička lžičky lžiček lžičku čl kl tsp teaspoon teaspoons');
-  add('ml', 250, 'hrnek hrnky hrnků hrnku cup cups');
-  add('l', 1, 'l litr litry litrů litru liter liters litre litres');
+  add('ml', 15, 'lzice lzic lzici lzicemi pl tbsp tbs tablespoon tablespoons');
+  add('ml', 5, 'lzicka lzicky lzicek lzicku kl tsp teaspoon teaspoons');
+  add('ml', 250, 'hrnek hrnky hrnku cup cups');
+  add('l', 1, 'l litr litry litru liter liters litre litres');
   return m;
 })();
 function parseIngQty(qtyStr) {
@@ -15429,7 +15430,9 @@ function parseIngQty(qtyStr) {
   const m = String(qtyStr).match(/(\d{1,4}\/\d{1,3}|[½¼¾]|\d+(?:[.,]\d+)?)\s*(\p{L}+)?/u);
   if (!m) return {amount:1, unit:'ks'};
   const amount = shopNum(m[1]) || 1;
-  const u = ING_UNITS[(m[2]||'').toLowerCase()];
+  const w = (m[2]||'').toLowerCase();
+  // ČL (čajová lžička) se bez diakritiky plete s cl (centilitr)
+  const u = /^čl$/.test(w) ? ING_UNITS.tsp : ING_UNITS[w.normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
   if (!u) return {amount, unit:'ks'}; // bez jednotky nebo neznámá („2 vejce“) → kusy
   return {amount: Math.round(amount * u[1] * 1000) / 1000, unit: u[0]};
 }
