@@ -57,7 +57,7 @@ checkSyntax('pwa.js', false);
 checkSyntax('functions/index.js', false);
 
 console.log('JSON');
-['manifest.json', 'firebase.json', 'functions/package.json'].forEach(checkJson);
+['manifest.json', 'firebase.json', 'functions/package.json', 'support.json'].forEach(checkJson);
 
 console.log('Offline cache (sw.js)');
 try {
