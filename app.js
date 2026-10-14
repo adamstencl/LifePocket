@@ -13506,7 +13506,7 @@ function buildChatContext(){
     if(!plan||typeof plan!=='object') return out;
     for(const di of days||[0,1,2,3,4,5,6]){
       const dd=plan['d'+di];if(!dd||typeof dd!=='object') continue;
-      const parts=['m0','m1','m2'].map((k,i)=>dd[k]&&String(dd[k]).trim()?tA('aip.ctx.meal.'+k)+' '+ctxT(dd[k],40):'').filter(Boolean);
+      const parts=['m0','m1','m2'].map(k=>dd[k]&&String(dd[k]).trim()?tA('aip.ctx.meal.'+k)+' '+ctxT(dd[k],40):'').filter(Boolean);
       if(parts.length) out.push('- '+label+DN[di]+(di===todayIdx?tA('aip.ctx.meal.today'):'')+': '+parts.join(' / '));
     }
     return out;
