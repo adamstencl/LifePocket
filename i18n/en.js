@@ -69,7 +69,7 @@ export default {
   'auth.forgot': 'Forgot password?',
   'auth.toRegister': 'Sign up →',
   'auth.toLogin': '← Back to log in',
-  'auth.note': '🔒 Free, no ads · Your data belongs only to you and your group',
+  'auth.note': '🔒 Free, no ads · Data only for you and your group · AI by Anthropic',
   'auth.signingIn': 'Logging in…',
   'auth.registering': 'Creating account…',
   'auth.fillBoth': 'Enter your email and password',

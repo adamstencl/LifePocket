@@ -70,7 +70,7 @@ export default {
   'auth.forgot': 'Zapomenuté heslo?',
   'auth.toRegister': 'Registrovat se →',
   'auth.toLogin': '← Zpět na přihlášení',
-  'auth.note': '🔒 Zdarma a bez reklam · Tvoje data patří jen tobě a tvé skupině',
+  'auth.note': '🔒 Zdarma a bez reklam · Data jen pro tebe a tvou skupinu · AI přes Anthropic',
   'auth.signingIn': 'Přihlašuji…',
   'auth.registering': 'Registruji…',
   'auth.fillBoth': 'Vyplň email a heslo',

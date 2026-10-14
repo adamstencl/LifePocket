@@ -6056,7 +6056,7 @@ window.setGameOn=on=>{
 // Úvodní karta po prvním spuštění (jednou na zařízení, bez oslav)
 function gameIntroHTML(){
   if(!gameOn()||lsGet('lp_game_intro')) return '';
-  if(accNew(7)) return ''; // nováček: „novinka“ nedává smysl, body vysvětlí průvodce a Rex
+  if(accNew(7)){ lsSave('lp_game_intro',1); return ''; } // nováček: „novinka“ nedává smysl ani později, body vysvětlí průvodce a Rex
   const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
   let n=0; const today=toDS();
   for(const l of habitLogs) if(l&&l.done&&l.date>=_hlCutoff&&l.date<=today) n++;
@@ -11440,7 +11440,7 @@ window.openGroupNotifSettings = () => {
 // Jednorázová karta na Domů: představí upozornění ze skupin (zavření se pamatuje v lp_gn_intro)
 function groupNotifIntroHTML() {
   if(lsGet('lp_gn_intro') || !(familyId || prof?.familyId || extraGroupIds.length || prof?.extraGroupIds?.length)) return '';
-  if(accNew(7)) return ''; // „Nově …“ nováčkovi nedává smysl
+  if(accNew(7)){ lsSave('lp_gn_intro',1); return ''; } // „Nově …“ nováčkovi nedává smysl ani později
   return `<div class="invite-hint gn-intro" id="gn-intro-card" role="region" aria-label="${tH('gn.intro.t')}">
     <span class="invite-hint-em" aria-hidden="true">🔔</span>
     <div class="invite-hint-body">
