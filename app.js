@@ -7283,10 +7283,11 @@ function isValidCzIban(s){
   for(const ch of r) m=(m*10+(+ch))%97;
   return m===1;
 }
-// Hodnota pole SPAYD: bez diakritiky a řídicích znaků, oříznutá na max. délku, '*' → %2A (oddělovač polí)
+// Hodnota pole SPAYD: bez diakritiky a řídicích znaků, '%' → %25 a '*' → %2A (oddělovač polí);
+// ořez na max. délku až po náhradě, bez rozpůlené escape sekvence na konci
 function spaydVal(s,max){
-  const v=String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'').replace(/\s+/g,' ').trim().slice(0,max);
-  return v.replace(/\*/g,'%2A');
+  const v=String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'').replace(/\s+/g,' ').trim();
+  return v.replace(/%/g,'%25').replace(/\*/g,'%2A').slice(0,max).replace(/%[0-9A-F]?$/,'');
 }
 function buildSpayd(cfg,amount){
   let s='SPD*1.0*ACC:'+normIban(cfg.iban)+'*AM:'+Math.round(amount)+'.00*CC:CZK';

@@ -448,6 +448,12 @@ const GN_UPPER_LAG = 10000;                           // horní hranice dotazů 
 const GN_BODY_MAX = 180;
 const GN_MAX_GROUPS = 10;
 const GROUP_MAX = 5; // max. skupin na uživatele (klient GROUP_MAX v app.js); GN_MAX_GROUPS je pojistka pro starší klienty
+// Skupiny uživatele pro připomínky kalendáře: hlavní první, bez duplicit, jen platné kódy, nejvýš GN_MAX_GROUPS
+function calGroupIds(prof) {
+  const extra = Array.isArray(prof && prof.extraGroupIds) ? prof.extraGroupIds : [];
+  return [...new Set([prof && prof.familyId, ...extra])]
+    .filter(g => typeof g === 'string' && GROUP_ID_RE.test(g)).slice(0, GN_MAX_GROUPS);
+}
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // Preference člena s výchozími hodnotami; neplatné hodnoty = výchozí, quiet:null = noční klid vypnutý
@@ -868,12 +874,12 @@ exports.sendScheduledNotifications = onSchedule(
           const famSnap = await famEntry(gid).doc;
           const fam = famSnap.exists ? famSnap.data() : null;
           if (!fam || !fam.members || !fam.members[uid]) continue;
-          // Sdílení modulů jako v klientu (groupModShared): kalendář shareCal a nákupy shareShop v každé skupině (4.50),
-          // jídelníček a checklist (sdílený, dokud není false) jen hlavní skupina, zásoby vždy jen hlavní
+          // Sdílení modulů jako v klientu (groupModShared): kalendář, nákupy, jídelníček a checklist (sdílený,
+          // dokud není false) podle příznaků v každé skupině (4.53), zásoby jen hlavní skupina
           const isMain = gid === prof.familyId;
           // Osobní moduly (sdílené návyky, cíle, poznámky, recepty, reakce) v každé skupině
-          const shared = {cal: !!fam.shareCal, shop: !!fam.shareShop, meal: isMain && !!fam.shareMeal,
-            check: isMain && fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true,
+          const shared = {cal: !!fam.shareCal, shop: !!fam.shareShop, meal: !!fam.shareMeal,
+            check: fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true,
             note: true, recipe: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
@@ -1049,17 +1055,18 @@ exports.sendScheduledNotifications = onSchedule(
         // Osobní kalendář
         const evGroups = [await loadTimedEvents(`users/${uid}/events`, today)];
         const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
-        if (prof.familyId) {
+        // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
+        for (const fid of calGroupIds(prof)) {
           try {
-            // Události skupiny jen skutečnému členovi (odebraný člen může mít v profilu staré familyId)
-            const fid = prof.familyId;
+            // Události skupiny jen skutečnému členovi (odebraný člen může mít v profilu staré ID skupiny)
             const fe = famEntry(fid);
             const famSnap = await fe.doc;
-            if (famSnap.exists && famSnap.data().members?.[uid]) {
+            const fam = famSnap.exists ? famSnap.data() : null;
+            if (fam && fam.members?.[uid] && fam.shareCal) {
               evGroups.push(await lazy(fe, 'events', () => loadTimedEvents(`families/${fid}/events`, today)));
               if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
             }
-          } catch(e) { /* rodina nemusí existovat */ }
+          } catch(e) { /* skupina nemusí existovat */ }
         }
 
         // Narozeniny — ráno
