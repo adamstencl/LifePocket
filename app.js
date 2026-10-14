@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.54';
+const APP_VERSION = '4.55';
 const CHANGELOG = [
+  { v:'4.55', items:[
+    '🌍 Upozornění chodí v jazyce appky – ranní a večerní přehled, připomínky, narozeniny i zprávy ze skupin'
+  ], en:[
+    '🌍 Notifications come in the app’s language – morning and evening summaries, reminders, birthdays and group updates; recipes show meal types in English'
+  ]},
   { v:'4.54', items:[
     '🤖 Rex mluví tvým jazykem a vidí všechny tvé skupiny – nákupy, jídelníčky, checklisty a události každé skupiny i s jejím názvem'
   ], en:[
@@ -6713,25 +6718,33 @@ function shopViewForget(gid) {
   if(shopViewStored() === gid) { shopViewSel = null; lsSave(SHOP_VIEW_KEY, null); }
 }
 function subscribeGroupShop(gid) {
-  if(!gid || !CU || shopGrp[gid]?.unsub) return;
+  if(!gid || !CU || grpSubBlocked(shopGrp[gid])) return;
   const e = shopGrp[gid] = {items: [], freq: {}, unsub: null};
+  // Chyba kteréhokoli listeneru (např. odebraný člen): zrušit oba, nový pokus nejdřív po GRP_SUB_RETRY (jako jídelníček)
+  const onErr = err => {
+    if(shopGrp[gid] === e && !e.unsub && e.err) return; // druhý listener už zrušený s prvním
+    familyListenErr(err);
+    if(shopGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.loaded = false; e.items = []; e.freq = {}; e.err = Date.now();
+  };
   const u1 = onSnapshot(collection(db,'families',gid,'shopItems'), snap => {
     if(shopGrp[gid] !== e) return;
     e.items = snap.docs.map(d=>({id:d.id,...d.data()}));
-    e.loaded = true;
+    e.loaded = true; e.err = 0;
     if(_recShopWait && gid === shopGid()) checkRecurringShop(); // odložené pravidelné přidání
     if(gid === shopGid()) {
       renderShop();
       if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); // widget Nákupy
     }
-  }, familyListenErr);
+  }, onErr);
   // Často nakupované ve skupině (4.45) – jeden dokument, ruší se spolu se seznamem
   const u2 = onSnapshot(doc(db,'families',gid,'shopStats','freq'), snap => {
     if(shopGrp[gid] !== e) return;
     e.freq = snap.data()?.items || {};
     pruneShopFreq(gid, e.freq);
     if(gid === shopGid()) renderQuickShop();
-  }, familyListenErr);
+  }, onErr);
   e.unsub = () => { u1(); u2(); };
 }
 function unsubGroupShop(gid) { const e = shopGrp[gid]; if(e?.unsub) e.unsub(); delete shopGrp[gid]; }
@@ -10536,7 +10549,7 @@ function renderSharedView() {
   tEl.textContent = '👨‍🍳 ' + t('shn.viewRecipe');
   const meta = [];
   if(typeof m.time === 'string' && m.time) meta.push('⏱ ' + cutName(m.time, 40));
-  if(typeof m.mealType === 'string' && m.mealType) meta.push('🍽 ' + cutName(m.mealType, 30));
+  if(typeof m.mealType === 'string' && m.mealType) meta.push('🍽 ' + mealTypeLabel(cutName(m.mealType, 30)));
   const p = clampInt(m.portions || 0, 0, 100);
   if(p) meta.push(t('shn.portions', {n: p}));
   const ings = shRecipeIngs(m.ingredients), steps = shRecipeSteps(m.steps);
@@ -11733,7 +11746,7 @@ window.mealplanToShopping = async () => {
         if(!exists) {
           await addDoc(shopCol(shopFid), {
             name: ing.name, qty: ing.qty||'',
-            category: ing.category||'Ostatní',
+            category: shopCatOf(ing.category),
             done: false, fromRecipe: recipe.name,
             createdAt: new Date().toISOString()
           });
@@ -11794,7 +11807,7 @@ window.openMealPicker = (dayKey, mealKey) => {
           <span style="font-size:20px">🍽️</span>
           <div style="flex:1">
             <div style="font-family:'Crimson Pro',serif;font-size:15px;color:var(--text);font-weight:600">${esc(r.name)}</div>
-            <div style="font-size:12px;color:var(--text3)">⏱ ${esc(r.time||'?')} · 🍽 ${esc(r.mealType||r.difficulty||'?')}</div>
+            <div style="font-size:12px;color:var(--text3)">⏱ ${esc(r.time||'?')} · 🍽 ${esc(mealTypeLabel(r.mealType||r.difficulty)||'?')}</div>
           </div>
         </div>`).join('')
     : `<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px">${tH('shop.pick.none')}<br>${tH('mp.noRecGo')}</div>`;
@@ -13840,7 +13853,7 @@ window.rexRecipe=async(food,btnEl)=>{
     // Nahraď loading za kartu receptu v chatu
     loading.innerHTML=`<div class="mlbl">${tH('ck.suggested')}</div>
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${esc(recipe.name)}</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${esc(recipe.time)} · 🍽 ${esc(recipe.mealType||recipe.difficulty||'?')} · 🍽 ${tH('ck.portions',{n:recipe.portions})}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:12px">⏱ ${esc(recipe.time)} · 🍽 ${esc(mealTypeLabel(recipe.mealType||recipe.difficulty)||'?')} · 🍽 ${tH('ck.portions',{n:recipe.portions})}</div>
       <div style="font-size:13px;color:var(--text2);font-weight:700;margin-bottom:8px">${tH('ck.ingrCaps')}</div>
       ${recipe.ingredients.map(i=>`<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;display:flex;justify-content:space-between"><span>• ${esc(i.name)}</span><span style="color:var(--text3)">${esc(i.qty)}</span></div>`).join('')}
       <div style="font-size:13px;color:var(--text2);font-weight:700;margin:12px 0 8px">${tH('ck.stepsCaps')}</div>
@@ -13871,7 +13884,7 @@ window.confirmRecipeToShop=async(btnEl)=>{
     if(!exists){
       await addDoc(shopCol(shopFid),{
         name:iname, qty:cutName(String(ing.qty||''),30),
-        category:cutName(ing.category||'Ostatní',30),
+        category:shopCatOf(ing.category),
         done:false, fromRecipe:lastRecipe.name,
         createdAt:new Date().toISOString()
       });
@@ -14032,6 +14045,11 @@ const SHOP_CATS=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo'
 // Kategorie se ukládají česky (kanonická hodnota v datech), překládá se jen zobrazení
 const SHOP_CAT_IDS=['produce','meat','dairy','bakery','pantry','other'];
 function catLabel(c){ const i=SHOP_CATS.indexOf(c); return i<0?String(c||''):t('shop.cat.'+SHOP_CAT_IDS[i]); }
+// Kategorie od AI (recept → nákup): jen interní hodnota ze SHOP_CATS, jinak Ostatní
+function shopCatOf(c){ const v=typeof c==='string'?c.trim():''; return SHOP_CATS.includes(v)?v:SHOP_CATS[SHOP_CATS.length-1]; }
+// Typ jídla receptu: interní české hodnoty, zobrazení přes slovník (neznámá hodnota beze změny)
+const MEAL_TYPE_KEYS={'Snídaně':'mp.meal.0','Svačina':'ck.mr.snack','Oběd':'mp.meal.1','Večeře':'mp.meal.2','Dezert':'ck.mr.dessert'};
+function mealTypeLabel(v){ const s=String(v||''); return MEAL_TYPE_KEYS[s]?t(MEAL_TYPE_KEYS[s]):s; }
 // Jednotka „ks“ je uložená hodnota, zobrazuje se podle jazyka
 function unitLabel(u){ return (u||'ks')==='ks'?t('unit.pcs'):String(u); }
 
@@ -14708,7 +14726,7 @@ window.addRecipeToShop = async function(recipeId, el) {
     if(shopActive.some(i => i.name.toLowerCase() === key)) continue;
     await addDoc(ref, {
       name: ing.name, qty: ing.qty||'',
-      category: ing.category||'Ostatní',
+      category: shopCatOf(ing.category),
       done: false, fromRecipe: recipe.name,
       createdAt: new Date().toISOString()
     });
@@ -14776,7 +14794,7 @@ window.askRecipe=async()=>{
   const typeHint=['quick','healthy','cheap'].includes(cookType)?tA('aip.rcp.'+cookType):'';
   const mealTypeHint=cookMealType!=='any'?tA('aip.rcp.mealType',{type:cookMealType}):'';
 
-  const sys=tA('aip.rcp.sys',{portions:cookPortions,hints:typeHint+mealTypeHint});
+  const sys=tA('aip.rcp.sys',{portions:cookPortions,hints:[typeHint,mealTypeHint].filter(Boolean).join(' ')});
 
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food:query,n:cookPortions})}],1500);
@@ -14941,7 +14959,7 @@ function renderRecipe(r, scaledPortions){
   document.getElementById('cook-recipe-card').innerHTML=`
     <div class="cook-recipe-meta" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <span>⏱ ${esc(r.time)}</span>
-      <span>🍽 ${esc(r.mealType||r.difficulty||'?')}</span>
+      <span>🍽 ${esc(mealTypeLabel(r.mealType||r.difficulty)||'?')}</span>
       <span style="display:flex;align-items:center;gap:6px">🍽
         <button onclick="changePortions(-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">−</button>
         <span id="portions-display" style="font-weight:700;min-width:20px;text-align:center">${portions}</span>
@@ -15027,7 +15045,7 @@ window.sendToShopping=async()=>{
     if(!exists){
       await addDoc(collection(db,'users',CU.uid,'shopItems'),{
         name:String(ing.name), qty:ing.qty||'',
-        category:ing.category||'Ostatní',
+        category:shopCatOf(ing.category),
         done:false,
         fromRecipe:lastRecipe.name,
         createdAt:new Date().toISOString()
@@ -15102,7 +15120,7 @@ function renderSavedRecipes(){
     return;
   }
   list.innerHTML=filtered.map(r=>{
-    const meta=[r.time?`⏱ ${esc(r.time)}`:'',(r.mealType||r.difficulty)?`🍽 ${esc(r.mealType||r.difficulty)}`:'',
+    const meta=[r.time?`⏱ ${esc(r.time)}`:'',(r.mealType||r.difficulty)?`🍽 ${esc(mealTypeLabel(r.mealType||r.difficulty))}`:'',
       tH('ck.portions',{n:Number(r.portions)||2})].filter(Boolean).join(' · ');
     return `<div class="saved-recipe-card" role="button" tabindex="0" data-a0="${esc(r.id)}" onclick="openSavedRecipe(this.dataset.a0)" onkeydown="if(event.key===&#39;Enter&#39;&amp;&amp;event.target===this)openSavedRecipe(this.dataset.a0)">
       <div class="saved-recipe-top">
@@ -15387,11 +15405,13 @@ window.aiShopAddAll = async function(items) {
 
 function parseIngQty(qtyStr) {
   if (!qtyStr) return {amount:1, unit:'ks'};
-  const m = String(qtyStr).match(/(\d+(?:[.,]\d+)?)\s*(ks|kg|ml|g\b|l\b|kusy|kus|pcs|pc\b|pieces|piece)?/i);
+  const m = String(qtyStr).match(/(\d+(?:[.,]\d+)?)\s*(ks|kg|ml|grams|gram\b|litres|litre\b|liters|liter\b|g\b|l\b|kusy|kus|pcs|pc\b|pieces|piece)?/i);
   if (!m) return {amount:1, unit:'ks'};
   const amount = parseFloat(m[1].replace(',','.'));
   let unit = (m[2]||'ks').toLowerCase();
   if(['kus','kusy','pcs','pc','piece','pieces'].includes(unit)) unit='ks'; // anglické recepty od AI (4.54)
+  else if(unit==='grams'||unit==='gram') unit='g';
+  else if(/^lit(re|er)s?$/.test(unit)) unit='l';
   return {amount, unit};
 }
 

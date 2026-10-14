@@ -1817,6 +1817,7 @@ export default {
   'ck.f.snack': '🍎 Snack',
   'ck.f.lunch': '☀️ Lunch',
   'ck.f.dinner': '🌙 Dinner',
+  'ck.f.dessert': '🍰 Dessert',
   'ck.welcomeT': 'What are we cooking today?',
   'ck.welcomeX': 'Type a dish or a theme and Rex will suggest a full recipe with ingredients and method.',
   'ck.tickHint': '💡 Tick the ingredients you have at home — only the rest will be added',

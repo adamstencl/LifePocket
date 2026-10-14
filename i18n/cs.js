@@ -1823,6 +1823,7 @@ export default {
   'ck.f.snack': '🍎 Svačina',
   'ck.f.lunch': '☀️ Oběd',
   'ck.f.dinner': '🌙 Večeře',
+  'ck.f.dessert': '🍰 Dezert',
   'ck.welcomeT': 'Co dnes vaříme?',
   'ck.welcomeX': 'Napiš jídlo nebo téma a Rex ti navrhne celý recept se surovinami a postupem.',
   'ck.tickHint': '💡 Zaškrtni suroviny které doma máš — přidají se jen ty ostatní',
