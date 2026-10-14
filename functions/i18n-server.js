@@ -1,7 +1,7 @@
 // Slovník serveru (push notifikace a chybové zprávy callable funkcí), cs + en.
 // Jazyk příjemce = profile.lang (výchozí cs); callable funkce berou jazyk z data.lang klienta, jinak z profilu.
 // Plurál: objekt {one, few, other} (cs) / {one, other} (en) a proměnná {n}. Varianta '#f' = ženský tvar
-// (vars.g === 'f'). Klíče cs a en musí být stejné (hlídá .github/scripts/ci-check.js).
+// (vars.g === 'f'), '#x' = neutrální tvar pro oslovení Neuvádět (vars.g === 'x'). Klíče cs a en musí být stejné (hlídá .github/scripts/ci-check.js).
 'use strict';
 
 const cs = {
@@ -15,12 +15,16 @@ const cs = {
   // Čeština má ve všech tvarech „návyků“ (beze změny proti dřívějšímu textu)
   'evening.all': {one: '🏆 Perfektní den! Splnil jsi všech {n} návyků!', few: '🏆 Perfektní den! Splnil jsi všech {n} návyků!', other: '🏆 Perfektní den! Splnil jsi všech {n} návyků!'},
   'evening.all#f': {one: '🏆 Perfektní den! Splnila jsi všech {n} návyků!', few: '🏆 Perfektní den! Splnila jsi všech {n} návyků!', other: '🏆 Perfektní den! Splnila jsi všech {n} návyků!'},
+  'evening.all#x': {one: '🏆 Perfektní den! Návyk je splněný!', few: '🏆 Perfektní den! Všechny {n} návyky jsou splněné!', other: '🏆 Perfektní den! Všech {n} návyků je splněno!'},
   'evening.zero': 'Dnes jsi nesplnil žádný návyk. Zítra to vyjde! 💪',
   'evening.zero#f': 'Dnes jsi nesplnila žádný návyk. Zítra to vyjde! 💪',
+  'evening.zero#x': 'Dnes zatím žádný splněný návyk. Zítra to vyjde! 💪',
   'evening.part': 'Splnil jsi {done} z {n} návyků. Ještě {left} zbývají!',
   'evening.part#f': 'Splnila jsi {done} z {n} návyků. Ještě {left} zbývají!',
+  'evening.part#x': 'Hotovo {done} z {n} návyků. Ještě {left} zbývají!',
   'habit.nag': '{name}, ještě jsi dnes nesplnil "{habit}". Teď je správný čas! 💪',
   'habit.nag#f': '{name}, ještě jsi dnes nesplnila "{habit}". Teď je správný čas! 💪',
+  'habit.nag#x': '{name}, "{habit}" dnes ještě čeká na splnění. Teď je správný čas! 💪',
   'habit.done': '✅ Splněno',
   'bday.today.t': '🎂 Dnes jsou narozeniny!',
   'bday.today.b': '{name}, nezapomeň popřát: {who} 🎉',
@@ -288,11 +292,12 @@ const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 // Jazyk z profilu nebo požadavku: jen podporované, jinak cs
 function normLang(l) { return l === 'en' ? 'en' : 'cs'; }
 
-// Text v jazyce L; vars.g === 'f' vybere ženský tvar, vars.n plurál; chybějící klíč spadne na češtinu
+// Text v jazyce L; vars.g === 'f' / 'x' vybere ženský / neutrální tvar (bez něj výchozí), vars.n plurál; chybějící klíč spadne na češtinu
 function tS(L, key, vars = {}) {
   L = normLang(L); // neznámý jazyk (např. 'de' nebo '__proto__') → cs, plurál pak nespadne
   const d = DICT[L];
-  const pick = (o) => (vars.g === 'f' && has(o, key + '#f')) ? o[key + '#f'] : (has(o, key) ? o[key] : undefined);
+  const gk = (vars.g === 'f' || vars.g === 'x') ? key + '#' + vars.g : null;
+  const pick = (o) => (gk && has(o, gk)) ? o[gk] : (has(o, key) ? o[key] : undefined);
   let v = pick(d);
   let lang = L;
   if (v === undefined) { v = pick(cs); lang = 'cs'; }

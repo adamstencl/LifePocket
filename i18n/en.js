@@ -1928,4 +1928,13 @@ export default {
   'coach.sh': 'Here you’ll see your family’s habits and can cheer them on 👏',
   'coach.seg': 'Here you’ll find what others in your group share with you 👀',
   'coach.bell': 'What’s new in your group: who added, changed or checked off what in the last 7 days 🔔',
+  // ── Soft notification prompt (4.61) ──
+  'na.aria': 'Notifications',
+  'na.t.group': 'Want to know when someone in your group adds something?',
+  'na.t.habit': 'Shall I remind you of your habits?',
+  'na.t.event': 'Shall I remind you of events in advance?',
+  'na.d': 'We only send what matters. You can turn it off any time in Settings.',
+  'na.btn': '🔔 Turn on notifications',
+  'na.ios': 'On iPhone, notifications only work in the app added to your home screen (iOS 16.4 or later): in Safari tap ⬆️ Share → Add to Home Screen → open LifePocket from your home screen. Sign in again there, the home screen app doesn’t share your Safari sign-in.',
+  'na.later': 'Not now',
 };

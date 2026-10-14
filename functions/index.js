@@ -1004,7 +1004,7 @@ exports.sendScheduledNotifications = onSchedule(
         const todayMD = today.slice(5);
         // Jazyk a rod příjemce (texty ze slovníku i18n-server.js)
         const L = normLang(prof.lang);
-        const g = prof.gender === 'f' ? 'f' : '';
+        const g = prof.gender === 'f' || prof.gender === 'x' ? prof.gender : ''; // x = neutrální tvary
         const nickname = prof.prezdivka || prof.nickname || tS(L, 'nick.friend');
         const morningTime = ns.morning || '08:00';
         // Dnešní návyky načteme nejvýš jednou na uživatele (sdílí ranní, večerní i připomínky)

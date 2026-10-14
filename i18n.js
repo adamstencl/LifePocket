@@ -102,9 +102,10 @@ export async function initI18n() {
   } catch (e) {}
 }
 
-// Vybere text podle klíče; vars.g === 'f' zkusí variantu '#f', objekt = plurál podle vars.n
+// Vybere text podle klíče; vars.g === 'f' zkusí variantu '#f', 'x' (Neuvádět) neutrální '#x', jinak výchozí; objekt = plurál podle vars.n
 function pick(dict, rules, key, vars) {
-  let v = (vars.g === 'f' && dict[key + '#f'] != null) ? dict[key + '#f'] : dict[key];
+  const gk = (vars.g === 'f' || vars.g === 'x') ? key + '#' + vars.g : null;
+  let v = (gk && dict[gk] != null) ? dict[gk] : dict[key];
   if (v != null && typeof v === 'object') { const n = Number(vars.n) || 0; v = v[rules.select(n)] ?? v.other; } // cs 'many' (1,5) chybí → other
   return v;
 }

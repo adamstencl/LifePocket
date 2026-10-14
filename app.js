@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.60';
+const APP_VERSION = '4.61';
 const CHANGELOG = [
+  { v:'4.61', items:[
+    '🔔 Appka ti sama nabídne upozornění ve chvíli, kdy se hodí (po připojení ke skupině, po 3. splněném návyku, u události s připomínkou); na iPhonu ukáže, jak ji přidat na plochu',
+    '🙂 S oslovením „Neuvádět“ ti parťák i upozornění píšou neutrálně',
+    '🔗 Po přijetí pozvánky se průvodce spustí hned, i bez připojení k internetu'
+  ], en:[
+    '🔔 The app offers notifications when they make sense (after joining a group, after your 3rd completed habit, for an event with a reminder); on iPhone it shows how to add it to your home screen',
+    '🙂 With “Prefer not to say” your buddy and notifications use neutral wording',
+    '🔗 After accepting an invite, the tour starts right away, even offline'
+  ]},
   { v:'4.60', items:[
     '👋 Nový průvodce: jméno, k čemu appku chceš a nakonec parťák',
     '🙂 Oslovení je nepovinné, můžeš zvolit „Neuvádět“',
@@ -1091,7 +1100,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2322,6 +2331,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
     installUnlock(); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
+    notifAskSoon('habit'); // po 3. splněném návyku nabídnout upozornění
   }
   renderHabits();
   rAvPage();
@@ -2341,7 +2351,7 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   }
   renderHabits();
   // Reakce avatara pokud byl právě splněn cíl (done přešlo na true)
-  if(delta>0 && newVal>=goal && (cur<goal)) checkAvatarReactions(hid, date, true);
+  if(delta>0 && newVal>=goal && (cur<goal)) { checkAvatarReactions(hid, date, true); notifAskSoon('habit'); }
 };
 
 window.toggleAddHabit=()=>{
@@ -3319,6 +3329,7 @@ window.saveEvent=async()=>{
     }
   }
   cm('m-event');
+  if((selEvType_val==='event'&&time)||selEvType_val==='birthday') notifAskSoon('event'); // událost s připomínkou
 };
 
 window.delEvent=async(id)=>{
@@ -3953,7 +3964,7 @@ window.toggleLoginMode=(mode)=>{
 };
 
 let selAddr='jmeno';
-// Oslovení je nepovinné: m / f / x (Neuvádět); nevybrané = x → výchozí (neutrální) tvary textů
+// Oslovení je nepovinné: m / f / x (Neuvádět); nevybrané = x → neutrální tvary textů (#x), kde chybí, výchozí
 window.sg=g=>{selG=(g==='m'||g==='f'||g==='x')?g:'';['m','f','x'].forEach(k=>{const b=document.getElementById('g'+k);if(b){b.classList.toggle('sel',selG===k);b.setAttribute('aria-pressed',String(selG===k));}});v1();};
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
@@ -4593,6 +4604,58 @@ window.enableNotifications = async () => {
   } else {
     toast(t('notif.denied'));
   }
+};
+
+// ── Měkký dotaz na upozornění (4.61): karta ve chvíli, kdy dává smysl, systémové okno až po klepnutí ──
+// Chvíle: připojení ke skupině, 3. splněný návyk, uložení události s připomínkou. Odložení jen v zařízení (lp_na_snooze).
+const NA_SNOOZE_MS = 7 * 86400000, NA_SHOWN_MS = 86400000;
+function notifAskMode() {
+  if (isIOSDevice() && !isStandaloneApp()) return 'ios'; // v Safari jen návod (přidat na plochu)
+  if (typeof Notification === 'undefined' || !('serviceWorker' in navigator)) return null;
+  return Notification.permission === 'default' ? 'ask' : null;
+}
+// pre = předběžná kontrola při události (průvodce může ještě běžet, karta pak počká ve frontě whenUiFree)
+function notifAskOk(pre) {
+  if (!CU || !prof || document.getElementById('notif-ask')) return false;
+  if (!pre && !document.getElementById('app')?.classList.contains('active')) return false;
+  if (!pre) { try { if (tourActive() || !localStorage.getItem('lp_tour_done')) return false; } catch (e) { return false; } } // nikdy během průvodce
+  if (Date.now() < (Number(lsGet('lp_na_snooze', 0)) || 0)) return false;
+  return !!notifAskMode();
+}
+// why: 'group' | 'habit' | 'event'
+function notifAskSoon(why) {
+  if (!notifAskOk(true)) return;
+  whenUiFree(() => {
+    if (why === 'habit' && habitLogs.filter(l => l.done).length < 3) return;
+    if (notifAskOk()) notifAskShow(why);
+  }, 300000);
+}
+function notifAskShow(why) {
+  const mode = notifAskMode();
+  if (!mode) return;
+  lsSave('lp_na_snooze', Date.now() + NA_SHOWN_MS); // ukázaná karta: další nejdřív zítra
+  const el = document.createElement('div');
+  el.id = 'notif-ask';
+  el.className = 'invite-hint na-card';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', t('na.aria'));
+  const title = tH(why === 'group' ? 'na.t.group' : why === 'event' ? 'na.t.event' : 'na.t.habit');
+  el.innerHTML = `<span class="invite-hint-em" aria-hidden="true">🔔</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${title}</div>
+      ${mode === 'ios'
+        ? `<div class="invite-hint-d">${tH('na.ios')}</div>`
+        : `<div class="invite-hint-d">${tH('na.d')}</div><button type="button" class="invite-hint-btn" onclick="notifAskEnable()">${tH('na.btn')}</button>`}
+    </div>
+    <button type="button" class="invite-hint-x" aria-label="${tH('na.later')}" onclick="notifAskLater()">×</button>`;
+  document.body.appendChild(el);
+}
+function notifAskClose() { document.getElementById('notif-ask')?.remove(); }
+window.notifAskLater = () => { lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); notifAskClose(); };
+window.notifAskEnable = () => {
+  lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); // zamítnutí v systémovém okně = už se neptat (permission 'denied')
+  notifAskClose();
+  window.enableNotifications(); // stávající povolení + registrace FCM (checkNotifStatus)
 };
 
 // ── Testovací notifikace ──
@@ -7292,6 +7355,7 @@ window.joinFamily = async (codeArg) => {
     initPantry();
     renderFamilySettings();
     toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
+    notifAskSoon('group');
     return true;
   } catch(e) { toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null; }
 };
@@ -7977,14 +8041,16 @@ window.laterPendingJoin = () => { closeJoinInviteModal(); tourAfterJoin(); };
 window.confirmPendingJoin = async () => {
   const p = readPendingJoin();
   closeJoinInviteModal();
-  if(!p) { tourAfterJoin(); return; }
+  // Průvodce hned po zavření okna, na dokončení připojení nečeká (offline by visel).
+  // Krok Nákupy vybírá tourSteps() až při zobrazení kroku, po připojení tedy ukáže sdílený nákup.
+  tourAfterJoin();
+  if(!p) return;
   // Hlavní skupinu ještě nemám → hlavní, jinak přidaná
   let res = null;
   try { res = familyId ? await window.joinExtraGroup(p.code) : await window.joinFamily(p.code); }
   finally {
     // Pozvánku smaž po úspěchu i trvalém selhání; při dočasné chybě (null) zůstane na příště
     if(res !== null) clearPendingJoin();
-    tourAfterJoin(); // po odpovědi průvodce (po připojení rovnou ukáže sdílený nákup)
   }
 };
 
@@ -8089,6 +8155,7 @@ window.joinExtraGroup = async (codeArg) => {
     if(inp) inp.value = '';
     renderFamilySettings();
     toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
+    notifAskSoon('group');
     return true;
   } catch(e) {
     extraGroupIds = prevIds;
@@ -9431,6 +9498,7 @@ function resetSocialLocal() {
   _shTimers.clear(); _shMs.clear(); _shMsPend.clear(); _shResyncDay.clear(); mySharedIn.clear(); _shSrv.clear(); _shSwept.clear(); _shAnnounced.clear();
   _jView = 'mine'; _rcView = 'mine'; _shv = null; _shRcPending = null;
   _coachDone = false; document.getElementById('coach-tip')?.remove(); window.ctaAskClose?.(); // tipy 4.49 patří účtu
+  document.getElementById('notif-ask')?.remove(); // měkký dotaz na upozornění (4.61)
   _entriesSrvOk = false; _recipesSrvOk = false; _shRcCopying.clear();
 }
 // Překreslení po změně zrcadel: karty návyků a cílů (odznak), sekce sdílených, detail a sheet sdílení
@@ -12656,7 +12724,7 @@ async function loadDailyQuote() {
 
 function rDash(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-  const g=prof.gender==='f'?'f':'m';
+  const g=prof.gender==='f'||prof.gender==='x'?prof.gender:'m'; // x = neutrální tvary (#x)
   const gr=t('av.'+av.id+'.greet',{name:prof.prezdivka||prof.nickname,g});
   const h=new Date().getHours();
   const tg=tH(h<12?'dash.hello.morning':h<18?'dash.hello.day':'dash.hello.evening');
@@ -12809,7 +12877,7 @@ function rDash(){
         ${lastEntry.text?`<div class="dw-entry-preview">${esc(lastEntry.text.substring(0,120))}</div>`:''}
         <div class="dw-row" style="margin-top:8px">
           ${todayEntries.length?`<div class="dw-pill">${tH('dash.j.today')} <b>${tH('dash.j.entries',{n:todayEntries.length})}</b></div>`:''}
-          ${!todayEntries.length?`<div class="dw-pill" style="color:var(--text3)">${tH('dash.j.notYet')}</div>`:''}
+          ${!todayEntries.length?`<div class="dw-pill" style="color:var(--text3)">${tH('dash.j.notYet',{g:prof.gender})}</div>`:''}
           <div class="dw-pill">${tH('dash.j.total')} <b>${entries.length}</b></div>
         </div>
       </div>`;
@@ -16386,6 +16454,7 @@ const _origSp = window.sp;
 window.sp = id => {
   _origSp(id);
   window.ctaAskClose?.(); // nabídka sdílení patří ke stránce, kde vznikla
+  document.getElementById('notif-ask')?.remove(); // dotaz na upozornění patří ke chvíli, kdy vznikl
   coachSoon(); // jednorázové tipy ke sdílení (4.49)
   if(id !== 'dashboard' && id !== 'settings') {
     setTimeout(() => showModuleHint(id), 500);

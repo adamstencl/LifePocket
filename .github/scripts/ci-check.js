@@ -278,7 +278,7 @@ let i18nCs = null;
 try {
   const cs = loadDict('i18n/cs.js'), en = loadDict('i18n/en.js');
   i18nCs = cs;
-  const base = k => k.replace(/#f$/, '');
+  const base = k => k.replace(/#[fx]$/, ''); // rodové varianty #f a #x
   const kc = new Set(Object.keys(cs).map(base)), ke = new Set(Object.keys(en).map(base));
   const onlyCs = [...kc].filter(k => !ke.has(k)), onlyEn = [...ke].filter(k => !kc.has(k));
   onlyCs.forEach(k => fail('i18n/en.js: chybí klíč ' + k));
@@ -314,7 +314,7 @@ try {
     }
   }
   if (!badChars) ok('slovníky bez < a " (mimo textové klíče ' + [...QUOTE_TEXT_ONLY].join(', ') + ')');
-  // Stejné {proměnné} v obou jazycích (varianta #f musí mít stejné jako základní klíč)
+  // Stejné {proměnné} v obou jazycích (varianty #f a #x musí mít stejné jako základní klíč)
   const vars = v => JSON.stringify([...new Set(String(v && typeof v === 'object' ? Object.values(v).join(' ') : v).match(/\{\w+\}/g) || [])].sort());
   let badVars = 0;
   for (const k of Object.keys(cs)) {
@@ -399,7 +399,7 @@ console.log('i18n: slovník serveru (functions/i18n-server.js)');
 try {
   const { DICT, tS } = require(p('functions/i18n-server.js'));
   const sc = DICT.cs, se = DICT.en;
-  const base = k => k.replace(/#f$/, '');
+  const base = k => k.replace(/#[fx]$/, ''); // rodové varianty #f a #x
   const kc = new Set(Object.keys(sc).map(base)), ke = new Set(Object.keys(se).map(base));
   const onlyC = [...kc].filter(k => !ke.has(k)), onlyE = [...ke].filter(k => !kc.has(k));
   onlyC.forEach(k => fail('functions/i18n-server.js: en chybí klíč ' + k));
@@ -414,7 +414,7 @@ try {
         const miss = FORMS[lang].filter(f => typeof v[f] !== 'string');
         if (miss.length) { fail('server ' + lang + ': plurál ' + k + ' nemá tvary ' + miss.join(',')); bad++; }
       } else if (typeof v !== 'string') { fail('server ' + lang + ': ' + k + ' není text ani plurál'); bad++; }
-      // Varianta #f a druhý jazyk: stejný typ a stejné {proměnné} jako základní klíč v cs
+      // Varianty #f, #x a druhý jazyk: stejný typ a stejné {proměnné} jako základní klíč v cs
       const ref = sc[base(k)];
       if (ref !== undefined && ((typeof ref === 'object') !== (typeof v === 'object') || vars(ref) !== vars(v))) {
         fail('server ' + lang + ': ' + k + ' se liší od cs typem nebo proměnnými'); bad++;
