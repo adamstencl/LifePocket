@@ -78,6 +78,15 @@ try {
   if (!/const\s+CACHE\s*=\s*['"][^'"]+['"]/.test(sw)) fail('sw.js: chybí konstanta CACHE');
 } catch (e) { fail('OFFLINE_URLS: ' + e.message); }
 
+console.log('Kompatibilita regulárních výrazů (starší Safari)');
+// Lookbehind (?<= / (?<! v literálu zastaví načtení celého modulu na iOS Safari < 16.4
+for (const f of ['app.js', 'i18n.js', 'pwa.js', 'sw.js']) {
+  if (!fs.existsSync(p(f))) continue;
+  const hits = fs.readFileSync(p(f), 'utf8').split('\n').map((l, i) => /\(\?<[=!]/.test(l) ? i + 1 : 0).filter(Boolean);
+  if (hits.length) fail(f + ': lookbehind v regexu (ř. ' + hits.join(', ') + '), starší Safari modul nenačte');
+  else ok(f + ': bez lookbehind');
+}
+
 console.log('Verze a CHANGELOG (app.js)');
 let appSrc = '';
 try {

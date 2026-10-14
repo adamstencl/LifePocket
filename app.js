@@ -703,19 +703,21 @@ function aiPlain(text) {
 }
 // Recepty (jen cs): jistá oprava častých chyb AI. Hranice slov přes \p{L} (\b neumí diakritiku); jen jednoznačné náhrady.
 const AI_CS_FIX = [
-  [/(?<!\p{L})kaper[sn](?!\p{L})/giu, () => 'kapary'],
-  [/(?<!\p{L})křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)(?!\p{L}))/giu, () => 'krémov'],
-  [/(?<!\p{L})ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)(?!\p{L}))/giu, () => 'dochuťte'],
-  [/(?<!\p{L})paprikou\s+(sladkou|pálivou|uzenou)(?!\p{L})/giu, (m, a) => a + ' paprikou'],
+  [/(^|[^\p{L}])kaper[sn](?!\p{L})/giu, () => 'kapary'],
+  [/(^|[^\p{L}])křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)(?!\p{L}))/giu, () => 'krémov'],
+  [/(^|[^\p{L}])ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)(?!\p{L}))/giu, () => 'dochuťte'],
+  [/(^|[^\p{L}])paprikou\s+(sladkou|pálivou|uzenou)(?!\p{L})/giu, (m, a) => a + ' paprikou'],
 ];
 function aiFixCs(text) {
   if (LANG !== 'cs' || typeof text !== 'string') return text;
   let s = text;
-  for (const [re, fn] of AI_CS_FIX) s = s.replace(re, (m, ...g) => {
+  // Bez lookbehind (starší Safari by modul nenačetl): znak před slovem jde do 1. skupiny a vrací se beze změny
+  for (const [re, fn] of AI_CS_FIX) s = s.replace(re, (all, pre, ...g) => {
+    const m = all.slice(pre.length);
     const r = fn(m, ...g);
     // velikost písmen podle originálu (KAPERS → KAPARY, Kapers → Kapary)
-    if (m === m.toUpperCase() && m.length > 1 && /\p{Lu}{2}/u.test(m)) return r.toUpperCase();
-    return /^\p{Lu}/u.test(m) ? r[0].toUpperCase() + r.slice(1).toLowerCase() : r.toLowerCase();
+    if (m === m.toUpperCase() && m.length > 1 && /\p{Lu}{2}/u.test(m)) return pre + r.toUpperCase();
+    return pre + (/^\p{Lu}/u.test(m) ? r[0].toUpperCase() + r.slice(1).toLowerCase() : r.toLowerCase());
   });
   return s;
 }
