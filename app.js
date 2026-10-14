@@ -53,11 +53,13 @@ const CHANGELOG = [
   { v:'4.57', items:[
     '🌐 Jazyk appky jde přepnout i na přihlašovací obrazovce nainstalované appky',
     '⏰ Připomínky a souhrny chodí podle časového pásma telefonu, i když jsi mimo Česko',
-    '🧮 Nákup a recepty rozumí množstvím jako 1 1/2 hrnku, 1½ kg nebo 1 000 g'
+    '🧮 Nákup a recepty rozumí množstvím jako 1 1/2 hrnku, 1½ kg nebo 1 000 g',
+    '🛒 Suroviny z vygenerovaného receptu můžeš poslat i do nákupu skupiny – appka se zeptá, do kterého seznamu'
   ], en:[
     '🌐 You can switch the app language on the sign-in screen of the installed app too',
     '⏰ Reminders and summaries follow your phone time zone, even outside Czechia',
-    '🧮 Shopping and recipes understand amounts like 1 1/2 cups, 1½ kg or 1 000 g'
+    '🧮 Shopping and recipes understand amounts like 1 1/2 cups, 1½ kg or 1 000 g',
+    '🛒 Ingredients from a generated recipe can go to a group shopping list too – the app asks which list'
   ]},
   { v:'4.56', items:[
     '🌍 Appka se novým uživatelům automaticky přepne do jejich jazyka; oprava lžic v receptech'
@@ -6703,21 +6705,24 @@ function renderShopViewToggle(cur) {
   if(w.innerHTML !== html) w.innerHTML = html; // beze změny nepřekreslovat (fokus klávesnice)
 }
 // Sheet s výběrem seznamu; mode 'move' = cíl přesunu osobního seznamu (jen skupiny)
+// mode: 'move' = přesun seznamu do skupiny, 'recipe' = cíl surovin receptu (4.57), jinak volba zobrazeného seznamu
 window.openShopViewSheet = (mode) => {
   document.getElementById('m-shopview')?.remove();
-  const move = mode === 'move';
+  const move = mode === 'move', recipe = mode === 'recipe';
   const cur = shopGid() || '';
   const opts = move ? shopGroups() : ['', ...shopGroups()];
   if(!opts.length) return;
+  const act = move ? 'moveShopToFamily(null,this.dataset.gid);this.closest(\'.moverlay\').remove()'
+    : recipe ? 'this.closest(\'.moverlay\').remove();sendToShopping(this.dataset.gid)' : 'setShopView(this.dataset.gid)';
   const m = document.createElement('div');
   m.id = 'm-shopview'; m.className = 'moverlay open';
   m.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="shopview-t" style="max-width:420px">'
-    + '<div class="mtitle" id="shopview-t">'+tH(move ? 'shop.moveSheet' : 'shop.viewAria')+'</div>'
+    + '<div class="mtitle" id="shopview-t">'+tH(move ? 'shop.moveSheet' : recipe ? 'ck.shopTarget' : 'shop.viewAria')+'</div>'
     + '<div class="grp-pick-list">'
     + opts.map(g => {
         const sel = !move && g === cur;
         return '<button type="button" class="grp-pick-row'+(sel?' sel':'')+'" data-gid="'+esc(g)+'"'+(sel?' aria-current="true"':'')
-          + ' onclick="'+(move ? 'moveShopToFamily(null,this.dataset.gid);this.closest(\'.moverlay\').remove()' : 'setShopView(this.dataset.gid)')+'">'
+          + ' onclick="'+act+'">'
           + '<span class="grp-pick-lbl">'+esc(shopViewLabel(g))+'</span>'+(sel?'<span aria-hidden="true">✓</span>':'')+'</button>';
       }).join('')
     + '</div><div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.close')+'</button></div></div>';
@@ -6729,7 +6734,7 @@ window.openShopViewSheet = (mode) => {
     rm.call(m);
     setTimeout(() => {
       if(document.getElementById('m-shopview')) return; // mezitím otevřen nový sheet
-      const p = (!move && document.querySelector('#shop-view-toggle .grp-pick')) || (opener?.isConnected ? opener : null);
+      const p = (!move && !recipe && document.querySelector('#shop-view-toggle .grp-pick')) || (opener?.isConnected ? opener : null);
       p?.focus?.();
     }, 0);
   };
@@ -15078,9 +15083,19 @@ window.toggleIng=(i)=>{
   if(badge) badge.style.display=done?'inline':'none';
 };
 
-window.sendToShopping=async()=>{
+// target: undefined = z tlačítka (se skupinami se sdíleným nákupem nejdřív volba seznamu), '' = Moje, jinak gid
+let _sendShopBusy=false;
+window.sendToShopping=async(target)=>{
   if(!lastRecipe||!Array.isArray(lastRecipe.ingredients)){toast(t('ck.genFirst'));return;}
-  let added=0, skipped=0, haveit=0;
+  if(_sendShopBusy) return;
+  const gs=shopGroups();
+  if(target===undefined&&gs.length){ window.openShopViewSheet('recipe'); return; }
+  const gid=(typeof target==='string'&&gs.includes(target))?target:null;
+  if(gid&&!shopGrp[gid]?.loaded){ subscribeGroupShop(gid); toast(t('mp.shopLoading')); return; } // bez načteného seznamu by vznikly duplicity
+  _sendShopBusy=true;
+  try{
+  const listItems=shopItemsOf(gid);
+  let added=0, skipped=0, haveit=0, firstAdded='';
   lastRecipe.ingredients.forEach((ing,i)=>{
     const checkedEl=document.getElementById(`cing-${i}`);
     if(checkedEl&&checkedEl.classList.contains('done')){ haveit++; } // mám doma — přeskočit
@@ -15091,26 +15106,32 @@ window.sendToShopping=async()=>{
     if(!ing.name) continue;
     const checkedEl=document.getElementById(`cing-${i}`);
     if(checkedEl&&checkedEl.classList.contains('done')) continue; // mám doma
-    const exists=shopItems.some(s=>String(s.name||'').toLowerCase()===String(ing.name).toLowerCase());
+    const exists=listItems.some(s=>String(s.name||'').toLowerCase()===String(ing.name).toLowerCase());
     if(!exists){
-      await addDoc(collection(db,'users',CU.uid,'shopItems'),{
+      await addDoc(shopCol(gid),{
         name:String(ing.name), qty:ing.qty||'',
         category:shopCatOf(ing.category),
         done:false,
         fromRecipe:lastRecipe.name,
+        ...(gid?{addedBy:CU.uid}:{}),
         createdAt:new Date().toISOString()
       });
+      if(!added) firstAdded=String(ing.name);
       added++;
     } else { skipped++; }
   }
+  if(gid&&added) logGroupActivity(gid,'shop','add',firstAdded,added);
   const parts=[];
   if(added>0) parts.push(t('ck.sAdded',{n:added}));
   if(skipped>0) parts.push(t('ck.sSkipped',{n:skipped}));
   if(haveit>0) parts.push(t('ck.sHave',{n:haveit}));
-  toast(`✅ ${parts.join(' · ')}`, 3500);
+  // Cíl v toastu jen při volbě ze skupin („ → 🙂 Moje“ / „ → 👥 Tým“)
+  toast(`✅ ${parts.join(' · ')}`+(added&&gs.length?' → '+shopViewLabel(gid):''), 3500);
   // Zvýrazni tlačítko "Otevřít nákupy"
   const btn = document.querySelector('.cook-actions .btn-s');
   if(btn){ btn.style.background='var(--accent)'; btn.style.color='#1a1a1a'; }
+  }catch(e){ toast(t('common.saveFailed',{err:userErr(e)})); }
+  finally{ _sendShopBusy=false; }
 };
 
 // ── SAVED RECIPES ─────────────────────────────────────

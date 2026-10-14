@@ -1435,6 +1435,7 @@ export default {
   'ck.haveHome': 'mám doma',
   'ck.steps': 'Postup',
   'ck.genFirst': 'Nejprve vygeneruj recept',
+  'ck.shopTarget': 'Do kterého seznamu přidat?',
   'ck.sAdded': '{n} přidáno',
   'ck.sSkipped': '{n} už v seznamu',
   'ck.sHave': '{n} máš doma',

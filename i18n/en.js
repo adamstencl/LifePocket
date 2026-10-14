@@ -1429,6 +1429,7 @@ export default {
   'ck.haveHome': 'have it',
   'ck.steps': 'Method',
   'ck.genFirst': 'Generate a recipe first',
+  'ck.shopTarget': 'Add to which list?',
   'ck.sAdded': '{n} added',
   'ck.sSkipped': '{n} already on the list',
   'ck.sHave': '{n} you have at home',
