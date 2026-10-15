@@ -7,6 +7,17 @@ service cloud.firestore {
     match /config/{doc} {
       allow read, write: if false;
     }
+    // Výjimka (4.63): admin aplikace si přečte config/admins (pole uids: seznam uid), podle toho klient ukáže správu výzev.
+    // Jen get vlastního záznamu; list a zápis dál zakazuje pravidlo výše (pravidla se sčítají, tohle povolí jen get).
+    match /config/admins {
+      allow get: if request.auth != null && request.auth.uid in resource.data.uids;
+    }
+    // Admin aplikace = uid v config/admins.uids (dokument zakládá ručně Adam v konzoli Firebase)
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/config/admins)
+        && request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids;
+    }
 
     // Uživatelská data — jen vlastník má přístup
     match /users/{userId}/{document=**} {
@@ -363,6 +374,115 @@ service cloud.firestore {
       allow delete: if request.auth != null
         && ((resource.data.by == request.auth.uid && isFamMember(familyId)) || isFamAdmin(familyId)
             || (isFamMember(familyId) && resource.data.expireAt < request.time));
+    }
+
+    // ── Veřejné výzvy (Výzva měsíce / týdne, 4.63, docs/NAVRH-VYZVA-MESICE.md) ──
+    // Zakládá a moderuje jen admin aplikace (isAdmin, config/admins). Účastník: dokument = uid,
+    // jen přezdívka + odškrtnuté dny. Den jde přidat / odebrat jen po jednom a jen „dnes nebo včera“
+    // v některém časovém pásmu (UTC−12 až UTC+14) podle request.time.
+    function pcDs(ds) {
+      return ds is string && ds.matches('^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+    // Datum 'YYYY-MM-DD' (UTC) z časového razítka; bez parsování řetězců (porovnání dat jako textu)
+    function pcPad(x) { return x < 10 ? '0' + string(x) : string(x); }
+    function pcDsOf(ts) { return string(ts.year()) + '-' + pcPad(ts.month()) + '-' + pcPad(ts.day()); }
+    // Den ds platí jako „dnes nebo včera“, když jeho půlnoc (UTC) leží mezi teď − 60 h a teď + 14 h:
+    // od začátku dne v UTC+14 do konce následujícího dne v UTC−12
+    function pcNowish(ds) {
+      return pcDs(ds)
+        && ds > pcDsOf(request.time - duration.value(60, 'h'))
+        && ds <= pcDsOf(request.time + duration.value(14, 'h'));
+    }
+    // Přezdívka: 3–20 znaků, písmena (včetně češtiny a slovenštiny), číslice, mezera, _ a -; začíná písmenem nebo číslicí.
+    // Bez tečky a @ (žádné e-maily ani odkazy). Pojistka na nejhrubší slova; hlavní filtr je v klientu (pcNickBad).
+    // Stejný regex je v app.js (PC_NICK_RE).
+    function pcNickOk(n) {
+      return n is string && n.size() >= 3 && n.size() <= 20
+        && n.matches('^[0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü][0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü _-]*$')
+        && !n.lower().matches('.*(admin|lifepocket|moderat|kurv|kurev|píč|pič|pic[aeiou]|kokot|čurák|curak|zmrd|šuk|suk[aá]|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi).*');
+    }
+    function validPubCh() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['title', 'desc', 'emoji', 'en', 'kind', 'start', 'end', 'days', 'goal', 'active',
+             'createdBy', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['title', 'kind', 'start', 'end', 'days', 'goal', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 60
+        && (!('desc' in d) || (d.desc is string && d.desc.size() <= 300))
+        && (!('emoji' in d) || (d.emoji is string && d.emoji.size() <= 16))
+        && (!('en' in d) || (d.en is map && d.en.keys().hasOnly(['title', 'desc'])
+             && d.en.get('title', '') is string && d.en.get('title', '').size() <= 60
+             && d.en.get('desc', '') is string && d.en.get('desc', '').size() <= 300))
+        && d.kind in ['month', 'week']
+        && pcDs(d.start) && pcDs(d.end) && d.start <= d.end
+        && d.days is int && d.days >= 1 && d.days <= 31 && (d.kind != 'week' || d.days == 7)
+        && d.goal is int && d.goal >= 1 && d.goal <= d.days
+        && d.active is bool
+        && d.updatedAt == request.time;
+    }
+    match /publicChallenges/{cid} {
+      // Koncept (active false) vidí jen admin; dotaz klienta proto musí mít where('active','==',true).
+      // Neexistující dokument (admin ověřuje volné ID) nic neprozradí.
+      allow get: if request.auth != null && (resource == null || resource.data.active == true || isAdmin());
+      allow list: if request.auth != null
+        && ((resource.data.active == true && request.query.limit <= 10) || isAdmin());
+      allow create: if isAdmin() && validPubCh()
+        && cid.matches('^(m-20[0-9]{2}-(0[1-9]|1[0-2])|w-20[0-9]{2}-W[0-5][0-9])$')
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin() && validPubCh()
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+      // Mazat jen koncepty (dokument s účastníky by po smazání nechal podkolekci bez výzvy)
+      allow delete: if isAdmin() && resource.data.active == false;
+
+      function pc() { return get(/databases/$(database)/documents/publicChallenges/$(cid)).data; }
+      // Den patří do výzvy a je „dnes nebo včera“
+      function pcDayOk(x) { return pcNowish(x) && x >= pc().start && x <= pc().end; }
+      function pcPartBase() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['nick', 'joinedAt', 'j', 'd', 'n', 'upAt'])
+          && d.keys().hasAll(['nick', 'joinedAt', 'j', 'd', 'n', 'upAt'])
+          && pcNickOk(d.nick)
+          && d.d is list && d.d.size() <= 31 && d.d.toSet().size() == d.d.size()
+          && d.n is int && d.n == d.d.size()
+          && d.upAt == request.time;
+      }
+
+      match /participants/{uid} {
+        allow get: if request.auth != null;
+        // Top 20, skupina (in po 30 uid), počty přes count() a stránky adminu. Limit v pravidle by nic nechránil
+        // (stránkování) a dotaz count() limit nemá; dokument obsahuje jen přezdívku a dny (veřejné v žebříčku).
+        allow list: if request.auth != null;
+        // Přihlášení: jen sám za sebe, do aktivní výzvy, ne zablokovaný; j = den přihlášení (nebo první den výzvy
+        // při přihlášení předem), nejvýš 1 den (dnes nebo včera)
+        allow create: if request.auth != null && request.auth.uid == uid
+          && pc().active == true
+          && !exists(/databases/$(database)/documents/publicChallenges/$(cid)/blocked/$(uid))
+          && pcPartBase()
+          && request.resource.data.joinedAt == request.time
+          && pcDs(request.resource.data.j) && request.resource.data.j >= pc().start && request.resource.data.j <= pc().end
+          && request.resource.data.d.size() <= 1
+          && (request.resource.data.d.size() == 0 || pcDayOk(request.resource.data.d[0]));
+        // Změna: přezdívka, nebo přesně +1 den, nebo přesně −1 den (oprava překliku); vždy jen dnes/včera
+        allow update: if request.auth != null && request.auth.uid == uid
+          && pc().active == true
+          && pcPartBase()
+          && request.resource.data.joinedAt == resource.data.joinedAt
+          && request.resource.data.j == resource.data.j
+          && (request.resource.data.d == resource.data.d
+            || (request.resource.data.d.size() == resource.data.d.size() + 1
+                && request.resource.data.d.hasAll(resource.data.d)
+                && pcDayOk(request.resource.data.d.removeAll(resource.data.d)[0]))
+            || (request.resource.data.d.size() == resource.data.d.size() - 1
+                && resource.data.d.hasAll(request.resource.data.d)
+                && pcNowish(resource.data.d.removeAll(request.resource.data.d)[0])));
+        // Odhlášení z výzvy (smaže i dny) nebo odebrání adminem
+        allow delete: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      }
+      // Blokace odebraných účastníků ({at}); čte a píše jen admin
+      match /blocked/{uid} {
+        allow read, write: if isAdmin();
+      }
     }
   }
 }

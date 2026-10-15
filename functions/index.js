@@ -881,6 +881,82 @@ async function loadBirthdays(path) {
 
 const CRON_BATCH = 20;
 
+// ── Veřejné výzvy (Výzva měsíce / týdne, 4.63) ──
+// Seznam výzev 1× za 15 min na instanci (ne na uživatele). Dotaz na rozsah jednoho pole (end) nepotřebuje
+// složený index; aktivní (active == true) se vyberou v kódu. Data z dokumentu jsou data (typy se ověřují).
+const PC_ID_RE = /^(m-20\d{2}-(0[1-9]|1[0-2])|w-20\d{2}-W[0-5]\d)$/;
+const PC_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PC_CACHE_MS = 15 * 60000;
+const PC_EVE_TIME = '20:00';
+let _pcCache = {at: 0, list: []};
+const pcStr = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+function pcNormServer(id, d) {
+  if (!PC_ID_RE.test(id) || !d || d.active !== true || !['month', 'week'].includes(d.kind)) return null;
+  if (!PC_DS_RE.test(d.start) || !PC_DS_RE.test(d.end) || d.start > d.end) return null;
+  const title = pcStr(d.title, 60);
+  if (!title) return null;
+  const en = d.en && typeof d.en === 'object' ? pcStr(d.en.title, 60) : '';
+  return {id, kind: d.kind, start: d.start, end: d.end, title, en, emoji: pcStr(d.emoji, 16) || '🏆'};
+}
+async function activePublicChallenges() {
+  if (Date.now() - _pcCache.at < PC_CACHE_MS) return _pcCache.list;
+  let list = [];
+  try {
+    const cutoff = pragueDS(new Date(Date.now() - 2 * 86400000)); // rezerva na časová pásma
+    const s = await db.collection('publicChallenges').where('end', '>=', cutoff).limit(30).get();
+    list = s.docs.map(d => pcNormServer(d.id, d.data() || {})).filter(Boolean);
+  } catch(e) { console.error('[LP] Výzvy měsíce:', e.code || e.message); }
+  _pcCache = {at: Date.now(), list};
+  return list;
+}
+const pcTitle = (c, L) => (L === 'en' && c.en) ? c.en : c.title;
+// Push výzev pro jednoho uživatele (profil už je načtený → žádné čtení navíc):
+//  - start: v den začátku v čase ranního přehledu, jen kdo ještě není přihlášený; týdenní jen účastníkům dřívější týdenní
+//  - večer ve 20:00: přihlášení se zapnutou připomínkou (pc.<cid>.r), kdo dnešek ještě nemá (pc.<cid>.last), mimo noční klid
+async function pcNotifs(prof, push, L, zn, g) {
+  const ns = prof.notifSettings || {};
+  if (ns.pc === false) return;
+  const {h, m, today} = zn;
+  const startRun = isTimeMatch(h, m, ns.morning || '08:00');
+  const eveRun = isTimeMatch(h, m, PC_EVE_TIME) && !inQuiet(h, m, groupNotifPrefs(prof).quiet);
+  if (!startRun && !eveRun) return;
+  const list = await activePublicChallenges();
+  if (!list.length) return;
+  const pc = prof.pc && typeof prof.pc === 'object' && !Array.isArray(prof.pc) ? prof.pc : {};
+  const mine = (id) => (pc[id] && typeof pc[id] === 'object') ? pc[id] : null;
+  if (startRun) {
+    for (const c of list) {
+      if (c.start !== today || mine(c.id)) continue;
+      if (c.kind === 'week' && !Object.keys(pc).some(k => k.startsWith('w-') && k < c.id)) continue;
+      try {
+        await push(tS(L, c.kind === 'week' ? 'pc.start.tw' : 'pc.start.t'), tS(L, 'pc.start.b', {em: c.emoji, title: pcTitle(c, L)}),
+          `pc-${c.id}`, {data: {open: 'pc', cid: c.id}});
+      } catch(e) { console.error('[LP] push výzvy (start):', e.message); }
+    }
+  }
+  if (eveRun) {
+    const due = list.filter(c => c.start <= today && today <= c.end && mine(c.id) && mine(c.id).r === true && mine(c.id).last !== today);
+    if (!due.length) return;
+    const c = due[0];
+    try {
+      if (due.length === 1) {
+        await push(tS(L, 'pc.eve.t', {em: c.emoji}), tS(L, 'pc.eve.b', {title: pcTitle(c, L), g}), `pc-${c.id}-eve`, {data: {open: 'pc', cid: c.id}});
+      } else {
+        await push(tS(L, 'pc.eve.t', {em: '🏆'}), tS(L, 'pc.eve.multi', {n: due.length}), 'pc-eve', {data: {open: 'pc', cid: c.id}});
+      }
+    } catch(e) { console.error('[LP] push výzvy (večer):', e.message); }
+  }
+}
+// Smazání účtu: účast a blokace ve všech veřejných výzvách (smazání neexistujícího dokumentu nevadí)
+async function deletePublicChallengeData(uid) {
+  const refs = await db.collection('publicChallenges').listDocuments();
+  for (let i = 0; i < refs.length; i += 200) {
+    const b = db.batch();
+    for (const r of refs.slice(i, i + 200)) { b.delete(r.collection('participants').doc(uid)); b.delete(r.collection('blocked').doc(uid)); }
+    await b.commit();
+  }
+}
+
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
   {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 240},
@@ -1164,6 +1240,10 @@ exports.sendScheduledNotifications = onSchedule(
           } catch(e) { console.error(`[LP] water push uid=${uid}:`, e.message); }
         }
 
+        // ── Výzva měsíce / týdne (4.63): ohlášení startu a večerní připomínka ──
+        try { await pcNotifs(prof, push, L, zn, g); }
+        catch(e) { console.error(`[LP] výzvy uid=${uid}:`, e.message); }
+
         // ── Narozeniny + Události — osobní i rodinné ──
         // Narozeniny se posílají jen v ranním čase uživatele → jen tehdy je čteme
         const bdayRun = isTimeMatch(h, m, morningTime);
@@ -1258,6 +1338,7 @@ exports.dailyStats = onSchedule(
       newUsers1d: 0, newUsers7d: 0, withPushToken: 0,
       familiesTotal: 0, familyMembersAvg: 0, aiCallsToday: 0,
       errorLogs24h: null, errorLogsTotal: null, profileErrors: 0,
+      pcParticipants: 0, pcCheckedYesterday: 0,
     };
 
     // 1) Uživatelé a profily (paralelně po dávkách; chyba u jednoho neshodí běh)
@@ -1334,12 +1415,25 @@ exports.dailyStats = onSchedule(
       catch(e2) { console.error('[LP] dailyStats errorLogs:', e2.code || e2.message); }
     }
 
+    // 6) Veřejné výzvy (4.63): účastníci běžících výzev a kolik z nich odškrtlo den statistiky (jen počty, count())
+    try {
+      const pcs = await db.collection('publicChallenges').where('end', '>=', statDay).limit(30).get();
+      for (const d of pcs.docs) {
+        const c = d.data() || {};
+        if (c.active !== true || !(typeof c.start === 'string' && c.start <= statDay)) continue;
+        const col = d.ref.collection('participants');
+        s.pcParticipants += (await col.count().get()).data().count;
+        s.pcCheckedYesterday += (await col.where('d', 'array-contains', statDay).count().get()).data().count;
+      }
+    } catch(e) { console.error('[LP] dailyStats výzvy:', e.code || e.message); }
+
     await db.doc(`config/stats_daily/days/${statDay}`).set({
       ...s, date: statDay, generatedAt: new Date().toISOString(), version: 1,
     });
     console.log(`[LP] dailyStats ${statDay}: users=${s.usersTotal} a1=${s.active1d} a7=${s.active7d} a30=${s.active30d} `
       + `new1=${s.newUsers1d} new7=${s.newUsers7d} push=${s.withPushToken} fam=${s.familiesTotal} famAvg=${s.familyMembersAvg} `
-      + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors}`);
+      + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors} `
+      + `pc=${s.pcParticipants} pcY=${s.pcCheckedYesterday}`);
   }
 );
 
@@ -1437,6 +1531,9 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
         catch(e) { console.error(`[LP] deleteAccount uid=${uid} aktivita: ${e && e.code || ''}`); }
       }
     }
+    // (b2) veřejné výzvy (4.63): účast v žebříčku a blokace; chyba smazání účtu nezastaví
+    try { await deletePublicChallengeData(uid); }
+    catch(e) { console.error(`[LP] deleteAccount uid=${uid} výzvy: ${e && e.code || ''}`); }
     // (c) osobní data včetně všech podkolekcí
     step = 'c';
     await db.recursiveDelete(db.doc(`users/${uid}`));

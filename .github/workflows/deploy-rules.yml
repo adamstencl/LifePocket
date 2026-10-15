@@ -1,11 +1,12 @@
 name: Deploy Firestore rules
 
-# JEN ruční spuštění s potvrzením "ANO". Nasazení pravidel zůstává výslovně na uživateli.
+# JEN ruční spuštění s potvrzením "ANO". Nasazení pravidel a indexů (firestore.indexes.json, od 4.63) zůstává výslovně na uživateli.
+# Indexy, které jsou v projektu a chybí v souboru, CLI bez --force nemaže (jen vypíše varování).
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Napiš přesně ANO pro nasazení Firestore pravidel'
+        description: 'Napiš přesně ANO pro nasazení Firestore pravidel a indexů'
         required: true
         type: string
 
@@ -37,7 +38,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   deploy:
-    name: Nasazení pravidel
+    name: Nasazení pravidel a indexů
     needs: [confirm, ci]
     if: github.ref == 'refs/heads/main' && github.repository == 'adamstencl/LifePocket'
     runs-on: ubuntu-latest
@@ -67,8 +68,8 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-sa.json" >> "$GITHUB_ENV"
 
-      - name: Nasazení pravidel
-        run: firebase deploy --only firestore:rules --project lifepocket-d8f0e --non-interactive
+      - name: Nasazení pravidel a indexů
+        run: firebase deploy --only firestore:rules,firestore:indexes --project lifepocket-d8f0e --non-interactive
 
       - name: Smazání klíče
         if: always()

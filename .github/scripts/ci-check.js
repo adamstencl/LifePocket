@@ -60,7 +60,21 @@ checkSyntax('functions/index.js', false);
 checkSyntax('functions/i18n-server.js', false);
 
 console.log('JSON');
-['manifest.json', 'firebase.json', 'functions/package.json', 'support.json'].forEach(checkJson);
+['manifest.json', 'firebase.json', 'functions/package.json', 'support.json', 'firestore.indexes.json'].forEach(checkJson);
+// Indexy Firestore (4.63): firebase.json na ně odkazuje a každý index má kolekci a aspoň 2 pole se směrem
+try {
+  const fbj = JSON.parse(read('firebase.json'));
+  const ixFile = fbj.firestore && fbj.firestore.indexes;
+  if (!ixFile || !fs.existsSync(p(ixFile))) fail('firebase.json: firestore.indexes neukazuje na existující soubor');
+  else {
+    const ix = JSON.parse(read(ixFile));
+    const bad = (ix.indexes || []).filter(x => !x || typeof x.collectionGroup !== 'string' || !['COLLECTION', 'COLLECTION_GROUP'].includes(x.queryScope)
+      || !Array.isArray(x.fields) || x.fields.length < 2
+      || x.fields.some(f => !f || typeof f.fieldPath !== 'string' || !['ASCENDING', 'DESCENDING'].includes(f.order)));
+    if (!Array.isArray(ix.indexes) || bad.length) fail(ixFile + ': neplatný tvar indexu (' + bad.length + ')');
+    else ok(ixFile + ': ' + ix.indexes.length + ' indexů, odkaz z firebase.json');
+  }
+} catch (e) { fail('indexy Firestore: ' + e.message); }
 
 console.log('Offline cache (sw.js)');
 try {
@@ -139,6 +153,16 @@ try {
     else ok('abeceda kódu shodná s pravidlem (' + alpha[1].length + ' znaků)');
   }
 } catch (e) { fail('FAMILY_WORDS: ' + e.message); }
+
+console.log('Přezdívka výzvy: app.js vs. firestore.rules');
+try {
+  const rules = read('firestore.rules');
+  const r = rules.match(/function pcNickOk\(n\) \{[\s\S]*?n\.matches\('([^']+)'\)/);
+  const a = appSrc.match(/const\s+PC_NICK_RE\s*=\s*\/(.+)\/;/);
+  if (!r || !a) fail('PC_NICK_RE v app.js nebo pcNickOk v pravidlech nenalezeno');
+  else if (r[1] !== a[1]) fail('regex přezdívky se liší; app.js: ' + a[1] + ', pravidla: ' + r[1]);
+  else ok('regex přezdívky shodný s pravidlem');
+} catch (e) { fail('přezdívka výzvy: ' + e.message); }
 
 console.log('FAMILY_WORDS a abeceda: functions/index.js vs. app.js');
 try {

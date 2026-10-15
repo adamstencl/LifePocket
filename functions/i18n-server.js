@@ -168,6 +168,15 @@ const cs = {
   'err.nfRate': 'Upozornění už bylo odesláno, zkus to za chvíli.',
   'nf.member': 'Člen rodiny',
   'grp.member': 'Člen',
+  // ── Výzva měsíce / týdne (4.63) ──
+  'pc.start.t': '🏆 Nová výzva měsíce',
+  'pc.start.tw': '🏆 Nová výzva týdne',
+  'pc.start.b': '{em} {title} – jdeš do toho?',
+  'pc.eve.t': '{em} Dnešek ještě nemáš odškrtnutý',
+  'pc.eve.b': 'Splnil jsi dnes výzvu „{title}“? Klepni a odškrtni.',
+  'pc.eve.b#f': 'Splnila jsi dnes výzvu „{title}“? Klepni a odškrtni.',
+  'pc.eve.b#x': 'Máš dnes splněnou výzvu „{title}“? Klepni a odškrtni.',
+  'pc.eve.multi': {one: 'Dnešek máš ještě v {n} výzvě. Klepni a odškrtni.', few: 'Dnešek máš ještě ve {n} výzvách. Klepni a odškrtni.', other: 'Dnešek máš ještě v {n} výzvách. Klepni a odškrtni.'},
 };
 // Ženské tvary akcí ve skupině: první slovo + „a“ (stejné pravidlo jako dřív v kódu)
 for (const k of Object.keys(cs)) if (k.startsWith('gn.act.')) cs[k + '#f'] = cs[k].replace(/^(\S+)/, '$1a');
@@ -316,6 +325,13 @@ const en = {
   'err.nfRate': 'A notification was already sent, try again in a moment.',
   'nf.member': 'Family member',
   'grp.member': 'Member',
+  // ── Challenge of the month / week (4.63) ──
+  'pc.start.t': '🏆 New challenge of the month',
+  'pc.start.tw': '🏆 New challenge of the week',
+  'pc.start.b': '{em} {title} – are you in?',
+  'pc.eve.t': '{em} You haven’t checked off today yet',
+  'pc.eve.b': 'Did you complete “{title}” today? Tap to check it off.',
+  'pc.eve.multi': {one: 'Today is still open in {n} challenge. Tap to check it off.', other: 'Today is still open in {n} challenges. Tap to check it off.'},
 };
 
 const DICT = {cs, en};
