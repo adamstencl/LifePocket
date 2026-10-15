@@ -162,6 +162,14 @@ try {
   if (!r || !a) fail('PC_NICK_RE v app.js nebo pcNickOk v pravidlech nenalezeno');
   else if (r[1] !== a[1]) fail('regex přezdívky se liší; app.js: ' + a[1] + ', pravidla: ' + r[1]);
   else ok('regex přezdívky shodný s pravidlem');
+  // Zakázaná slova: všechny n.lower().matches('…') v pcNickOk = pole PC_RULES_BAD v app.js (stejné pořadí)
+  const body = (rules.match(/function pcNickOk\(n\) \{([\s\S]*?)\n    \}/) || [])[1] || '';
+  const rb = [...body.matchAll(/n\.lower\(\)\.matches\('([^']+)'\)/g)].map(m => m[1]);
+  const ab = appSrc.match(/const\s+PC_RULES_BAD\s*=\s*\[([\s\S]*?)\];/);
+  const al = ab ? [...ab[1].matchAll(/'([^']+)'/g)].map(m => m[1]) : [];
+  if (!rb.length || !al.length) fail('PC_RULES_BAD v app.js nebo n.lower().matches v pcNickOk nenalezeno');
+  else if (JSON.stringify(rb) !== JSON.stringify(al)) fail('zakázaná slova přezdívky se liší; app.js: ' + JSON.stringify(al) + ', pravidla: ' + JSON.stringify(rb));
+  else ok('zakázaná slova přezdívky shodná s pravidlem (' + rb.length + ' výrazy)');
 } catch (e) { fail('přezdívka výzvy: ' + e.message); }
 
 console.log('FAMILY_WORDS a abeceda: functions/index.js vs. app.js');
@@ -285,7 +293,7 @@ try {
 } catch (e) { fail('inline handlery: ' + e.message); }
 
 // Ráčny vícejazyčnosti (docs/NAVRH-I18N.md): každá fáze překladu čísla sníží, nový český text mimo slovník CI shodí
-const I18N_ALLOW = { appCz: 197, // +2 v 4.58: AI_CS_FIX (opravy češtiny receptů, ne UI text)
+const I18N_ALLOW = { appCz: 199, // +2 v 4.58: AI_CS_FIX (opravy češtiny receptů, ne UI text); +2 v 4.63: PC_RULES_BAD (zakázaná slova přezdívky, shoda s pravidly)
    htmlCz: 1, csCZ: 0, manualPlural: 0 };
 console.log('i18n: slovníky a použité klíče');
 // Slovník je ES modul „export default { … }“ s čistým objektem; načte se bez importu přes vm

@@ -396,17 +396,19 @@ service cloud.firestore {
     }
     // Přezdívka: 3–20 znaků, písmena (včetně češtiny a slovenštiny), číslice, mezera, _ a -; začíná písmenem nebo číslicí.
     // Bez tečky a @ (žádné e-maily ani odkazy). Pojistka na nejhrubší slova; hlavní filtr je v klientu (pcNickBad).
-    // Stejný regex je v app.js (PC_NICK_RE).
+    // Stejný regex je v app.js (PC_NICK_RE), zakázaná slova v PC_RULES_BAD (hlídá ci-check). admin jen na začátku
+    // slova, pic* a suka jen jako celé slovo (RE2 nemá lookaround; Badminton, Picasso, Epica, Tsukasa projdou).
     function pcNickOk(n) {
       return n is string && n.size() >= 3 && n.size() <= 20
         && n.matches('^[0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü][0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü _-]*$')
-        && !n.lower().matches('.*(admin|lifepocket|moderat|kurv|kurev|píč|pič|pic[aeiou]|kokot|čurák|curak|zmrd|šuk|suk[aá]|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi).*');
+        && !n.lower().matches('.*(lifepocket|moderat|kurv|kurev|píč|pič|kokot|čurák|curak|zmrd|šuk|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi).*')
+        && !n.lower().matches('(.*[ _-])?(admin.*|(pic[aeiouy]|suk[aá])([ _-].*)?)');
     }
     function validPubCh() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['title', 'desc', 'emoji', 'en', 'kind', 'start', 'end', 'days', 'goal', 'active',
+      return d.keys().hasOnly(['title', 'desc', 'emoji', 'en', 'kind', 'start', 'end', 'days', 'goal', 'active', 'pub',
              'createdBy', 'createdAt', 'updatedAt'])
-        && d.keys().hasAll(['title', 'kind', 'start', 'end', 'days', 'goal', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['title', 'kind', 'start', 'end', 'days', 'goal', 'active', 'pub', 'createdBy', 'createdAt', 'updatedAt'])
         && d.title is string && d.title.size() >= 1 && d.title.size() <= 60
         && (!('desc' in d) || (d.desc is string && d.desc.size() <= 300))
         && (!('emoji' in d) || (d.emoji is string && d.emoji.size() <= 16))
@@ -417,7 +419,7 @@ service cloud.firestore {
         && pcDs(d.start) && pcDs(d.end) && d.start <= d.end
         && d.days is int && d.days >= 1 && d.days <= 31 && (d.kind != 'week' || d.days == 7)
         && d.goal is int && d.goal >= 1 && d.goal <= d.days
-        && d.active is bool
+        && d.active is bool && d.pub is bool
         && d.updatedAt == request.time;
     }
     match /publicChallenges/{cid} {
@@ -429,12 +431,15 @@ service cloud.firestore {
       allow create: if isAdmin() && validPubCh()
         && cid.matches('^(m-20[0-9]{2}-(0[1-9]|1[0-2])|w-20[0-9]{2}-W[0-5][0-9])$')
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.pub == request.resource.data.active;
+      // pub: true od prvního zveřejnění, pak už neměnné (i po skrytí)
       allow update: if isAdmin() && validPubCh()
         && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
-      // Mazat jen koncepty (dokument s účastníky by po smazání nechal podkolekci bez výzvy)
-      allow delete: if isAdmin() && resource.data.active == false;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.pub == (resource.data.get('pub', true) || request.resource.data.active);
+      // Mazat jen koncept, který nikdy nebyl zveřejněný (jen ten nemá účastníky; bez pole pub = jako zveřejněný)
+      allow delete: if isAdmin() && resource.data.get('pub', true) == false;
 
       function pc() { return get(/databases/$(database)/documents/publicChallenges/$(cid)).data; }
       // ID mé účasti: sha256(uid + ':' + cid), hex malými písmeny (stejně počítá klient a deleteAccount)
@@ -455,14 +460,16 @@ service cloud.firestore {
         // Top 20, skupina (in po 30 ID účasti), počty přes count() a stránky adminu. Limit v pravidle by nic nechránil
         // (stránkování) a dotaz count() limit nemá; dokument obsahuje jen přezdívku a dny (veřejné v žebříčku).
         allow list: if request.auth != null;
-        // Přihlášení: jen sám za sebe, do aktivní výzvy, ne zablokovaný; j = den přihlášení (nebo první den výzvy
-        // při přihlášení předem), nejvýš 1 den (dnes nebo včera)
+        // Přihlášení: jen sám za sebe, do aktivní výzvy, ne zablokovaný; j = den přihlášení „dnes nebo včera“
+        // (pcNowish), nebo první den výzvy při přihlášení předem (začátek ještě nenastal v žádném pásmu); nejvýš 1 den
         allow create: if request.auth != null && pid == pcMyPid()
           && pc().active == true
           && !exists(/databases/$(database)/documents/publicChallenges/$(cid)/blocked/$(pid))
           && pcPartBase()
           && request.resource.data.joinedAt == request.time
           && pcDs(request.resource.data.j) && request.resource.data.j >= pc().start && request.resource.data.j <= pc().end
+          && (pcNowish(request.resource.data.j)
+            || (request.resource.data.j == pc().start && pc().start > pcDsOf(request.time + duration.value(14, 'h'))))
           && request.resource.data.d.size() <= 1
           && (request.resource.data.d.size() == 0 || pcDayOk(request.resource.data.d[0]));
         // Změna: přezdívka, nebo přesně +1 den, nebo přesně −1 den (oprava překliku); vždy jen dnes/včera

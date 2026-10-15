@@ -2015,7 +2015,7 @@ export default {
   'pc.until': 'Until {d}',
   'pc.soon': 'Starts {d}',
   'pc.soonShort': 'from {d}',
-  'pc.soonIn': 'You’re signed up, we start {d}.',
+  'pc.soonIn': 'You’re signed up, we start {d}',
   'pc.joined': { one: '{n} person joined', other: '{n} people joined' },
   'pc.showBoard': 'Show the leaderboard',
   'pc.boardMine': 'Leaderboard and my position',

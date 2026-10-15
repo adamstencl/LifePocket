@@ -574,3 +574,13 @@ Revizor: hlavní riziko je v pravidlech (§2), proto testovat simulací v node (
 8. **Večerní připomínka ve 20:00, při přihlášení předzaškrtnutá**, ohlášení nové měsíční výzvy push všem s povoleným přepínačem „🏆 Výzvy měsíce“ (výchozí zapnuto), týdenní jen účastníkům minulé týdenní výzvy (podle `prof.pc`).
 9. **„Splněno včera“ jde dopsat** (stejně jako skupinové výzvy), i ráno po posledním dni do poledne.
 10. **Mazat výzvu jde jen jako koncept**; běžící se „skryje“ (`active:false`), zápisy se tím zmrazí.
+
+## Změny po revizi (4.63, 2. kolo) – platí místo starších částí návrhu
+- **ID účasti** = `sha256(uid + ':' + cid)` jako hex malými písmeny (klient `pcPid` přes WebCrypto, pravidla `hashing.sha256(…).toHexString().lower()`, server `deleteAccount` přes node `crypto`). Stejně `blocked/{pid}`. Dokument účasti neobsahuje uid ani `upAt` (jen `nick, joinedAt, j, d, n`). Filtr „Moje skupina“ spočítá ID z uid členů.
+- **Dotaz klienta**: `active == true`, `end >= dnes − 7`, `orderBy('end','asc')`, `limit(10)`; index `active ASC, end ASC` (DESC odstraněn). Admin dotazy (jedno pole) mají automatické indexy.
+- **Karta Domů**: za druh hlavní výzva (ráno po konci s účastí > běží > začne > výsledek) a nejvýš jedna doplňková kompaktně (nová výzva po „ráno po konci“, nebo výsledek minulé).
+- **Mazání výzvy** jen když nikdy nebyla zveřejněná: pole `pub` (true od prvního zveřejnění, pak neměnné).
+- **`j` při přihlášení**: v okně „dnes/včera“ (`pcNowish`), nebo `start` při přihlášení předem.
+- **deleteAccount**: chyba úklidu výzev zastaví smazání účtu (krok b2, jde zopakovat).
+- **Odhlášení**: v aplikaci do 7 dní po konci výzvy, později smazáním účtu nebo žádostí správci.
+- **Přezdívka**: NFC, zakázaná slova pravidel = `PC_RULES_BAD` v app.js (hlídá ci-check); admin jen na začátku slova, pic*/suka jen celé slovo.

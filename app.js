@@ -10752,19 +10752,27 @@ function celebrateChallenge(gid, c, st) {
 const PC_ID_RE = /^(m-20\d{2}-(0[1-9]|1[0-2])|w-20\d{2}-W[0-5]\d)$/;
 // Přezdívka: stejný regex jako pcNickOk ve firestore.rules (hlídá ci-check)
 const PC_NICK_RE = /^[0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü][0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü _-]*$/;
-// Pojistka z pravidel (malá písmena, s diakritikou): co odmítne server, odmítne už klient s lidskou hláškou
-const PC_RULES_BAD = /(admin|lifepocket|moderat|kurv|kurev|píč|pič|pic[aeiou]|kokot|čurák|curak|zmrd|šuk|suk[aá]|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi)/;
+// Pojistka z pravidel (malá písmena, s diakritikou): co odmítne server, odmítne už klient s lidskou hláškou.
+// Stejné řetězce jako n.lower().matches(…) v pcNickOk (RE2 celý řetězec = ^(?:…)$; hlídá ci-check).
+// Druhý výraz: admin jen na začátku slova, pic* a suka jen jako celé slovo (Badminton, Picasso, Epica, Tsukasa projdou).
+const PC_RULES_BAD = ['.*(lifepocket|moderat|kurv|kurev|píč|pič|kokot|čurák|curak|zmrd|šuk|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi).*',
+  '(.*[ _-])?(admin.*|(pic[aeiouy]|suk[aá])([ _-].*)?)'];
+const PC_RULES_BAD_RE = PC_RULES_BAD.map(x => new RegExp('^(?:' + x + ')$'));
 // Kořeny po normalizaci (malá písmena, bez diakritiky, leetspeak, sloučená opakovaná písmena): kdekoli v přezdívce
-const PC_BAD_ANY = ['kurv','kurev','kurw','picus','picovin','kokot','curak','cural','mrd','suka','jeb','chuj','prdel','hovn','hovad',
+const PC_BAD_ANY = ['kurv','kurev','kurw','picus','picovin','kokot','curak','cural','mrd','jeb','chuj','prdel','hovn','hovad',
   'debil','idiot','kreten','zasran','sracka','hajzl','buzerant','buzna','negr','niger','niga','retard','penis','vagin',
-  'fuck','shit','bitch','cunt','pusy','ashole','bastard','whore','slut','porn','nazi','hitler',
-  'admin','lifepocket','moderat','podpora','suport','spravce','oficial'];
-// Jen na začátku slova (jinak falešné shody: spicy, essex, peacock)
-const PC_BAD_START = ['pica','pice','pici','pico','picu','picy','sex','cock','dick','fag','rex','srac'];
+  'fuck','shit','bitch','cunt','ashole','bastard','whore','slut','porn','nazi','hitler','dickhead',
+  'lifepocket','podpora','suport','spravce','oficial'];
+// Jen na začátku slova (jinak falešné shody: spicy, essex, peacock, badminton)
+const PC_BAD_START = ['cock','rex','srac','admin'];
+// Jen celé slovo (jinak falešné shody: Picasso, Epica, Tsukasa, Fagotista, Dickens, Sexta, Moderátorka);
+// porovnává se slovo se sloučenými opakovanými písmeny i bez sloučení (pussy ≠ Pusy)
+const PC_BAD_WORD = ['pica','pice','pici','pico','picu','picy','suka','suky','suko','sex','sexy','dick','dicks','fag','fags','pussy','moderator'];
 const PC_OK = ['cockatoo','scunthorpe'];
 const PC_LEET = {'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','8':'b'};
 const pcDedup = x => x.replace(/(.)\1+/g, '$1');
 const PC_BAD_ANY_D = PC_BAD_ANY.map(pcDedup), PC_BAD_START_D = PC_BAD_START.map(pcDedup);
+const PC_BAD_WORD_D = PC_BAD_WORD.filter(w => w !== 'pussy').map(pcDedup);
 const PC_SOON_DAYS = 3, PC_RESULT_DAYS = 7, PC_TOP = 20, PC_IN_MAX = 30;
 const PC_LIST_TTL = 3600000, PC_BOARD_TTL = 120000, PC_BOARD_STALE = 300000, PC_PROF_KEEP_DAYS = 30;
 // Nápady pro admina: název a popis z i18n (pc.pre.<id>, pc.pre.<id>.d)
@@ -10777,6 +10785,7 @@ const _pcUnsub = {};
 const _pcPending = {};       // cid → zápis dne právě běží
 const _pcBoard = {};         // cid → {at, top, total, pos, grp, grpAt, busy, err}
 let _pcAt = 0, _pcSheet = null, _isAppAdmin = false, _pcAdminChecked = '';
+let _pcDrawnDay = '';        // den posledního vykreslení tlačítek Dnes / Včera (klepnutí po půlnoci jen překreslí)
 const pcPartRef = (cid, pid) => doc(db,'publicChallenges',cid,'participants',pid);
 // ID účasti: sha256(uid + ':' + cid) jako hex malými písmeny. Uid se do veřejné kolekce nedostane; kdo uid zná
 // (členové skupiny), ID spočítá (filtr Moje skupina). Výsledky se pamatují (výpočet je asynchronní).
@@ -10798,16 +10807,18 @@ const pcFind = cid => pcList.find(c => c.id === cid) || null;
 const pcQuietErr = e => ['permission-denied','failed-precondition','unavailable'].includes(e?.code);
 
 // ── Přezdívka ──
-function pcNickClean(v) { return String(v ?? '').replace(/\s+/g, ' ').trim(); }
+// NFC: klávesnice (iOS) může poslat rozložené znaky (e + ˇ), regex v pravidlech zná jen složené
+function pcNickClean(v) { return String(v ?? '').normalize('NFC').replace(/\s+/g, ' ').trim(); }
 // '' = v pořádku, 'chars' = délka nebo znaky, 'bad' = nevhodné nebo rezervované slovo
 function pcNickBad(v) {
   const n = pcNickClean(v);
   if(n.length < 3 || n.length > 20 || !PC_NICK_RE.test(n)) return 'chars';
-  if(PC_RULES_BAD.test(n.toLowerCase())) return 'bad';
+  if(PC_RULES_BAD_RE.some(r => r.test(n.toLowerCase()))) return 'bad';
   let s = n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[0134578]/g, c => PC_LEET[c]);
   for(const ok of PC_OK) s = s.split(ok).join(' ');
-  const words = s.split(/[ _-]+/).filter(Boolean).map(pcDedup);
+  const raw = s.split(/[ _-]+/).filter(Boolean), words = raw.map(pcDedup);
   if(words.some(w => PC_BAD_START_D.some(r => w.startsWith(r)))) return 'bad';
+  if(raw.some(w => PC_BAD_WORD.includes(w)) || words.some(w => PC_BAD_WORD_D.includes(w))) return 'bad';
   // Kořen uvnitř slova, nebo přes hranici slov s krátkým kouskem („K u r v a“, „kur va“).
   // Spojení dvou delších slov se nepočítá („Statečná žirafa“ ≠ „nazi“).
   const full = words.join(''), wi = [];
@@ -10984,7 +10995,7 @@ function pcReset() {
   for(const k of Object.keys(pcMe)) delete pcMe[k];
   for(const k of Object.keys(_pcBoard)) delete _pcBoard[k];
   for(const k of Object.keys(_pcPending)) delete _pcPending[k];
-  _pcPidC.clear();
+  _pcPidC.clear(); _pcDrawnDay = '';
   pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null;
 }
 window.addEventListener('online', () => { if(CU && prof && !_pcAt) pcLoad(); });
@@ -11112,6 +11123,7 @@ function pcRowHTML(c) {
 }
 function pcDashHTML() {
   if(!CU) return '';
+  _pcDrawnDay = toDS();
   const list = pcDashList();
   if(!list.length) return '';
   return `<div class="dw pc-dw" style="cursor:default">${pcBigHTML(list[0])}${list.slice(1).map(pcRowHTML).join('')}</div>`;
@@ -11132,6 +11144,8 @@ window.pcDay = async (cid, which) => {
   const c = pcFind(cid), me = pcMe[cid];
   if(!CU || !c || !me || _pcPending[cid] || _accDeleting || _accDeleted) return;
   const today = toDS(), ds = which === 'y' ? addDays(today, -1) : today;
+  // Tlačítko vykreslené včera (karta otevřená přes půlnoc): „Dnes“ by znamenalo jiný den → jen překreslit
+  if(_pcDrawnDay && _pcDrawnDay !== today) { renderPcUI(); _pcDrawnDay = today; return; }
   if(ds < c.start || ds > c.end || (which === 't' && pcState(c, today) !== 'run')) return;
   const uid = CU.uid, had = me.d.includes(ds), prev = me;
   const next = had ? me.d.filter(x => x !== ds) : [...me.d, ds].sort();
@@ -11178,10 +11192,14 @@ function pcCheckDone() {
   for(const c of pcList) {
     const me = pcMe[c.id];
     if(!me || me.n < c.goal || game.once['pc_' + c.id]) continue;
-    if(gameAward('pc_' + c.id, c.kind === 'week' ? XP.pcWeek : XP.pcMonth, {t: cutName(pcTitle(c), 60)})) whenUiFree(() => celebratePc(c));
+    if(!gameAward('pc_' + c.id, c.kind === 'week' ? XP.pcWeek : XP.pcMonth, {t: cutName(pcTitle(c), 60)})) continue;
+    // Odznak podle počtu splněných výzev hned po zápisu (1., 3., 12. = nový odznak, jinak bez odznaku)
+    const n = Object.keys(game.once).filter(k => k.startsWith('pc_')).length;
+    whenUiFree(() => celebratePc(c, PC_WIN_BADGE[n] || ''));
   }
 }
-function celebratePc(c) {
+const PC_WIN_BADGE = {1: 'pc_1', 3: 'pc_3', 12: 'pc_12'};
+function celebratePc(c, badge) {
   const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
   const line = c.emoji + ' ' + pcTitle(c);
   if(celebModalOpen()) { showAvReaction('🎖️', t('pc.win.t'), line, true); return; }
@@ -11191,7 +11209,7 @@ function celebratePc(c) {
   body.innerHTML = `<div class="gs-top"><div class="gwin-em" aria-hidden="true">${esc(c.emoji)}</div>
       <div class="lu-title" id="gwin-title">${tH('pc.win.t')}</div>
       <div class="gs-lvl">${esc(line)}</div>
-      ${gameOn() ? `<div class="ch-xp">${x ? '+' + x + ' XP · ' : ''}🎖️ ${tH('game.badge.pc_1')}</div>` : ''}
+      ${gameOn() && (x || badge) ? `<div class="ch-xp">${[x ? '+' + x + ' XP' : '', badge ? `${BADGES.find(b => b.id === badge)?.em || '🎖️'} ${tH('game.badge.' + badge)}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
       <div class="lu-say">„${tH('pc.win.say')}“ — ${esc(av.name)}</div></div>
     <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
   om('m-gwin');
@@ -11356,6 +11374,7 @@ function pcRenderSheet() {
   const c = pcFind(s.cid);
   if(!c) { tEl.textContent = '🏆'; bEl.innerHTML = `<div class="gf-empty">${tH('pc.gone')}</div>`; return; }
   const me = pcMe[c.id], st = pcState(c), today = toDS(), cid = esc(c.id);
+  _pcDrawnDay = today;
   // Překreslení (snapshot, žebříček) nesmí vzít fokus ani kurzor v rozepsané přezdívce
   const fa = document.activeElement, focusId = fa && bEl.contains(fa) ? fa.id : '';
   const sel = focusId === 'pc-nick' ? [fa.selectionStart, fa.selectionEnd] : null;
@@ -11576,7 +11595,7 @@ async function pcAdmLoad() {
     if(!_pcAdm) return;
     _pcAdm.list = s.docs.map(d => ({id: d.id, data: d.data(), c: pcNorm(d.id, d.data())})).filter(x => x.c);
     const today = toDS();
-    // Počty u běžících, budoucích a konceptů (count = 1 čtení na 1000 záznamů); smazat jde jen koncept s 0 účastníky
+    // Počty u běžících, budoucích a konceptů (count = 1 čtení na 1000 záznamů); smazat jde jen nikdy nezveřejněný koncept (pub false)
     await Promise.all(_pcAdm.list.filter(x => !x.c.active || x.c.end >= addDays(today, -PC_RESULT_DAYS)).map(x =>
       getCountFromServer(collection(db,'publicChallenges',x.id,'participants')).then(r => { if(_pcAdm) _pcAdm.counts[x.id] = r.data().count; }).catch(() => {})));
   } catch(e) { pcAdmErr(e); }
@@ -11709,7 +11728,9 @@ window.pcAdmSave = async publish => {
   if(!title) { toast(t('pc.adm.errTitle')); document.getElementById('pca-title')?.focus(); return; }
   if(!Number.isFinite(goal) || goal < 1 || goal > per.days) { toast(t('pc.adm.errGoal', {n: per.days})); document.getElementById('pca-goal')?.focus(); return; }
   if(publish && !(x && x.c.active) && !confirm(t('pc.adm.publishQ', {title}))) return;
-  const data = {title, emoji, kind: x ? x.c.kind : f.kind, start: per.start, end: per.end, days: per.days, goal, active: !!publish || !!(x && x.c.active),
+  const active = !!publish || !!(x && x.c.active);
+  // pub: výzva už někdy byla zveřejněná (pak ji nejde smazat); dokument bez pole se bere jako zveřejněný
+  const data = {title, emoji, kind: x ? x.c.kind : f.kind, start: per.start, end: per.end, days: per.days, goal, active, pub: active || (!!x && x.data.pub !== false),
     createdBy: x ? x.data.createdBy : CU.uid, createdAt: x ? x.data.createdAt : serverTimestamp(), updatedAt: serverTimestamp()};
   if(desc) data.desc = desc;
   const enT = cutName(f.enT, 60), enD = cutName(f.enD, 300);
@@ -11766,7 +11787,7 @@ function pcAdmDetailHTML() {
       <div class="ch-meta">${esc(pcKindL(c) + ' · ' + pcRange(c) + ' · ' + status)} · ${tH('pc.goalMeta', {n: c.goal})}</div></div></div>
     <div class="pcadm-acts"><button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmEdit(this.dataset.a0)">✏️ ${tH('pc.adm.editBtn')}</button>
       <button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmToggle(this.dataset.a0)">${c.active ? '🙈 ' + tH('pc.adm.hide') : '🚀 ' + tH('pc.adm.publish')}</button>
-      ${!c.active && n === 0 ? `<button type="button" class="btn-s ch-del" data-a0="${cid}" onclick="pcAdmDelete(this.dataset.a0)">🗑️ ${tH('pc.adm.delete')}</button>` : ''}</div>
+      ${!c.active && x.data.pub === false ? `<button type="button" class="btn-s ch-del" data-a0="${cid}" onclick="pcAdmDelete(this.dataset.a0)">🗑️ ${tH('pc.adm.delete')}</button>` : ''}</div>
     <div class="ch-h">${tH('pc.adm.parts', {n: typeof n === 'number' ? n : '…'})}</div>
     <label class="sr-only" for="pca-q">${tH('pc.adm.search')}</label>
     <input class="finp" id="pca-q" placeholder="${tH('pc.adm.search')}" value="${esc(A.q)}" oninput="pcAdmSearch(this.value)">
@@ -11789,7 +11810,7 @@ window.pcAdmToggle = async cid => {
   const on = !x.c.active;
   if(!confirm(t(on ? 'pc.adm.publishQ' : 'pc.adm.hideQ', {title: x.c.title}))) return;
   try {
-    await updateDoc(doc(db,'publicChallenges',cid), {active: on, updatedAt: serverTimestamp()});
+    await updateDoc(doc(db,'publicChallenges',cid), {active: on, pub: on || x.data.pub !== false, updatedAt: serverTimestamp()});
     toast(t(on ? 'pc.adm.published' : 'pc.adm.hidden'));
     await pcAdmLoad();
     pcLoad(true);
@@ -11797,7 +11818,7 @@ window.pcAdmToggle = async cid => {
 };
 window.pcAdmDelete = async cid => {
   const x = pcAdmFind(cid);
-  if(!x || x.c.active || !confirm(t('pc.adm.deleteQ', {title: x.c.title}))) return;
+  if(!x || x.c.active || x.data.pub !== false || !confirm(t('pc.adm.deleteQ', {title: x.c.title}))) return;
   try {
     await deleteDoc(doc(db,'publicChallenges',cid));
     toast(t('pc.adm.deleted'));
