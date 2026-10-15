@@ -6,7 +6,7 @@ Kontrola a nasazení běží v cloudu GitHubu, počítač nemusí být zapnutý.
 |---|---|---|
 | `ci.yml` | každý push a pull request do `main` | statické kontroly (`.github/scripts/ci-check.js`), bez tajemství |
 | `deploy-functions.yml` | push do `main` se změnou `functions/**` nebo `firebase.json`, nebo ručně | nejdřív CI, pak `firebase deploy --only functions` |
-| `deploy-rules.yml` | jen ručně, nutné napsat `ANO` | CI a `firebase deploy --only firestore:rules` |
+| `deploy-rules.yml` | jen ručně, nutné napsat `ANO` | CI a `firebase deploy --only firestore:rules,firestore:indexes` (indexy od 4.63) |
 
 Nasazení appky (GitHub Pages) se nemění: push do `main` ji nasadí jako dosud.
 
@@ -112,3 +112,5 @@ Pravidla Firestore se nenasazují automaticky. Spouštíš je ty ručně a potvr
 6. Za pár sekund se objeví nový běh. Zelená fajfka = pravidla jsou nasazená. Červený křížek = nic se nezměnilo nebo se nasazení nepovedlo, otevři log. Pokud jsi napsal něco jiného než `ANO`, běh hned skončí chybou a nic se nenasadí.
 
 Pokud aplikace „Run workflow" nenabízí, otevři stejnou stránku v prohlížeči telefonu a zvol „Verze pro počítač" (Desktop site).
+
+Od verze 4.63 stejný běh nasadí i indexy z `firestore.indexes.json` (žebříček výzvy měsíce). Indexy se po nasazení staví několik minut (stav: konzole Firebase → Firestore → Indexy). Indexy, které jsou v projektu navíc a v souboru chybí, CLI nemaže, jen vypíše varování. Kdyby běh skončil chybou oprávnění k indexům (`datastore.indexes...`), přidej účtu `github-deploy` roli **Cloud Datastore Index Admin** (`roles/datastore.indexAdmin`) a běh zopakuj.

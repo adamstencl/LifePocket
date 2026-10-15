@@ -54,7 +54,7 @@
     <h2>3. Jaké údaje ukládáme</h2>
     <p>Vše, co v aplikaci zadáš, se ukládá do databáze <strong>Firebase Firestore</strong> (Google) pod tvůj účet:</p>
     <ul>
-      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly a úvodní šablona (Rodina, Student nebo Zdraví), datum posledního otevření aplikace (viz bod 7), denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, nastavení upozornění ze skupin (<code>groupNotif</code>), čas posledního odeslaného upozornění ze skupiny (<code>groupNotifSent</code>) a čas, kdy sis naposledy otevřel/a „Co je nového“ (<code>groupFeedSeen</code>), nastavení pitného režimu (denní cíl, šálky a jejich objem a ikona, připomínky: zapnuto, od kdy do kdy, jak často a zda jen při zaostávání), stav dnešního pití (<code>waterDay</code>: datum, vypité ml a čas posledního zápisu; ukládá se jen se zapnutými připomínkami), záznam o odeslaných připomínkách pití (<code>waterSent</code>, zapisuje server, viz bod 6), členství ve skupinách</li>
+      <li><strong>Profil</strong>: jméno nebo přezdívka, pohlaví (jen pro správné tvary slov, např. „splnil/splnila“), vybraný AI společník (avatar), zvolené moduly a úvodní šablona (Rodina, Student nebo Zdraví), datum posledního otevření aplikace (viz bod 8), denní kalorický cíl, vize a oblasti života, týdenní jídelníček, denní fokus a jeho historie, vlastní typy událostí, nastavení notifikací, nastavení upozornění ze skupin (<code>groupNotif</code>), čas posledního odeslaného upozornění ze skupiny (<code>groupNotifSent</code>) a čas, kdy sis naposledy otevřel/a „Co je nového“ (<code>groupFeedSeen</code>), nastavení pitného režimu (denní cíl, šálky a jejich objem a ikona, připomínky: zapnuto, od kdy do kdy, jak často a zda jen při zaostávání), stav dnešního pití (<code>waterDay</code>: datum, vypité ml a čas posledního zápisu; ukládá se jen se zapnutými připomínkami), záznam o odeslaných připomínkách pití (<code>waterSent</code>, zapisuje server, viz bod 7), členství ve skupinách, účast ve výzvách měsíce a týdne (<code>pc</code>, viz bod 6)</li>
       <li>Cíle a podcíle, u měřitelného cíle i počáteční a cílová hodnota, jednotka, posledních 60 zapsaných hodnot a dosažené mezníky (25, 50, 75 a 100 %)</li>
       <li>Návyky a záznamy o jejich plnění, včetně času splnění (hodina a minuta, kvůli odznaku „Ranní ptáče“), pauz (od kdy do kdy a důvod: nemoc, dovolená, jiné) a použitých štítů série</li>
       <li><strong>Body a úrovně</strong>: body za splněné návyky a cíle po dnech, úroveň, odznaky a datum jejich získání, štíty série, mezníky cílů a vybrané doplňky avatara. Počítáme je z tvých záznamů a můžeš je v Nastavení vypnout. Nevidí je nikdo jiný, ani členové tvých skupin. Týdenní souhrn a obrázky odznaků se skládají jen v tvém zařízení a ven odejdou, jen když je sám/sama sdílíš.</li>
@@ -67,14 +67,14 @@
       <li><strong>Pitný režim</strong> (podkolekce <code>water</code>): po dnech vypité množství, denní cíl a u každého zápisu čas a objem. Aplikace zobrazuje a načítá posledních 28 dní, starší dny se automaticky nemažou. Smažou se se smazáním účtu.</li>
       <li>Konverzace s AI společníkem: posledních 30 zpráv a souhrn starších rozhovorů, který vytváří AI (viz bod 4)</li>
       <li>Nahlášené odpovědi AI, pokud nějakou nahlásíš (viz bod 4)</li>
-      <li>Tokeny zařízení pro push notifikace (viz bod 6)</li>
-      <li>Technické záznamy chyb (viz bod 7)</li>
+      <li>Tokeny zařízení pro push notifikace (viz bod 7)</li>
+      <li>Technické záznamy chyb (viz bod 8)</li>
     </ul>
     <p><strong>Fotografie</strong> se v telefonu zmenší a uloží přímo do databáze Firestore u zápisku nebo položky checklistu. Nepoužíváme žádné jiné úložiště souborů a fotografie se nikdy neposílají AI.</p>
-    <p>Některé údaje zůstávají jen v tvém zařízení (např. zásoby mimo skupinu, oblíbené nákupy), viz bod 12.</p>
+    <p>Některé údaje zůstávají jen v tvém zařízení (např. zásoby mimo skupinu, oblíbené nákupy), viz bod 13.</p>
 
     <h2>4. AI funkce</h2>
-    <p>AI funkce zajišťuje <strong>Anthropic API</strong> (Anthropic PBC, USA). Aplikace pošle dotaz na náš server (Firebase Cloud Functions, funkce <code>claudeProxy</code>, region europe-west1 v EU) a ten ho jen předá Anthropicu. Server obsah dotazů ani odpovědí neukládá ani nezapisuje do logů. Ukládá jen počet AI dotazů za den (viz bod 7).</p>
+    <p>AI funkce zajišťuje <strong>Anthropic API</strong> (Anthropic PBC, USA). Aplikace pošle dotaz na náš server (Firebase Cloud Functions, funkce <code>claudeProxy</code>, region europe-west1 v EU) a ten ho jen předá Anthropicu. Server obsah dotazů ani odpovědí neukládá ani nezapisuje do logů. Ukládá jen počet AI dotazů za den (viz bod 8).</p>
     <p>Co se AI posílá:</p>
     <ul>
       <li><strong>Chat se společníkem</strong>: tvá zpráva, posledních 10 zpráv rozhovoru, souhrn starších rozhovorů a přehled tvých dat z modulů (cíle, návyky, posledních 5 zápisků ve zkrácené podobě, nálada za 7 dní, checklisty, nákupy, kalendář na 90 dní dopředu, zásoby, jídelníček, recepty, jídlo, zdraví, pitný režim (vypité množství, počet a čas zápisů, plnění cíle za 7 dní), fokus, týdenní report a skupiny). Data skupin se do přehledu dostanou tak, jak je ve skupině vidíš ty, tedy včetně názvu skupiny, počtu členů a u sdílených událostí jména autora. Každých 20 zpráv AI ze starších zpráv vytvoří souhrn, který se uloží do tvého účtu.</li>
@@ -101,9 +101,19 @@
     </ul>
     <p>Ostatní tvoje osobní data (nesdílené poznámky a deník, nesdílené návyky, cíle a recepty, nálady, zdraví, chat s AI a další) členové skupiny nevidí.</p>
     <p><strong>Pozvánka:</strong> každá skupina má kód ve tvaru např. <code>SLOVO-K7M2QX</code> (starší skupiny mají kratší kód, např. <code>SLOVO-1234</code>). Kdo kód zná, nebo dostane odkaz s pozvánkou (<code>lifepocket.app/?join=KÓD</code>), může si po přihlášení zobrazit název a seznam členů skupiny a připojit se. U odkazu se aplikace před připojením vždy zeptá. Kód je jediná ochrana skupiny, sdílej ho proto jen s lidmi, kterým věříš. Správce skupiny může kdykoli vygenerovat nový kód: data skupiny i její členové se přesunou pod nový kód, starý kód a dřívější odkazy na pozvánku přestanou platit. Členové, kteří jsou v tu chvíli offline, mohou přijít o změny, které ještě neodeslali. Kterýkoli člen může měnit nastavení sdílení skupiny.</p>
-    <p><strong>Odchod ze skupiny:</strong> po odchodu se tvé jméno, avatar a role odstraní ze seznamu členů a aplikace ti přestane skupinu a její data zobrazovat. Stejně to platí, když tě ze skupiny odebere jiný člen: tvoje aplikace si skupinu při nejbližším načtení sama odebere. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Společný souhrn často nakupovaných položek ve skupině zůstává také, neobsahuje ale jména. Při odchodu nebo odebrání ze skupiny se tvé sdílené návyky, cíle, poznámky a recepty i tvé příspěvky ve společných výzvách ze skupiny odstraní. Reakce a komentáře, které jsi dal ostatním, zůstanou nejdéle 30 dní. Samotnou skupinu nelze v aplikaci smazat, výjimkou je smazání účtu (viz <a href="#smazani-uctu">bod 10</a>): skupina, kde jsi jediný člen, se smaže celá. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem. Při odchodu si můžeš nechat zkopírovat sdílený obsah skupiny (vše, nebo jen položky, které jsi přidal) do svých osobních nákupů, kalendáře, checklistů a jídelníčku; zásoby se zkopírují jen do tohoto zařízení. Kopie je jen tvoje a ostatní členové ji nevidí. Když skupinu opustí všichni, data skupiny zůstávají uložená bez přístupu. Kdo skupinu založil nebo ji opustil, ji může v Nastavení vrátit („Obnovit dřívější skupinu“); aplikace si proto ve tvém profilu pamatuje kódy nejvýše 20 skupin, které jsi opustil.</p>
+    <p><strong>Odchod ze skupiny:</strong> po odchodu se tvé jméno, avatar a role odstraní ze seznamu členů a aplikace ti přestane skupinu a její data zobrazovat. Stejně to platí, když tě ze skupiny odebere jiný člen: tvoje aplikace si skupinu při nejbližším načtení sama odebere. Obsah, který jsi do skupiny přidal (položky nákupu, události, checklisty apod.), ve skupině zůstává pro ostatní členy. Společný souhrn často nakupovaných položek ve skupině zůstává také, neobsahuje ale jména. Při odchodu nebo odebrání ze skupiny se tvé sdílené návyky, cíle, poznámky a recepty i tvé příspěvky ve společných výzvách ze skupiny odstraní. Reakce a komentáře, které jsi dal ostatním, zůstanou nejdéle 30 dní. Samotnou skupinu nelze v aplikaci smazat, výjimkou je smazání účtu (viz <a href="#smazani-uctu">bod 11</a>): skupina, kde jsi jediný člen, se smaže celá. O smazání skupiny nebo tvých údajů v ní nás můžeš požádat e-mailem. Při odchodu si můžeš nechat zkopírovat sdílený obsah skupiny (vše, nebo jen položky, které jsi přidal) do svých osobních nákupů, kalendáře, checklistů a jídelníčku; zásoby se zkopírují jen do tohoto zařízení. Kopie je jen tvoje a ostatní členové ji nevidí. Když skupinu opustí všichni, data skupiny zůstávají uložená bez přístupu. Kdo skupinu založil nebo ji opustil, ji může v Nastavení vrátit („Obnovit dřívější skupinu“); aplikace si proto ve tvém profilu pamatuje kódy nejvýše 20 skupin, které jsi opustil.</p>
 
-    <h2>6. Push notifikace</h2>
+    <h2>6. Výzva měsíce a týdne</h2>
+    <p>Když se přihlásíš do veřejné výzvy (Výzva měsíce nebo Výzva týdne), uložíme přezdívku, kterou si pro výzvu zvolíš, čas a den přihlášení a dny, které si odškrtneš. Tyto údaje jsou uložené ve společném prostoru výzvy pod technickým identifikátorem tvého účtu (náhodný řetězec, který o tobě nic dalšího neprozradí).</p>
+    <ul>
+      <li><strong>Co vidí ostatní:</strong> přezdívku a počet splněných dní uvidí v žebříčku všichni přihlášení uživatelé LifePocket; tvé jméno, e-mail ani avatar nikdy. Spolu s přezdívkou jsou pro přihlášené uživatele technicky čitelné i den přihlášení a odškrtnuté dny.</li>
+      <li><strong>Skupiny:</strong> lidé z tvých skupin tě v žebříčku skupiny poznají (u tvé přezdívky uvidí tvé jméno ze skupiny).</li>
+      <li><strong>Přezdívka:</strong> nepiš do ní své jméno ani e-mail. Přezdívky s nevhodnými slovy aplikace nepřijme. Nevhodné přezdívky může správce aplikace odebrat: odebraný účastník zmizí ze žebříčku a do této výzvy se už nepřihlásí (pamatujeme si jen identifikátor účtu a čas odebrání).</li>
+      <li><strong>Upozornění:</strong> ve tvém profilu si pamatujeme, ve kterých výzvách jsi, zda chceš večerní připomínku a poslední odškrtnutý den (<code>pc</code>), aby server mohl poslat upozornění (ohlášení nové výzvy a večerní připomínku). Vypneš je v Nastavení → Upozornění.</li>
+      <li><strong>Odhlášení:</strong> z výzvy se můžeš kdykoli odhlásit, tím se tvoje údaje o výzvě smažou. Údaje o výzvě se smažou i se smazáním účtu. Pro statistiku si necháváme jen anonymní souhrnná čísla (kolik lidí se přidalo), bez přezdívek.</li>
+    </ul>
+
+    <h2>7. Push notifikace</h2>
     <p>Notifikace dostáváš jen tehdy, když je v prohlížeči nebo telefonu povolíš. Doručuje je <strong>Firebase Cloud Messaging</strong> (Google) přes push službu tvého prohlížeče nebo systému (např. Google, Apple, Mozilla).</p>
     <ul>
       <li>U každého zařízení ukládáme token pro doručení, typ platformy, datum poslední aktualizace a náhodné ID zařízení.</li>
@@ -114,7 +124,7 @@
     </ul>
     <p>Notifikace můžeš kdykoli vypnout v nastavení aplikace nebo prohlížeče.</p>
 
-    <h2>7. Technické záznamy</h2>
+    <h2>8. Technické záznamy</h2>
     <ul>
       <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Den se počítá podle českého času, limit se tedy nuluje o půlnoci. Prvním dotazem dalšího dne se záznam přepíše.</li>
       <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb.</li>
@@ -123,11 +133,11 @@
       <li><strong>Hosting</strong>: web běží na <strong>GitHub Pages</strong> (GitHub, Inc., USA). Při načtení stránky vidí GitHub v serverových záznamech tvou IP adresu a údaje o prohlížeči.</li>
     </ul>
 
-    <h2>8. Kdo se na zpracování podílí</h2>
+    <h2>9. Kdo se na zpracování podílí</h2>
     <ul>
       <li><strong>Google</strong> (Firebase Authentication, Firestore, Cloud Functions, Cloud Messaging): přihlášení, uložení dat, serverové funkce, notifikace. Knihovny Firebase a písma (Google Fonts) se načítají ze serverů Googlu, které přitom vidí tvou IP adresu.</li>
       <li><strong>Anthropic</strong>: zpracování AI dotazů (bod 4).</li>
-      <li><strong>GitHub</strong>: hosting webu (bod 7).</li>
+      <li><strong>GitHub</strong>: hosting webu (bod 8).</li>
       <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy a doručí nám je.</li>
       <li><strong>Hlasové zadávání</strong>: diktování používá rozpoznávání řeči vestavěné v prohlížeči. Některé prohlížeče (např. Chrome) posílají zvuk ke zpracování na servery svého výrobce.</li>
       <li><strong>Sdílení odkazu</strong>: tlačítka „Sdílet LifePocket“ a „Poslat pozvánku“ otevřou sdílení přímo v tvém zařízení (nebo text zkopírují do schránky). Komu a čím odkaz pošleš, vybíráš ty, nám ani nikomu dalšímu se nic neposílá.</li>
@@ -135,7 +145,7 @@
     </ul>
     <p>Anthropic, Google, GitHub a Formspree jsou firmy z USA, takže se data mohou předávat mimo EU. Takové předání je zajištěno standardními smluvními doložkami schválenými Evropskou komisí nebo rámcem EU-US Data Privacy Framework podle toho, co daný poskytovatel používá.</p>
 
-    <h2>9. Proč a na jakém právním základě</h2>
+    <h2>10. Proč a na jakém právním základě</h2>
     <ul>
       <li><strong>Plnění smlouvy</strong> (čl. 6 odst. 1 písm. b GDPR): účet, uložení a synchronizace tvých dat, AI funkce, skupiny. Bez toho aplikace nemůže fungovat.</li>
       <li><strong>Souhlas</strong> (čl. 6 odst. 1 písm. a GDPR): push notifikace. Souhlas dáváš povolením notifikací a můžeš ho kdykoli odvolat jejich vypnutím.</li>
@@ -143,28 +153,29 @@
     </ul>
     <p>Zápisky, nálady a záznamy o zdraví mohou obsahovat citlivé údaje. Zadáváš je dobrovolně a zpracováváme je jen k tomu, abychom ti je zobrazili a aby s nimi mohly pracovat AI funkce, které používáš.</p>
 
-    <h2>10. Jak dlouho data uchováváme</h2>
+    <h2>11. Jak dlouho data uchováváme</h2>
     <ul>
       <li>Data v účtu uchováváme, dokud účet existuje.</li>
-      <li id="smazani-uctu"><strong>Smazání účtu</strong>: účet smažeš přímo v aplikaci (Nastavení → Účet → Smazat účet). Všechna data tvého účtu (včetně záznamů chyb, nahlášení AI a záznamu o počtu AI dotazů) se smažou okamžitě a nevratně, smaže se i samotný účet a odejdeš ze všech skupin. Skupina, kde jsi byl jediný člen, se smaže celá. Obsah, který jsi přidal do sdílené skupiny (položky nákupu, události, checklisty apod.), zůstává ostatním členům, a to včetně tvého jména u těchto položek (<code>addedByName</code>). Se smazáním účtu odstraníme i tvé sdílené návyky, cíle, poznámky a recepty, příspěvky ve společných výzvách, reakce, komentáře a historii změn ve všech skupinách (i reakce ostatních na tvé položky). Tvůj osobní souhrn často nakupovaných položek se smaže s účtem; společný souhrn sdíleného nákupního seznamu ve skupině zůstává, bez tvého jména. Společné výzvy, které jsi založil, ve skupině zůstávají (název a nastavení výzvy, bez tvých příspěvků) do automatického smazání 30 dní po skončení. Pokud jsi byl jediný správce skupiny, převezme správu člen, který je ve skupině nejdéle. Před smazáním si můžeš stáhnout zálohu dat (bod 11). Alternativně o smazání účtu můžeš požádat e-mailem (bod 11) a data smažeme do 30 dní.</li>
+      <li id="smazani-uctu"><strong>Smazání účtu</strong>: účet smažeš přímo v aplikaci (Nastavení → Účet → Smazat účet). Všechna data tvého účtu (včetně záznamů chyb, nahlášení AI a záznamu o počtu AI dotazů) se smažou okamžitě a nevratně, smaže se i samotný účet a odejdeš ze všech skupin. Skupina, kde jsi byl jediný člen, se smaže celá. Obsah, který jsi přidal do sdílené skupiny (položky nákupu, události, checklisty apod.), zůstává ostatním členům, a to včetně tvého jména u těchto položek (<code>addedByName</code>). Se smazáním účtu odstraníme i tvou účast ve výzvách měsíce a týdne (přezdívku a odškrtnuté dny), tvé sdílené návyky, cíle, poznámky a recepty, příspěvky ve společných výzvách, reakce, komentáře a historii změn ve všech skupinách (i reakce ostatních na tvé položky). Tvůj osobní souhrn často nakupovaných položek se smaže s účtem; společný souhrn sdíleného nákupního seznamu ve skupině zůstává, bez tvého jména. Společné výzvy, které jsi založil, ve skupině zůstávají (název a nastavení výzvy, bez tvých příspěvků) do automatického smazání 30 dní po skončení. Pokud jsi byl jediný správce skupiny, převezme správu člen, který je ve skupině nejdéle. Před smazáním si můžeš stáhnout zálohu dat (bod 12). Alternativně o smazání účtu můžeš požádat e-mailem (bod 12) a data smažeme do 30 dní.</li>
       <li>Záznamy chyb starší než 90 dní mažeme ručně při pravidelném čištění (mazání není automatické).</li>
       <li>Záznam o počtu AI dotazů obsahuje jen poslední datum a počet, smaže se spolu s účtem.</li>
       <li>Obsah, který jsi přidal do skupiny, zůstává ve skupině i po tvém odchodu (bod 5).</li>
       <li>Historie změn ve skupině („Co je nového“) se maže automaticky po 7 dnech (bod 5).</li>
+      <li>Údaje o výzvách měsíce a týdne uchováváme po dobu existence účtu nebo do odhlášení z výzvy (bod 6).</li>
     </ul>
 
-    <h2>11. Tvá práva</h2>
+    <h2>12. Tvá práva</h2>
     <ul>
       <li><strong>Přístup a přenositelnost</strong>: kopii všech svých dat máš kdykoli k dispozici, stáhneš si je v aplikaci (Nastavení → Účet → Stáhnout moje data) jako soubor ve strojově čitelném formátu JSON. U skupin export obsahuje jen jejich kód a název, ne obsah ostatních členů. Na vyžádání ti kopii dat pošleme i e-mailem.</li>
       <li><strong>Oprava</strong>: většinu údajů upravíš přímo v aplikaci, ostatní opravíme na požádání.</li>
-      <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci a celý účet smažeš sám v Nastavení → Účet (data se smažou okamžitě, viz <a href="#smazani-uctu">bod 10</a>). Na žádost e-mailem účet smažeme do 30 dní.</li>
+      <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci a celý účet smažeš sám v Nastavení → Účet (data se smažou okamžitě, viz <a href="#smazani-uctu">bod 11</a>). Na žádost e-mailem účet smažeme do 30 dní.</li>
       <li><strong>Omezení zpracování a námitka</strong>: proti zpracování na základě oprávněného zájmu můžeš vznést námitku.</li>
       <li><strong>Odvolání souhlasu</strong>: vypnutím notifikací.</li>
       <li><strong>Stížnost</strong>: můžeš se obrátit na Úřad pro ochranu osobních údajů (<a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>).</li>
     </ul>
     <p>Pro uplatnění práv piš na <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a>. Odpovíme do 30 dní.</p>
 
-    <h2>12. Úložiště v zařízení a cookies</h2>
+    <h2>13. Úložiště v zařízení a cookies</h2>
     <p>LifePocket nepoužívá reklamní ani sledovací cookies. V prohlížeči ukládá jen to, co potřebuje ke svému chodu:</p>
     <ul>
       <li><strong>IndexedDB</strong>: přihlášení do Firebase a údaje pro push notifikace.</li>
@@ -181,7 +192,7 @@
     </ul>
     <p>Když se na stejném zařízení přihlásí jiný účet, osobní lokální údaje předchozího účtu (zásoby, oblíbené nákupy, nálada, fokus, dřívější počítadlo vody, značky Pitného režimu <code>lp_wt_intro</code> a <code>lp_wt_seen</code>, týdenní report, citát dne, stav úvodních tipů na hlavní obrazovce a skryté karty „Pozvat rodinu“) se smažou. Při odhlášení a novém přihlášení téhož účtu zůstávají. Po smazání účtu v aplikaci se z tohoto zařízení smažou všechny údaje <code>lp_…</code> kromě značky <code>lp_twa_seen</code>.</p>
 
-    <h2>13. Bezpečnost</h2>
+    <h2>14. Bezpečnost</h2>
     <ul>
       <li>K datům se dostaneš jen po přihlášení přes Firebase Authentication.</li>
       <li>Data pod tvým účtem může číst a měnit jen tvůj účet.</li>
@@ -191,13 +202,13 @@
       <li>Komunikace probíhá šifrovaně (HTTPS).</li>
     </ul>
 
-    <h2>14. Věk</h2>
+    <h2>15. Věk</h2>
     <p>Aplikace je určena lidem od 15 let.</p>
 
-    <h2>15. Změny těchto zásad</h2>
+    <h2>16. Změny těchto zásad</h2>
     <p>O podstatných změnách budeme informovat prostřednictvím aplikace (sekce Co je nového). Datum platnosti je uvedeno v záhlaví tohoto dokumentu.</p>
 
-    <h2>16. Kontakt</h2>
+    <h2>17. Kontakt</h2>
     <p>Máš otázku ohledně zpracování tvých dat? Napiš nám: <a href="mailto:adam.stencl@gmail.com">adam.stencl@gmail.com</a></p>
   </div>
 </body>

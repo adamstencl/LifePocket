@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.62';
+const APP_VERSION = '4.63';
 const CHANGELOG = [
+  { v:'4.63', items:[
+    '🏆 Nová Výzva měsíce a Výzva týdne pro všechny: přihlas se s přezdívkou, každý den odškrtni „Splněno dnes“ a sleduj žebříček',
+    '👥 Žebříček přepneš i na lidi ze svých skupin; za splněnou výzvu dostaneš body a nové odznaky 🎖️ 🏅 👑',
+    '🔔 Ohlášení nové výzvy a večerní připomínka ve 20:00 (vypneš v Nastavení → Upozornění)'
+  ], en:[
+    '🏆 New Challenge of the month and Challenge of the week for everyone: join with a nickname, check off “Done today” every day and follow the leaderboard',
+    '👥 Switch the leaderboard to people from your groups; completing a challenge earns points and new badges 🎖️ 🏅 👑',
+    '🔔 New challenge announcement and an evening reminder at 8 pm (turn off in Settings → Notifications)'
+  ]},
   { v:'4.62', items:[
     '💧 Nový modul Pitný režim: nastav si denní cíl a své šálky, ťukáním plníš láhev a vidíš posledních 7 dní',
     '🔔 Když dlouho nepiješ, appka ti připomene, ať se napiješ (aktivní hodiny a interval si nastavíš)',
@@ -6353,6 +6362,7 @@ function gameSync(){
   gameAfter(before,gameTotal());
   gameBadges();
   chCheckDone(); // splněná společná výzva (XP a odznak 🧩), i když se body načetly až po výzvě
+  pcCheckDone(); // splněná výzva měsíce / týdne (4.63)
 }
 function gameQueue(){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,800); }
 // Po změně XP: překreslit kruh a lištu, případně oslavit novou úroveň (jen jednou, lvlSeen se hned zapíše)
@@ -10908,6 +10918,7 @@ function pcLoad(force) {
       _pcAt = Date.now();
       // Pravidla nebo indexy ještě nejsou nasazené: karta se tiše nezobrazí (ani z cache, ta by mohla být zastaralá)
       if(e?.code === 'permission-denied' || e?.code === 'failed-precondition') pcList = [];
+      else if(e?.code === 'unavailable') _pcAt = 0;   // offline: zůstane seznam z cache, po připojení znovu
       else console.warn('[LP] vyzva mesice', e?.code || e?.name);
     } finally { _pcLoadP = null; }
     if(CU?.uid === uid) renderPcUI();
@@ -10945,6 +10956,7 @@ function pcReset() {
   for(const k of Object.keys(_pcPending)) delete _pcPending[k];
   pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null;
 }
+window.addEventListener('online', () => { if(CU && prof && !_pcAt) pcLoad(); });
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState !== 'visible' || !CU || !prof) return;
   if(Date.now() - _pcAt > PC_LIST_TTL) pcLoad();
@@ -11276,6 +11288,8 @@ window.pcOpen = (cid, mode) => {
   const me = pcMe[c.id];
   const st = pcState(c);
   _pcSheet = {cid: c.id, mode: mode === 'join' && !me && (st === 'run' || st === 'soon') ? 'join' : 'detail', tab: 'all', menu: false, nick: false};
+  const body = document.getElementById('pc-body');
+  if(body) body.innerHTML = '';   // bez zbytků z minula (rozepsaná přezdívka jiné výzvy)
   pcRenderSheet();
   const ov = document.getElementById('m-pc');
   if(ov && !ov.classList.contains('open')) { om('m-pc'); focusOverlay(ov); }
@@ -11301,6 +11315,15 @@ function pcRenderSheet() {
   const c = pcFind(s.cid);
   if(!c) { tEl.textContent = '🏆'; bEl.innerHTML = `<div class="gf-empty">${tH('pc.gone')}</div>`; return; }
   const me = pcMe[c.id], st = pcState(c), today = toDS(), cid = esc(c.id);
+  // Překreslení (snapshot, žebříček) nesmí vzít fokus ani kurzor v rozepsané přezdívce
+  const fa = document.activeElement, focusId = fa && bEl.contains(fa) ? fa.id : '';
+  const sel = focusId === 'pc-nick' ? [fa.selectionStart, fa.selectionEnd] : null;
+  const restore = () => {
+    const el = focusId && document.getElementById(focusId);
+    if(!el) return;
+    el.focus();
+    if(sel) try { el.setSelectionRange(sel[0], sel[1]); } catch(e) {}
+  };
   tEl.textContent = '🏆 ' + pcKindL(c);
   const menuBtn = document.getElementById('pc-menu-btn');
   if(menuBtn) { menuBtn.hidden = !me || s.mode !== 'detail'; menuBtn.setAttribute('aria-expanded', String(!!s.menu)); }
@@ -11323,6 +11346,7 @@ function pcRenderSheet() {
       <p class="ch-note">${tH('pc.privNote')}</p>
       <button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcJoin(this.dataset.a0)">${tH('pc.joinBtn')}</button>`;
     bEl.innerHTML = h;
+    restore();
     return;
   }
   // Menu ⋯: přezdívka, připomínka, odhlášení
@@ -11351,10 +11375,8 @@ function pcRenderSheet() {
   } else if(st === 'run' || st === 'soon') {
     h += `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.join')}</button>`;
   }
-  // Fokus a rozepsaná přezdívka v menu přežijí překreslení
-  const focusId = document.activeElement?.id;
   bEl.innerHTML = h + `<div class="pc-sep"></div>` + pcBoardHTML(c);
-  if(focusId) document.getElementById(focusId)?.focus();
+  restore();
 }
 window.pcMenu = (open, nick) => {
   if(!_pcSheet) return;
