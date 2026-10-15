@@ -440,12 +440,11 @@ service cloud.firestore {
       function pcDayOk(x) { return pcNowish(x) && x >= pc().start && x <= pc().end; }
       function pcPartBase() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['nick', 'joinedAt', 'j', 'd', 'n', 'upAt'])
-          && d.keys().hasAll(['nick', 'joinedAt', 'j', 'd', 'n', 'upAt'])
+        return d.keys().hasOnly(['nick', 'joinedAt', 'j', 'd', 'n'])
+          && d.keys().hasAll(['nick', 'joinedAt', 'j', 'd', 'n'])
           && pcNickOk(d.nick)
           && d.d is list && d.d.size() <= 31 && d.d.toSet().size() == d.d.size()
-          && d.n is int && d.n == d.d.size()
-          && d.upAt == request.time;
+          && d.n is int && d.n == d.d.size();
       }
 
       match /participants/{uid} {

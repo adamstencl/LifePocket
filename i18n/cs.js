@@ -2063,7 +2063,7 @@ export default {
   'pc.remindOn': '🔔 Večerní připomínka zapnutá',
   'pc.remindOff': '🔕 Večerní připomínka vypnutá',
   'pc.grpNote': 'Lidé z tvých skupin tě v žebříčku skupiny poznají.',
-  'pc.privNote': 'V žebříčku uvidí všichni jen tvou přezdívku a počet dní. Z výzvy se můžeš kdykoli odhlásit.',
+  'pc.privNote': 'V žebříčku uvidí všichni jen tvou přezdívku a počet dní. Odhlásit se jde do 7 dní po konci výzvy, později smazáním účtu nebo požádáním správce.',
   'pc.joinedToast': '💪 Jsi ve výzvě!',
   'pc.joinDenied': 'Přihlásit se nepovedlo. Zkus jinou přezdívku, nebo to zkus později.',
   'pc.menu': 'Možnosti výzvy',

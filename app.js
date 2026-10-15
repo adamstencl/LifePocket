@@ -10744,7 +10744,7 @@ function celebrateChallenge(gid, c, st) {
 
 // ── VÝZVA MĚSÍCE / TÝDNE (4.63, docs/NAVRH-VYZVA-MESICE.md) ──
 // Veřejná výzva pro všechny: publicChallenges/{cid} (zakládá admin z config/admins), účast v participants/{uid}
-// {nick, joinedAt, j, d:[dny], n, upAt}. Žebříček přes getDocs (ne onSnapshot) a vlastní pozice přes count().
+// {nick, joinedAt, j, d:[dny], n}. Žebříček přes getDocs (ne onSnapshot) a vlastní pozice přes count().
 // Dny v lokálním čase (toDS), pravidla pustí jen ±1 den v okně „dnes/včera“. Bez nasazených pravidel a indexů
 // (permission-denied, failed-precondition) se karta tiše nezobrazí. prof.pc.<cid> = {r: večerní připomínka,
 // last: poslední odškrtnutý den} slouží jen cronu a exportu. Lokálně (LOCAL_PERSONAL_KEYS): lp_pc (poslední
@@ -11106,7 +11106,7 @@ window.pcDay = async (cid, which) => {
   try {
     if(navigator.onLine === false) {
       // Offline: zápis se odešle později (pravidla ho porovnají se stavem na serveru)
-      updateDoc(ref, {d: next, n: next.length, nick: me.nick, upAt: serverTimestamp()}).catch(e => pcDayErr(cid, prev, e));
+      updateDoc(ref, {d: next, n: next.length, nick: me.nick}).catch(e => pcDayErr(cid, prev, e));
     } else {
       // Transakce: druhé zařízení mohlo mezitím odškrtnout jiný den (pravidla chtějí přesně ±1 den)
       await runTransaction(db, async tx => {
@@ -11115,7 +11115,7 @@ window.pcDay = async (cid, which) => {
         const cur = s.data() || {}, raw = Array.isArray(cur.d) ? cur.d.filter(x => typeof x === 'string') : [];
         if(raw.includes(ds) !== had) return; // už hotovo jinde
         const nd = had ? raw.filter(x => x !== ds) : [...raw, ds];
-        tx.update(ref, {d: nd, n: nd.length, nick: cur.nick, upAt: serverTimestamp()});
+        tx.update(ref, {d: nd, n: nd.length, nick: cur.nick});
       });
     }
   } catch(e) { ok = false; pcDayErr(cid, prev, e); }
@@ -11420,7 +11420,7 @@ window.pcJoin = cid => {
   if(hide && hide[cid]) { delete hide[cid]; lsSave('lp_pc_hide', hide); }
   pcMe[cid] = pcPartNorm(c, {nick, j, d: [], n: 0});
   _pcPending[cid] = true;
-  setDoc(pcPartRef(cid, uid), {nick, joinedAt: serverTimestamp(), j, d: [], n: 0, upAt: serverTimestamp()})
+  setDoc(pcPartRef(cid, uid), {nick, joinedAt: serverTimestamp(), j, d: [], n: 0})
     .then(() => { if(CU?.uid === uid && _pcBoard[cid]) _pcBoard[cid].at = 0; })
     .catch(e => {
       if(CU?.uid !== uid) return;
@@ -11447,7 +11447,7 @@ window.pcNickSave = cid => {
   if(nick !== me.nick) {
     const uid = CU.uid, old = me.nick;
     pcMe[cid] = {...me, nick};
-    updateDoc(pcPartRef(cid, uid), {nick, upAt: serverTimestamp()}).catch(e => {
+    updateDoc(pcPartRef(cid, uid), {nick}).catch(e => {
       if(CU?.uid !== uid) return;
       console.warn('[LP] vyzva prezdivka', e?.code || e?.name);
       if(pcMe[cid]) pcMe[cid] = {...pcMe[cid], nick: old};

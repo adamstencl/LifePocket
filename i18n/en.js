@@ -2047,7 +2047,7 @@ export default {
   'pc.remindOn': '🔔 Evening reminder on',
   'pc.remindOff': '🔕 Evening reminder off',
   'pc.grpNote': 'People in your groups will recognise you on the group leaderboard.',
-  'pc.privNote': 'Everyone sees only your nickname and number of days on the leaderboard. You can leave the challenge any time.',
+  'pc.privNote': 'Everyone sees only your nickname and number of days on the leaderboard. You can leave until 7 days after the challenge ends, later by deleting your account or asking the administrator.',
   'pc.joinedToast': '💪 You’re in the challenge!',
   'pc.joinDenied': 'Couldn’t sign you up. Try another nickname, or try again later.',
   'pc.menu': 'Challenge options',
