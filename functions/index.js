@@ -325,13 +325,15 @@ async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
     vibrate: [200, 100, 200],
   };
   if (options.data)    notif.data = options.data;
-  if (options.actions?.length) { notif.actions = options.actions; notif.requireInteraction = true; }
+  // sticky:false = notifikace s tlačítky se sama schová (připomínka pití nemá „viset“); výchozí zůstává trvalá
+  if (options.actions?.length) { notif.actions = options.actions; notif.requireInteraction = options.sticky !== false; }
   // Top-level data (jen řetězce): data kliknutí (sw.js je čte z FCM_MSG.data), titulek a text pro appku
   // v popředí (onMessage) a pro SW, když payload nemá notification
   const data = {tag: String(tag), title: String(title), body: String(body)};
   for (const [k, v] of Object.entries(options.data || {})) data[k] = String(v);
   if (options.actions?.length) data.actions = JSON.stringify(options.actions);
   if (quiet) data.quiet = '1';
+  if (options.sticky === false) data.sticky = '0'; // pro SW, když payload nemá notification
   await getMessaging().send({
     token,
     data,
@@ -515,6 +517,78 @@ function inQuiet(h, m, q) {
   const f = toMin(q.from), t = toMin(q.to), n = h * 60 + m;
   if (f === t) return false;
   return f < t ? (n >= f && n < t) : (n >= f || n < t);
+}
+
+// ── Pitný režim (4.62): připomínka pití ──
+// Vstup je z profilu (zapisuje klient) → vše validovat, neplatné = výchozí. Počet připomínek (k = 1–3 od posledního
+// pití) se počítá z času posledního zápisu (waterDay.last); stav serveru je jen dedup klíč profile.waterSent {d, a, k, t, r}
+// (stejný mechanismus jako kurzory groupNotifSent: zápis Admin SDK do vlastního profilu, pravidla se nemění).
+const WATER_DEF = {goal: 2000, every: 120, from: '08:00', to: '21:00', cup: 200};
+const WATER_MAX_K = 3;    // nejvýš 3 připomínky po posledním pití, pak ticho do dalšího zápisu
+const WATER_GRACE = 15;   // min: zpožděný nebo vynechaný běh cronu připomínku ještě dožene, pak už ne
+const WATER_END_GAP = 15; // min před koncem aktivních hodin se už nepřipomíná
+const hhmmMin = (s) => { const [a, b] = s.split(':').map(Number); return a * 60 + b; };
+// Celé číslo v mezích; jiný typ než konečné číslo = výchozí
+const numIn = (v, lo, hi, def) => (typeof v === 'number' && Number.isFinite(v)) ? Math.min(hi, Math.max(lo, Math.round(v))) : def;
+// Pořadí dne v roce z YYYY-MM-DD (rotace textů)
+const dayOfYearDS = (ds) => { const [y, mo, d] = ds.split('-').map(Number); return Math.round((Date.UTC(y, mo - 1, d) - Date.UTC(y, 0, 1)) / 864e5); };
+// Množství v jazyce příjemce: cs dl / l, en ml / l
+function fmtMlS(L, ml) {
+  const en = L === 'en';
+  if (ml >= 1000) { const l = Math.round(ml / 100) / 10; return `${en ? l : String(l).replace('.', ',')} l`; }
+  if (en) return `${Math.round(ml / 10) * 10} ml`;
+  return `${String(Math.round(ml / 10) / 10).replace('.', ',')} dl`;
+}
+
+// Rozhodnutí „poslat připomínku pití?“ (bez I/O). zn = zoneNow uživatele, quiet = noční klid skupin (null = vypnutý).
+// Vrací null, nebo {sent: {d, a, k, t, r} pro waterSent, key: klíč textu, vars}.
+function waterDecide(W, WD, WS, zn, quiet) {
+  if (!W || typeof W !== 'object' || W.remind !== true) return null;
+  const from = hhmmMin(typeof W.from === 'string' && HHMM_RE.test(W.from) ? W.from : WATER_DEF.from);
+  const to = hhmmMin(typeof W.to === 'string' && HHMM_RE.test(W.to) ? W.to : WATER_DEF.to);
+  if (from >= to) return null; // okno přes půlnoc ani prázdné okno se nepodporuje = vypnuto
+  const {h, m, today} = zn;
+  const now = h * 60 + m;
+  if (now < from || now >= to - WATER_END_GAP) return null;
+  if (inQuiet(h, m, quiet)) return null;
+  const goal = numIn(W.goal, 500, 6000, WATER_DEF.goal);
+  const every = numIn(W.every, 30, 360, WATER_DEF.every);
+  const wd = (WD && typeof WD === 'object' && WD.d === today) ? WD : null; // jiný den = dnes zatím nic
+  const ml = wd ? numIn(wd.ml, 0, 20000, 0) : 0;
+  if (ml >= goal) return null;
+  // Poslední pití dnes (minuta dne v zóně uživatele); chybějící, neplatné nebo z jiného dne = začátek aktivních hodin
+  let lastMin = null;
+  if (wd && typeof wd.last === 'number' && Number.isFinite(wd.last) && wd.last > 0 && wd.last < 8.64e15) {
+    const lz = zoneNow(zn.tz, new Date(wd.last));
+    if (lz.today === today) lastMin = lz.h * 60 + lz.m;
+  }
+  const anchor = Math.max(from, lastMin === null ? from : lastMin);
+  const n = now - anchor;
+  const k = Math.floor(n / every);
+  if (n < 0 || k < 1 || k > WATER_MAX_K || n - k * every >= WATER_GRACE) return null;
+  // Dedup: stejný den a kotva → každé k nejvýš jednou (nejvýš 1 push za interval)
+  const wsToday = !!WS && typeof WS === 'object' && WS.d === today;
+  if (wsToday && WS.a === anchor && typeof WS.k === 'number' && WS.k >= k) return null;
+  // Tempo: cíl rozložený rovnoměrně do aktivních hodin
+  const plan = goal * Math.min(1, Math.max(0, (now - from) / (to - from)));
+  if (W.pace === true && !(ml < plan)) return null;
+  // Šálky: nejmenší nabídnout, největší = hranice „skoro hotovo“
+  const cups = (Array.isArray(W.cups) ? W.cups.slice(0, 5) : []).map(c => (c && typeof c === 'object') ? numIn(c.ml, 50, 1500, 0) : 0).filter(v => v > 0);
+  const cup = cups.length ? Math.min(...cups) : WATER_DEF.cup;
+  const maxCup = cups.length ? Math.max(...cups) : WATER_DEF.cup;
+  const left = goal - ml;
+  let key;
+  if (left <= maxCup) key = 'near';
+  else if (anchor + (k + 1) * every >= to - WATER_END_GAP) key = 'last'; // další připomínka by dnes už nepřišla
+  else if (ml < plan - maxCup && !(wsToday && WS.t === 'behind')) key = 'behind'; // zaostává aspoň o šálek; ne dvakrát po sobě
+  // Střídavé texty: v rámci dne postupně r0–r4 (WS.r = poslední použitý), první text dne podle data
+  const rPrev = wsToday && Number.isInteger(WS.r) && WS.r >= 0 && WS.r < 5 ? WS.r : null;
+  let r = rPrev;
+  if (!key) { r = rPrev === null ? dayOfYearDS(today) % 5 : (rPrev + 1) % 5; key = 'r' + r; }
+  const sent = {d: today, a: anchor, k, t: key};
+  if (r !== null) sent.r = r;
+  return {sent, key,
+    vars: {left, ml, goal, cup, plan: Math.round(plan / 50) * 50, pct: Math.round(ml / goal * 100)}};
 }
 
 // Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
@@ -1072,6 +1146,22 @@ exports.sendScheduledNotifications = onSchedule(
               );
             } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
+        }
+
+        // ── Pitný režim (4.62): jen se zapnutým modulem; profil už je načtený → žádné čtení navíc ──
+        if (prof.water && (!Array.isArray(prof.modules) || prof.modules.includes('water'))) {
+          try {
+            const wr = waterDecide(prof.water, prof.waterDay, prof.waterSent, zn, groupNotifPrefs(prof).quiet);
+            if (wr) {
+              const v = wr.vars;
+              const tv = {name: nickname, pct: v.pct, left: fmtMlS(L, v.left), ml: fmtMlS(L, v.ml), goal: fmtMlS(L, v.goal),
+                cup: fmtMlS(L, v.cup), plan: fmtMlS(L, v.plan)};
+              // Dedup klíč dřív než push (jako kurzory skupin): když zápis selže, nic se neposílá → nikdy dvakrát
+              await db.doc(`users/${uid}/profile/main`).update({waterSent: wr.sent});
+              await push(tS(L, `wt.n.${wr.key}.t`, tv), tS(L, `wt.n.${wr.key}.b`, tv), 'water',
+                {data: {open: 'water', date: today}, sticky: false});
+            }
+          } catch(e) { console.error(`[LP] water push uid=${uid}:`, e.message); }
         }
 
         // ── Narozeniny + Události — osobní i rodinné ──
