@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.63';
+const APP_VERSION = '4.64';
 const CHANGELOG = [
+  { v:'4.64', items:[
+    '◀️ Tlačítko Zpět na telefonu už appku nezavírá – zavře okno nebo se vrátí na Domů'
+  ], en:[
+    '◀️ The phone Back button no longer closes the app – it closes the open window or returns Home'
+  ]},
   { v:'4.63', items:[
     '🏆 Nová Výzva měsíce a Výzva týdne pro všechny: přihlas se s přezdívkou, každý den odškrtni „Splněno dnes“ a sleduj žebříček',
     '👥 Žebříček přepneš i na lidi ze svých skupin; za splněnou výzvu dostaneš body a nové odznaky 🎖️ 🏅 👑',
@@ -3503,7 +3508,10 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Android back button (popstate) ──────────────────────────────────────
+// Pojistka: nad kořenovým záznamem vždy leží záznam 'guard', jinak by Zpět na telefonu (PWA/TWA) appku zavřelo
+function backGuard(){ if(!history.state || history.state.type==='root') history.pushState({type:'guard'}, ''); }
 window.addEventListener('popstate', () => {
+  setTimeout(backGuard, 0); // po zpracování Zpět znovu založit pojistku, pokud jsme spadli na kořen
   // 0. Výběr času leží nad ostatními modaly, zavírá se první
   if (timePickerOpen()) { closeTimePicker(); return; }
   // 1. Zavři otevřený modal
@@ -3523,8 +3531,7 @@ window.addEventListener('popstate', () => {
   if(activePage && activePage.id !== 'p-dashboard') {
     sp('dashboard'); return;
   }
-  // 4. Nic neotevřeného — nenech browser odejít, pushni nový stav
-  history.pushState(null, '');
+  // 4. Nic neotevřeného — appka zůstane otevřená (pojistku obnoví backGuard)
 });
 
 window.resetAndCloseEventModal = () => {
@@ -14151,7 +14158,7 @@ window.deleteChecklist = async function(id) {
 let _weeklyReportIv=null;
 async function initApp(){
   // Init history state pro Android back button
-  history.replaceState({type:'root'}, '');
+  history.replaceState({type:'root'}, ''); backGuard();
   wtInitLegacy();subWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subShopFreq();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   installVisitCheck(); installGate();
   setTimeout(checkChangelog,1500);
