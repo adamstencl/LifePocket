@@ -45,7 +45,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
     vibrate: [200, 100, 200],
     data: clickData,
   };
-  if (Array.isArray(actions) && actions.length) { opts.actions = actions; opts.requireInteraction = true; }
+  if (Array.isArray(actions) && actions.length) { opts.actions = actions; opts.requireInteraction = d.sticky !== '0'; }
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
@@ -147,8 +147,9 @@ function onNotifClick(e) {
     const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'].includes(data.module) ? data.module : '';
     e.waitUntil(openInApp({type: 'OPEN_GRPFEED', gid: data.gid, module: mod},
       '/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : '')));
-  } else if (['habit', 'habits', 'cal'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
-    // Připomínka návyku → detail návyku, ranní/večerní přehled → Návyky, událost / narozeniny → Kalendář
+  } else if (['habit', 'habits', 'cal', 'water'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
+    // Připomínka návyku → detail návyku, ranní/večerní přehled → Návyky, událost / narozeniny → Kalendář,
+    // připomínka pití → Pitný režim
     const open = data.open || 'habit';
     const id = open === 'habit' && typeof data.habitId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.habitId) ? data.habitId : '';
     e.waitUntil(openInApp({type: 'OPEN_TARGET', open, id},
