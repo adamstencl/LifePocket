@@ -2194,3 +2194,4 @@ html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!importa
 .pca-en{margin:8px 0 12px}
 .pca-en summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--text2)}
 @media (prefers-reduced-motion:reduce){.pc-dw .ch-fill{transition:none}}
+.pc-sheet .gf-head .mtitle{flex:1;min-width:0}

@@ -11534,8 +11534,8 @@ async function pcAdmLoad() {
     if(!_pcAdm) return;
     _pcAdm.list = s.docs.map(d => ({id: d.id, data: d.data(), c: pcNorm(d.id, d.data())})).filter(x => x.c);
     const today = toDS();
-    // Počty jen u běžících a budoucích (count = 1 čtení na 1000 záznamů)
-    await Promise.all(_pcAdm.list.filter(x => x.c.end >= addDays(today, -PC_RESULT_DAYS)).map(x =>
+    // Počty u běžících, budoucích a konceptů (count = 1 čtení na 1000 záznamů); smazat jde jen koncept s 0 účastníky
+    await Promise.all(_pcAdm.list.filter(x => !x.c.active || x.c.end >= addDays(today, -PC_RESULT_DAYS)).map(x =>
       getCountFromServer(collection(db,'publicChallenges',x.id,'participants')).then(r => { if(_pcAdm) _pcAdm.counts[x.id] = r.data().count; }).catch(() => {})));
   } catch(e) { pcAdmErr(e); }
   if(_pcAdm) { _pcAdm.busy = false; pcAdmRender(); }
@@ -11724,7 +11724,7 @@ function pcAdmDetailHTML() {
       <div class="ch-meta">${esc(pcKindL(c) + ' · ' + pcRange(c) + ' · ' + status)} · ${tH('pc.goalMeta', {n: c.goal})}</div></div></div>
     <div class="pcadm-acts"><button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmEdit(this.dataset.a0)">✏️ ${tH('pc.adm.editBtn')}</button>
       <button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmToggle(this.dataset.a0)">${c.active ? '🙈 ' + tH('pc.adm.hide') : '🚀 ' + tH('pc.adm.publish')}</button>
-      ${!c.active && !n ? `<button type="button" class="btn-s ch-del" data-a0="${cid}" onclick="pcAdmDelete(this.dataset.a0)">🗑️ ${tH('pc.adm.delete')}</button>` : ''}</div>
+      ${!c.active && n === 0 ? `<button type="button" class="btn-s ch-del" data-a0="${cid}" onclick="pcAdmDelete(this.dataset.a0)">🗑️ ${tH('pc.adm.delete')}</button>` : ''}</div>
     <div class="ch-h">${tH('pc.adm.parts', {n: typeof n === 'number' ? n : '…'})}</div>
     <label class="sr-only" for="pca-q">${tH('pc.adm.search')}</label>
     <input class="finp" id="pca-q" placeholder="${tH('pc.adm.search')}" value="${esc(A.q)}" oninput="pcAdmSearch(this.value)">
