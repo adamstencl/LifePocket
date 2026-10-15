@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.64';
+const APP_VERSION = '4.65';
 const CHANGELOG = [
+  { v:'4.65', items:[
+    '🧩 Vypnuté moduly (např. parťák Rex nebo Checklisty) zůstanou vypnuté i po zavření appky'
+  ], en:[
+    '🧩 Modules you turn off (e.g. your buddy or Checklists) now stay off after closing the app'
+  ]},
   { v:'4.64', items:[
     '◀️ Tlačítko Zpět na telefonu už appku nezavírá – zavře okno nebo se vrátí na Domů'
   ], en:[
@@ -982,11 +987,7 @@ async function startSession(u){
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
   if(s.exists()){prof=s.data();
     if(await syncProfileLang(u.uid)) return; // jazyk profilu se liší od zařízení → reload
-    // Stávající uživatelé: přidat rex + checklist default pokud ještě nejsou v modules
-    let migrated=false;
-    if(prof.modules&&!prof.modules.includes('rex')){prof.modules=['rex',...prof.modules];migrated=true;}
-    if(prof.modules&&!prof.modules.includes('checklist')){prof.modules=[...prof.modules,'checklist'];migrated=true;}
-    if(migrated)await setDoc(doc(db,'users',u.uid,'profile','main'),profNoTokens(prof),{merge:true}).catch(e=>console.warn('[LP] migrace modulů:',e?.code||e?.name));
+    // Moduly se berou přesně podle uloženého výběru (dřívější migrace vynucovala rex + checklist i po vypnutí – 4.65 zrušeno)
     selMods=new Set(prof.modules||[]);initApp();
     touchLastSeen(u.uid);
     _tzUid=u.uid; syncProfileTz(u.uid);
