@@ -11002,20 +11002,27 @@ window.pcHide = cid => {
   lsSave('lp_pc_hide', Object.fromEntries(Object.keys(o).filter(k => k === cid || pcFind(k)).map(k => [k, 1])));
   renderPcUI();
 };
-// Výzvy na kartě: nejvýš jedna měsíční a jedna týdenní (běží > začne > výsledek)
+// Výzvy na kartě: za každý druh (měsíc, týden) hlavní výzva podle pořadí ráno po konci (s účastí) > běží > začne
+// > výsledek, k ní nejvýš jedna doplňková: po „ráno po konci“ nová výzva, u běžící nebo budoucí výsledek té minulé.
+// Pořadí: hlavní měsíční, hlavní týdenní, pak doplňkové (první se kreslí velká, ostatní kompaktním řádkem).
 function pcDashList() {
-  const today = toDS(), rank = {run: 0, late: 0, soon: 1, over: 2}, out = [];
+  const today = toDS(), rank = {late: 0, run: 1, soon: 2, over: 3}, main = [], extra = [];
   for(const kind of ['month', 'week']) {
     const cand = pcList.filter(c => {
       if(c.kind !== kind || pcMe[c.id] === undefined) return false;
       const st = pcState(c, today), me = pcMe[c.id];
-      if(st === 'over') return !!me;                 // výsledek jen přihlášeným
-      if(st === 'late') return !!me;                 // ráno po konci se už nepřihlašuje
+      if(st === 'over' || st === 'late') return !!me;   // výsledek jen přihlášeným, ráno po konci se už nepřihlašuje
       return !!me || !pcHidden(c.id);
     }).sort((a, b) => rank[pcState(a, today)] - rank[pcState(b, today)] || b.start.localeCompare(a.start));
-    if(cand[0]) out.push(cand[0]);
+    const p = cand[0];
+    if(!p) continue;
+    main.push(p);
+    const ps = pcState(p, today);
+    const x = ps === 'late' ? cand.find(c => ['run', 'soon'].includes(pcState(c, today)))
+      : ps !== 'over' ? cand.find(c => pcState(c, today) === 'over') : null;
+    if(x) extra.push(x);
   }
-  return out;
+  return [...main, ...extra];
 }
 function pcBarHTML(c, me) {
   const pct = Math.min(100, Math.round(me.n / c.goal * 100)), txt = t('pc.progress', {n: me.n, goal: c.goal});
@@ -11063,7 +11070,7 @@ function pcBigHTML(c) {
   }
   return `<div class="dw-head"><div class="dw-title">${head}</div>${x}</div><div class="ch-card">${body}</div>`;
 }
-// Druhá výzva (obvykle týdenní) kompaktně jedním řádkem
+// Další výzvy (týdenní, výsledek minulé, nová po konci) kompaktně jedním řádkem
 function pcRowHTML(c) {
   const st = pcState(c), me = pcMe[c.id], cid = esc(c.id);
   const name = `<button type="button" class="pc-wname" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)"><span aria-hidden="true">${esc(c.emoji)}</span> ${esc(pcKindL(c))}: ${esc(pcTitle(c))}`;
@@ -11079,7 +11086,7 @@ function pcDashHTML() {
   if(!CU) return '';
   const list = pcDashList();
   if(!list.length) return '';
-  return `<div class="dw pc-dw" style="cursor:default">${pcBigHTML(list[0])}${list[1] ? pcRowHTML(list[1]) : ''}</div>`;
+  return `<div class="dw pc-dw" style="cursor:default">${pcBigHTML(list[0])}${list.slice(1).map(pcRowHTML).join('')}</div>`;
 }
 function renderPcUI() {
   const d = document.getElementById('pc-dash');
