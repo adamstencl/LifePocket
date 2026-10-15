@@ -1503,14 +1503,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .hs-qual-btn{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
 .hs-qual-btn:hover{border-color:var(--border2)}
 .hs-qual-btn.sel{background:rgba(245,200,66,.1);border-color:var(--accent);color:var(--accent)}
-.water-counter{display:flex;align-items:center;justify-content:center;gap:20px;margin-bottom:12px}
-.water-btn{background:var(--card2);border:1px solid var(--border);border-radius:50%;width:40px;height:40px;font-size:22px;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;transition:all .2s}
-.water-btn:hover{background:var(--accent);color:#1a1a1a;border-color:var(--accent)}
-.water-display{text-align:center}
-.water-num{font-family:'Playfair Display',serif;font-size:42px;color:var(--accent);line-height:1}
-.water-lbl{font-size:12px;color:var(--text3);margin-top:2px}
-.water-ml{font-size:13px;color:var(--text2);font-weight:600;margin-top:2px}
-.water-glasses{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:4px 0}
 .wglass{font-size:20px;opacity:.3;cursor:pointer;transition:all .2s}
 .wglass.filled{opacity:1}
 .health-week-bar{display:flex;align-items:flex-end;gap:4px;height:60px;margin-bottom:4px}
@@ -1623,19 +1615,6 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .qs-task.done .qs-check{background:var(--accent);border-color:var(--accent);color:#1a1a1a}
 .qs-task-text{font-size:14px;font-family:'Crimson Pro',serif;color:var(--text)}
 
-/* ── WATER TRACKER ─────────────────────────────────── */
-.water-card{padding:16px;margin-bottom:12px}
-.water-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.water-title{font-weight:700;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
-.water-count{font-size:13px;color:var(--text3)}
-.water-glasses{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
-.water-glass{font-size:20px;cursor:pointer;opacity:0.3;transition:opacity .15s;user-select:none}
-.water-glass.filled{opacity:1}
-.water-bar-wrap{height:6px;background:var(--border);border-radius:3px;margin-bottom:10px;overflow:hidden}
-.water-bar{height:100%;background:linear-gradient(90deg,#74b9ff,#0984e3);border-radius:3px;transition:width .3s}
-.water-actions{display:flex;gap:8px}
-.water-btn-plus{flex:1;background:var(--acc-soft,rgba(200,169,110,.15));color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:7px;font-size:13px;font-weight:600;cursor:pointer}
-.water-btn-minus{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:16px;cursor:pointer;color:var(--text3)}
 
 /* ── DAILY FOCUS ────────────────────────────────────── */
 .focus-card{padding:0;margin-bottom:12px;overflow:hidden}
@@ -2058,3 +2037,106 @@ label.sc-tog{cursor:pointer;min-height:48px}
 @keyframes ctaAskIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 /* Instalační banner: skrytý, dokud ho appka nepovolí (třída lp-noinstall, app.js installGate) */
 html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!important}
+
+/* ── PITNÝ REŽIM (4.62) ── */
+:root,[data-theme="dark-gold"]{--water:#5b9cf6;--water-text:#7db3ff;--water-glass:rgba(91,156,246,.08);--on-water:#0c0c10}
+[data-theme="sunshine"],[data-theme="tangerine"]{--water:#1e7ad8;--water-text:#1565c0;--water-glass:rgba(21,101,192,.06);--on-water:#fff}
+.wt-head{margin-bottom:8px}
+.wt-icon-btn{min-width:44px;min-height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--border);font-size:20px;cursor:pointer}
+.wt-icon-btn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+.wt-hero{display:flex;align-items:center;justify-content:center;gap:20px;padding:8px 0 16px}
+.wt-bottle--lg{width:120px;height:210px;flex-shrink:0}
+.wt-bottle--sm{width:40px;height:70px;flex-shrink:0;display:block}
+.wt-glass{fill:var(--water-glass)}
+.wt-outline{fill:none;stroke:var(--border2);stroke-width:3}
+.wt-cap{fill:var(--border2)}
+.wt-level{transition:transform .6s cubic-bezier(.16,1,.3,1)}
+.wt-wave{fill:var(--water);animation:wtWave 4s linear infinite}
+@keyframes wtWave{to{transform:translateX(-60px)}}
+.wt-bottle--sm .wt-wave{animation:none}
+.wt-stat{min-width:0}
+.wt-num{font-family:'Playfair Display',serif;font-size:40px;line-height:1;color:var(--water-text)}
+.wt-of{font-size:15px;color:var(--text2);margin-top:4px}
+.wt-left{font-size:15px;color:var(--text);margin-top:8px}
+.wt-left-cups,.wt-extra{color:var(--text2);margin-top:2px}
+.wt-done-pill{display:inline-block;padding:4px 12px;border-radius:20px;background:rgba(61,214,140,.14);color:var(--green);font-weight:600;font-size:14px}
+/* Šálky: sticky nad dolní lištou, ať jsou při scrollu pod palcem */
+.wt-cups{position:sticky;bottom:8px;z-index:5;display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:8px;padding:8px;margin:0 -8px;background:var(--bg);border-radius:16px}
+.wt-cup{font:inherit;min-height:72px;border-radius:16px;background:var(--card);border:1.5px solid var(--border2);color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:transform .12s,border-color .2s;-webkit-tap-highlight-color:transparent}
+.wt-cup .em{font-size:26px;line-height:1}
+.wt-cup .ml{font-size:15px;font-weight:700;white-space:nowrap}
+.wt-cup:active{transform:scale(.94);border-color:var(--water)}
+.wt-cup:focus-visible{outline:3px solid var(--water);outline-offset:2px}
+.wt-cup--add{border-style:dashed;color:var(--text2)}
+.wt-undo-row{display:flex;justify-content:center;margin:4px 0 12px;min-height:44px}
+.wt-undo{font:inherit;min-height:44px;padding:0 18px;border-radius:22px;background:var(--card2);border:1px solid var(--border2);color:var(--text2);font-size:15px;cursor:pointer}
+.wt-undo[hidden]{display:none}
+.wt-card{cursor:default}
+.wt-card:hover{transform:none}
+.wt-list{list-style:none}
+.wt-list li{display:flex;align-items:center;gap:12px;min-height:48px;border-bottom:1px solid var(--border)}
+.wt-list li:last-child{border-bottom:none}
+.wt-list .tm{font-variant-numeric:tabular-nums;color:var(--text2);width:48px}
+.wt-list .wh{flex:1;color:var(--text)}
+.wt-list .rm{font:inherit;min-width:44px;min-height:44px;background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer}
+.wt-list li.wt-empty{color:var(--text2);font-style:italic;border-bottom:none}
+/* Týdenní graf: 7 sloupců, čára cíle */
+.wt-week{position:relative;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:120px;align-items:end}
+.wt-goal-line{position:absolute;left:0;right:0;border-top:2px dashed var(--border2);pointer-events:none}
+.wt-col{display:flex;align-items:flex-end;justify-content:center;height:100%;min-height:44px;padding:0;background:none;border:none;border-radius:8px;cursor:pointer}
+.wt-col.sel{background:var(--card2)}
+.wt-col:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+.wt-bar{display:block;width:100%;max-width:28px;border-radius:6px 6px 2px 2px;background:var(--border2);min-height:3px;transition:height .4s}
+.wt-bar.met{background:var(--water)}
+.wt-week-lbl{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px;text-align:center}
+.wt-dl{font-size:12px;color:var(--text2)}
+.wt-dl.today{color:var(--text);font-weight:700}
+.wt-week-sum{font-size:13px;color:var(--text2)}
+.wt-week-day{min-height:20px;margin-top:6px;font-size:14px;color:var(--text)}
+.wt-rem-row{font:inherit;width:100%;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;margin:4px 0 16px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;text-align:left}
+.wt-warn{display:block;font-size:13px;color:var(--red);margin-top:4px}
+/* Průvodce prvním otevřením a nastavení */
+.wt-onb-q{font-family:'Playfair Display',serif;font-size:20px;color:var(--text);margin-bottom:12px}
+.wt-onb-t{font-size:15px;color:var(--text2);margin:12px 0}
+.wt-onb .btn-p{margin-top:12px}
+.wt-chips{display:flex;flex-wrap:wrap;gap:8px}
+.wt-chip{font:inherit;min-height:44px;min-width:64px;padding:0 14px;border-radius:22px;background:var(--card2);border:1px solid var(--border2);color:var(--text);font-size:15px;font-weight:600;cursor:pointer}
+.wt-chip.on{background:var(--water-text);border-color:var(--water-text);color:var(--on-water)}
+.wt-chip:focus-visible,.wt-step-b:focus-visible,.wt-em-btn:focus-visible,.wt-em-opt:focus-visible,.wt-x:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+.wt-check{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px;color:var(--text);cursor:pointer}
+.wt-check input{width:20px;height:20px;accent-color:var(--water);flex-shrink:0}
+.wt-sec{padding:14px 0;border-bottom:1px solid var(--border)}
+.wt-sec-h{font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.togrow .wt-sec-h{margin-bottom:0}
+#wt-sec-rem .togrow{border-bottom:none;padding:0}
+.wt-step{display:flex;align-items:center;gap:8px}
+.wt-step--goal{justify-content:center;margin-top:12px}
+.wt-step-v{min-width:72px;text-align:center;font-size:17px;font-weight:700;color:var(--text);white-space:nowrap}
+.wt-step-b{font:inherit;width:44px;height:44px;border-radius:12px;background:var(--card2);border:1px solid var(--border2);color:var(--text);font-size:20px;cursor:pointer}
+.wt-step-b:disabled{opacity:.4;cursor:default}
+.wt-cup-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.wt-em-btn{width:48px;height:48px;border-radius:12px;background:var(--card2);border:1px solid var(--border2);font-size:24px;cursor:pointer}
+.wt-x{width:44px;height:44px;background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;flex-shrink:0}
+.wt-em-grid{display:grid;grid-template-columns:repeat(5,48px);gap:8px;justify-content:center;margin:0 0 12px}
+.wt-em-opt{width:48px;height:48px;border-radius:12px;background:var(--card2);border:1px solid var(--border);font-size:24px;cursor:pointer}
+.wt-em-opt.on{border:2px solid var(--water)}
+.wt-add-cup{width:100%;min-height:44px;margin-top:4px}
+.wt-rem-det{margin-top:12px}
+.wt-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px;color:var(--text)}
+.wt-time{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;width:6.5em;min-height:44px}
+.wt-sub{font-size:14px;color:var(--text2);margin:12px 0 6px}
+.wt-hint{font-size:13px;color:var(--text2);margin:-4px 0 0 30px}
+.wt-save{margin-top:16px}
+/* Widget na Domů a karta Novinka */
+.wt-dw-row{display:flex;align-items:center;gap:12px}
+.wt-dw-txt{flex:1;min-width:0}
+.wt-dw-num{font-size:18px;font-weight:700;color:var(--text);white-space:nowrap}
+.wt-dw-sub{font-size:14px;color:var(--text2)}
+.wt-cup--sm{min-height:56px;min-width:56px;border-radius:14px;padding:4px;flex-shrink:0}
+.wt-cup--sm .em{font-size:20px}.wt-cup--sm .ml{font-size:13px}
+.wt-pop{color:var(--water-text)}
+.wt-intro{margin:0 0 12px}
+.wt-intro-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.wt-intro-later{font:inherit;margin-top:10px;min-height:44px;padding:0 14px;background:none;border:none;color:var(--text2);font-size:15px;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.wt-wave{animation:none}.wt-level,.wt-bar{transition:none}.wt-cup{transition:none}}
+@media(max-width:640px){.wt-cups{bottom:calc(var(--bn-h) + 8px)}}

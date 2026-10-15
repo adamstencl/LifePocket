@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.61';
+const APP_VERSION = '4.62';
 const CHANGELOG = [
+  { v:'4.62', items:[
+    '💧 Nový modul Pitný režim: nastav si denní cíl a své šálky, ťukáním plníš láhev a vidíš posledních 7 dní',
+    '🔔 Když dlouho nepiješ, appka ti připomene, ať se napiješ (aktivní hodiny a interval si nastavíš)',
+    '🏠 Na Domů je láhev se dvěma šálky – zapíšeš i bez otevření modulu'
+  ], en:[
+    '💧 New Water module: set a daily goal and your cups, fill the bottle with a tap and see the last 7 days',
+    '🔔 If you haven’t had a drink for a while, the app reminds you (you choose the active hours and interval)',
+    '🏠 Home shows the bottle with two cups – log a drink without opening the module'
+  ]},
   { v:'4.61', items:[
     '🔔 Appka ti sama nabídne upozornění ve chvíli, kdy se hodí (po připojení ke skupině, po 3. splněném návyku, u události s připomínkou); na iPhonu ukáže, jak ji přidat na plochu',
     '🙂 S oslovením „Neuvádět“ ti parťák i tvoje upozornění píšou neutrálně',
@@ -658,6 +667,7 @@ const goalCatLabel=c=>lookupOr(GOAL_CAT_KEYS,c,null)?t('goal.tag.'+GOAL_CAT_KEYS
 const MODS=[
   {id:'rex',emoji:'🤖'},
   {id:'habits',emoji:'🔥'},
+  {id:'water',emoji:'💧'},
   {id:'journal',emoji:'📒'},
   {id:'calendar',emoji:'🗓️'},
   {id:'goals',emoji:'🏆'},
@@ -682,7 +692,7 @@ const ONB_TPLS = {
     {emoji:'📖', type:'count', goal:10, freq:{type:'daily'},                 group:'evening'},
     {emoji:'😴', type:'yesno', goal:1,  freq:{type:'daily'},                 group:'evening'},
   ]},
-  health: { mods:['habits','goals','mealplan','cooking','journal'], habits:[
+  health: { mods:['habits','water','goals','mealplan','cooking','journal'], habits:[
     {emoji:'🚶', type:'yesno', goal:1, freq:{type:'daily'},          group:'day'},
     {emoji:'🥗', type:'count', goal:3, freq:{type:'daily'},          group:'day'},
     {emoji:'🧘', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'morning'},
@@ -1100,7 +1110,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -1135,6 +1145,7 @@ function clearUserSessionState(){
     familyId=null; familyData=null; familyEvents=[];
     extraGroupsData={}; extraGroupEvents={}; pantryItems=[]; _pantryFamilyReady=false; _pantryChatTried=false;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
+    waterDays={}; _wtReady=false; _wtSubFrom=''; clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
@@ -1153,8 +1164,9 @@ function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.roun
 // Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
 // groupNotifSent (kurzory) píše jen server, groupFeedSeen jen markGroupFeedSeen (přesné pole) → stará kopie je nesmí vrátit
 // Celoprofilový zápis bez polí, která spravují jiné cesty: tokeny, skupiny (familyId/extraGroupIds/formerGroups
-// – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;return c;}
+// – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu;
+// waterDay píše jen zápis vody, waterSent (dedup připomínek) jen server
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.waterDay;delete c.waterSent;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -3545,7 +3557,7 @@ window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGr
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
 // Popisek kolekce: klíč exp.col.<název kolekce>
 const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats',
-  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','errorLogs','game'].map(c => [c, t('exp.col.' + c)]);
+  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
   if (v === null || v === undefined || typeof v !== 'object') return v;
@@ -5417,60 +5429,442 @@ async function generateWeeklyReportSilent() {
 
 
 // ════════════════════════════════════════════════════════════
-// 💧  WATER TRACKER
+// 💧  PITNÝ REŽIM (4.62)
 // ════════════════════════════════════════════════════════════
-let waterGoal = 8;
-let waterToday = 0;
+// Nastavení: profile/main.water {goal, cups:[{ml,emoji}], remind, every, from, to, pace} – čte i server (připomínky)
+// Stav dne pro server: profile/main.waterDay {d, ml, last} (last = ms nejnovějšího zbývajícího zápisu, 0 = žádný)
+// Den: users/{uid}/water/{YYYY-MM-DD} {date, goal, ml, entries:[{t, ml}]} přes increment / arrayUnion / arrayRemove
+const WT_EMOJI=['🥛','☕','🍵','🫖','🧃','🥤','🧋','🍶','💧','🍼'];
+const WT_EVERY=[60,90,120,180];
+const WT_GOALS=[1500,2000,2500,3000];
+const WT_MAX_ENTRIES=40, WT_MAX_CUPS=5;
+const WT_DEF={goal:2000,cups:[{ml:200,emoji:'🥛'},{ml:300,emoji:'☕'},{ml:500,emoji:'🍶'}],remind:false,every:120,from:'08:00',to:'21:00',pace:false};
+const WT_HHMM=/^([01]\d|2[0-3]):([0-5]\d)$/;
+// Návyk o pití (priorita karty Novinka)
+const WT_HABIT_RE=/vod|pít|pit[ií]|litr|water|drink/i;
+let waterDays={};          // ds → dokument dne
+let _wtReady=false, _wtSubFrom='', _wtDayTimer=null;
+let _wtSuggestGoal=0;      // cíl z dřívějšího počítadla sklenic (lp_water)
+let _wtOnbGoal=0, _wtOnbRem=true; // průvodce prvním otevřením (připomínky předzaškrtnuté)
+let _wtEdit=null, _wtEmFor=-1, _wtSel='', _wtIntroQ=false;
 
-function initWater() {
-  const today = new Date().toDateString();
-  const stored = lsGet('lp_water', {date: '', count: 0, goal: 8});
-  if (stored.date !== today) {
-    waterToday = 0;
-    lsSave('lp_water', {date: today, count: 0, goal: stored.goal || 8});
-  } else {
-    waterToday = stored.count || 0;
-    waterGoal = stored.goal || 8;
-  }
+const wtClamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const wtMin=s=>{const [a,b]=String(s).split(':').map(Number);return a*60+b;};
+// Nastavení s ověřenými hodnotami (profil zapisuje klient, může být neúplný)
+function wtNormCfg(w){
+  if(!w||typeof w!=='object') return null;
+  const g=Math.round(Number(w.goal)/50)*50;
+  const cups=(Array.isArray(w.cups)?w.cups:[])
+    .map(c=>({ml:Math.round(Number(c&&c.ml)/50)*50,emoji:WT_EMOJI.includes(c&&c.emoji)?c.emoji:'🥛'}))
+    .filter(c=>c.ml>=50&&c.ml<=1500).slice(0,WT_MAX_CUPS);
+  return {
+    goal:Number.isFinite(g)&&g>0?wtClamp(g,500,6000):2000,
+    cups:cups.length?cups:WT_DEF.cups.map(c=>({...c})),
+    remind:w.remind===true,
+    every:WT_EVERY.includes(Number(w.every))?Number(w.every):120,
+    from:WT_HHMM.test(w.from)?w.from:'08:00',
+    to:WT_HHMM.test(w.to)?w.to:'21:00',
+    pace:w.pace===true,
+  };
+}
+function waterOn(){ return (prof?.modules||[]).includes('water'); }
+function waterCfg(){ return waterOn()?wtNormCfg(prof.water):null; }
+
+// Jednotky: cs dl / l, en ml / l (dělitel malé jednotky je ve slovníku)
+function wtNum(v){ try{ return new Intl.NumberFormat(LOCALE,{maximumFractionDigits:2}).format(v); }catch(e){ return String(v); } }
+function fmtMl(ml){
+  ml=Math.round(Number(ml)||0);
+  if(Math.abs(ml)>=1000) return t('wt.big',{v:wtNum(ml/1000)});
+  return t('wt.small',{v:wtNum(ml/(Number(t('wt.smallDiv'))||1))});
+}
+const fmtHrs=min=>t('wt.h',{v:wtNum(min/60)});
+const wtClock=ms=>fmtTime(new Date(ms));
+
+// Data dne
+function wtDay(ds){ return waterDays[ds]||null; }
+function wtEntries(ds){ const d=wtDay(ds); return d&&Array.isArray(d.entries)?d.entries.filter(e=>e&&Number.isFinite(e.t)&&Number.isFinite(e.ml)):[]; }
+function wtMl(ds){
+  const d=wtDay(ds); if(!d) return 0;
+  return Math.max(0,Array.isArray(d.entries)?wtEntries(ds).reduce((s,e)=>s+e.ml,0):(Number(d.ml)||0));
+}
+function wtGoalOf(ds){ const g=Number(wtDay(ds)?.goal); return g>=500&&g<=6000?g:(waterCfg()?.goal||2000); }
+function waterToday(){ const ds=toDS(); return {ds,ml:wtMl(ds),goal:waterCfg()?.goal||2000}; }
+function wtCupEm(ml,cfg=waterCfg()){ return (cfg?.cups||[]).find(c=>c.ml===ml)?.emoji||'💧'; }
+// n nejčastějších šálků za 14 dní (shoda podle ml), jinak nejmenší; výsledek seřazený podle velikosti
+function waterTopCups(cfg,n){
+  const cnt={}, today=toDS();
+  for(let i=0;i<14;i++) wtEntries(addDays(today,-i)).forEach(e=>{cnt[e.ml]=(cnt[e.ml]||0)+1;});
+  const sorted=[...cfg.cups].sort((a,b)=>a.ml-b.ml);
+  return [...sorted].sort((a,b)=>(cnt[b.ml]||0)-(cnt[a.ml]||0)).slice(0,n).sort((a,b)=>a.ml-b.ml);
 }
 
-window.addWater = function(n = 1) {
-  waterToday = Math.min(waterToday + n, waterGoal * 2);
-  const stored = lsGet('lp_water', {date: new Date().toDateString(), count: 0, goal: waterGoal});
-  lsSave('lp_water', {...stored, count: waterToday});
-  renderWaterInDash();
-  if (waterToday >= waterGoal) {
-    toast(t('water.done'));
+// Listener: posledních 28 dní (graf, nejčastější šálky); po půlnoci se přihlásí znovu
+function subWater(){
+  if(!CU||!waterOn()) return;
+  const from=addDays(toDS(),-27);
+  if(_fireSubs['water']&&_wtSubFrom===from) return;
+  _wtSubFrom=from; _wtReady=false;
+  clearTimeout(_wtDayTimer);
+  const next=new Date(); next.setHours(24,0,5,0);
+  _wtDayTimer=setTimeout(checkWaterDay,next-Date.now());
+  createFireSub('water',query(collection(db,'users',CU.uid,'water'),where('date','>=',from)),snap=>{
+    const m={};
+    snap.forEach(d=>{ const x=d.data(); if(x&&typeof x.date==='string') m[x.date]=x; });
+    waterDays=m; _wtReady=true;
+    wtMigrate();
+    renderWaterAll();
+  });
+}
+// Nový den (půlnoc, návrat do appky): nový rozsah a překreslení (widget nesmí ukazovat včerejší láhev)
+function checkWaterDay(){
+  if(CU&&_fireSubs['water']&&_wtSubFrom!==addDays(toDS(),-27)){ subWater(); renderWaterAll(); }
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkWaterDay(); });
+
+// Dřívější počítadlo sklenic (lp_water, jen zařízení): cíl předvyplní průvodce, dnešní sklenice → jeden zápis
+function wtInitLegacy(){
+  const old=lsGet('lp_water',null);
+  if(!old||typeof old!=='object'){ return; }
+  const g=Number(old.goal);
+  if(Number.isFinite(g)&&g>0&&g!==8) _wtSuggestGoal=wtClamp(Math.round(g*250/50)*50,500,6000);
+  if(old.date!==new Date().toDateString()||!(Number(old.count)>0)){ try{ localStorage.removeItem('lp_water'); }catch(e){} }
+}
+function wtMigrate(){
+  const old=lsGet('lp_water',null);
+  if(!old) return;
+  if(typeof old!=='object'||old.date!==new Date().toDateString()||!(Number(old.count)>0)){ try{ localStorage.removeItem('lp_water'); }catch(e){} return; }
+  if(!waterCfg()||!_wtReady) return; // počká na zapnutí modulu a první data
+  try{ localStorage.removeItem('lp_water'); }catch(e){}
+  if(wtEntries(toDS()).length) return;
+  drinkWater(Math.min(3000,Math.round(Number(old.count))*250),{mig:true,quiet:true});
+}
+
+// Stav dne do profilu (server z něj počítá připomínky bez dalšího čtení)
+function wtProfDay(ds){
+  if(!CU||ds!==toDS()) return;
+  const wd={d:ds,ml:wtMl(ds),last:wtEntries(ds).reduce((m,e)=>Math.max(m,e.t),0)};
+  prof.waterDay=wd;
+  setDoc(doc(db,'users',CU.uid,'profile','main'),{waterDay:wd},{merge:true}).catch(e=>console.warn('[LP] waterDay:',e?.code||e?.name));
+}
+
+// Zápis vypitého; opts: at (ms, jen dnešek), quiet (bez toastu), mig (migrace do 3 l), el (prvek pro „+2 dl“)
+function drinkWater(ml,opts={}){
+  if(!CU||_accDeleting||_accDeleted||_accStopped) return false;
+  const cfg=waterCfg(); if(!cfg) return false;
+  ml=Math.round(Number(ml));
+  if(!Number.isFinite(ml)||ml<50||ml>(opts.mig?3000:1500)) return false;
+  const ds=toDS(), es=wtEntries(ds);
+  if(es.length>=WT_MAX_ENTRIES){ toast(t('wt.limit')); return false; }
+  let tm=Number.isFinite(opts.at)&&toDS(new Date(opts.at))===ds?Math.round(opts.at):Date.now();
+  while(es.some(e=>e.t===tm)) tm++; // čas je klíč záznamu (arrayUnion / arrayRemove)
+  const e={t:tm,ml};
+  const before=wtMl(ds), cur=wtDay(ds)||{date:ds,ml:0,entries:[]};
+  // Hned v paměti (offline zápis se potvrdí později, snapshot stav přepíše)
+  waterDays[ds]={...cur,date:ds,goal:cfg.goal,ml:(Number(cur.ml)||0)+ml,entries:[...(Array.isArray(cur.entries)?cur.entries:[]),e]};
+  setDoc(doc(db,'users',CU.uid,'water',ds),{date:ds,goal:cfg.goal,ml:increment(ml),entries:arrayUnion(e),updatedAt:serverTimestamp()},{merge:true})
+    .catch(err=>{ toast(t('common.saveFailed',{err:userErr(err,'water')})); });
+  wtProfDay(ds);
+  renderWaterAll();
+  try{ navigator.vibrate?.(12); }catch(x){}
+  wtPop(opts.el,'+'+fmtMl(ml));
+  if(before<cfg.goal&&before+ml>=cfg.goal) toast(t('wt.goalDone'),3000);
+  else if(!opts.quiet&&!document.getElementById('p-water')?.classList.contains('active')) toast(t('wt.added',{v:fmtMl(ml),sum:fmtMl(before+ml)}));
+  return true;
+}
+// Ťuk na šálek (modul i widget na Domů)
+window.wtCup=btn=>{ drinkWater(Number(btn?.dataset?.a0),{el:btn}); };
+// Vrácení: bez času poslední záznam dneška, jinak záznam s daným časem
+window.undoWater=tm=>{
+  if(!CU) return;
+  const ds=toDS(), es=wtEntries(ds);
+  if(!es.length) return;
+  const e=tm!=null?es.find(x=>x.t===Number(tm)):es.reduce((a,b)=>b.t>a.t?b:a);
+  if(!e) return;
+  const cur=wtDay(ds);
+  waterDays[ds]={...cur,ml:Math.max(0,(Number(cur.ml)||0)-e.ml),entries:cur.entries.filter(x=>x!==e)};
+  // arrayRemove potřebuje přesně uložený objekt → původní záznam ze snapshotu
+  updateDoc(doc(db,'users',CU.uid,'water',ds),{ml:increment(-e.ml),entries:arrayRemove(e),updatedAt:serverTimestamp()})
+    .catch(err=>{ toast(t('common.saveFailed',{err:userErr(err,'water')})); });
+  wtProfDay(ds);
+  renderWaterAll();
+};
+// „+2 dl“ nad šálkem (jen vizuální)
+function wtPop(el,txt){
+  if(!el||!el.getBoundingClientRect||!el.offsetParent) return;
+  const r=el.getBoundingClientRect(), p=document.createElement('div');
+  p.className='xp-pop wt-pop'; p.setAttribute('aria-hidden','true'); p.textContent=txt;
+  p.style.left=Math.round(r.left+r.width/2)+'px'; p.style.top=Math.round(r.top)+'px';
+  document.body.appendChild(p);
+  setTimeout(()=>p.remove(),950);
+}
+
+// Láhev SVG (modul 'lg', widget 'sm'); pct 0–1, hladina se pak mění jen přes transform (kvůli přechodu)
+const wtLevelY=pct=>(36+(1-wtClamp(Number(pct)||0,0,1))*170).toFixed(1);
+function waterBottleSVG(pct,size='lg'){
+  const id='wb'+size, body='M44 6h32v18c0 6 4 9 10 13 9 6 14 13 14 24v126c0 10-8 18-18 18H38c-10 0-18-8-18-18V61c0-11 5-18 14-24 6-4 10-7 10-13z';
+  return `<svg class="wt-bottle wt-bottle--${size}" viewBox="0 0 120 210" aria-hidden="true" focusable="false">
+    <defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>
+    <g clip-path="url(#${id})">
+      <rect x="0" y="0" width="120" height="210" class="wt-glass"/>
+      <g class="wt-level" style="transform:translateY(${wtLevelY(pct)}px)">
+        <path class="wt-wave" d="M0 6 Q15 0 30 6 T60 6 T90 6 T120 6 T150 6 T180 6 T210 6 T240 6 V220 H0Z"/>
+      </g>
+    </g>
+    <path class="wt-outline" d="${body}"/>
+    <rect class="wt-cap" x="42" y="0" width="36" height="10" rx="3"/>
+  </svg>`;
+}
+function wtSetLevel(wrap,pct){ const g=wrap?.querySelector('.wt-level'); if(g) g.style.transform=`translateY(${wtLevelY(pct)}px)`; }
+
+// Překreslí modul (je-li otevřený) a widget na Domů (bez celého rDash: denní hláška a citát)
+function renderWaterAll(){
+  if(document.getElementById('p-water')?.classList.contains('active')) renderWater();
+  const w=document.getElementById('wt-dw');
+  if(!w) return;
+  const cfg=waterCfg();
+  if(!cfg){ w.remove(); return; }
+  const {ml,goal}=waterToday();
+  wtSetLevel(w,ml/goal);
+  const tx=w.querySelector('.wt-dw-txt'); if(tx) tx.innerHTML=wtDwTxt(ml,goal);
+}
+
+// ── Widget na Domů ──
+function wtDwTxt(ml,goal){
+  return `<div class="wt-dw-num">${esc(fmtMl(ml))} / ${esc(fmtMl(goal))}</div>
+    <div class="wt-dw-sub">${ml>=goal?tH('wt.doneShort'):tH('wt.left',{v:fmtMl(goal-ml)})}</div>`;
+}
+function waterWidgetHTML(){
+  const cfg=waterCfg(); if(!cfg) return '';
+  const {ml,goal}=waterToday();
+  const cups=waterTopCups(cfg,2).map(c=>`<button type="button" class="wt-cup wt-cup--sm" data-a0="${c.ml}" onclick="event.stopPropagation();wtCup(this)" aria-label="${tH('wt.addAria',{v:fmtMl(c.ml)})}"><span class="em" aria-hidden="true">${esc(c.emoji)}</span><span class="ml">${esc(fmtMl(c.ml))}</span></button>`).join('');
+  return `<div class="dw wt-dw" id="wt-dw" onclick="sp('water')">
+    <div class="dw-head"><div class="dw-title">${tH('wt.title')}</div><div class="dw-arrow">→</div></div>
+    <div class="wt-dw-row"><span class="wt-dw-b">${waterBottleSVG(ml/goal,'sm')}</span><div class="wt-dw-txt">${wtDwTxt(ml,goal)}</div>${cups}</div>
+  </div>`;
+}
+
+// ── Karta Novinka pro stávající uživatele (lp_wt_intro); přednost má šablona Zdraví nebo návyk o pití ──
+function wtIntroPrio(){ return prof?.template==='health'||habits.some(h=>WT_HABIT_RE.test(String(h?.name||''))); }
+function waterIntroHTML(){
+  if(lsGet('lp_wt_intro')||waterOn()) return '';
+  if(accNew(7)){ lsSave('lp_wt_intro',1); return ''; } // nováček: „Novinka“ nedává smysl (modul má v šablonách)
+  return `<div class="invite-hint wt-intro" id="wt-intro-card" role="region" aria-label="${tH('wt.intro.t')}">
+    <span class="invite-hint-em" aria-hidden="true">💧</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${tH('wt.intro.t')}</div>
+      <div class="invite-hint-d">${tH('wt.intro.b')}</div>
+      <div class="wt-intro-btns"><button type="button" class="invite-hint-btn" onclick="wtIntroOn()">${tH('wt.intro.on')}</button><button type="button" class="wt-intro-later" onclick="dismissWtIntro()">${tH('wt.intro.later')}</button></div>
+    </div>
+    <button type="button" class="invite-hint-x" aria-label="${tH('common.hide')}" onclick="dismissWtIntro()">×</button>
+  </div>`;
+}
+// Slot v rDash; karta se vloží, až nebude otevřené jiné okno (changelog, průvodce)
+function wtIntroSlot(prio){
+  if(lsGet('lp_wt_intro')||waterOn()||wtIntroPrio()!==prio) return '';
+  if(!_wtIntroQ){ _wtIntroQ=true; whenUiFree(()=>{ _wtIntroQ=false; const s=document.getElementById('wt-intro-slot'); if(s&&!s.innerHTML.trim()) s.innerHTML=waterIntroHTML(); }); }
+  return '<div id="wt-intro-slot"></div>';
+}
+window.dismissWtIntro=()=>{ lsSave('lp_wt_intro',1); document.getElementById('wt-intro-card')?.remove(); };
+window.wtIntroOn=()=>{ window.dismissWtIntro(); wtEnableModule(); window.sp('water'); };
+// Zapnutí modulu (karta Novinka); server posílá připomínky jen se 'water' v prof.modules
+function wtEnableModule(){
+  if(!CU||waterOn()) return;
+  prof.modules=[...new Set([...(prof.modules||[]),'water'])];
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'modules')})));
+  buildNav(); subWater();
+}
+
+// Povolení upozornění při zapnutí připomínek (volat přímo z kliknutí, systémové okno potřebuje gesto)
+async function wtEnsurePerm(){
+  if(typeof Notification==='undefined'){ toast(t(isIOSDevice()&&!isStandaloneApp()?'notif.iosOpenHome':'notif.noSupportShort'),4000); return false; }
+  let p=Notification.permission;
+  if(p==='default'){ try{ p=await Notification.requestPermission(); }catch(e){ p='denied'; } }
+  if(p!=='granted'){ toast(t('wt.noPerm'),4000); return false; }
+  registerFcmToken().catch(()=>{});
+  checkNotifStatus().catch(()=>{});
+  return true;
+}
+
+// ── Stránka modulu ──
+function wtOnbHTML(){
+  const g=_wtOnbGoal||_wtSuggestGoal||2000;
+  const chips=(WT_GOALS.includes(g)?WT_GOALS:[...WT_GOALS,g].sort((a,b)=>a-b))
+    .map(v=>`<button type="button" class="wt-chip${v===g?' on':''}" aria-pressed="${v===g}" data-a0="${v}" onclick="wtOnbGoal(+this.dataset.a0)">${esc(fmtMl(v))}</button>`).join('');
+  return `<section class="dw wt-card wt-onb" aria-labelledby="wt-onb-q">
+    <h2 class="wt-onb-q" id="wt-onb-q">${tH('wt.onb.q')}</h2>
+    <div class="wt-chips" role="group" aria-labelledby="wt-onb-q">${chips}</div>
+    <p class="wt-onb-t">${tH('wt.onb.cups',{list:WT_DEF.cups.map(c=>c.emoji+' '+fmtMl(c.ml)).join(' · ')})}</p>
+    <label class="wt-check"><input type="checkbox" ${_wtOnbRem?'checked':''} onchange="wtOnbRem(this.checked)"><span>${tH('wt.onb.rem')}</span></label>
+    <button type="button" class="btn-p" onclick="wtOnbStart()">${tH('wt.onb.start')}</button>
+  </section>`;
+}
+window.wtOnbGoal=v=>{ if(WT_GOALS.includes(v)||v===_wtSuggestGoal){ _wtOnbGoal=v; renderWater(); document.querySelector('#wt-onb .wt-chip.on')?.focus(); } };
+window.wtOnbRem=on=>{ _wtOnbRem=!!on; };
+window.wtOnbStart=async()=>{
+  if(!CU) return;
+  const cfg=wtNormCfg({...WT_DEF,goal:_wtOnbGoal||_wtSuggestGoal||2000,remind:false});
+  // Povolení hned v gestu kliknutí; bez něj se připomínky nezapnou
+  if(_wtOnbRem) cfg.remind=await wtEnsurePerm();
+  if(!CU) return;
+  prof.water=cfg;
+  if(!waterOn()) wtEnableModule();
+  setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
+  subWater(); wtMigrate();
+  renderWater();
+};
+function renderWater(){
+  const onb=document.getElementById('wt-onb'), main=document.getElementById('wt-main');
+  if(!onb||!main) return;
+  const cfg=waterCfg();
+  if(!cfg){ onb.innerHTML=waterOn()?wtOnbHTML():''; main.hidden=true; return; }
+  onb.innerHTML=''; main.hidden=false;
+  const {ds,ml,goal}=waterToday(), pct=ml/goal, done=ml>=goal;
+  const bw=document.getElementById('wt-bottle');
+  if(bw){ if(!bw.querySelector('svg')) bw.innerHTML=waterBottleSVG(pct,'lg'); else wtSetLevel(bw,pct); }
+  const set=(id,h)=>{ const el=document.getElementById(id); if(el) el.innerHTML=h; };
+  set('wt-num',esc(fmtMl(ml)));
+  set('wt-of',tH('wt.of',{goal:fmtMl(goal),pct:Math.round(pct*100)}));
+  if(done) set('wt-left',`<span class="wt-done-pill">${tH('wt.doneShort')}</span>${ml>goal?`<div class="wt-extra">${tH('wt.extra',{v:fmtMl(ml-goal)})}</div>`:''}`);
+  else {
+    const top=waterTopCups(cfg,1)[0], left=goal-ml;
+    set('wt-left',tH('wt.left',{v:fmtMl(left)})+(top?`<div class="wt-left-cups">${tH('wt.leftCups',{n:Math.ceil(left/top.ml),em:top.emoji,v:fmtMl(top.ml)})}</div>`:''));
   }
+  // Šálky podle velikosti; ＋ otevře nastavení šálků (do 5)
+  const cups=[...cfg.cups].sort((a,b)=>a.ml-b.ml).map(c=>`<button type="button" class="wt-cup" data-a0="${c.ml}" onclick="wtCup(this)" aria-label="${tH('wt.addAria',{v:fmtMl(c.ml)})}"><span class="em" aria-hidden="true">${esc(c.emoji)}</span><span class="ml">${esc(fmtMl(c.ml))}</span></button>`).join('')
+    +(cfg.cups.length<WT_MAX_CUPS?`<button type="button" class="wt-cup wt-cup--add" onclick="openWaterSettings('cups')" aria-label="${tH('wt.addCup')}"><span class="em" aria-hidden="true">＋</span></button>`:'');
+  const cw=document.getElementById('wt-cups');
+  if(cw&&cw.dataset.k!==JSON.stringify(cfg.cups)+LANG){ cw.innerHTML=cups; cw.dataset.k=JSON.stringify(cfg.cups)+LANG; } // beze změny nepřekreslovat (fokus)
+  const es=wtEntries(ds).sort((a,b)=>b.t-a.t);
+  const ub=document.getElementById('wt-undo');
+  if(ub){ ub.hidden=!es.length; if(es.length) ub.textContent=t('wt.undo',{v:fmtMl(es[0].ml),t:wtClock(es[0].t)}); }
+  set('wt-list',es.length?es.map(e=>`<li><span class="tm">${esc(wtClock(e.t))}</span><span class="wh">${esc(wtCupEm(e.ml,cfg))} ${esc(fmtMl(e.ml))}</span><button type="button" class="rm" data-a0="${e.t}" onclick="undoWater(+this.dataset.a0)" aria-label="${tH('wt.rmAria',{v:fmtMl(e.ml),t:wtClock(e.t)})}">✕</button></li>`).join('')
+    :`<li class="wt-empty">${tH('wt.empty')}</li>`);
+  renderWaterWeek(cfg);
+  const rr=document.getElementById('wt-rem-row');
+  if(rr){
+    const off=cfg.remind&&typeof Notification!=='undefined'&&Notification.permission==='denied';
+    rr.innerHTML=`<span>${cfg.remind?tH('wt.remRow',{from:cfg.from,to:cfg.to,every:fmtHrs(cfg.every)}):tH('wt.remOff')}${off?`<span class="wt-warn">${tH('wt.noPerm')}</span>`:''}</span><span aria-hidden="true">›</span>`;
+  }
+}
+// Graf posledních 7 dní (končí dneškem); výška = ml / max(cíl, nejvyšší den)
+function renderWaterWeek(cfg){
+  const box=document.getElementById('wt-week'); if(!box) return;
+  const today=toDS(), DN=dowNames('short');
+  const days=[...Array(7)].map((_,i)=>{ const ds=addDays(today,i-6), ml=wtMl(ds), goal=ds===today?cfg.goal:wtGoalOf(ds);
+    return {ds,ml,goal,met:ml>=goal,dn:DN[new Date(ds+'T12:00:00').getDay()]}; });
+  const scale=Math.max(cfg.goal,...days.map(d=>d.ml))||1, k=days.filter(d=>d.met).length;
+  const line=d=>t('wt.dayLine',{day:fmtDate(d.ds,'wShortDm'),v:fmtMl(d.ml),goal:fmtMl(d.goal)})+(d.met?' ✓':'');
+  if(!days.some(d=>d.ds===_wtSel)) _wtSel='';
+  box.setAttribute('aria-label',t('wt.weekAria',{list:days.map(d=>d.dn+' '+fmtMl(d.ml)).join(', '),k}));
+  box.innerHTML=`<div class="wt-goal-line" style="bottom:${(cfg.goal/scale*100).toFixed(1)}%"></div>`
+    +days.map(d=>`<button type="button" class="wt-col${d.ds===today?' today':''}${d.ds===_wtSel?' sel':''}" data-a0="${d.ds}" onclick="wtPickDay(this.dataset.a0)" aria-label="${esc(line(d))}" aria-pressed="${d.ds===_wtSel}"><span class="wt-bar${d.met?' met':''}" style="height:${(d.ml/scale*100).toFixed(1)}%"></span></button>`).join('');
+  const lb=document.getElementById('wt-week-lbl');
+  if(lb) lb.innerHTML=days.map(d=>`<span class="wt-dl${d.ds===today?' today':''}">${esc(d.dn)}</span>`).join('');
+  const sum=document.getElementById('wt-week-sum'); if(sum) sum.textContent=t('wt.weekSum',{k});
+  const dl=document.getElementById('wt-week-day'); if(dl){ const d=days.find(x=>x.ds===_wtSel); dl.textContent=d?line(d):''; }
+}
+window.wtPickDay=ds=>{ _wtSel=_wtSel===ds?'':ds; const c=waterCfg(); if(c) renderWaterWeek(c); document.querySelector(`#wt-week .wt-col[data-a0="${CSS.escape(String(ds))}"]`)?.focus(); };
+
+// ── Nastavení (sheet) ──
+window.openWaterSettings=sec=>{
+  const cfg=waterCfg();
+  if(!cfg){ window.sp('water'); return; }
+  _wtEdit=JSON.parse(JSON.stringify(cfg)); _wtEmFor=-1;
+  if(sec==='cups'&&_wtEdit.cups.length<WT_MAX_CUPS) _wtEdit.cups.push({ml:250,emoji:'💧'});
+  renderWaterSettings(); om('m-water');
+  if(sec) setTimeout(()=>document.getElementById('wt-sec-'+sec)?.scrollIntoView({block:'start',behavior:'smooth'}),150);
+};
+// Překreslení sheetu se zachováním fokusu (prvek s data-wf)
+function renderWaterSettings(){
+  const b=document.getElementById('wt-set-body'), w=_wtEdit; if(!b||!w) return;
+  const wf=document.activeElement?.closest?.('#wt-set-body [data-wf]')?.dataset.wf;
+  const st=(i,d,k,dis)=>`<button type="button" class="wt-step-b" data-wf="${k}" data-a0="${i}" data-a1="${d}" onclick="wtCupMl(+this.dataset.a0,+this.dataset.a1)" aria-label="${tH(d<0?'wt.cupLess':'wt.cupMore')}"${dis?' disabled':''}>${d<0?'−':'+'}</button>`;
+  const cups=w.cups.map((c,i)=>`<div class="wt-cup-row">
+      <button type="button" class="wt-em-btn" data-wf="em${i}" data-a0="${i}" onclick="wtEmPick(+this.dataset.a0)" aria-label="${tH('wt.cupEm')}" aria-expanded="${_wtEmFor===i}">${esc(c.emoji)}</button>
+      <div class="wt-step">${st(i,-50,'m'+i,c.ml<=50)}<span class="wt-step-v">${esc(fmtMl(c.ml))}</span>${st(i,50,'p'+i,c.ml>=1500)}</div>
+      ${w.cups.length>1?`<button type="button" class="wt-x" data-wf="x${i}" data-a0="${i}" onclick="wtCupDel(+this.dataset.a0)" aria-label="${tH('wt.cupDel')}">✕</button>`:'<span class="wt-x"></span>'}
+    </div>${_wtEmFor===i?`<div class="wt-em-grid" role="group" aria-label="${tH('wt.cupEm')}">${WT_EMOJI.map(em=>`<button type="button" class="wt-em-opt${em===c.emoji?' on':''}" aria-pressed="${em===c.emoji}" data-a0="${i}" data-a1="${em}" onclick="wtCupEm(+this.dataset.a0,this.dataset.a1)">${em}</button>`).join('')}</div>`:''}`).join('');
+  const denied=typeof Notification!=='undefined'&&Notification.permission==='denied';
+  const tp=(id,v,k)=>`<input class="time-picker-inp wt-time" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="${id}" value="${esc(v)}" aria-label="${tH(k)}" onchange="wtTime()">`;
+  b.innerHTML=`<div class="wt-sec" id="wt-sec-goal">
+      <div class="wt-sec-h" id="wt-goal-h">${tH('wt.goal')}</div>
+      <div class="wt-chips" role="group" aria-labelledby="wt-goal-h">${WT_GOALS.map(v=>`<button type="button" class="wt-chip${v===w.goal?' on':''}" data-wf="g${v}" aria-pressed="${v===w.goal}" data-a0="${v}" onclick="wtSetGoal(+this.dataset.a0)">${esc(fmtMl(v))}</button>`).join('')}</div>
+      <div class="wt-step wt-step--goal"><button type="button" class="wt-step-b" data-wf="gm" data-a0="-250" onclick="wtGoalStep(+this.dataset.a0)" aria-label="${tH('wt.goalLess')}"${w.goal<=500?' disabled':''}>−</button><span class="wt-step-v">${esc(fmtMl(w.goal))}</span><button type="button" class="wt-step-b" data-wf="gp" data-a0="250" onclick="wtGoalStep(+this.dataset.a0)" aria-label="${tH('wt.goalMore')}"${w.goal>=6000?' disabled':''}>+</button></div>
+    </div>
+    <div class="wt-sec" id="wt-sec-cups">
+      <div class="wt-sec-h">${tH('wt.cups')}</div>
+      ${cups}
+      ${w.cups.length<WT_MAX_CUPS?`<button type="button" class="btn-s wt-add-cup" data-wf="add" onclick="wtCupAdd()">${tH('wt.addCup')}</button>`:''}
+    </div>
+    <div class="wt-sec" id="wt-sec-rem">
+      <div class="togrow"><div class="toginf"><div class="tognm wt-sec-h">${tH('wt.rem')}</div></div><label class="togswitch"><input type="checkbox" data-wf="rem" ${w.remind?'checked':''} aria-label="${tH('wt.remOn')}" onchange="wtRemOn(this.checked)"><span class="togsl"></span></label></div>
+      ${w.remind?`<div class="wt-rem-det">
+        <div class="wt-row"><span>${tH('wt.remWhen')}</span>${tp('wt-from',w.from,'wt.remFrom')}<span aria-hidden="true">–</span>${tp('wt-to',w.to,'wt.remTo')}</div>
+        <div class="wt-sub" id="wt-every-h">${tH('wt.remEvery')}</div>
+        <div class="seg seg--block" role="group" aria-labelledby="wt-every-h">${WT_EVERY.map(v=>`<button type="button" class="seg-btn${v===w.every?' active':''}" data-wf="e${v}" aria-pressed="${v===w.every}" data-a0="${v}" onclick="wtEvery(+this.dataset.a0)">${esc(fmtHrs(v))}</button>`).join('')}</div>
+        <label class="wt-check"><input type="checkbox" data-wf="pace" ${w.pace?'checked':''} onchange="wtPace(this.checked)"><span>${tH('wt.remPace')}</span></label>
+        <div class="wt-hint">${tH('wt.remPaceHint')}</div>
+        ${denied?`<div class="wt-warn">${tH('wt.noPerm')}</div>`:''}
+      </div>`:''}
+    </div>
+    <button type="button" class="btn-p wt-save" onclick="saveWaterSettings()">${tH('common.save')}</button>`;
+  if(wf) b.querySelector(`[data-wf="${CSS.escape(wf)}"]`)?.focus();
+}
+const wtEd=fn=>(...a)=>{ if(!_wtEdit) return; fn(...a); renderWaterSettings(); };
+window.wtSetGoal=wtEd(v=>{ if(WT_GOALS.includes(v)) _wtEdit.goal=v; });
+window.wtGoalStep=wtEd(d=>{ _wtEdit.goal=wtClamp(_wtEdit.goal+(d<0?-250:250),500,6000); });
+window.wtCupMl=wtEd((i,d)=>{ const c=_wtEdit.cups[i]; if(c) c.ml=wtClamp(c.ml+(d<0?-50:50),50,1500); });
+window.wtCupDel=wtEd(i=>{ if(_wtEdit.cups.length>1){ _wtEdit.cups.splice(i,1); _wtEmFor=-1; } });
+window.wtCupAdd=wtEd(()=>{ if(_wtEdit.cups.length<WT_MAX_CUPS) _wtEdit.cups.push({ml:250,emoji:'💧'}); });
+window.wtEmPick=wtEd(i=>{ _wtEmFor=_wtEmFor===i?-1:i; });
+window.wtCupEm=wtEd((i,em)=>{ const c=_wtEdit.cups[i]; if(c&&WT_EMOJI.includes(em)) c.emoji=em; _wtEmFor=-1; });
+window.wtEvery=wtEd(v=>{ if(WT_EVERY.includes(v)) _wtEdit.every=v; });
+window.wtPace=on=>{ if(_wtEdit) _wtEdit.pace=!!on; };
+window.wtTime=()=>{
+  if(!_wtEdit) return;
+  const f=document.getElementById('wt-from')?.value, to=document.getElementById('wt-to')?.value;
+  if(WT_HHMM.test(f)) _wtEdit.from=f;
+  if(WT_HHMM.test(to)) _wtEdit.to=to;
+};
+window.wtRemOn=async on=>{
+  if(!_wtEdit) return;
+  _wtEdit.remind=!!on;
+  if(on) _wtEdit.remind=await wtEnsurePerm(); // systémové okno v gestu přepnutí
+  if(_wtEdit) renderWaterSettings();
+};
+window.saveWaterSettings=()=>{
+  const w=_wtEdit; if(!CU||!w) return;
+  window.wtTime();
+  if(w.remind&&wtMin(w.to)-wtMin(w.from)<60){ toast(t('wt.badHours')); return; }
+  const cfg=wtNormCfg(w);
+  prof.water=cfg;
+  _wtEdit=null; cm('m-water');
+  setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
+  toast(t('wt.saved'));
+  renderWaterAll();
+  const w2=document.getElementById('wt-dw'); if(w2&&document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
 };
 
-window.removeWater = function() {
-  waterToday = Math.max(waterToday - 1, 0);
-  const stored = lsGet('lp_water', {date: new Date().toDateString(), count: 0, goal: waterGoal});
-  lsSave('lp_water', {...stored, count: waterToday});
-  renderWaterInDash();
-};
-
-function renderWaterInDash() {
-  const el = document.getElementById('water-widget');
-  if (!el) return;
-  const pct = Math.min(waterToday / waterGoal * 100, 100);
-  const glasses = [];
-  for (let i = 0; i < waterGoal; i++) {
-    glasses.push(`<span class="water-glass ${i < waterToday ? 'filled' : ''}" onclick="addWater()">💧</span>`);
+// Otevření z notifikace (?open=water, volitelně &drink=<ml>&at=<ms>): ml 50–1000, at max. 6 h zpět, dnešní, každé jen jednou
+function wtLinkMl(v){ const n=Math.round(Number(v)); return v!=null&&v!==''&&Number.isFinite(n)&&n>=50&&n<=1000?n:0; }
+function wtLinkAt(v){
+  if(v==null||v==='') return 0;
+  const n=Math.round(Number(v)), now=Date.now();
+  return Number.isFinite(n)&&n<=now+300000&&now-n<=6*3600000&&toDS(new Date(n))===toDS()?n:-1;
+}
+async function wtOpenFromNotif(p){
+  if(!waterOn()) return; // modul mezitím vypnutý
+  window.sp('water');
+  if(!(p.drink>0)||p.at<0) return;
+  const t0=Date.now();
+  while(CU&&!_wtReady&&Date.now()-t0<8000) await new Promise(r=>setTimeout(r,250)); // první data (limit, migrace)
+  if(!CU||!waterCfg()) return;
+  if(p.at>0){
+    const seen=lsGet('lp_wt_seen',[]), arr=Array.isArray(seen)?seen:[];
+    if(arr.includes(p.at)) return;
+    lsSave('lp_wt_seen',[...arr,p.at].slice(-20));
   }
-  el.innerHTML = `
-    <div class="water-header">
-      <span class="water-title">${tH('water.title')}</span>
-      <span class="water-count">${tH('water.count',{n:waterToday,goal:waterGoal})}</span>
-    </div>
-    <div class="water-glasses">${glasses.join('')}</div>
-    <div class="water-bar-wrap"><div class="water-bar" style="width:${pct}%"></div></div>
-    <div class="water-actions">
-      <button class="water-btn-minus" onclick="removeWater()">−</button>
-      <button class="water-btn-plus" onclick="addWater()">${tH('water.add')}</button>
-    </div>
-  `;
+  if(drinkWater(p.drink,{at:p.at>0?p.at:undefined,quiet:true})) whenUiFree(()=>toast(t('wt.notifAdded',{v:fmtMl(p.drink)}),4000),15000);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5761,7 +6155,7 @@ function quickStartHTML() {
   const allTasks = [
     { id:'habit',    emoji:'🎯', text:t('qs.habit'),  page:'habits',   done: habits.length > 0 },
     { id:'focus',    emoji:'🎯', text:t('qs.focus'),  action:"openFocusModal('today')", done: !!dailyFocus },
-    { id:'water',    emoji:'💧', text:t('qs.water'),  action:'addWater()',       done: waterToday > 0 },
+    { id:'water',    emoji:'💧', text:t('qs.water'),  page:'water',    done: wtMl(toDS()) > 0 },
     { id:'recipe',   emoji:'🍳', text:t('qs.recipe'), page:'cooking',  done: savedRecipes.length > 0 },
     { id:'shop',     emoji:'🛒', text:t('qs.shop'),   page:'shopping', done: shopItems.length > 0 },
     { id:'goal',     emoji:'🏆', text:t('qs.goal'),   page:'goals',    done: goals.length > 0 },
@@ -5769,9 +6163,10 @@ function quickStartHTML() {
     { id:'note',     emoji:'📝', text:t('qs.note'),   page:'journal',  done: entries.length > 0 },
   ];
 
-  // Filtruj podle aktivních modulů + základní (focus, water jsou vždy)
+  // Filtruj podle aktivních modulů + základní (focus je vždy)
   const relevant = allTasks.filter(t => {
-    if (['focus','water'].includes(t.id)) return true;
+    if (t.id === 'focus') return true;
+    if (t.id === 'water') return waterOn();
     if (t.id === 'habit' && mods.includes('habits')) return true;
     if (t.id === 'recipe' && mods.includes('cooking')) return true;
     if (t.id === 'shop' && mods.includes('shopping')) return true;
@@ -11452,7 +11847,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -11460,9 +11855,11 @@ function captureOpenTargetLink() {
     const o = u.searchParams.get('open');
     if(!OPEN_TARGETS.includes(o)) return;
     const id = String(u.searchParams.get('id') ?? '');
-    ['open','id'].forEach(k => u.searchParams.delete(k));
+    // Pitný režim: &drink=<ml>&at=<ms> (zápis jen jednou, parametry hned z adresy pryč)
+    const drink = o === 'water' ? wtLinkMl(u.searchParams.get('drink')) : 0, at = drink ? wtLinkAt(u.searchParams.get('at')) : 0;
+    ['open','id','drink','at'].forEach(k => u.searchParams.delete(k));
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
-    _pendingOpen = {open: o, id: okNotifHabitId(id) ? id : null};
+    _pendingOpen = {open: o, id: okNotifHabitId(id) ? id : null, drink, at};
   } catch(e) {}
 }
 captureOpenTargetLink();
@@ -11474,6 +11871,7 @@ async function consumePendingOpen() {
   _openBusy = true;
   try {
     if(p.open === 'cal') { window.sp('calendar'); return; }
+    if(p.open === 'water') { await wtOpenFromNotif(p); return; }
     // Návyky: počkat na první data (nejvýš 8 s), pak detail návyku, jinak seznam
     await Promise.race([habitsReady, new Promise(r => setTimeout(r, 8000))]);
     if(!CU) return;
@@ -11484,8 +11882,14 @@ async function consumePendingOpen() {
 }
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
   const d = ev.data;
-  if(!d || d.type !== 'OPEN_TARGET' || !OPEN_TARGETS.includes(d.open)) return;
-  _pendingOpen = {open: d.open, id: okNotifHabitId(d.id) ? d.id : null};
+  if(d && d.type === 'WATER_ADD') { // tlačítko „+2 dl“ (4.63)
+    const drink = wtLinkMl(d.ml);
+    _pendingOpen = {open: 'water', id: null, drink, at: drink ? wtLinkAt(d.at) : 0};
+  } else {
+    if(!d || d.type !== 'OPEN_TARGET' || !OPEN_TARGETS.includes(d.open)) return;
+    const drink = d.open === 'water' ? wtLinkMl(d.drink) : 0;
+    _pendingOpen = {open: d.open, id: okNotifHabitId(d.id) ? d.id : null, drink, at: drink ? wtLinkAt(d.at) : 0};
+  }
   if(document.getElementById('app')?.classList.contains('active')) consumePendingOpen();
 });
 
@@ -12595,7 +12999,7 @@ let _weeklyReportIv=null;
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, '');
-  initWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subShopFreq();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
+  wtInitLegacy();subWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subShopFreq();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
   installVisitCheck(); installGate();
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
@@ -12634,7 +13038,7 @@ function buildNav(){
   const showRex=(prof.modules||[]).includes('rex');
   const home={id:'dashboard',emoji:'🏠',label:t('nav.home')};
   const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
-  const hasUI=['goals','journal','calendar','habits','cooking','shopping','mealplan','checklist'];
+  const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
   // Šablona (4.59): Domů · hlavní moduly šablony · parťák · ostatní; bez šablony Domů · parťák · moduly
   const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof.template)?NAV_TPL[prof.template]:[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
@@ -12649,7 +13053,7 @@ function buildNav(){
   const cur=document.querySelector('.page.active')?.id?.slice(2); if(cur) markBn(cur); // přestavba lišty (změna modulů)
 }
 // Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
-const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','goals']};
+const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','water']};
 // Aktivní položka spodní lišty (stránka z „Více“ zvýrazní „Více“)
 function markBn(id){
   const inMore=!!document.getElementById('bnm-'+id);
@@ -12693,6 +13097,7 @@ window.sp=id=>{
   if(id==='settings')renderFamilySettings();
   if(id==='calendar'){renderCal();}
   if(id==='habits')renderHabits();
+  if(id==='water')renderWater();
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
   if(id==='checklist'){ensureCheckSubs();renderChecklist();}
@@ -12788,13 +13193,16 @@ function rDash(){
   const today=toDS();
   const mods=prof.modules||[];
   // Karta Začínáme (nováček) nahoře, pod ní hlavní úkol dne
-  let html=quickStartHTML()+focusWidgetHTML();
+  let html=quickStartHTML()+focusWidgetHTML()+waterWidgetHTML();
+  // Novinka Pitný režim (4.62): šablona Zdraví / návyk o pití výš, ostatní níž
+  html+=wtIntroSlot(true);
   // Jednorázová karta: upozornění ze skupin (novinka 4.38)
   html+=groupNotifIntroHTML();
   // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
   html+=gameIntroHTML();
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
+  html+=wtIntroSlot(false);
   // Společné výzvy ve skupinách (4.43)
   html+='<div id="ch-dash">'+chDashHTML()+'</div>';
 
@@ -13640,6 +14048,7 @@ window.togModSet=async(id,on)=>{
   prof.modules=[...ms];
   try{
     await updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules});
+    if(id==='water'&&on) subWater();
     buildNav();rDash();rSetMods();
     const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
     toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
@@ -13983,7 +14392,15 @@ function buildChatContext(){
       if(h.mood) p.push(tA('aip.ctx.h.mood',{m:ctxT(h.mood,4)}));
       if(p.length) lines.push('- '+(i===0?tA('aip.ctx.today'):ctxDay(ds))+': '+p.join(', '));
     }
-    if(ctxNum(waterToday)>0) lines.push(tA('aip.ctx.h.waterToday',{n:ctxNum(waterToday),goal:ctxNum(waterGoal)||8}));
+    // Pitný režim (4.62): jen čísla a časy, žádný text uživatele
+    const wc=waterCfg();
+    if(wc&&_wtReady){
+      const es=wtEntries(today);
+      let k=0,sum=0;
+      for(let i=0;i<7;i++){ const ds=addDays(today,-i), v=wtMl(ds); sum+=v; if(v>=(i===0?wc.goal:wtGoalOf(ds))) k++; }
+      const v={ml:fmtMl(wtMl(today)),goal:fmtMl(wc.goal),n:es.length,t:es.length?wtClock(es.reduce((m,e)=>Math.max(m,e.t),0)):'',k,avg:fmtMl(Math.round(sum/7))};
+      lines.push(tA(es.length?'aip.ctx.h.waterToday':'aip.ctx.h.waterNone',v));
+    }
     return lines;
   });
 

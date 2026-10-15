@@ -455,6 +455,37 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       </div>
       <div style="padding:20px;max-width:700px;margin:0 auto;width:100%;box-sizing:border-box" id="hd-body"></div>
     </div>
+    <!-- PITNÝ REŽIM (4.62) -->
+    <div class="page" id="p-water">
+      <div class="gh wt-head">
+        <div class="ptitle" data-i18n="wt.title">💧 Pitný režim</div>
+        <button type="button" class="wt-icon-btn" onclick="openWaterSettings()" aria-label="Nastavení pitného režimu" data-i18n-attr="aria-label:wt.settings">⚙️</button>
+      </div>
+      <div id="wt-onb"></div>
+      <div id="wt-main" hidden>
+        <section class="wt-hero" aria-live="polite">
+          <div id="wt-bottle"></div>
+          <div class="wt-stat">
+            <div class="wt-num" id="wt-num"></div>
+            <div class="wt-of" id="wt-of"></div>
+            <div class="wt-left" id="wt-left"></div>
+          </div>
+        </section>
+        <div class="wt-cups" id="wt-cups" role="group" aria-label="Přidat vypité" data-i18n-attr="aria-label:wt.cupsAria"></div>
+        <div class="wt-undo-row"><button type="button" class="wt-undo" id="wt-undo" onclick="undoWater()" hidden></button></div>
+        <section class="dw wt-card" aria-labelledby="wt-today-h">
+          <div class="dw-head"><h2 class="dw-title" id="wt-today-h" data-i18n="wt.today">Dnes</h2></div>
+          <ul class="wt-list" id="wt-list"></ul>
+        </section>
+        <section class="dw wt-card" aria-labelledby="wt-week-h">
+          <div class="dw-head"><h2 class="dw-title" id="wt-week-h" data-i18n="wt.week">Posledních 7 dní</h2><span class="wt-week-sum" id="wt-week-sum"></span></div>
+          <div class="wt-week" id="wt-week" role="group"></div>
+          <div class="wt-week-lbl" id="wt-week-lbl" aria-hidden="true"></div>
+          <div class="wt-week-day" id="wt-week-day" aria-live="polite"></div>
+        </section>
+        <button type="button" class="wt-rem-row" id="wt-rem-row" onclick="openWaterSettings(&#39;rem&#39;)"></button>
+      </div>
+    </div>
     <!-- CALENDAR -->
     <div class="page" id="p-calendar">
       <div class="gh">
@@ -1233,6 +1264,15 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
 </div>
 
 <!-- Gamifikace 4.40: Můj růst, nová úroveň, splněný cíl, zápis hodnoty cíle (obsah vykresluje app.js) -->
+<div class="moverlay" id="m-water">
+  <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="wt-set-title">
+    <div class="gf-head">
+      <div class="mtitle" id="wt-set-title" data-i18n="wt.settings">Nastavení pitného režimu</div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-water&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="wt-set-body"></div>
+  </div>
+</div>
 <div class="moverlay" id="m-game">
   <div class="modal gf-sheet" role="dialog" aria-modal="true" aria-labelledby="game-title">
     <div class="gf-head">
