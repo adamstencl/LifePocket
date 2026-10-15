@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
@@ -1089,6 +1089,7 @@ onAuthStateChanged(auth,async u=>{
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
     stopAllGroupUnread(); _pendingGrpFeed = null;
+    pcReset(); // výzva měsíce (4.63)
     for(const b of _gaBuf.values()) clearTimeout(b.timer);
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
@@ -1110,7 +1111,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -1166,7 +1167,7 @@ function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.roun
 // Celoprofilový zápis bez polí, která spravují jiné cesty: tokeny, skupiny (familyId/extraGroupIds/formerGroups
 // – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu;
 // waterDay píše jen zápis vody, waterSent (dedup připomínek) jen server
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.waterDay;delete c.waterSent;return c;}
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.waterDay;delete c.waterSent;delete c.pc;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -3616,7 +3617,20 @@ window.exportMyData = async () => {
     addG(familyId || prof?.familyId, familyData?.groupName, true);
     const extra = (Array.isArray(extraGroupIds) && extraGroupIds.length) ? extraGroupIds : (Array.isArray(prof?.extraGroupIds) ? prof.extraGroupIds : []);
     extra.forEach(g => addG(g, extraGroupsData?.[g]?.groupName, false));
-    const head = JSON.stringify({ exportedAt: new Date().toISOString(), appVersion: APP_VERSION, uid, email: CU.email || null, groups });
+    // Výzvy měsíce / týdne (4.63): moje účast (přezdívka, dny) podle prof.pc a právě načtených výzev
+    const publicChallenges = {};
+    const pcIds = [...new Set([...Object.keys(prof?.pc && typeof prof.pc === 'object' ? prof.pc : {}), ...pcList.map(c => c.id)])].filter(id => PC_ID_RE.test(id));
+    if (pcIds.length) {
+      setExportStatus(tH('exp.pc'));
+      for (const id of pcIds) {
+        try {
+          const s = await getDoc(pcPartRef(id, uid));
+          if (s.exists()) { const d = exportPlain(s.data()); publicChallenges[id] = { title: pcFind(id) ? pcTitle(pcFind(id)) : '', nick: d.nick, j: d.j, d: d.d, n: d.n, joinedAt: d.joinedAt }; }
+        } catch (e) { /* pravidla ještě nemusí být nasazená */ }
+      }
+      if (CU?.uid !== uid) return;
+    }
+    const head = JSON.stringify({ exportedAt: new Date().toISOString(), appVersion: APP_VERSION, uid, email: CU.email || null, groups, publicChallenges });
     const fname = 'lifepocket-export-' + toDS() + '.json';
     const blob = new Blob([head.slice(0, -1) + ',"collections":{', ...colParts, '}}'], { type: 'application/json' });
     // iPhone z plochy: stažení přes a[download] je nespolehlivé → sdílení souboru (potřebuje nové klepnutí)
@@ -4337,7 +4351,8 @@ const NOTIF_DEFAULTS = {
   habits: true,
   morningDigest: true,
   eveningDigest: true,
-  birthday: true
+  birthday: true,
+  pc: true          // výzva měsíce / týdne (4.63): ohlášení a večerní připomínka ze serveru
 };
 let notifSettings = {...NOTIF_DEFAULTS};
 let notifTimers = [];
@@ -4523,8 +4538,8 @@ function loadNotifSettings() {
   // jen platné HH:MM, jinak výchozí čas
   if (m) m.value = TP_RE.test(notifSettings.morning || '') ? notifSettings.morning : NOTIF_DEFAULTS.morning;
   if (ev) ev.value = TP_RE.test(notifSettings.evening || '') ? notifSettings.evening : NOTIF_DEFAULTS.evening;
-  const ids = ['nt-habits','nt-morning','nt-evening'];
-  const keys = ['habits','morningDigest','eveningDigest'];
+  const ids = ['nt-habits','nt-morning','nt-evening','nt-pc'];
+  const keys = ['habits','morningDigest','eveningDigest','pc'];
   ids.forEach((id,i) => {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
@@ -4540,6 +4555,7 @@ window.saveNotifSettings = () => {
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
   notifSettings.morningDigest = document.getElementById('nt-morning')?.checked ?? true;
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
+  notifSettings.pc = document.getElementById('nt-pc')?.checked ?? true;
 
   localStorage.setItem('lp_notif', JSON.stringify(notifSettings));
   scheduleAllNotifications();
@@ -6242,7 +6258,7 @@ window.dismissQS = () => {
 // Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
 // mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
 const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
-  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,bonusCap:200};
+  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,pcMonth:50,pcWeek:20,bonusCap:200};
 const GAME_MAX_LVL=50;
 const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
 function levelOf(xp){ let L=1; while(L<GAME_MAX_LVL&&xp>=lvlXP(L+1)) L++; return L; }
@@ -6303,13 +6319,14 @@ function gameWrite(patch){
 }
 function gameDocData(g){ return {v:1,off:!!g.off,base:g.base,days:g.days,once:g.once,lvlSeen:g.lvlSeen,xp:gameTotal(g),rex:g.rex,share:g.share,badges:g.badges||{},bdv:g.bdv||0}; }
 // Jednorázová odměna s pevným klíčem; vrací true jen poprvé (dvě zařízení zapíšou totéž)
-function gameAward(key,x){
+// extra: doplňková pole záznamu (např. t = název splněné výzvy měsíce)
+function gameAward(key,x,extra){
   if(!game||!CU||game.once[key]) return false;
   const today=toDS();
   if(GAME_CAPPED.test(key)) x=Math.max(0,Math.min(x,XP.bonusCap-bonusToday()));
   if(key.startsWith('tk_')&&Object.entries(game.once).filter(([k,o])=>k.startsWith('tk_')&&o?.d===today).length>=XP.taskCap) x=0;
   const before=gameTotal();
-  game.once[key]={d:today,x:Math.max(0,Math.round(Number(x)||0))};
+  game.once[key]={...(extra||{}),d:today,x:Math.max(0,Math.round(Number(x)||0))};
   game.xp=gameTotal();
   gameWrite({['once.'+key]:game.once[key],xp:game.xp});
   gameAfter(before,game.xp);
@@ -6556,7 +6573,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -6611,6 +6628,9 @@ const BADGES=[
   {id:'goals_3',em:'🎯',f:c=>({cur:c.g100,max:3})},
   {id:'team_support',em:'🤝',f:c=>({cur:c.praise,max:10})},
   {id:'team_player',em:'🧩',f:c=>({cur:Math.min(1,c.chN),max:1})},
+  {id:'pc_1',em:'🎖️',f:c=>({cur:Math.min(1,c.pcN),max:1})},
+  {id:'pc_3',em:'🏅',f:c=>({cur:c.pcN,max:3})},
+  {id:'pc_12',em:'👑',f:c=>({cur:c.pcN,max:12})},
   {id:'writer',em:'📒',f:c=>({cur:c.notes,max:10})},
   {id:'lvl_10',em:'🍃',f:c=>({cur:c.lvl,max:10})},
   {id:'lvl_25',em:'🌲',f:c=>({cur:c.lvl,max:25})},
@@ -6651,16 +6671,17 @@ function badgeCtx(){
   const c={...badgeLogCtx()};
   const g50=new Set(), g100=new Set();
   for(const gl of goals){ if(!gl||!gl.id||!Array.isArray(gl.msHit)) continue; if(gl.msHit.includes(50)) g50.add(gl.id); if(gl.msHit.includes(100)) g100.add(gl.id); }
-  let praise=0, chN=0;
+  let praise=0, chN=0, pcN=0;
   for(const [k,o] of Object.entries(game?.once||{})){
     const m=/^gm_(.+)_(50|100)$/.exec(k);
     if(m) (m[2]==='50'?g50:g100).add(m[1]);
     if(k.startsWith('pr_')) praise+=Number(o?.n)||0;
     if(k.startsWith('ch_')) chN++;
+    if(k.startsWith('pc_')) pcN++;   // splněné výzvy měsíce / týdne (4.63)
   }
   // Splněný cíl je i na půli cesty
   for(const id of g100) g50.add(id);
-  Object.assign(c,{g50:g50.size,g100:g100.size,praise,chN,notes:Array.isArray(entries)?entries.length:0,lvl:gameLevel()});
+  Object.assign(c,{g50:g50.size,g100:g100.size,praise,chN,pcN,notes:Array.isArray(entries)?entries.length:0,lvl:gameLevel()});
   return c;
 }
 function badgeState(b,c){
@@ -10711,6 +10732,1032 @@ function celebrateChallenge(gid, c, st) {
   setTimeout(() => document.getElementById('gwin-ok')?.focus(), 50);
 }
 
+// ── VÝZVA MĚSÍCE / TÝDNE (4.63, docs/NAVRH-VYZVA-MESICE.md) ──
+// Veřejná výzva pro všechny: publicChallenges/{cid} (zakládá admin z config/admins), účast v participants/{uid}
+// {nick, joinedAt, j, d:[dny], n, upAt}. Žebříček přes getDocs (ne onSnapshot) a vlastní pozice přes count().
+// Dny v lokálním čase (toDS), pravidla pustí jen ±1 den v okně „dnes/včera“. Bez nasazených pravidel a indexů
+// (permission-denied, failed-precondition) se karta tiše nezobrazí. prof.pc.<cid> = {r: večerní připomínka,
+// last: poslední odškrtnutý den} slouží jen cronu a exportu. Lokálně (LOCAL_PERSONAL_KEYS): lp_pc (poslední
+// seznam a moje účast pro rychlé vykreslení), lp_pc_hide (skryté karty), lp_pc_nick (poslední přezdívka).
+const PC_ID_RE = /^(m-20\d{2}-(0[1-9]|1[0-2])|w-20\d{2}-W[0-5]\d)$/;
+// Přezdívka: stejný regex jako pcNickOk ve firestore.rules (hlídá ci-check)
+const PC_NICK_RE = /^[0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü][0-9A-Za-zÁČĎÉĚÍĹĽŇÓÔŔŘŠŤÚŮÝŽÄÖÜáčďéěíĺľňóôŕřšťúůýžäöü _-]*$/;
+// Pojistka z pravidel (malá písmena, s diakritikou): co odmítne server, odmítne už klient s lidskou hláškou
+const PC_RULES_BAD = /(admin|lifepocket|moderat|kurv|kurev|píč|pič|pic[aeiou]|kokot|čurák|curak|zmrd|šuk|suk[aá]|prdel|hovn|debil|fuck|shit|bitch|cunt|nigg|hitler|nazi)/;
+// Kořeny po normalizaci (malá písmena, bez diakritiky, leetspeak, sloučená opakovaná písmena): kdekoli v přezdívce
+const PC_BAD_ANY = ['kurv','kurev','kurw','picus','picovin','kokot','curak','cural','mrd','suka','jeb','chuj','prdel','hovn','hovad',
+  'debil','idiot','kreten','zasran','sracka','hajzl','buzerant','buzna','negr','niger','niga','retard','penis','vagin',
+  'fuck','shit','bitch','cunt','pusy','ashole','bastard','whore','slut','porn','nazi','hitler',
+  'admin','lifepocket','moderat','podpora','suport','spravce','oficial'];
+// Jen na začátku slova (jinak falešné shody: spicy, essex, peacock)
+const PC_BAD_START = ['pica','pice','pici','pico','picu','picy','sex','cock','dick','fag','rex','srac'];
+const PC_OK = ['cockatoo','scunthorpe'];
+const PC_LEET = {'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','8':'b'};
+const pcDedup = x => x.replace(/(.)\1+/g, '$1');
+const PC_BAD_ANY_D = PC_BAD_ANY.map(pcDedup), PC_BAD_START_D = PC_BAD_START.map(pcDedup);
+const PC_SOON_DAYS = 3, PC_RESULT_DAYS = 7, PC_TOP = 20, PC_IN_MAX = 30;
+const PC_LIST_TTL = 3600000, PC_BOARD_TTL = 120000, PC_BOARD_STALE = 300000, PC_PROF_KEEP_DAYS = 30;
+// Nápady pro admina: název a popis z i18n (pc.pre.<id>, pc.pre.<id>.d)
+const PC_PRESETS = [{id:'sweets',em:'🍬'},{id:'water',em:'💧'},{id:'walk',em:'🚶'},{id:'phone',em:'📵'},
+  {id:'calm',em:'🧘'},{id:'read',em:'📚'},{id:'veg',em:'🥦'},{id:'sleep',em:'😴'}];
+
+let pcList = [];             // výzvy k zobrazení: aktivní, běží / začne do 3 dní / skončila do 7 dní
+const pcMe = {};             // cid → moje účast | null (nepřihlášen/a); chybí = zatím neznámo
+const _pcUnsub = {};
+const _pcPending = {};       // cid → zápis dne právě běží
+const _pcBoard = {};         // cid → {at, top, total, pos, grp, grpAt, busy, err}
+let _pcAt = 0, _pcSheet = null, _isAppAdmin = false, _pcAdminChecked = '';
+const pcPartRef = (cid, uid) => doc(db,'publicChallenges',cid,'participants',uid);
+const pcFind = cid => pcList.find(c => c.id === cid) || null;
+// Chyba „pravidla / indexy ještě nejsou nasazené“ nebo offline: tiše
+const pcQuietErr = e => ['permission-denied','failed-precondition','unavailable'].includes(e?.code);
+
+// ── Přezdívka ──
+function pcNickClean(v) { return String(v ?? '').replace(/\s+/g, ' ').trim(); }
+// '' = v pořádku, 'chars' = délka nebo znaky, 'bad' = nevhodné nebo rezervované slovo
+function pcNickBad(v) {
+  const n = pcNickClean(v);
+  if(n.length < 3 || n.length > 20 || !PC_NICK_RE.test(n)) return 'chars';
+  if(PC_RULES_BAD.test(n.toLowerCase())) return 'bad';
+  let s = n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[0134578]/g, c => PC_LEET[c]);
+  for(const ok of PC_OK) s = s.split(ok).join(' ');
+  const words = s.split(/[ _-]+/).filter(Boolean).map(pcDedup);
+  if(words.some(w => PC_BAD_START_D.some(r => w.startsWith(r)))) return 'bad';
+  // Kořen uvnitř slova, nebo přes hranici slov s krátkým kouskem („K u r v a“, „kur va“).
+  // Spojení dvou delších slov se nepočítá („Statečná žirafa“ ≠ „nazi“).
+  const full = words.join(''), wi = [];
+  words.forEach((w, i) => { for(let k = 0; k < w.length; k++) wi.push(i); });
+  for(const r of PC_BAD_ANY_D) {
+    for(let at = full.indexOf(r); at >= 0; at = full.indexOf(r, at + 1)) {
+      const hit = new Set(wi.slice(at, at + r.length));
+      if(hit.size === 1 || [...hit].some(i => words[i].length <= 2)) return 'bad';
+    }
+  }
+  return '';
+}
+// Náhodná přezdívka (přídavné jméno + zvíře + číslo) vede k tomu, aby lidé nepsali svá jména
+function pcRandomNick() {
+  const pick = k => { const a = t(k).split(',').map(x => x.trim()).filter(Boolean); return a[Math.floor(Math.random() * a.length)] || ''; };
+  for(let i = 0; i < 12; i++) {
+    const n = pcNickClean(pick('pc.nickAdj') + ' ' + pick('pc.nickAnimal') + ' ' + (10 + Math.floor(Math.random() * 90)));
+    if(!pcNickBad(n)) return n;
+  }
+  return 'Panda ' + (10 + Math.floor(Math.random() * 90));
+}
+
+// ── Data ze serveru jsou data ──
+function pcNorm(id, d) {
+  if(!PC_ID_RE.test(id) || !d || typeof d !== 'object' || !['month', 'week'].includes(d.kind)) return null;
+  if(!CH_DS_RE.test(d.start) || !CH_DS_RE.test(d.end) || d.start > d.end) return null;
+  const title = cutName(d.title, 60);
+  if(!title) return null;
+  const en = d.en && typeof d.en === 'object' && !Array.isArray(d.en) ? {title: cutName(d.en.title, 60), desc: cutName(d.en.desc, 300)} : null;
+  const days = clampInt(d.days, 1, 31);
+  return {id, kind: d.kind, title, desc: cutName(d.desc, 300), emoji: cutName(d.emoji, 16) || '🏆', en: en && en.title ? en : null,
+    start: d.start, end: d.end, days, goal: clampInt(d.goal, 1, days), active: d.active === true};
+}
+function pcPartNorm(c, d) {
+  if(!d || typeof d !== 'object') return null;
+  const raw = Array.isArray(d.d) ? d.d.filter(x => typeof x === 'string').slice(0, 31) : [];
+  const days = [...new Set(raw.filter(x => CH_DS_RE.test(x) && x >= c.start && x <= c.end))].sort();
+  return {nick: cutName(d.nick, 20), j: typeof d.j === 'string' && CH_DS_RE.test(d.j) ? d.j : c.start, d: days, n: days.length,
+    sn: clampInt(d.n, 0, 31), jt: d.joinedAt && typeof d.joinedAt.toMillis === 'function' ? d.joinedAt : null};
+}
+// Řádek žebříčku (cizí dokument): jen přezdívka, počet dní a čas přihlášení
+function pcRow(snap) {
+  const d = snap.data() || {};
+  return {uid: snap.id, nick: cutName(d.nick, 20) || '…', n: clampInt(d.n, 0, 31), at: d.joinedAt && typeof d.joinedAt.toMillis === 'function' ? d.joinedAt.toMillis() : 0};
+}
+const pcTitle = c => LANG === 'en' && c.en?.title ? c.en.title : c.title;
+const pcDesc = c => LANG === 'en' && c.en?.title ? (c.en.desc || '') : c.desc;
+const pcKindL = c => t(c.kind === 'week' ? 'pc.week' : 'pc.month');
+const pcRange = c => t('pc.range', {a: fmtDate(c.start, 'dm'), b: fmtDate(c.end, 'dm')});
+
+// ── Stav podle lokálního data ──
+// Ráno po posledním dni (do poledne) jde ještě odškrtnout „Včera“ (pravidla to pustí, okno je kvůli pásmům širší)
+function pcLate(c, today = toDS()) { return today === addDays(c.end, 1) && new Date().getHours() < 12; }
+function pcState(c, today = toDS()) {
+  if(today < c.start) return 'soon';
+  if(today <= c.end) return 'run';
+  return pcLate(c, today) ? 'late' : 'over';
+}
+function pcDaysLeft(c, today = toDS()) { return Math.max(0, dsDiff(today < c.start ? c.start : today, c.end) + 1); }
+// Série: po sobě jdoucí dny končící dneškem nebo včerejškem
+function pcStreak(days, today = toDS()) {
+  const s = new Set(days);
+  let d = s.has(today) ? today : addDays(today, -1), n = 0;
+  while(s.has(d)) { n++; d = addDays(d, -1); }
+  return n;
+}
+// Poslední den výzvy podle ID (úklid prof.pc i pro výzvy, které už nejsou v seznamu)
+function pcCidEnd(cid) {
+  let m = /^m-(\d{4})-(\d{2})$/.exec(cid);
+  if(m) return toDS(new Date(+m[1], +m[2], 0, 12));
+  m = /^w-(\d{4})-W(\d{2})$/.exec(cid);
+  if(!m) return '';
+  // Pondělí ISO týdne: týden s 4. lednem je první
+  const jan4 = new Date(+m[1], 0, 4, 12), mon = new Date(jan4);
+  mon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7) + (+m[2] - 1) * 7);
+  return addDays(toDS(mon), 6);
+}
+// ISO týden pondělí ds → {y, w}
+function pcIsoWeek(ds) {
+  const th = new Date(ds + 'T12:00:00');
+  th.setDate(th.getDate() + 3 - ((th.getDay() + 6) % 7));
+  const y = th.getFullYear();
+  return {y, w: 1 + Math.floor(Math.round((th - new Date(y, 0, 1, 12)) / 864e5) / 7)};
+}
+
+// ── Načtení ──
+function pcCacheSave() {
+  if(!CU) return;
+  const me = {};
+  for(const c of pcList) if(pcMe[c.id] !== undefined) me[c.id] = pcMe[c.id] ? {nick: pcMe[c.id].nick, j: pcMe[c.id].j, d: pcMe[c.id].d} : null;
+  lsSave('lp_pc', {list: pcList, me});
+}
+function pcCacheLoad() {
+  const v = lsGet('lp_pc', null);
+  if(!v || !Array.isArray(v.list) || pcList.length) return;
+  pcList = v.list.map(c => c && pcNorm(c.id, c)).filter(Boolean);
+  for(const c of pcList) {
+    const m = v.me?.[c.id];
+    if(m === null) pcMe[c.id] = null;
+    else if(m && typeof m === 'object') pcMe[c.id] = pcPartNorm(c, m);
+  }
+}
+let _pcLoadP = null;
+function pcLoad(force) {
+  if(!CU || _accDeleting || _accDeleted) return Promise.resolve();
+  if(_pcLoadP) return _pcLoadP;
+  if(!force && Date.now() - _pcAt < PC_LIST_TTL) return Promise.resolve();
+  const uid = CU.uid;
+  pcCacheLoad();
+  _pcLoadP = (async () => {
+    try {
+      const snap = await getDocs(query(collection(db,'publicChallenges'), where('active','==',true), orderBy('end','desc'), limit(10)));
+      if(CU?.uid !== uid) return;
+      const today = toDS();
+      pcList = snap.docs.map(d => pcNorm(d.id, d.data())).filter(c => c && c.active
+        && c.end >= addDays(today, -PC_RESULT_DAYS) && c.start <= addDays(today, PC_SOON_DAYS));
+      for(const id of Object.keys(pcMe)) if(!pcFind(id)) delete pcMe[id];
+      _pcAt = Date.now();
+      pcWatchMine();
+      pcCacheSave();
+      pcPruneProf();
+    } catch(e) {
+      _pcAt = Date.now();
+      // Pravidla nebo indexy ještě nejsou nasazené: karta se tiše nezobrazí (ani z cache, ta by mohla být zastaralá)
+      if(e?.code === 'permission-denied' || e?.code === 'failed-precondition') pcList = [];
+      else console.warn('[LP] vyzva mesice', e?.code || e?.name);
+    } finally { _pcLoadP = null; }
+    if(CU?.uid === uid) renderPcUI();
+  })();
+  return _pcLoadP;
+}
+// Vlastní účast: posluchač jen na můj dokument (1 čtení + změny, synchronizace mezi zařízeními)
+function pcWatchMine() {
+  if(!CU) return;
+  const uid = CU.uid;
+  for(const id of Object.keys(_pcUnsub)) if(!pcFind(id)) { _pcUnsub[id](); delete _pcUnsub[id]; }
+  for(const c of pcList) {
+    if(_pcUnsub[c.id]) continue;
+    const cid = c.id;
+    _pcUnsub[cid] = onSnapshot(pcPartRef(cid, uid), s => {
+      if(CU?.uid !== uid) return;
+      // Offline bez dat v cache: držet poslední známý stav (jinak by přihlášený viděl „Jdu do toho“)
+      if(!s.exists() && s.metadata.fromCache && pcMe[cid] !== undefined) return;
+      const cc = pcFind(cid);
+      if(!cc) return;
+      pcMe[cid] = s.exists() ? pcPartNorm(cc, s.data()) : null;
+      pcCacheSave();
+      renderPcUI();
+      pcCheckDone();
+    }, e => {
+      delete _pcUnsub[cid];
+      if(!pcQuietErr(e)) console.warn('[LP] vyzva ucast', e?.code || e?.name);
+    });
+  }
+}
+function pcReset() {
+  for(const id of Object.keys(_pcUnsub)) { try { _pcUnsub[id](); } catch(e) {} delete _pcUnsub[id]; }
+  for(const k of Object.keys(pcMe)) delete pcMe[k];
+  for(const k of Object.keys(_pcBoard)) delete _pcBoard[k];
+  for(const k of Object.keys(_pcPending)) delete _pcPending[k];
+  pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'visible' || !CU || !prof) return;
+  if(Date.now() - _pcAt > PC_LIST_TTL) pcLoad();
+  else renderPcUI(); // nový den: jiný stav tlačítek
+  const s = _pcSheet;
+  if(s && document.getElementById('m-pc')?.classList.contains('open') && Date.now() - (_pcBoard[s.cid]?.at || 0) > PC_BOARD_STALE) pcLoadBoard(s.cid, true);
+});
+
+// ── Profil: stav účasti pro cron (prof.pc.<cid>) ──
+function pcProfOf(cid) { const v = prof?.pc?.[cid]; return v && typeof v === 'object' ? v : null; }
+function pcSyncProf(cid, r) {
+  if(!CU || !prof || _accDeleting || _accDeleted) return;
+  const me = pcMe[cid], old = pcProfOf(cid);
+  if(!me) return;
+  const v = {r: r === undefined ? (old ? old.r !== false : true) : !!r, last: me.d.length ? me.d[me.d.length - 1] : ''};
+  if(old && old.r === v.r && old.last === v.last) return;
+  prof.pc = {...(prof.pc && typeof prof.pc === 'object' ? prof.pc : {}), [cid]: v};
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {pc: {[cid]: v}}, {merge: true}).catch(e => console.warn('[LP] vyzva profil', e?.code || e?.name));
+}
+function pcDropProf(cid) {
+  if(!CU || !prof?.pc?.[cid]) return;
+  const nx = {...prof.pc}; delete nx[cid]; prof.pc = nx;
+  updateDoc(doc(db,'users',CU.uid,'profile','main'), new FieldPath('pc', cid), deleteField()).catch(e => console.warn('[LP] vyzva profil', e?.code || e?.name));
+}
+// Úklid: výzvy skončené před víc než 30 dny (cron je už nepotřebuje)
+function pcPruneProf() {
+  const pc = prof?.pc;
+  if(!pc || typeof pc !== 'object') return;
+  const lim = addDays(toDS(), -PC_PROF_KEEP_DAYS);
+  for(const cid of Object.keys(pc)) { const end = pcCidEnd(cid); if(!end || end < lim) pcDropProf(cid); }
+}
+
+// ── Domů: karta #pc-dash (nad společnými výzvami skupin) ──
+function pcHidden(cid) { const h = lsGet('lp_pc_hide', {}); return !!(h && typeof h === 'object' && h[cid]); }
+window.pcHide = cid => {
+  if(!PC_ID_RE.test(cid)) return;
+  const h = lsGet('lp_pc_hide', {}), o = h && typeof h === 'object' && !Array.isArray(h) ? h : {};
+  o[cid] = 1;
+  // jen výzvy ze seznamu (staré klíče pryč)
+  lsSave('lp_pc_hide', Object.fromEntries(Object.keys(o).filter(k => k === cid || pcFind(k)).map(k => [k, 1])));
+  renderPcUI();
+};
+// Výzvy na kartě: nejvýš jedna měsíční a jedna týdenní (běží > začne > výsledek)
+function pcDashList() {
+  const today = toDS(), rank = {run: 0, late: 0, soon: 1, over: 2}, out = [];
+  for(const kind of ['month', 'week']) {
+    const cand = pcList.filter(c => {
+      if(c.kind !== kind || pcMe[c.id] === undefined) return false;
+      const st = pcState(c, today), me = pcMe[c.id];
+      if(st === 'over') return !!me;                 // výsledek jen přihlášeným
+      if(st === 'late') return !!me;                 // ráno po konci se už nepřihlašuje
+      return !!me || !pcHidden(c.id);
+    }).sort((a, b) => rank[pcState(a, today)] - rank[pcState(b, today)] || b.start.localeCompare(a.start));
+    if(cand[0]) out.push(cand[0]);
+  }
+  return out;
+}
+function pcBarHTML(c, me) {
+  const pct = Math.min(100, Math.round(me.n / c.goal * 100)), txt = t('pc.progress', {n: me.n, goal: c.goal});
+  return `<div class="ch-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${c.goal}" aria-valuenow="${Math.min(me.n, c.goal)}" aria-label="${esc(txt)}"><div class="ch-fill${me.n >= c.goal ? ' done' : ''}" style="width:${pct}%"></div></div>`;
+}
+// Tlačítko „Splněno dnes“ (ráno po konci „Splněno včera (poslední den)“)
+function pcCheckBtn(c, me, compact) {
+  const today = toDS(), late = pcState(c, today) === 'late', ds = late ? c.end : today, on = me.d.includes(ds);
+  const lbl = late ? t('pc.yesterdayLast') : t(on ? 'pc.todayDone' : 'pc.today');
+  return `<button type="button" class="pc-check" aria-pressed="${on}"${_pcPending[c.id] ? ' disabled' : ''} data-a0="${esc(c.id)}" data-a1="${late ? 'y' : 't'}" onclick="pcDay(this.dataset.a0,this.dataset.a1)">${on ? '✅' : '⬜'} ${esc(compact ? t(late ? 'pc.yesterday' : 'pc.todayShort') : lbl)}</button>`;
+}
+function pcResultText(c, me) {
+  return me.n >= c.goal ? t('pc.resGood', {n: me.n, days: c.days}) : t('pc.resTry', {n: me.n});
+}
+function pcBigHTML(c) {
+  const st = pcState(c), me = pcMe[c.id], b = _pcBoard[c.id], cid = esc(c.id);
+  const head = st === 'over' ? `🏆 ${tH('pc.ended', {kind: pcKindL(c)})}` : `🏆 ${esc(pcKindL(c))} · ${esc(c.kind === 'month' ? fmtDate(c.start, 'my') : pcRange(c))}`;
+  const x = !me && st !== 'over' ? `<button type="button" class="pc-x" aria-label="${tH('pc.hide')}" data-a0="${cid}" onclick="pcHide(this.dataset.a0)">✕</button>` : '';
+  const top = `<div class="ch-top"><span class="ch-em" aria-hidden="true">${esc(c.emoji)}</span><div class="ch-tt"><div class="ch-name">${esc(pcTitle(c))}</div>`;
+  let body = '';
+  if(st === 'soon') {
+    body = top + `<div class="ch-meta">${tH('pc.soon', {d: fmtDate(c.start, 'dm')})}</div></div></div>`
+      + (pcDesc(c) ? `<div class="pc-desc">${esc(pcDesc(c))}</div>` : '')
+      + (me ? `<div class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm')})}</div>`
+        : `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.joinEarly')}</button>`);
+  } else if(!me) {
+    const tot = b && typeof b.total === 'number' ? ' · ' + t('pc.joined', {n: b.total}) : '';
+    body = top + `<div class="ch-meta">${esc(t('pc.until', {d: fmtDate(c.end, 'dm')}) + tot)}</div></div></div>`
+      + (pcDesc(c) ? `<div class="pc-desc">${esc(pcDesc(c))}</div>` : '')
+      + `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.join')}</button>
+        <button type="button" class="ch-link" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)">${tH('pc.showBoard')} →</button>`;
+  } else if(st === 'over') {
+    const pos = b && b.pos && typeof b.total === 'number' ? `<div class="ch-mine">${tH('pc.resPos', {pos: b.pos, n: b.total})}</div>` : '';
+    body = top + `<div class="ch-meta">${esc(pcRange(c))}</div></div></div>
+      <div class="ch-num">${esc(pcResultText(c, me))}</div>${pos}
+      <button type="button" class="ch-link" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)">${tH('pc.results')} →</button>`;
+  } else {
+    const sk = pcStreak(me.d), left = pcDaysLeft(c);
+    const meta = (st === 'late' ? t('pc.lastChance') : t('pc.left', {n: left})) + (sk ? ' · ' + t('pc.streak', {n: sk}) : '');
+    const done = me.d.includes(toDS());
+    const link = done ? t('pc.tomorrow') + (b && b.pos ? ' · ' + t('pc.place', {n: b.pos}) : '') : t('pc.boardMine');
+    body = top + `<div class="ch-meta">${esc(t('pc.progress', {n: me.n, goal: c.goal}))}</div></div></div>`
+      + pcBarHTML(c, me) + `<div class="ch-meta">${esc(meta)}</div>` + pcCheckBtn(c, me, false)
+      + `<button type="button" class="ch-link" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)">${esc(link)} →</button>`;
+  }
+  return `<div class="dw-head"><div class="dw-title">${head}</div>${x}</div><div class="ch-card">${body}</div>`;
+}
+// Druhá výzva (obvykle týdenní) kompaktně jedním řádkem
+function pcRowHTML(c) {
+  const st = pcState(c), me = pcMe[c.id], cid = esc(c.id);
+  const name = `<button type="button" class="pc-wname" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)"><span aria-hidden="true">${esc(c.emoji)}</span> ${esc(pcKindL(c))}: ${esc(pcTitle(c))}`;
+  let sub = '', act = '';
+  if(st === 'soon') sub = t('pc.soonShort', {d: fmtDate(c.start, 'dm')});
+  else if(!me) act = `<button type="button" class="btn-s pc-wbtn" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.joinShort')}</button>`;
+  else if(st === 'over') sub = pcResultText(c, me);
+  else { sub = t('pc.progress', {n: me.n, goal: c.goal}); act = pcCheckBtn(c, me, true); }
+  if(st === 'soon' && !me) act = `<button type="button" class="btn-s pc-wbtn" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.joinShort')}</button>`;
+  return `<div class="pc-week">${name}${sub ? `<span class="pc-sub">${esc(sub)}</span>` : ''}</button>${act}</div>`;
+}
+function pcDashHTML() {
+  if(!CU) return '';
+  const list = pcDashList();
+  if(!list.length) return '';
+  return `<div class="dw pc-dw" style="cursor:default">${pcBigHTML(list[0])}${list[1] ? pcRowHTML(list[1]) : ''}</div>`;
+}
+function renderPcUI() {
+  const d = document.getElementById('pc-dash');
+  if(d) {
+    // Fokus na tlačítku karty po překreslení vrátit (klávesnice, čtečka)
+    const a = document.activeElement, keep = a && d.contains(a) && a.dataset?.a0 ? [a.getAttribute('onclick'), a.dataset.a0] : null;
+    d.innerHTML = pcDashHTML();
+    if(keep) [...d.querySelectorAll('button')].find(b => b.getAttribute('onclick') === keep[0] && b.dataset.a0 === keep[1])?.focus();
+  }
+  if(_pcSheet && document.getElementById('m-pc')?.classList.contains('open')) pcRenderSheet();
+}
+
+// ── Odškrtnutí dne ──
+window.pcDay = async (cid, which) => {
+  const c = pcFind(cid), me = pcMe[cid];
+  if(!CU || !c || !me || _pcPending[cid] || _accDeleting || _accDeleted) return;
+  const today = toDS(), ds = which === 'y' ? addDays(today, -1) : today;
+  if(ds < c.start || ds > c.end || (which === 't' && pcState(c, today) !== 'run')) return;
+  const uid = CU.uid, had = me.d.includes(ds), prev = me;
+  const next = had ? me.d.filter(x => x !== ds) : [...me.d, ds].sort();
+  pcMe[cid] = {...me, d: next, n: next.length};
+  _pcPending[cid] = true;
+  renderPcUI();
+  if(had) toast(t('pc.undone'));
+  const ref = pcPartRef(cid, uid);
+  let ok = true;
+  try {
+    if(navigator.onLine === false) {
+      // Offline: zápis se odešle později (pravidla ho porovnají se stavem na serveru)
+      updateDoc(ref, {d: next, n: next.length, nick: me.nick, upAt: serverTimestamp()}).catch(e => pcDayErr(cid, prev, e));
+    } else {
+      // Transakce: druhé zařízení mohlo mezitím odškrtnout jiný den (pravidla chtějí přesně ±1 den)
+      await runTransaction(db, async tx => {
+        const s = await tx.get(ref);
+        if(!s.exists()) throw Object.assign(new Error('gone'), {code: 'not-found'});
+        const cur = s.data() || {}, raw = Array.isArray(cur.d) ? cur.d.filter(x => typeof x === 'string') : [];
+        if(raw.includes(ds) !== had) return; // už hotovo jinde
+        const nd = had ? raw.filter(x => x !== ds) : [...raw, ds];
+        tx.update(ref, {d: nd, n: nd.length, nick: cur.nick, upAt: serverTimestamp()});
+      });
+    }
+  } catch(e) { ok = false; pcDayErr(cid, prev, e); }
+  finally { delete _pcPending[cid]; }
+  if(CU?.uid !== uid) return;
+  renderPcUI();
+  if(ok) { pcSyncProf(cid); if(_pcBoard[cid]) _pcBoard[cid].at = 0; pcCheckDone(); }
+};
+function pcDayErr(cid, prev, e) {
+  if(pcMe[cid] && prev) pcMe[cid] = prev;
+  renderPcUI();
+  if(e?.code === 'not-found') { pcMe[cid] = null; renderPcUI(); return; }
+  console.warn('[LP] vyzva den', e?.code || e?.name);
+  // Přezdívka mezitím přestala projít pravidly → nabídnout změnu
+  if(e?.code === 'permission-denied' && prev && pcNickBad(prev.nick)) { toast(t('pc.nickBadOld'), 4000); window.pcOpen(cid); window.pcMenu(true, true); return; }
+  toast(t('pc.errSave'));
+}
+
+// ── Oslava a XP při dosažení cíle (1× za výzvu, once.pc_<cid>, mimo denní strop) ──
+function pcCheckDone() {
+  if(!CU || !game || _accDeleting || _accDeleted) return;
+  for(const c of pcList) {
+    const me = pcMe[c.id];
+    if(!me || me.n < c.goal || game.once['pc_' + c.id]) continue;
+    if(gameAward('pc_' + c.id, c.kind === 'week' ? XP.pcWeek : XP.pcMonth, {t: cutName(pcTitle(c), 60)})) whenUiFree(() => celebratePc(c));
+  }
+}
+function celebratePc(c) {
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const line = c.emoji + ' ' + pcTitle(c);
+  if(celebModalOpen()) { showAvReaction('🎖️', t('pc.win.t'), line, true); return; }
+  const body = document.getElementById('gwin-body');
+  if(!body) return;
+  const x = game?.once?.['pc_' + c.id]?.x;
+  body.innerHTML = `<div class="gs-top"><div class="gwin-em" aria-hidden="true">${esc(c.emoji)}</div>
+      <div class="lu-title" id="gwin-title">${tH('pc.win.t')}</div>
+      <div class="gs-lvl">${esc(line)}</div>
+      ${gameOn() ? `<div class="ch-xp">${x ? '+' + x + ' XP · ' : ''}🎖️ ${tH('game.badge.pc_1')}</div>` : ''}
+      <div class="lu-say">„${tH('pc.win.say')}“ — ${esc(av.name)}</div></div>
+    <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
+  om('m-gwin');
+  spawnConfetti();
+  setTimeout(() => document.getElementById('gwin-ok')?.focus(), 50);
+}
+
+// ── Žebříček ──
+async function pcLoadBoard(cid, force) {
+  const c = pcFind(cid);
+  if(!CU || !c) return;
+  const b = _pcBoard[cid] || (_pcBoard[cid] = {});
+  if(b.busy || (!force && b.at && Date.now() - b.at < PC_BOARD_TTL)) return;
+  if(navigator.onLine === false) { b.offline = true; pcRenderSheet(); return; }
+  b.busy = true; b.offline = false;
+  pcRenderSheet();
+  const uid = CU.uid, col = collection(db,'publicChallenges',cid,'participants');
+  try {
+    const [top, total] = await Promise.all([
+      getDocs(query(col, orderBy('n','desc'), orderBy('joinedAt','asc'), limit(PC_TOP))),
+      getCountFromServer(col)]);
+    if(CU?.uid !== uid) return;
+    b.top = top.docs.map(pcRow);
+    b.total = total.data().count;
+    b.pos = null;
+    const me = pcMe[cid], i = b.top.findIndex(r => r.uid === uid);
+    if(i >= 0) b.pos = i + 1;
+    else if(me && me.jt) {
+      // Pozice = kolik lidí má víc dní + kolik se stejným počtem se přidalo dřív + 1
+      const [a, s] = await Promise.all([getCountFromServer(query(col, where('n','>',me.sn))),
+        getCountFromServer(query(col, where('n','==',me.sn), where('joinedAt','<',me.jt)))]);
+      b.pos = a.data().count + s.data().count + 1;
+    }
+    b.at = Date.now(); b.err = '';
+  } catch(e) {
+    b.err = e?.code || 'err';
+    if(!pcQuietErr(e)) console.warn('[LP] zebricek', e?.code || e?.name);
+  } finally { b.busy = false; }
+  pcRenderSheet();
+  renderPcUI();
+}
+// Moji lidé ze skupin (kromě mě), jméno a avatar ze skupiny; ID skupin se nikam neukládají
+function pcMates() {
+  const m = new Map();
+  for(const gid of myGroupIds()) for(const [uid, x] of Object.entries(groupDataOf(gid)?.members || {})) {
+    if(!m.has(uid) && UID_RE_PC.test(uid)) m.set(uid, {name: cutName(x?.name, 40), av: lookupOr(MEMBER_AV, x?.avatar, '👤')});
+  }
+  return m;
+}
+const UID_RE_PC = /^[A-Za-z0-9_-]{1,128}$/;
+function pcHasMates() { return [...pcMates().keys()].some(u => u !== CU?.uid); }
+async function pcLoadGroup(cid) {
+  const b = _pcBoard[cid] || (_pcBoard[cid] = {});
+  if(!CU || b.gBusy) return;
+  if(b.grpAt && Date.now() - b.grpAt < PC_BOARD_TTL) return;
+  if(navigator.onLine === false) { b.offline = true; pcRenderSheet(); return; }
+  const uid = CU.uid, uids = [...pcMates().keys()], col = collection(db,'publicChallenges',cid,'participants');
+  b.gBusy = true;
+  pcRenderSheet();
+  try {
+    const rows = [];
+    for(let i = 0; i < uids.length; i += PC_IN_MAX) {
+      const s = await getDocs(query(col, where(documentId(), 'in', uids.slice(i, i + PC_IN_MAX)), limit(PC_IN_MAX)));
+      s.docs.forEach(d => rows.push(pcRow(d)));
+    }
+    if(CU?.uid !== uid) return;
+    b.grp = rows.sort((x, y) => y.n - x.n || x.at - y.at);
+    b.grpAt = Date.now(); b.gErr = '';
+  } catch(e) {
+    b.gErr = e?.code || 'err';
+    if(!pcQuietErr(e)) console.warn('[LP] zebricek skupiny', e?.code || e?.name);
+  } finally { b.gBusy = false; }
+  pcRenderSheet();
+}
+const PC_MEDAL = ['🥇', '🥈', '🥉'];
+function pcRankHTML(i) {
+  return `<span class="pc-rank">${i <= 3 ? `<span aria-hidden="true">${PC_MEDAL[i - 1]}</span><span class="sr-only">${esc(t('pc.rankAria', {n: i}))}</span>` : esc(i + '.')}</span>`;
+}
+function pcBoardHTML(c) {
+  const b = _pcBoard[c.id] || {}, me = pcMe[c.id], uid = CU?.uid;
+  const grp = _pcSheet?.tab === 'grp' && pcHasMates();
+  let h = `<div class="ch-h">${tH('pc.board')}</div>`;
+  if(pcHasMates()) h += `<div class="seg seg--block" role="radiogroup" aria-label="${tH('pc.board')}">
+      <button type="button" class="seg-btn${grp ? '' : ' active'}" role="radio" aria-checked="${!grp}" data-a0="all" onclick="pcTab(this.dataset.a0)">${tH('pc.all')}</button>
+      <button type="button" class="seg-btn${grp ? ' active' : ''}" role="radio" aria-checked="${grp}" data-a0="grp" onclick="pcTab(this.dataset.a0)">${tH('pc.mine')}</button></div>`;
+  const nd = n => esc(t('pc.nDays', {n}));
+  if(grp) {
+    const mates = pcMates();
+    if(b.gErr) return h + `<p class="ch-note">${tH(b.gErr === 'unavailable' ? 'pc.offline' : 'pc.boardErr')}</p>`;
+    if(!b.grp) return h + `<p class="ch-note">${tH(b.offline ? 'pc.offline' : 'pc.loading')}</p>`;
+    if(!b.grp.length) return h + `<p class="ch-note">${tH('pc.emptyGrp')}</p>`;
+    return h + `<ol class="pc-lb" aria-label="${tH('pc.mine')}">${b.grp.map(r => {
+      const m = mates.get(r.uid) || {};
+      const nm = r.uid === uid ? t('gf.you') : (m.name || t('gf.someone'));
+      return `<li class="pc-row${r.uid === uid ? ' me' : ''}"${r.uid === uid ? ' aria-current="true"' : ''}><span class="pc-rank" aria-hidden="true">${esc(m.av || '👤')}</span><span class="pc-nick">${esc(nm)}<span class="pc-sub">${esc(r.nick)}</span></span><span class="pc-n">${nd(r.n)}</span></li>`;
+    }).join('')}</ol>`;
+  }
+  if(b.err && !b.top) return h + `<p class="ch-note">${tH(b.err === 'unavailable' ? 'pc.offline' : 'pc.boardErr')}</p>`;
+  if(!b.top) return h + `<p class="ch-note">${tH(b.offline ? 'pc.offline' : 'pc.loading')}</p>`;
+  if(!b.top.length) return h + `<p class="ch-note">${tH('pc.empty')}</p>`;
+  let rows = b.top.map((r, i) => {
+    const mine = r.uid === uid;
+    return `<li class="pc-row${mine ? ' me' : ''}"${mine ? ' aria-current="true"' : ''}>${pcRankHTML(i + 1)}<span class="pc-nick">${esc(mine ? t('pc.me', {nick: r.nick}) : r.nick)}</span><span class="pc-n">${nd(r.n)}</span></li>`;
+  }).join('');
+  if(me && b.pos && b.pos > b.top.length) rows += `<li class="pc-gap" aria-hidden="true">⋯</li>
+    <li class="pc-row me" aria-current="true">${pcRankHTML(b.pos)}<span class="pc-nick">${esc(t('pc.me', {nick: me.nick}))}</span><span class="pc-n">${nd(me.n)}</span></li>`;
+  const when = b.offline && b.at ? ' · ' + t('pc.lastAt', {time: fmtTime(new Date(b.at))}) : '';
+  return h + `<ol class="pc-lb" aria-label="${tH('pc.boardAria')}">${rows}</ol>
+    <div class="pc-foot"><span>${typeof b.total === 'number' ? tH('pc.joined', {n: b.total}) : ''}${esc(when)}</span>
+      <button type="button" class="btn-s"${b.busy ? ' disabled' : ''} data-a0="${esc(c.id)}" onclick="pcRefresh(this.dataset.a0)">↻ ${tH('pc.refresh')}</button></div>
+    <p class="ch-note">${tH('pc.tie')}</p>`;
+}
+window.pcTab = tab => {
+  if(!_pcSheet) return;
+  _pcSheet.tab = tab === 'grp' ? 'grp' : 'all';
+  if(_pcSheet.tab === 'grp') pcLoadGroup(_pcSheet.cid);
+  pcRenderSheet();
+};
+window.pcRefresh = cid => {
+  const b = _pcBoard[cid];
+  if(b) b.grpAt = 0;
+  pcLoadBoard(cid, true);
+  if(_pcSheet?.tab === 'grp') pcLoadGroup(cid);
+};
+
+// ── Sheet #m-pc: přihlášení (join) a detail ──
+window.pcOpen = (cid, mode) => {
+  if(!CU) return;
+  let c = pcFind(cid);
+  if(!c) c = pcDashList()[0] || pcList[0];
+  if(!c) return;
+  const me = pcMe[c.id];
+  const st = pcState(c);
+  _pcSheet = {cid: c.id, mode: mode === 'join' && !me && (st === 'run' || st === 'soon') ? 'join' : 'detail', tab: 'all', menu: false, nick: false};
+  pcRenderSheet();
+  const ov = document.getElementById('m-pc');
+  if(ov && !ov.classList.contains('open')) { om('m-pc'); focusOverlay(ov); }
+  if(_pcSheet.mode === 'detail') pcLoadBoard(c.id);
+  if(_pcSheet.mode === 'join') setTimeout(() => document.getElementById('pc-nick')?.focus(), 60);
+};
+function pcGridHTML(c, me) {
+  const today = toDS(), set = new Set(me ? me.d : []);
+  const names = weekdayNames('short');
+  let cells = names.map(n => `<span>${esc(n)}</span>`).join('');
+  const lead = (new Date(c.start + 'T12:00:00').getDay() + 6) % 7;
+  for(let i = 0; i < lead; i++) cells += '<span></span>';
+  for(let ds = c.start; ds <= c.end; ds = addDays(ds, 1)) {
+    const on = set.has(ds), past = ds < today && (!me || ds >= me.j);
+    cells += `<span class="pc-cell${on ? ' on' : past ? ' miss' : ''}${ds === today ? ' today' : ''}">${on ? '✓' : past ? '·' : ''}</span>`;
+  }
+  return `<div class="pc-grid" aria-hidden="true">${cells}</div>`;
+}
+function pcRenderSheet() {
+  const tEl = document.getElementById('pc-title'), bEl = document.getElementById('pc-body');
+  const s = _pcSheet;
+  if(!tEl || !bEl || !s) return;
+  const c = pcFind(s.cid);
+  if(!c) { tEl.textContent = '🏆'; bEl.innerHTML = `<div class="gf-empty">${tH('pc.gone')}</div>`; return; }
+  const me = pcMe[c.id], st = pcState(c), today = toDS(), cid = esc(c.id);
+  tEl.textContent = '🏆 ' + pcKindL(c);
+  const menuBtn = document.getElementById('pc-menu-btn');
+  if(menuBtn) { menuBtn.hidden = !me || s.mode !== 'detail'; menuBtn.setAttribute('aria-expanded', String(!!s.menu)); }
+  const meta = st === 'soon' ? t('pc.soon', {d: fmtDate(c.start, 'dm')}) : st === 'run' ? pcRange(c) + ' · ' + t('pc.left', {n: pcDaysLeft(c)}) : pcRange(c);
+  let h = `<div class="ch-top"><span class="ch-em" aria-hidden="true">${esc(c.emoji)}</span><div class="ch-tt"><div class="ch-name">${esc(pcTitle(c))}</div>
+    <div class="ch-meta">${esc(meta)} · ${tH('pc.goalMeta', {n: c.goal})}</div></div></div>`
+    + (pcDesc(c) ? `<p class="pc-text">${esc(pcDesc(c))}</p>` : '');
+  if(s.mode === 'join') {
+    // Rozepsaná přezdívka a zaškrtnutí se při překreslení zachovají
+    const nickV = document.getElementById('pc-nick')?.value ?? (lsGet('lp_pc_nick', '') || pcRandomNick());
+    const remV = document.getElementById('pc-remind')?.checked ?? true;
+    h += `<div class="ch-h">${tH('pc.howT')}</div><p class="pc-text">${tH('pc.how')}</p>
+      <div class="fg"><label class="flbl" for="pc-nick">${tH('pc.nickL')}</label>
+        <div class="pc-nickrow"><input class="finp" id="pc-nick" maxlength="20" autocomplete="off" autocapitalize="sentences" aria-describedby="pc-nick-h pc-nick-err" oninput="pcNickInput()" value="${esc(nickV)}">
+          <button type="button" class="pc-dice" aria-label="${tH('pc.dice')}" onclick="pcDice()">🎲</button></div>
+        <div class="pc-nickfoot"><span id="pc-nick-h" class="ch-hint">${tH('pc.nickHint')}</span><span class="pc-cnt" id="pc-nick-cnt" aria-hidden="true">${pcNickClean(nickV).length} / 20</span></div>
+        <div class="pc-err" id="pc-nick-err" role="alert"></div></div>
+      <label class="gn-check"><input type="checkbox" id="pc-remind"${remV ? ' checked' : ''}><span>${tH('pc.remind')}</span></label>
+      ${pcHasMates() ? `<p class="ch-note">${tH('pc.grpNote')}</p>` : ''}
+      <p class="ch-note">${tH('pc.privNote')}</p>
+      <button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcJoin(this.dataset.a0)">${tH('pc.joinBtn')}</button>`;
+    bEl.innerHTML = h;
+    return;
+  }
+  // Menu ⋯: přezdívka, připomínka, odhlášení
+  if(me && s.menu) {
+    const r = pcProfOf(c.id)?.r !== false;
+    h += `<div class="pc-menu">` + (s.nick
+      ? `<div class="fg"><label class="flbl" for="pc-nick">${tH('pc.nickL')}</label>
+          <div class="pc-nickrow"><input class="finp" id="pc-nick" maxlength="20" autocomplete="off" aria-describedby="pc-nick-err" oninput="pcNickInput()" value="${esc(document.getElementById('pc-nick')?.value ?? me.nick)}"></div>
+          <div class="pc-err" id="pc-nick-err" role="alert"></div>
+          <div class="macts"><button type="button" class="btn-s" onclick="pcMenu(true,false)">${tH('common.cancel')}</button>
+            <button type="button" class="btn-p" data-a0="${cid}" onclick="pcNickSave(this.dataset.a0)">${tH('common.save')}</button></div></div>`
+      : `<button type="button" class="ch-link" onclick="pcMenu(true,true)">✏️ ${tH('pc.nickChange')}</button>`)
+      + `<label class="gn-check"><input type="checkbox"${r ? ' checked' : ''} data-a0="${cid}" onchange="pcRemind(this.dataset.a0,this.checked)"><span>${tH('pc.remindShort')}</span></label>
+      <button type="button" class="ch-link ch-del" data-a0="${cid}" onclick="pcLeave(this.dataset.a0)">${tH('pc.leave')}</button></div>`;
+  }
+  if(me) {
+    if(st === 'run' || st === 'late') {
+      const y = addDays(today, -1);
+      const btn = (ds, w, key) => ds < c.start || ds > c.end ? '' :
+        `<button type="button" class="ch-day${me.d.includes(ds) ? ' on' : ''}" aria-pressed="${me.d.includes(ds)}"${_pcPending[c.id] ? ' disabled' : ''} data-a0="${cid}" data-a1="${w}" onclick="pcDay(this.dataset.a0,this.dataset.a1)">${me.d.includes(ds) ? '✅' : '⬜'} ${tH(key)}</button>`;
+      h += `<div class="ch-days">${st === 'run' ? btn(today, 't', 'pc.todayShort') : ''}${btn(y, 'y', st === 'late' ? 'pc.yesterdayLast' : 'pc.yesterday')}</div>`;
+    } else if(st === 'soon') h += `<p class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm')})}</p>`;
+    else h += `<p class="ch-num">${esc(pcResultText(c, me))}</p>`;
+    const sk = st === 'over' ? 0 : pcStreak(me.d);
+    h += pcGridHTML(c, me) + `<p class="ch-mine">${esc(t('pc.doneOf', {n: me.n, goal: c.goal}) + (sk ? ' · ' + t('pc.streak', {n: sk}) : ''))}</p>`;
+  } else if(st === 'run' || st === 'soon') {
+    h += `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.join')}</button>`;
+  }
+  // Fokus a rozepsaná přezdívka v menu přežijí překreslení
+  const focusId = document.activeElement?.id;
+  bEl.innerHTML = h + `<div class="pc-sep"></div>` + pcBoardHTML(c);
+  if(focusId) document.getElementById(focusId)?.focus();
+}
+window.pcMenu = (open, nick) => {
+  if(!_pcSheet) return;
+  _pcSheet.menu = open === undefined ? !_pcSheet.menu : !!open;
+  _pcSheet.nick = !!nick && _pcSheet.menu;
+  pcRenderSheet();
+  if(_pcSheet.nick) setTimeout(() => { const el = document.getElementById('pc-nick'); el?.focus(); el?.select?.(); }, 30);
+};
+window.pcNickInput = () => {
+  const el = document.getElementById('pc-nick'), cnt = document.getElementById('pc-nick-cnt'), err = document.getElementById('pc-nick-err');
+  if(cnt && el) cnt.textContent = pcNickClean(el.value).length + ' / 20';
+  if(err) err.textContent = '';
+};
+window.pcDice = () => {
+  const el = document.getElementById('pc-nick');
+  if(!el) return;
+  el.value = pcRandomNick();
+  window.pcNickInput();
+  el.focus();
+};
+// Kontrola přezdívky z pole; vrací přezdívku nebo '' (chyba pod polem, fokus do pole)
+function pcNickFromInput() {
+  const el = document.getElementById('pc-nick'), err = document.getElementById('pc-nick-err');
+  const n = pcNickClean(el?.value), bad = pcNickBad(n);
+  if(!bad) return n;
+  if(err) err.textContent = t(bad === 'chars' ? 'pc.nickChars' : 'pc.nickBad');
+  el?.focus();
+  return '';
+}
+window.pcJoin = cid => {
+  const c = pcFind(cid);
+  if(!CU || !c || pcMe[cid] || _accDeleting || _accDeleted) return;
+  const st = pcState(c), today = toDS();
+  if(st !== 'run' && st !== 'soon') { toast(t('pc.over')); return; }
+  const nick = pcNickFromInput();
+  if(!nick) return;
+  const r = document.getElementById('pc-remind')?.checked !== false;
+  const uid = CU.uid, j = today < c.start ? c.start : today;
+  lsSave('lp_pc_nick', nick);
+  const hide = lsGet('lp_pc_hide', {});
+  if(hide && hide[cid]) { delete hide[cid]; lsSave('lp_pc_hide', hide); }
+  pcMe[cid] = pcPartNorm(c, {nick, j, d: [], n: 0});
+  _pcPending[cid] = true;
+  setDoc(pcPartRef(cid, uid), {nick, joinedAt: serverTimestamp(), j, d: [], n: 0, upAt: serverTimestamp()})
+    .then(() => { if(CU?.uid === uid && _pcBoard[cid]) _pcBoard[cid].at = 0; })
+    .catch(e => {
+      if(CU?.uid !== uid) return;
+      console.warn('[LP] vyzva prihlaseni', e?.code || e?.name);
+      pcMe[cid] = null;
+      pcDropProf(cid);
+      toast(t(e?.code === 'permission-denied' ? 'pc.joinDenied' : 'pc.errSave'), 4000);
+      renderPcUI();
+    })
+    .finally(() => { delete _pcPending[cid]; });
+  pcSyncProf(cid, r);
+  _pcSheet = {cid, mode: 'detail', tab: 'all', menu: false, nick: false};
+  toast(t('pc.joinedToast'));
+  renderPcUI();
+  pcRenderSheet();
+  pcLoadBoard(cid, true);
+};
+window.pcNickSave = cid => {
+  const me = pcMe[cid];
+  if(!CU || !me) return;
+  const nick = pcNickFromInput();
+  if(!nick) return;
+  lsSave('lp_pc_nick', nick);
+  if(nick !== me.nick) {
+    const uid = CU.uid, old = me.nick;
+    pcMe[cid] = {...me, nick};
+    updateDoc(pcPartRef(cid, uid), {nick, upAt: serverTimestamp()}).catch(e => {
+      if(CU?.uid !== uid) return;
+      console.warn('[LP] vyzva prezdivka', e?.code || e?.name);
+      if(pcMe[cid]) pcMe[cid] = {...pcMe[cid], nick: old};
+      toast(t('pc.errSave'));
+      renderPcUI();
+    });
+    const b = _pcBoard[cid];
+    if(b) { b.at = 0; b.grpAt = 0; }
+  }
+  if(_pcSheet) { _pcSheet.menu = false; _pcSheet.nick = false; }
+  renderPcUI();
+  pcLoadBoard(cid, true);
+};
+window.pcRemind = (cid, on) => { if(pcMe[cid]) { pcSyncProf(cid, !!on); toast(t(on ? 'pc.remindOn' : 'pc.remindOff')); } };
+window.pcLeave = cid => {
+  if(!CU || !pcMe[cid]) return;
+  if(!confirm(t('pc.leaveQ'))) return;
+  const uid = CU.uid, prev = pcMe[cid];
+  pcMe[cid] = null;
+  deleteDoc(pcPartRef(cid, uid)).catch(e => {
+    if(CU?.uid !== uid) return;
+    console.warn('[LP] vyzva odhlaseni', e?.code || e?.name);
+    pcMe[cid] = prev;
+    toast(t('pc.errSave'));
+    renderPcUI();
+  });
+  pcDropProf(cid);
+  delete _pcBoard[cid];
+  if(_pcSheet) { _pcSheet.menu = false; _pcSheet.nick = false; }
+  toast(t('pc.leftToast'));
+  renderPcUI();
+  pcLoadBoard(cid, true);
+};
+
+// ── Admin aplikace (config/admins.uids): zjištění a správa výzev ──
+async function pcCheckAdmin() {
+  if(!CU || _pcAdminChecked === CU.uid) return;
+  const uid = CU.uid;
+  _pcAdminChecked = uid;
+  try {
+    const s = await getDoc(doc(db,'config','admins'));
+    if(CU?.uid !== uid) return;
+    const u = s.exists() ? s.data()?.uids : null;
+    _isAppAdmin = Array.isArray(u) && u.includes(uid);
+  } catch(e) {
+    _isAppAdmin = false;   // permission-denied = není admin (tiše)
+    if(e?.code !== 'permission-denied') _pcAdminChecked = '';   // offline: zkusit znovu příště
+  }
+  renderPcSettings();
+}
+// Nastavení: ID účtu (všichni, jen vlastní uid) a vstup do správy výzev (jen admin)
+function renderPcSettings() {
+  const u = document.getElementById('set-uid');
+  if(u && CU) u.innerHTML = `<div class="acc-uid"><span class="acc-uid-l">${tH('pc.uid')}</span><code class="acc-uid-v" translate="no">${esc(CU.uid)}</code>
+    <button type="button" class="btn-s acc-uid-b" aria-label="${tH('pc.uidCopy')}" onclick="copyUid()">📋</button></div>`;
+  const a = document.getElementById('set-pcadmin');
+  if(!a) return;
+  a.hidden = !_isAppAdmin;
+  a.innerHTML = _isAppAdmin ? `<div class="setsec-t">🛠️ ${tH('pc.adm.title')}</div><div class="setsec-d">${tH('pc.adm.desc')}</div>
+    <button type="button" class="btn-sv" onclick="pcAdmOpen()">${tH('pc.adm.open')}</button>` : '';
+}
+window.copyUid = async () => {
+  if(!CU) return;
+  try { await navigator.clipboard.writeText(CU.uid); toast(t('pc.uidCopied')); }
+  catch(e) { prompt(t('pc.uid'), CU.uid); }
+};
+
+let _pcAdm = null;   // {list:[{id, data, c}], counts:{}, view, cid, parts, last, more, q, busy}
+const pcAdmEl = () => document.getElementById('pcadm-body');
+function pcAdmErr(e) { console.warn('[LP] sprava vyzev', e?.code || e?.name); toast(t('pc.adm.err')); }
+window.pcAdmOpen = async () => {
+  if(!CU || !_isAppAdmin) return;
+  _pcAdm = {list: [], counts: {}, view: 'list', cid: '', parts: [], last: null, more: false, q: '', busy: true};
+  pcAdmRender();
+  const ov = document.getElementById('m-pcadmin');
+  if(ov && !ov.classList.contains('open')) { om('m-pcadmin'); focusOverlay(ov); }
+  await pcAdmLoad();
+};
+async function pcAdmLoad() {
+  if(!_pcAdm) return;
+  _pcAdm.busy = true;
+  try {
+    const s = await getDocs(query(collection(db,'publicChallenges'), orderBy('end','desc'), limit(50)));
+    if(!_pcAdm) return;
+    _pcAdm.list = s.docs.map(d => ({id: d.id, data: d.data(), c: pcNorm(d.id, d.data())})).filter(x => x.c);
+    const today = toDS();
+    // Počty jen u běžících a budoucích (count = 1 čtení na 1000 záznamů)
+    await Promise.all(_pcAdm.list.filter(x => x.c.end >= addDays(today, -PC_RESULT_DAYS)).map(x =>
+      getCountFromServer(collection(db,'publicChallenges',x.id,'participants')).then(r => { if(_pcAdm) _pcAdm.counts[x.id] = r.data().count; }).catch(() => {})));
+  } catch(e) { pcAdmErr(e); }
+  if(_pcAdm) { _pcAdm.busy = false; pcAdmRender(); }
+}
+function pcAdmFind(cid) { return _pcAdm?.list.find(x => x.id === cid) || null; }
+function pcAdmRender() {
+  const el = pcAdmEl(), tEl = document.getElementById('pcadm-title');
+  if(!el || !_pcAdm) return;
+  const A = _pcAdm, today = toDS();
+  if(tEl) tEl.textContent = '🛠️ ' + t(A.view === 'form' ? (A.cid ? 'pc.adm.edit' : 'pc.adm.new') : 'pc.adm.title');
+  if(A.view === 'form') { el.innerHTML = pcAdmFormHTML(); return; }
+  if(A.view === 'detail') { el.innerHTML = pcAdmDetailHTML(); return; }
+  const row = x => {
+    const n = A.counts[x.id];
+    return `<button type="button" class="pcadm-row" data-a0="${esc(x.id)}" onclick="pcAdmDetail(this.dataset.a0)"><span aria-hidden="true">${esc(x.c.emoji)}</span>
+      <span class="pcadm-nm">${esc(x.c.title)}<span class="pc-sub">${esc(pcKindL(x.c) + ' · ' + pcRange(x.c))}</span></span>${typeof n === 'number' ? `<span class="pc-n">${esc(t('pc.adm.people', {n}))}</span>` : ''}</button>`;
+  };
+  const sec = (key, arr) => arr.length ? `<div class="ch-h">${tH(key)}</div>${arr.map(row).join('')}` : '';
+  const run = A.list.filter(x => x.c.active && x.c.end >= today), drafts = A.list.filter(x => !x.c.active), past = A.list.filter(x => x.c.active && x.c.end < today);
+  el.innerHTML = `<button type="button" class="btn-s ch-btn" data-a0="month" onclick="pcAdmNew(this.dataset.a0)">➕ ${tH('pc.adm.newMonth')}</button>
+    <button type="button" class="btn-s ch-btn" data-a0="week" onclick="pcAdmNew(this.dataset.a0)">➕ ${tH('pc.adm.newWeek')}</button>
+    ${A.busy ? `<p class="ch-note">${tH('pc.loading')}</p>` : (sec('pc.adm.running', run) + sec('pc.adm.drafts', drafts) + sec('pc.adm.past', past)) || `<p class="ch-note">${tH('pc.adm.none')}</p>`}`;
+}
+// Období: měsíce od aktuálního (12), týdny od tohoto pondělí (10)
+function pcAdmPeriods(kind) {
+  const out = [], now = new Date();
+  if(kind === 'month') {
+    for(let i = 0; i < 12; i++) {
+      const s = new Date(now.getFullYear(), now.getMonth() + i, 1, 12), e = new Date(s.getFullYear(), s.getMonth() + 1, 0, 12);
+      const start = toDS(s), end = toDS(e);
+      out.push({id: 'm-' + start.slice(0, 7), start, end, days: dsDiff(start, end) + 1, label: fmtDate(start, 'my')});
+    }
+  } else {
+    const mon = addDays(toDS(), -((now.getDay() + 6) % 7));
+    for(let i = 0; i < 10; i++) {
+      const start = addDays(mon, i * 7), end = addDays(start, 6), w = pcIsoWeek(start);
+      out.push({id: 'w-' + w.y + '-W' + String(w.w).padStart(2, '0'), start, end, days: 7, label: t('pc.range', {a: fmtDate(start, 'dm'), b: fmtDate(end, 'dm')})});
+    }
+  }
+  return out;
+}
+window.pcAdmNew = kind => {
+  if(!_pcAdm) return;
+  const k = kind === 'week' ? 'week' : 'month';
+  // Další volné období (první bez výzvy)
+  const p = pcAdmPeriods(k).find(x => !pcAdmFind(x.id)) || pcAdmPeriods(k)[0];
+  _pcAdm.view = 'form'; _pcAdm.cid = ''; _pcAdm.form = {kind: k, period: p.id, emoji: '🏆', title: '', desc: '', goal: p.days, enT: '', enD: ''};
+  pcAdmRender();
+};
+window.pcAdmEdit = cid => {
+  const x = pcAdmFind(cid);
+  if(!x) return;
+  _pcAdm.view = 'form'; _pcAdm.cid = cid;
+  _pcAdm.form = {kind: x.c.kind, period: cid, emoji: x.c.emoji, title: x.c.title, desc: x.c.desc, goal: x.c.goal, enT: x.c.en?.title || '', enD: x.c.en?.desc || ''};
+  pcAdmRender();
+};
+function pcAdmPeriod(f) {
+  const x = pcAdmFind(f.period);
+  if(x) return {id: x.id, start: x.c.start, end: x.c.end, days: x.c.days, label: pcRange(x.c)};
+  return pcAdmPeriods(f.kind).find(p => p.id === f.period) || pcAdmPeriods(f.kind)[0];
+}
+// Rozepsaný formulář do stavu (před překreslením)
+function pcAdmReadForm() {
+  const f = _pcAdm?.form;
+  if(!f) return null;
+  const v = id => document.getElementById(id)?.value;
+  for(const [k, id] of [['emoji', 'pca-em'], ['title', 'pca-title'], ['desc', 'pca-desc'], ['goal', 'pca-goal'], ['period', 'pca-period'], ['enT', 'pca-ent'], ['enD', 'pca-end']]) { const x = v(id); if(x != null) f[k] = x; }
+  return f;
+}
+function pcAdmFormHTML() {
+  const A = _pcAdm, f = A.form, x = A.cid ? pcAdmFind(A.cid) : null;
+  const locked = !!x && x.c.active && x.c.start <= toDS();   // po startu se období a cíl nemění
+  const per = pcAdmPeriod(f);
+  const opts = x ? `<option value="${esc(x.id)}" selected>${esc(per.label)}</option>`
+    : pcAdmPeriods(f.kind).map(p => `<option value="${esc(p.id)}"${p.id === f.period ? ' selected' : ''}${pcAdmFind(p.id) ? ' disabled' : ''}>${esc(p.label)}</option>`).join('');
+  return `<button type="button" class="ch-link" onclick="pcAdmBack()">← ${tH('pc.adm.back')}</button>
+    <div class="fg"><div class="flbl" id="pca-kind-l">${tH('pc.adm.kind')}</div>
+      <div class="seg seg--block" role="radiogroup" aria-labelledby="pca-kind-l">${['month', 'week'].map(k =>
+        `<button type="button" class="seg-btn${f.kind === k ? ' active' : ''}" role="radio" aria-checked="${f.kind === k}"${x ? ' disabled' : ''} data-a0="${k}" onclick="pcAdmKind(this.dataset.a0)">${tH(k === 'week' ? 'pc.adm.kWeek' : 'pc.adm.kMonth')}</button>`).join('')}</div></div>
+    <div class="fg"><label class="flbl" for="pca-period">${tH('pc.adm.period')}</label>
+      <select class="finp" id="pca-period"${x ? ' disabled' : ''} onchange="pcAdmPeriodChange()">${opts}</select>
+      <div class="ch-hint">${tH('pc.adm.periodHint', {range: pcRange(per), n: per.days})}</div></div>
+    ${x ? '' : `<div class="ch-pre" role="group" aria-label="${tH('pc.adm.ideas')}">${PC_PRESETS.map(p =>
+      `<button type="button" class="gf-chip ch-pre-b" data-a0="${p.id}" onclick="pcAdmPreset(this.dataset.a0)">${p.em} ${tH('pc.pre.' + p.id)}</button>`).join('')}</div>`}
+    <div class="ch-row2"><div class="fg" style="max-width:90px"><label class="flbl" for="pca-em">${tH('pc.adm.icon')}</label>
+        <input class="finp" id="pca-em" maxlength="16" value="${esc(f.emoji)}"></div>
+      <div class="fg"><label class="flbl" for="pca-title">${tH('pc.adm.name')}</label>
+        <input class="finp" id="pca-title" maxlength="60" value="${esc(f.title)}"></div></div>
+    <div class="fg"><label class="flbl" for="pca-desc">${tH('pc.adm.descL')}</label>
+      <textarea class="finp" id="pca-desc" maxlength="300" rows="3">${esc(f.desc)}</textarea></div>
+    <div class="fg"><label class="flbl" for="pca-goal">${tH('pc.adm.goal', {n: per.days})}</label>
+      <input class="finp" id="pca-goal" type="number" inputmode="numeric" min="1" max="${per.days}" step="1" value="${esc(f.goal)}"${locked ? ' disabled' : ''}>
+      ${locked ? `<div class="ch-hint">${tH('pc.adm.locked')}</div>` : ''}</div>
+    <details class="pca-en"${f.enT ? ' open' : ''}><summary>${tH('pc.adm.en')}</summary>
+      <div class="fg"><label class="flbl" for="pca-ent">${tH('pc.adm.name')}</label><input class="finp" id="pca-ent" maxlength="60" value="${esc(f.enT)}"></div>
+      <div class="fg"><label class="flbl" for="pca-end">${tH('pc.adm.descL')}</label><textarea class="finp" id="pca-end" maxlength="300" rows="3">${esc(f.enD)}</textarea></div></details>
+    <div class="macts">${x && x.c.active ? `<button type="button" class="btn-p" onclick="pcAdmSave(true)">${tH('common.save')}</button>`
+      : `<button type="button" class="btn-s" onclick="pcAdmSave(false)">${tH('pc.adm.saveDraft')}</button>
+        <button type="button" class="btn-p" onclick="pcAdmSave(true)">${tH('pc.adm.publish')}</button>`}</div>`;
+}
+window.pcAdmBack = () => { if(!_pcAdm) return; _pcAdm.view = _pcAdm.cid && _pcAdm.view === 'form' ? 'detail' : 'list'; pcAdmRender(); };
+window.pcAdmKind = k => {
+  const f = pcAdmReadForm();
+  if(!f || _pcAdm.cid) return;
+  f.kind = k === 'week' ? 'week' : 'month';
+  const p = pcAdmPeriods(f.kind).find(x => !pcAdmFind(x.id)) || pcAdmPeriods(f.kind)[0];
+  f.period = p.id; f.goal = p.days;
+  pcAdmRender();
+};
+window.pcAdmPeriodChange = () => {
+  const f = pcAdmReadForm();
+  if(!f) return;
+  const old = Number(f.goal), p = pcAdmPeriod(f);
+  f.goal = !old || old > p.days || old >= 28 ? p.days : old;   // celý měsíc → celé nové období
+  pcAdmRender();
+};
+window.pcAdmPreset = id => {
+  const f = pcAdmReadForm(), p = PC_PRESETS.find(x => x.id === id);
+  if(!f || !p) return;
+  f.emoji = p.em; f.title = t('pc.pre.' + id); f.desc = t('pc.pre.' + id + '.d');
+  pcAdmRender();
+};
+window.pcAdmSave = async publish => {
+  const A = _pcAdm, f = pcAdmReadForm();
+  if(!A || !f || !CU || A.busy) return;
+  const x = A.cid ? pcAdmFind(A.cid) : null, per = pcAdmPeriod(f);
+  const title = cutName(f.title, 60), desc = cutName(f.desc, 300), emoji = cutName(f.emoji, 16) || '🏆';
+  const goal = x && x.c.active && x.c.start <= toDS() ? x.c.goal : Math.round(Number(f.goal));
+  if(!title) { toast(t('pc.adm.errTitle')); document.getElementById('pca-title')?.focus(); return; }
+  if(!Number.isFinite(goal) || goal < 1 || goal > per.days) { toast(t('pc.adm.errGoal', {n: per.days})); document.getElementById('pca-goal')?.focus(); return; }
+  if(publish && !(x && x.c.active) && !confirm(t('pc.adm.publishQ', {title}))) return;
+  const data = {title, emoji, kind: x ? x.c.kind : f.kind, start: per.start, end: per.end, days: per.days, goal, active: !!publish || !!(x && x.c.active),
+    createdBy: x ? x.data.createdBy : CU.uid, createdAt: x ? x.data.createdAt : serverTimestamp(), updatedAt: serverTimestamp()};
+  if(desc) data.desc = desc;
+  const enT = cutName(f.enT, 60), enD = cutName(f.enD, 300);
+  if(enT) data.en = {title: enT, desc: enD};
+  A.busy = true;
+  try {
+    const ref = doc(db,'publicChallenges', per.id);
+    if(!x) {
+      const ex = await getDoc(ref);
+      if(ex.exists()) { toast(t('pc.adm.exists')); A.busy = false; await pcAdmLoad(); window.pcAdmEdit(per.id); return; }
+    }
+    await setDoc(ref, data);
+    toast(t(publish ? 'pc.adm.published' : 'pc.adm.saved'));
+    A.busy = false;
+    A.cid = per.id;
+    await pcAdmLoad();
+    if(_pcAdm) { _pcAdm.view = 'detail'; pcAdmRender(); }
+    pcLoad(true);
+  } catch(e) { A.busy = false; pcAdmErr(e); }
+};
+window.pcAdmDetail = async cid => {
+  if(!_pcAdm || !pcAdmFind(cid)) return;
+  Object.assign(_pcAdm, {view: 'detail', cid, parts: [], last: null, more: false, q: ''});
+  pcAdmRender();
+  await pcAdmParts(false);
+};
+async function pcAdmParts(more) {
+  const A = _pcAdm;
+  if(!A || !A.cid || A.pBusy) return;
+  A.pBusy = true;
+  const cid = A.cid;
+  try {
+    const col = collection(db,'publicChallenges',cid,'participants');
+    const s = await getDocs(more && A.last ? query(col, orderBy('joinedAt'), startAfter(A.last), limit(50)) : query(col, orderBy('joinedAt'), limit(50)));
+    if(_pcAdm !== A || A.cid !== cid) return;
+    const rows = s.docs.map(d => { const r = pcRow(d); r.j = typeof d.data()?.j === 'string' ? d.data().j : ''; return r; });
+    A.parts = more ? [...A.parts, ...rows] : rows;
+    A.last = s.docs[s.docs.length - 1] || A.last;
+    A.more = s.docs.length === 50;
+  } catch(e) { pcAdmErr(e); }
+  A.pBusy = false;
+  if(_pcAdm === A) pcAdmRender();
+}
+function pcAdmDetailHTML() {
+  const A = _pcAdm, x = pcAdmFind(A.cid);
+  if(!x) return `<button type="button" class="ch-link" onclick="pcAdmBack()">← ${tH('pc.adm.back')}</button>`;
+  const c = x.c, today = toDS(), cid = esc(c.id);
+  const status = !c.active ? t('pc.adm.sDraft') : c.end < today ? t('pc.adm.sPast') : c.start > today ? t('pc.adm.sSoon') : t('pc.adm.sRun');
+  const n = A.counts[c.id];
+  const q = A.q.toLowerCase();
+  const parts = q ? A.parts.filter(r => r.nick.toLowerCase().startsWith(q)) : A.parts;
+  return `<button type="button" class="ch-link" onclick="pcAdmBack()">← ${tH('pc.adm.back')}</button>
+    <div class="ch-top"><span class="ch-em" aria-hidden="true">${esc(c.emoji)}</span><div class="ch-tt"><div class="ch-name">${esc(c.title)}</div>
+      <div class="ch-meta">${esc(pcKindL(c) + ' · ' + pcRange(c) + ' · ' + status)} · ${tH('pc.goalMeta', {n: c.goal})}</div></div></div>
+    <div class="pcadm-acts"><button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmEdit(this.dataset.a0)">✏️ ${tH('pc.adm.editBtn')}</button>
+      <button type="button" class="btn-s" data-a0="${cid}" onclick="pcAdmToggle(this.dataset.a0)">${c.active ? '🙈 ' + tH('pc.adm.hide') : '🚀 ' + tH('pc.adm.publish')}</button>
+      ${!c.active && !n ? `<button type="button" class="btn-s ch-del" data-a0="${cid}" onclick="pcAdmDelete(this.dataset.a0)">🗑️ ${tH('pc.adm.delete')}</button>` : ''}</div>
+    <div class="ch-h">${tH('pc.adm.parts', {n: typeof n === 'number' ? n : '…'})}</div>
+    <label class="sr-only" for="pca-q">${tH('pc.adm.search')}</label>
+    <input class="finp" id="pca-q" placeholder="${tH('pc.adm.search')}" value="${esc(A.q)}" oninput="pcAdmSearch(this.value)">
+    <ul class="pc-lb">${parts.map(r => `<li class="pc-row pcadm-p"><span class="pc-nick">${esc(r.nick)}<span class="pc-sub">${esc(t('pc.nDays', {n: r.n}) + (r.j && CH_DS_RE.test(r.j) ? ' · ' + fmtDate(r.j, 'dm') : ''))}</span></span>
+      <button type="button" class="pc-x" aria-label="${esc(t('pc.adm.removeAria', {nick: r.nick}))}" data-a0="${cid}" data-a1="${esc(r.uid)}" onclick="pcAdmRemove(this.dataset.a0,this.dataset.a1)">✕</button></li>`).join('')}</ul>
+    ${A.pBusy ? `<p class="ch-note">${tH('pc.loading')}</p>` : !A.parts.length ? `<p class="ch-note">${tH('pc.empty')}</p>` : ''}
+    ${A.more ? `<button type="button" class="btn-s ch-btn" onclick="pcAdmMore()">${tH('pc.adm.more')}</button>` : ''}`;
+}
+window.pcAdmMore = () => pcAdmParts(true);
+window.pcAdmSearch = v => {
+  if(!_pcAdm) return;
+  _pcAdm.q = String(v || '').slice(0, 20);
+  pcAdmRender();
+  const el = document.getElementById('pca-q');
+  if(el) { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); }
+};
+window.pcAdmToggle = async cid => {
+  const x = pcAdmFind(cid);
+  if(!x || !_pcAdm || _pcAdm.busy) return;
+  const on = !x.c.active;
+  if(!confirm(t(on ? 'pc.adm.publishQ' : 'pc.adm.hideQ', {title: x.c.title}))) return;
+  try {
+    await updateDoc(doc(db,'publicChallenges',cid), {active: on, updatedAt: serverTimestamp()});
+    toast(t(on ? 'pc.adm.published' : 'pc.adm.hidden'));
+    await pcAdmLoad();
+    pcLoad(true);
+  } catch(e) { pcAdmErr(e); }
+};
+window.pcAdmDelete = async cid => {
+  const x = pcAdmFind(cid);
+  if(!x || x.c.active || !confirm(t('pc.adm.deleteQ', {title: x.c.title}))) return;
+  try {
+    await deleteDoc(doc(db,'publicChallenges',cid));
+    toast(t('pc.adm.deleted'));
+    if(_pcAdm) { _pcAdm.view = 'list'; _pcAdm.cid = ''; }
+    await pcAdmLoad();
+  } catch(e) { pcAdmErr(e); }
+};
+// Odebrání účastníka: smazat účast a zablokovat nové přihlášení do této výzvy (jedna dávka)
+window.pcAdmRemove = async (cid, uid) => {
+  const A = _pcAdm, r = A?.parts.find(p => p.uid === uid);
+  if(!A || !r || !UID_RE_PC.test(uid) || !confirm(t('pc.adm.removeQ', {nick: r.nick}))) return;
+  try {
+    const b = writeBatch(db);
+    b.delete(pcPartRef(cid, uid));
+    b.set(doc(db,'publicChallenges',cid,'blocked',uid), {at: serverTimestamp()});
+    await b.commit();
+    A.parts = A.parts.filter(p => p.uid !== uid);
+    if(typeof A.counts[cid] === 'number') A.counts[cid] = Math.max(0, A.counts[cid] - 1);
+    if(_pcBoard[cid]) _pcBoard[cid].at = 0;
+    toast(t('pc.adm.removed'));
+    pcAdmRender();
+  } catch(e) { pcAdmErr(e); }
+};
+
 // ── VÝZVY K AKCI PRO SDÍLENÍ (4.49) ──
 // Tlačítko „Sdílet“ na kartě návyku a cíle, nabídka po vytvoření, karta výzvy na Domů, tip v Nastavení.
 // Jen když má uživatel skupinu s dalším členem; bez ní jemná pozvánka nad seznamem návyků a cílů.
@@ -11866,7 +12913,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -11891,6 +12938,8 @@ async function consumePendingOpen() {
   try {
     if(p.open === 'cal') { window.sp('calendar'); return; }
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
+    // Výzva měsíce (4.63): detail výzvy z notifikace (seznam se načte, pokud ještě není)
+    if(p.open === 'pc') { window.sp('dashboard'); await pcLoad(!pcList.length); if(CU) window.pcOpen(p.id && PC_ID_RE.test(p.id) ? p.id : ''); return; }
     // Návyky: počkat na první data (nejvýš 8 s), pak detail návyku, jinak seznam
     await Promise.race([habitsReady, new Promise(r => setTimeout(r, 8000))]);
     if(!CU) return;
@@ -13022,6 +14071,7 @@ async function initApp(){
   installVisitCheck(); installGate();
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
+  {const uid=CU?.uid;setTimeout(()=>{if(CU&&CU.uid===uid){pcLoad(true);pcCheckAdmin();}},2500);} // výzva měsíce (4.63), admin podle config/admins
   // Ranní pozdrav až po prvním snapshotu návyků (nejdéle 15 s), jinak by Rex hlásil 0 návyků
   {const uid=CU?.uid;Promise.race([habitsReady,new Promise(r=>setTimeout(r,15000))])
     .then(()=>setTimeout(()=>{if(CU&&CU.uid===uid)rexProactiveGreeting();},1500));}
@@ -13222,6 +14272,8 @@ function rDash(){
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
   html+=wtIntroSlot(false);
+  // Výzva měsíce / týdne pro všechny (4.63), nad výzvami skupin
+  html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
   // Společné výzvy ve skupinách (4.43)
   html+='<div id="ch-dash">'+chDashHTML()+'</div>';
 
@@ -14057,6 +15109,7 @@ function initSet(){
   renderGameSetting(); // přepínač Body a úrovně (4.40)
   document.getElementById('set-avsub').textContent=prof.nickname||'';
   renderLangSwitch();
+  renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
 }
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');

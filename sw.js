@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v57';
+const CACHE = 'lifepocket-v58';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -147,6 +147,10 @@ function onNotifClick(e) {
     const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'].includes(data.module) ? data.module : '';
     e.waitUntil(openInApp({type: 'OPEN_GRPFEED', gid: data.gid, module: mod},
       '/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : '')));
+  } else if (data.open === 'pc') {
+    // Výzva měsíce / týdne (4.63) → detail výzvy
+    const cid = typeof data.cid === 'string' && /^(m-20\d{2}-(0[1-9]|1[0-2])|w-20\d{2}-W[0-5]\d)$/.test(data.cid) ? data.cid : '';
+    e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'pc', id: cid}, '/?open=pc' + (cid ? '&id=' + encodeURIComponent(cid) : '')));
   } else if (['habit', 'habits', 'cal', 'water'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
     // Připomínka návyku → detail návyku, ranní/večerní přehled → Návyky, událost / narozeniny → Kalendář,
     // připomínka pití → Pitný režim

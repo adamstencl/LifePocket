@@ -1012,6 +1012,10 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
                 <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
                 <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co jsi splnil/a)</span>
               </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
+              </label>
 
             </div>
           </div>
@@ -1118,10 +1122,14 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       <div class="setsec" id="set-account">
         <div class="setsec-t" data-i18n="set.account.title">🔐 Účet</div>
         <div class="setsec-d" data-i18n="set.account.desc">Stáhni si všechna svoje data do souboru, nebo účet trvale smaž.</div>
+        <!-- ID účtu (4.63, vykresluje renderPcSettings) -->
+        <div id="set-uid"></div>
         <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()" style="margin-top:10px" data-i18n="set.account.export">📥 Stáhnout moje data</button>
         <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
         <button type="button" class="acc-del-link" onclick="openDeleteAccount()" data-i18n="set.account.delete">🗑️ Smazat účet</button>
       </div>
+      <!-- Správa výzev měsíce (4.63): jen admin podle config/admins, obsah vykresluje renderPcSettings -->
+      <div class="setsec" id="set-pcadmin" hidden></div>
     </div>
 
   </div>
@@ -1222,6 +1230,28 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       <button type="button" class="gf-x" onclick="cm(&#39;m-chal&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
     </div>
     <div id="chal-body"></div>
+  </div>
+</div>
+
+<!-- Výzva měsíce / týdne 4.63: přihlášení a detail (pcRenderSheet) -->
+<div class="moverlay" id="m-pc">
+  <div class="modal gf-sheet pc-sheet" role="dialog" aria-modal="true" aria-labelledby="pc-title">
+    <div class="gf-head">
+      <div class="mtitle" id="pc-title"></div>
+      <button type="button" class="gf-x" id="pc-menu-btn" hidden onclick="pcMenu()" aria-expanded="false" aria-label="Možnosti výzvy" data-i18n-attr="aria-label:pc.menu">⋯</button>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-pc&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="pc-body"></div>
+  </div>
+</div>
+<!-- Správa výzev měsíce 4.63 (jen admin, pcAdmRender) -->
+<div class="moverlay" id="m-pcadmin">
+  <div class="modal gf-sheet pc-sheet" role="dialog" aria-modal="true" aria-labelledby="pcadm-title">
+    <div class="gf-head">
+      <div class="mtitle" id="pcadm-title"></div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-pcadmin&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div id="pcadm-body"></div>
   </div>
 </div>
 
