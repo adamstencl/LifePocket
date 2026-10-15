@@ -10904,9 +10904,12 @@ function pcLoad(force) {
   pcCacheLoad();
   _pcLoadP = (async () => {
     try {
-      const snap = await getDocs(query(collection(db,'publicChallenges'), where('active','==',true), orderBy('end','desc'), limit(10)));
-      if(CU?.uid !== uid) return;
+      // Index active ASC + end ASC (firestore.indexes.json); pravidlo list chce active == true a limit <= 10.
+      // Vzestupně od nejdřív končící: skončené před víc než 7 dny dotaz vynechá, vzdálené budoucí výzvy jsou až na konci.
       const today = toDS();
+      const snap = await getDocs(query(collection(db,'publicChallenges'), where('active','==',true),
+        where('end','>=', addDays(today, -PC_RESULT_DAYS)), orderBy('end','asc'), limit(10)));
+      if(CU?.uid !== uid) return;
       pcList = snap.docs.map(d => pcNorm(d.id, d.data())).filter(c => c && c.active
         && c.end >= addDays(today, -PC_RESULT_DAYS) && c.start <= addDays(today, PC_SOON_DAYS));
       for(const id of Object.keys(pcMe)) if(!pcFind(id)) delete pcMe[id];
@@ -11530,6 +11533,7 @@ async function pcAdmLoad() {
   if(!_pcAdm) return;
   _pcAdm.busy = true;
   try {
+    // Jedno pole bez filtru: stačí automatický index (složený index potřebuje jen dotaz klienta active + end)
     const s = await getDocs(query(collection(db,'publicChallenges'), orderBy('end','desc'), limit(50)));
     if(!_pcAdm) return;
     _pcAdm.list = s.docs.map(d => ({id: d.id, data: d.data(), c: pcNorm(d.id, d.data())})).filter(x => x.c);
