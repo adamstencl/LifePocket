@@ -947,12 +947,19 @@ async function pcNotifs(prof, push, L, zn, g) {
     } catch(e) { console.error('[LP] push výzvy (večer):', e.message); }
   }
 }
-// Smazání účtu: účast a blokace ve všech veřejných výzvách (smazání neexistujícího dokumentu nevadí)
+// ID účasti ve veřejné výzvě: sha256(uid + ':' + cid) jako hex malými písmeny (stejně app.js pcPid a firestore.rules)
+const pcPid = (uid, cid) => require('crypto').createHash('sha256').update(uid + ':' + cid, 'utf8').digest('hex');
+// Smazání účtu: účast a blokace ve všech veřejných výzvách (smazání neexistujícího dokumentu nevadí).
+// Chyba se propaguje: deleteAccount pak skončí chybou a jde zopakovat (účast by jinak zůstala bez účtu).
 async function deletePublicChallengeData(uid) {
   const refs = await db.collection('publicChallenges').listDocuments();
   for (let i = 0; i < refs.length; i += 200) {
     const b = db.batch();
-    for (const r of refs.slice(i, i + 200)) { b.delete(r.collection('participants').doc(uid)); b.delete(r.collection('blocked').doc(uid)); }
+    for (const r of refs.slice(i, i + 200)) {
+      const pid = pcPid(uid, r.id);
+      b.delete(r.collection('participants').doc(pid));
+      b.delete(r.collection('blocked').doc(pid));
+    }
     await b.commit();
   }
 }
@@ -1531,9 +1538,10 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSecon
         catch(e) { console.error(`[LP] deleteAccount uid=${uid} aktivita: ${e && e.code || ''}`); }
       }
     }
-    // (b2) veřejné výzvy (4.63): účast v žebříčku a blokace; chyba smazání účtu nezastaví
-    try { await deletePublicChallengeData(uid); }
-    catch(e) { console.error(`[LP] deleteAccount uid=${uid} výzvy: ${e && e.code || ''}`); }
+    // (b2) veřejné výzvy (4.63): účast v žebříčku a blokace (podle ID účasti); chyba zastaví smazání účtu,
+    //      aby účast nezůstala bez možnosti ji smazat (akce je idempotentní, jde zopakovat)
+    step = 'b2';
+    await deletePublicChallengeData(uid);
     // (c) osobní data včetně všech podkolekcí
     step = 'c';
     await db.recursiveDelete(db.doc(`users/${uid}`));

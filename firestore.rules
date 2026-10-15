@@ -377,8 +377,9 @@ service cloud.firestore {
     }
 
     // ── Veřejné výzvy (Výzva měsíce / týdne, 4.63, docs/NAVRH-VYZVA-MESICE.md) ──
-    // Zakládá a moderuje jen admin aplikace (isAdmin, config/admins). Účastník: dokument = uid,
-    // jen přezdívka + odškrtnuté dny. Den jde přidat / odebrat jen po jednom a jen „dnes nebo včera“
+    // Zakládá a moderuje jen admin aplikace (isAdmin, config/admins). Účastník: ID dokumentu = sha256(uid + ':' + cid)
+    // jako hex malými písmeny (uid v dokumentu ani v ID není), jen přezdívka + odškrtnuté dny.
+    // Den jde přidat / odebrat jen po jednom a jen „dnes nebo včera“
     // v některém časovém pásmu (UTC−12 až UTC+14) podle request.time.
     function pcDs(ds) {
       return ds is string && ds.matches('^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
@@ -436,6 +437,8 @@ service cloud.firestore {
       allow delete: if isAdmin() && resource.data.active == false;
 
       function pc() { return get(/databases/$(database)/documents/publicChallenges/$(cid)).data; }
+      // ID mé účasti: sha256(uid + ':' + cid), hex malými písmeny (stejně počítá klient a deleteAccount)
+      function pcMyPid() { return hashing.sha256(request.auth.uid + ':' + cid).toHexString().lower(); }
       // Den patří do výzvy a je „dnes nebo včera“
       function pcDayOk(x) { return pcNowish(x) && x >= pc().start && x <= pc().end; }
       function pcPartBase() {
@@ -447,23 +450,23 @@ service cloud.firestore {
           && d.n is int && d.n == d.d.size();
       }
 
-      match /participants/{uid} {
+      match /participants/{pid} {
         allow get: if request.auth != null;
-        // Top 20, skupina (in po 30 uid), počty přes count() a stránky adminu. Limit v pravidle by nic nechránil
+        // Top 20, skupina (in po 30 ID účasti), počty přes count() a stránky adminu. Limit v pravidle by nic nechránil
         // (stránkování) a dotaz count() limit nemá; dokument obsahuje jen přezdívku a dny (veřejné v žebříčku).
         allow list: if request.auth != null;
         // Přihlášení: jen sám za sebe, do aktivní výzvy, ne zablokovaný; j = den přihlášení (nebo první den výzvy
         // při přihlášení předem), nejvýš 1 den (dnes nebo včera)
-        allow create: if request.auth != null && request.auth.uid == uid
+        allow create: if request.auth != null && pid == pcMyPid()
           && pc().active == true
-          && !exists(/databases/$(database)/documents/publicChallenges/$(cid)/blocked/$(uid))
+          && !exists(/databases/$(database)/documents/publicChallenges/$(cid)/blocked/$(pid))
           && pcPartBase()
           && request.resource.data.joinedAt == request.time
           && pcDs(request.resource.data.j) && request.resource.data.j >= pc().start && request.resource.data.j <= pc().end
           && request.resource.data.d.size() <= 1
           && (request.resource.data.d.size() == 0 || pcDayOk(request.resource.data.d[0]));
         // Změna: přezdívka, nebo přesně +1 den, nebo přesně −1 den (oprava překliku); vždy jen dnes/včera
-        allow update: if request.auth != null && request.auth.uid == uid
+        allow update: if request.auth != null && pid == pcMyPid()
           && pc().active == true
           && pcPartBase()
           && request.resource.data.joinedAt == resource.data.joinedAt
@@ -476,10 +479,10 @@ service cloud.firestore {
                 && resource.data.d.hasAll(request.resource.data.d)
                 && pcNowish(resource.data.d.removeAll(request.resource.data.d)[0])));
         // Odhlášení z výzvy (smaže i dny) nebo odebrání adminem
-        allow delete: if request.auth != null && (request.auth.uid == uid || isAdmin());
+        allow delete: if request.auth != null && (pid == pcMyPid() || isAdmin());
       }
-      // Blokace odebraných účastníků ({at}); čte a píše jen admin
-      match /blocked/{uid} {
+      // Blokace odebraných účastníků ({at}), ID = ID účasti (hash); čte a píše jen admin
+      match /blocked/{pid} {
         allow read, write: if isAdmin();
       }
     }

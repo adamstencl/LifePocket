@@ -3633,7 +3633,7 @@ window.exportMyData = async () => {
       setExportStatus(tH('exp.pc'));
       for (const id of pcIds) {
         try {
-          const s = await getDoc(pcPartRef(id, uid));
+          const s = await getDoc(pcPartRef(id, await pcPid(uid, id)));
           if (s.exists()) { const d = exportPlain(s.data()); publicChallenges[id] = { title: pcFind(id) ? pcTitle(pcFind(id)) : '', nick: d.nick, j: d.j, d: d.d, n: d.n, joinedAt: d.joinedAt }; }
         } catch (e) { /* pravidla ještě nemusí být nasazená */ }
       }
@@ -10743,8 +10743,8 @@ function celebrateChallenge(gid, c, st) {
 }
 
 // ── VÝZVA MĚSÍCE / TÝDNE (4.63, docs/NAVRH-VYZVA-MESICE.md) ──
-// Veřejná výzva pro všechny: publicChallenges/{cid} (zakládá admin z config/admins), účast v participants/{uid}
-// {nick, joinedAt, j, d:[dny], n}. Žebříček přes getDocs (ne onSnapshot) a vlastní pozice přes count().
+// Veřejná výzva pro všechny: publicChallenges/{cid} (zakládá admin z config/admins), účast v participants/{pid}
+// {nick, joinedAt, j, d:[dny], n}; pid = sha256(uid + ':' + cid) hex (pcPid, stejně pravidla a deleteAccount). Žebříček přes getDocs (ne onSnapshot) a vlastní pozice přes count().
 // Dny v lokálním čase (toDS), pravidla pustí jen ±1 den v okně „dnes/včera“. Bez nasazených pravidel a indexů
 // (permission-denied, failed-precondition) se karta tiše nezobrazí. prof.pc.<cid> = {r: večerní připomínka,
 // last: poslední odškrtnutý den} slouží jen cronu a exportu. Lokálně (LOCAL_PERSONAL_KEYS): lp_pc (poslední
@@ -10777,7 +10777,22 @@ const _pcUnsub = {};
 const _pcPending = {};       // cid → zápis dne právě běží
 const _pcBoard = {};         // cid → {at, top, total, pos, grp, grpAt, busy, err}
 let _pcAt = 0, _pcSheet = null, _isAppAdmin = false, _pcAdminChecked = '';
-const pcPartRef = (cid, uid) => doc(db,'publicChallenges',cid,'participants',uid);
+const pcPartRef = (cid, pid) => doc(db,'publicChallenges',cid,'participants',pid);
+// ID účasti: sha256(uid + ':' + cid) jako hex malými písmeny. Uid se do veřejné kolekce nedostane; kdo uid zná
+// (členové skupiny), ID spočítá (filtr Moje skupina). Výsledky se pamatují (výpočet je asynchronní).
+const _pcPidC = new Map();
+const PC_PID_RE = /^[0-9a-f]{64}$/;
+async function pcPid(uid, cid) {
+  const k = uid + ':' + cid;
+  if(_pcPidC.has(k)) return _pcPidC.get(k);
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(k));
+  const h = Array.from(new Uint8Array(buf), x => x.toString(16).padStart(2, '0')).join('');
+  if(_pcPidC.size > 500) _pcPidC.clear();
+  _pcPidC.set(k, h);
+  return h;
+}
+// Moje ID účasti, pokud už je spočítané ('' = zatím ne)
+const pcMyPid = cid => CU ? _pcPidC.get(CU.uid + ':' + cid) || '' : '';
 const pcFind = cid => pcList.find(c => c.id === cid) || null;
 // Chyba „pravidla / indexy ještě nejsou nasazené“ nebo offline: tiše
 const pcQuietErr = e => ['permission-denied','failed-precondition','unavailable'].includes(e?.code);
@@ -10836,7 +10851,7 @@ function pcPartNorm(c, d) {
 // Řádek žebříčku (cizí dokument): jen přezdívka, počet dní a čas přihlášení
 function pcRow(snap) {
   const d = snap.data() || {};
-  return {uid: snap.id, nick: cutName(d.nick, 20) || '…', n: clampInt(d.n, 0, 31), at: d.joinedAt && typeof d.joinedAt.toMillis === 'function' ? d.joinedAt.toMillis() : 0};
+  return {pid: snap.id, nick: cutName(d.nick, 20) || '…', n: clampInt(d.n, 0, 31), at: d.joinedAt && typeof d.joinedAt.toMillis === 'function' ? d.joinedAt.toMillis() : 0};
 }
 const pcTitle = c => LANG === 'en' && c.en?.title ? c.en.title : c.title;
 const pcDesc = c => LANG === 'en' && c.en?.title ? (c.en.desc || '') : c.desc;
@@ -10936,19 +10951,31 @@ function pcWatchMine() {
   for(const c of pcList) {
     if(_pcUnsub[c.id]) continue;
     const cid = c.id;
-    _pcUnsub[cid] = onSnapshot(pcPartRef(cid, uid), s => {
-      if(CU?.uid !== uid) return;
-      // Offline bez dat v cache: držet poslední známý stav (jinak by přihlášený viděl „Jdu do toho“)
-      if(!s.exists() && s.metadata.fromCache && pcMe[cid] !== undefined) return;
-      const cc = pcFind(cid);
-      if(!cc) return;
-      pcMe[cid] = s.exists() ? pcPartNorm(cc, s.data()) : null;
-      pcCacheSave();
-      renderPcUI();
-      pcCheckDone();
-    }, e => {
-      delete _pcUnsub[cid];
-      if(!pcQuietErr(e)) console.warn('[LP] vyzva ucast', e?.code || e?.name);
+    // Do spočítání ID účasti drží místo zástupce (zrušení před připojením posluchače nic nepřipojí)
+    let off = false;
+    const stub = () => { off = true; };
+    _pcUnsub[cid] = stub;
+    pcPid(uid, cid).then(pid => {
+      if(off || CU?.uid !== uid || _pcUnsub[cid] !== stub) return;
+      _pcUnsub[cid] = onSnapshot(pcPartRef(cid, pid), s => {
+        if(CU?.uid !== uid) return;
+        // Offline bez dat v cache: držet poslední známý stav (jinak by přihlášený viděl „Jdu do toho“)
+        if(!s.exists() && s.metadata.fromCache && pcMe[cid] !== undefined) return;
+        const cc = pcFind(cid);
+        if(!cc) return;
+        pcMe[cid] = s.exists() ? pcPartNorm(cc, s.data()) : null;
+        // Server potvrdil, že účast není (odhlášení jinde, odebrání adminem): pryč i stav pro cron
+        if(!s.exists() && !s.metadata.fromCache) pcDropProf(cid);
+        pcCacheSave();
+        renderPcUI();
+        pcCheckDone();
+      }, e => {
+        delete _pcUnsub[cid];
+        if(!pcQuietErr(e)) console.warn('[LP] vyzva ucast', e?.code || e?.name);
+      });
+    }).catch(e => {
+      if(_pcUnsub[cid] === stub) delete _pcUnsub[cid];
+      console.warn('[LP] vyzva id', e?.name);
     });
   }
 }
@@ -10957,6 +10984,7 @@ function pcReset() {
   for(const k of Object.keys(pcMe)) delete pcMe[k];
   for(const k of Object.keys(_pcBoard)) delete _pcBoard[k];
   for(const k of Object.keys(_pcPending)) delete _pcPending[k];
+  _pcPidC.clear();
   pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null;
 }
 window.addEventListener('online', () => { if(CU && prof && !_pcAt) pcLoad(); });
@@ -11111,9 +11139,9 @@ window.pcDay = async (cid, which) => {
   _pcPending[cid] = true;
   renderPcUI();
   if(had) toast(t('pc.undone'));
-  const ref = pcPartRef(cid, uid);
   let ok = true;
   try {
+    const ref = pcPartRef(cid, await pcPid(uid, cid));
     if(navigator.onLine === false) {
       // Offline: zápis se odešle později (pravidla ho porovnají se stavem na serveru)
       updateDoc(ref, {d: next, n: next.length, nick: me.nick}).catch(e => pcDayErr(cid, prev, e));
@@ -11182,6 +11210,7 @@ async function pcLoadBoard(cid, force) {
   pcRenderSheet();
   const uid = CU.uid, col = collection(db,'publicChallenges',cid,'participants');
   try {
+    const myPid = await pcPid(uid, cid);
     const [top, total] = await Promise.all([
       getDocs(query(col, orderBy('n','desc'), orderBy('joinedAt','asc'), limit(PC_TOP))),
       getCountFromServer(col)]);
@@ -11189,7 +11218,7 @@ async function pcLoadBoard(cid, force) {
     b.top = top.docs.map(pcRow);
     b.total = total.data().count;
     b.pos = null;
-    const me = pcMe[cid], i = b.top.findIndex(r => r.uid === uid);
+    const me = pcMe[cid], i = b.top.findIndex(r => r.pid === myPid);
     if(i >= 0) b.pos = i + 1;
     else if(me && me.jt) {
       // Pozice = kolik lidí má víc dní + kolik se stejným počtem se přidalo dřív + 1
@@ -11224,10 +11253,12 @@ async function pcLoadGroup(cid) {
   b.gBusy = true;
   pcRenderSheet();
   try {
-    const rows = [];
-    for(let i = 0; i < uids.length; i += PC_IN_MAX) {
-      const s = await getDocs(query(col, where(documentId(), 'in', uids.slice(i, i + PC_IN_MAX)), limit(PC_IN_MAX)));
-      s.docs.forEach(d => rows.push(pcRow(d)));
+    // ID účasti členů skupin (hash uid + výzvy) → uid pro jméno a avatar ze skupiny
+    const byPid = new Map(await Promise.all(uids.map(u => pcPid(u, cid).then(p => [p, u]))));
+    const pids = [...byPid.keys()], rows = [];
+    for(let i = 0; i < pids.length; i += PC_IN_MAX) {
+      const s = await getDocs(query(col, where(documentId(), 'in', pids.slice(i, i + PC_IN_MAX)), limit(PC_IN_MAX)));
+      s.docs.forEach(d => rows.push({...pcRow(d), mu: byPid.get(d.id) || ''}));
     }
     if(CU?.uid !== uid) return;
     b.grp = rows.sort((x, y) => y.n - x.n || x.at - y.at);
@@ -11243,7 +11274,7 @@ function pcRankHTML(i) {
   return `<span class="pc-rank">${i <= 3 ? `<span aria-hidden="true">${PC_MEDAL[i - 1]}</span><span class="sr-only">${esc(t('pc.rankAria', {n: i}))}</span>` : esc(i + '.')}</span>`;
 }
 function pcBoardHTML(c) {
-  const b = _pcBoard[c.id] || {}, me = pcMe[c.id], uid = CU?.uid;
+  const b = _pcBoard[c.id] || {}, me = pcMe[c.id], uid = CU?.uid, myPid = pcMyPid(c.id);
   const grp = _pcSheet?.tab === 'grp' && pcHasMates();
   let h = `<div class="ch-h">${tH('pc.board')}</div>`;
   if(pcHasMates()) h += `<div class="seg seg--block" role="radiogroup" aria-label="${tH('pc.board')}">
@@ -11256,16 +11287,16 @@ function pcBoardHTML(c) {
     if(!b.grp) return h + `<p class="ch-note">${tH(b.offline ? 'pc.offline' : 'pc.loading')}</p>`;
     if(!b.grp.length) return h + `<p class="ch-note">${tH('pc.emptyGrp')}</p>`;
     return h + `<ol class="pc-lb" aria-label="${tH('pc.mine')}">${b.grp.map(r => {
-      const m = mates.get(r.uid) || {};
-      const nm = r.uid === uid ? t('gf.you') : (m.name || t('gf.someone'));
-      return `<li class="pc-row${r.uid === uid ? ' me' : ''}"${r.uid === uid ? ' aria-current="true"' : ''}><span class="pc-rank" aria-hidden="true">${esc(m.av || '👤')}</span><span class="pc-nick">${esc(nm)}<span class="pc-sub">${esc(r.nick)}</span></span><span class="pc-n">${nd(r.n)}</span></li>`;
+      const m = mates.get(r.mu) || {}, mine = !!r.mu && r.mu === uid;
+      const nm = mine ? t('gf.you') : (m.name || t('gf.someone'));
+      return `<li class="pc-row${mine ? ' me' : ''}"${mine ? ' aria-current="true"' : ''}><span class="pc-rank" aria-hidden="true">${esc(m.av || '👤')}</span><span class="pc-nick">${esc(nm)}<span class="pc-sub">${esc(r.nick)}</span></span><span class="pc-n">${nd(r.n)}</span></li>`;
     }).join('')}</ol>`;
   }
   if(b.err && !b.top) return h + `<p class="ch-note">${tH(b.err === 'unavailable' ? 'pc.offline' : 'pc.boardErr')}</p>`;
   if(!b.top) return h + `<p class="ch-note">${tH(b.offline ? 'pc.offline' : 'pc.loading')}</p>`;
   if(!b.top.length) return h + `<p class="ch-note">${tH('pc.empty')}</p>`;
   let rows = b.top.map((r, i) => {
-    const mine = r.uid === uid;
+    const mine = !!myPid && r.pid === myPid;
     return `<li class="pc-row${mine ? ' me' : ''}"${mine ? ' aria-current="true"' : ''}>${pcRankHTML(i + 1)}<span class="pc-nick">${esc(mine ? t('pc.me', {nick: r.nick}) : r.nick)}</span><span class="pc-n">${nd(r.n)}</span></li>`;
   }).join('');
   if(me && b.pos && b.pos > b.top.length) rows += `<li class="pc-gap" aria-hidden="true">⋯</li>
@@ -11430,7 +11461,7 @@ window.pcJoin = cid => {
   if(hide && hide[cid]) { delete hide[cid]; lsSave('lp_pc_hide', hide); }
   pcMe[cid] = pcPartNorm(c, {nick, j, d: [], n: 0});
   _pcPending[cid] = true;
-  setDoc(pcPartRef(cid, uid), {nick, joinedAt: serverTimestamp(), j, d: [], n: 0})
+  pcPid(uid, cid).then(pid => setDoc(pcPartRef(cid, pid), {nick, joinedAt: serverTimestamp(), j, d: [], n: 0}))
     .then(() => { if(CU?.uid === uid && _pcBoard[cid]) _pcBoard[cid].at = 0; })
     .catch(e => {
       if(CU?.uid !== uid) return;
@@ -11457,7 +11488,7 @@ window.pcNickSave = cid => {
   if(nick !== me.nick) {
     const uid = CU.uid, old = me.nick;
     pcMe[cid] = {...me, nick};
-    updateDoc(pcPartRef(cid, uid), {nick}).catch(e => {
+    pcPid(uid, cid).then(pid => updateDoc(pcPartRef(cid, pid), {nick})).catch(e => {
       if(CU?.uid !== uid) return;
       console.warn('[LP] vyzva prezdivka', e?.code || e?.name);
       if(pcMe[cid]) pcMe[cid] = {...pcMe[cid], nick: old};
@@ -11477,7 +11508,7 @@ window.pcLeave = cid => {
   if(!confirm(t('pc.leaveQ'))) return;
   const uid = CU.uid, prev = pcMe[cid];
   pcMe[cid] = null;
-  deleteDoc(pcPartRef(cid, uid)).catch(e => {
+  pcPid(uid, cid).then(pid => deleteDoc(pcPartRef(cid, pid))).catch(e => {
     if(CU?.uid !== uid) return;
     console.warn('[LP] vyzva odhlaseni', e?.code || e?.name);
     pcMe[cid] = prev;
@@ -11740,7 +11771,7 @@ function pcAdmDetailHTML() {
     <label class="sr-only" for="pca-q">${tH('pc.adm.search')}</label>
     <input class="finp" id="pca-q" placeholder="${tH('pc.adm.search')}" value="${esc(A.q)}" oninput="pcAdmSearch(this.value)">
     <ul class="pc-lb">${parts.map(r => `<li class="pc-row pcadm-p"><span class="pc-nick">${esc(r.nick)}<span class="pc-sub">${esc(t('pc.nDays', {n: r.n}) + (r.j && CH_DS_RE.test(r.j) ? ' · ' + fmtDate(r.j, 'dm') : ''))}</span></span>
-      <button type="button" class="pc-x" aria-label="${esc(t('pc.adm.removeAria', {nick: r.nick}))}" data-a0="${cid}" data-a1="${esc(r.uid)}" onclick="pcAdmRemove(this.dataset.a0,this.dataset.a1)">✕</button></li>`).join('')}</ul>
+      <button type="button" class="pc-x" aria-label="${esc(t('pc.adm.removeAria', {nick: r.nick}))}" data-a0="${cid}" data-a1="${esc(r.pid)}" onclick="pcAdmRemove(this.dataset.a0,this.dataset.a1)">✕</button></li>`).join('')}</ul>
     ${A.pBusy ? `<p class="ch-note">${tH('pc.loading')}</p>` : !A.parts.length ? `<p class="ch-note">${tH('pc.empty')}</p>` : ''}
     ${A.more ? `<button type="button" class="btn-s ch-btn" onclick="pcAdmMore()">${tH('pc.adm.more')}</button>` : ''}`;
 }
@@ -11774,16 +11805,16 @@ window.pcAdmDelete = async cid => {
     await pcAdmLoad();
   } catch(e) { pcAdmErr(e); }
 };
-// Odebrání účastníka: smazat účast a zablokovat nové přihlášení do této výzvy (jedna dávka)
-window.pcAdmRemove = async (cid, uid) => {
-  const A = _pcAdm, r = A?.parts.find(p => p.uid === uid);
-  if(!A || !r || !UID_RE_PC.test(uid) || !confirm(t('pc.adm.removeQ', {nick: r.nick}))) return;
+// Odebrání účastníka: smazat účast a zablokovat nové přihlášení do této výzvy (jedna dávka); obojí podle ID účasti
+window.pcAdmRemove = async (cid, pid) => {
+  const A = _pcAdm, r = A?.parts.find(p => p.pid === pid);
+  if(!A || !r || !PC_PID_RE.test(pid) || !confirm(t('pc.adm.removeQ', {nick: r.nick}))) return;
   try {
     const b = writeBatch(db);
-    b.delete(pcPartRef(cid, uid));
-    b.set(doc(db,'publicChallenges',cid,'blocked',uid), {at: serverTimestamp()});
+    b.delete(pcPartRef(cid, pid));
+    b.set(doc(db,'publicChallenges',cid,'blocked',pid), {at: serverTimestamp()});
     await b.commit();
-    A.parts = A.parts.filter(p => p.uid !== uid);
+    A.parts = A.parts.filter(p => p.pid !== pid);
     if(typeof A.counts[cid] === 'number') A.counts[cid] = Math.max(0, A.counts[cid] - 1);
     if(_pcBoard[cid]) _pcBoard[cid].at = 0;
     toast(t('pc.adm.removed'));
