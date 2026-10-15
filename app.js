@@ -5456,7 +5456,7 @@ function wtNormCfg(w){
   const g=Math.round(Number(w.goal)/50)*50;
   const cups=(Array.isArray(w.cups)?w.cups:[])
     .map(c=>({ml:Math.round(Number(c&&c.ml)/50)*50,emoji:WT_EMOJI.includes(c&&c.emoji)?c.emoji:'🥛'}))
-    .filter(c=>c.ml>=50&&c.ml<=1500).slice(0,WT_MAX_CUPS);
+    .filter((c,i,a)=>c.ml>=50&&c.ml<=1500&&a.findIndex(x=>x.ml===c.ml)===i).slice(0,WT_MAX_CUPS); // stejný objem jen jednou
   return {
     goal:Number.isFinite(g)&&g>0?wtClamp(g,500,6000):2000,
     cups:cups.length?cups:WT_DEF.cups.map(c=>({...c})),
@@ -5511,6 +5511,8 @@ function subWater(){
     const m={};
     snap.forEach(d=>{ const x=d.data(); if(x&&typeof x.date==='string') m[x.date]=x; });
     waterDays=m; _wtReady=true;
+    // Zápisy z jiného nebo dříve offline zařízení: potvrzený stav dne se liší od waterDay → srovnat (jen při rozdílu, bez smyčky)
+    if(!snap.metadata.hasPendingWrites&&wtProfDayStale(toDS())) wtProfDay(toDS());
     wtMigrate();
     renderWaterAll();
   });
@@ -5539,10 +5541,17 @@ function wtMigrate(){
   drinkWater(Math.min(3000,Math.round(Number(old.count))*250),{mig:true,quiet:true});
 }
 
-// Stav dne do profilu (server z něj počítá připomínky bez dalšího čtení)
+// Stav dne do profilu (server z něj počítá připomínky bez dalšího čtení); jen se zapnutými připomínkami (šetří zápisy)
+const wtDayState=ds=>({d:ds,ml:wtMl(ds),last:wtEntries(ds).reduce((m,e)=>Math.max(m,e.t),0)});
+// Liší se uložený waterDay od dat dne? Jiný den bez dnešních zápisů server bere jako 0 → zápis netřeba
+function wtProfDayStale(ds){
+  if(!waterCfg()?.remind) return false;
+  const wd=prof?.waterDay, cur=wtDayState(ds);
+  return wd&&typeof wd==='object'&&wd.d===ds?(wd.ml!==cur.ml||wd.last!==cur.last):cur.ml>0;
+}
 function wtProfDay(ds){
-  if(!CU||ds!==toDS()) return;
-  const wd={d:ds,ml:wtMl(ds),last:wtEntries(ds).reduce((m,e)=>Math.max(m,e.t),0)};
+  if(!CU||ds!==toDS()||!waterCfg()?.remind) return;
+  const wd=wtDayState(ds);
   prof.waterDay=wd;
   setDoc(doc(db,'users',CU.uid,'profile','main'),{waterDay:wd},{merge:true}).catch(e=>console.warn('[LP] waterDay:',e?.code||e?.name));
 }
@@ -5637,7 +5646,7 @@ function waterWidgetHTML(){
   const cfg=waterCfg(); if(!cfg) return '';
   const {ml,goal}=waterToday();
   const cups=waterTopCups(cfg,2).map(c=>`<button type="button" class="wt-cup wt-cup--sm" data-a0="${c.ml}" onclick="event.stopPropagation();wtCup(this)" aria-label="${tH('wt.addAria',{v:fmtMl(c.ml)})}"><span class="em" aria-hidden="true">${esc(c.emoji)}</span><span class="ml">${esc(fmtMl(c.ml))}</span></button>`).join('');
-  return `<div class="dw wt-dw" id="wt-dw" onclick="sp('water')">
+  return `<div class="dw wt-dw" id="wt-dw" role="button" tabindex="0" onclick="sp('water')" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();sp('water')}">
     <div class="dw-head"><div class="dw-title">${tH('wt.title')}</div><div class="dw-arrow">→</div></div>
     <div class="wt-dw-row"><span class="wt-dw-b">${waterBottleSVG(ml/goal,'sm')}</span><div class="wt-dw-txt">${wtDwTxt(ml,goal)}</div>${cups}</div>
   </div>`;
@@ -5710,6 +5719,7 @@ window.wtOnbStart=async()=>{
   if(!waterOn()) wtEnableModule();
   setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
   subWater(); wtMigrate();
+  if(cfg.remind&&_wtReady&&wtProfDayStale(toDS())) wtProfDay(toDS()); // jinak srovná první snapshot
   renderWater();
 };
 function renderWater(){
@@ -5770,7 +5780,7 @@ window.openWaterSettings=sec=>{
   const cfg=waterCfg();
   if(!cfg){ window.sp('water'); return; }
   _wtEdit=JSON.parse(JSON.stringify(cfg)); _wtEmFor=-1;
-  if(sec==='cups'&&_wtEdit.cups.length<WT_MAX_CUPS) _wtEdit.cups.push({ml:250,emoji:'💧'});
+  if(sec==='cups'&&_wtEdit.cups.length<WT_MAX_CUPS){ const v=wtFreeMl(250); if(v) _wtEdit.cups.push({ml:v,emoji:'💧'}); }
   renderWaterSettings(); om('m-water');
   if(sec) setTimeout(()=>document.getElementById('wt-sec-'+sec)?.scrollIntoView({block:'start',behavior:'smooth'}),150);
 };
@@ -5781,9 +5791,9 @@ function renderWaterSettings(){
   const st=(i,d,k,dis)=>`<button type="button" class="wt-step-b" data-wf="${k}" data-a0="${i}" data-a1="${d}" onclick="wtCupMl(+this.dataset.a0,+this.dataset.a1)" aria-label="${tH(d<0?'wt.cupLess':'wt.cupMore')}"${dis?' disabled':''}>${d<0?'−':'+'}</button>`;
   const cups=w.cups.map((c,i)=>`<div class="wt-cup-row">
       <button type="button" class="wt-em-btn" data-wf="em${i}" data-a0="${i}" onclick="wtEmPick(+this.dataset.a0)" aria-label="${tH('wt.cupEm')}" aria-expanded="${_wtEmFor===i}">${esc(c.emoji)}</button>
-      <div class="wt-step">${st(i,-50,'m'+i,c.ml<=50)}<span class="wt-step-v">${esc(fmtMl(c.ml))}</span>${st(i,50,'p'+i,c.ml>=1500)}</div>
+      <div class="wt-step">${st(i,-50,'m'+i,!wtCupNext(i,-50))}<span class="wt-step-v">${esc(fmtMl(c.ml))}</span>${st(i,50,'p'+i,!wtCupNext(i,50))}</div>
       ${w.cups.length>1?`<button type="button" class="wt-x" data-wf="x${i}" data-a0="${i}" onclick="wtCupDel(+this.dataset.a0)" aria-label="${tH('wt.cupDel')}">✕</button>`:'<span class="wt-x"></span>'}
-    </div>${_wtEmFor===i?`<div class="wt-em-grid" role="group" aria-label="${tH('wt.cupEm')}">${WT_EMOJI.map(em=>`<button type="button" class="wt-em-opt${em===c.emoji?' on':''}" aria-pressed="${em===c.emoji}" data-a0="${i}" data-a1="${em}" onclick="wtCupEm(+this.dataset.a0,this.dataset.a1)">${em}</button>`).join('')}</div>`:''}`).join('');
+    </div>${_wtEmFor===i?`<div class="wt-em-grid" role="group" aria-label="${tH('wt.cupEm')}">${WT_EMOJI.map(em=>`<button type="button" class="wt-em-opt${em===c.emoji?' on':''}" aria-pressed="${em===c.emoji}" data-a0="${i}" data-a1="${em}" onclick="wtSetCupEm(+this.dataset.a0,this.dataset.a1)">${em}</button>`).join('')}</div>`:''}`).join('');
   const denied=typeof Notification!=='undefined'&&Notification.permission==='denied';
   const tp=(id,v,k)=>`<input class="time-picker-inp wt-time" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="${id}" value="${esc(v)}" aria-label="${tH(k)}" onchange="wtTime()">`;
   b.innerHTML=`<div class="wt-sec" id="wt-sec-goal">
@@ -5800,6 +5810,7 @@ function renderWaterSettings(){
       <div class="togrow"><div class="toginf"><div class="tognm wt-sec-h">${tH('wt.rem')}</div></div><label class="togswitch"><input type="checkbox" data-wf="rem" ${w.remind?'checked':''} aria-label="${tH('wt.remOn')}" onchange="wtRemOn(this.checked)"><span class="togsl"></span></label></div>
       ${w.remind?`<div class="wt-rem-det">
         <div class="wt-row"><span>${tH('wt.remWhen')}</span>${tp('wt-from',w.from,'wt.remFrom')}<span aria-hidden="true">–</span>${tp('wt-to',w.to,'wt.remTo')}</div>
+        <div class="wt-warn" id="wt-hours-warn" role="status"${wtHoursBad(w)?'':' hidden'}>${wtHoursBad(w)?tH('wt.badHours',{v:wtHoursMin(w)}):''}</div>
         <div class="wt-sub" id="wt-every-h">${tH('wt.remEvery')}</div>
         <div class="seg seg--block" role="group" aria-labelledby="wt-every-h">${WT_EVERY.map(v=>`<button type="button" class="seg-btn${v===w.every?' active':''}" data-wf="e${v}" aria-pressed="${v===w.every}" data-a0="${v}" onclick="wtEvery(+this.dataset.a0)">${esc(fmtHrs(v))}</button>`).join('')}</div>
         <label class="wt-check"><input type="checkbox" data-wf="pace" ${w.pace?'checked':''} onchange="wtPace(this.checked)"><span>${tH('wt.remPace')}</span></label>
@@ -5813,11 +5824,15 @@ function renderWaterSettings(){
 const wtEd=fn=>(...a)=>{ if(!_wtEdit) return; fn(...a); renderWaterSettings(); };
 window.wtSetGoal=wtEd(v=>{ if(WT_GOALS.includes(v)) _wtEdit.goal=v; });
 window.wtGoalStep=wtEd(d=>{ _wtEdit.goal=wtClamp(_wtEdit.goal+(d<0?-250:250),500,6000); });
-window.wtCupMl=wtEd((i,d)=>{ const c=_wtEdit.cups[i]; if(c) c.ml=wtClamp(c.ml+(d<0?-50:50),50,1500); });
+// Objem šálku je jeho klíč (statistika, ikona v seznamu) → dva šálky se stejným ml nejdou, obsazenou hodnotu přeskočí
+const wtCupTaken=(ml,i)=>_wtEdit.cups.some((c,j)=>j!==i&&c.ml===ml);
+function wtFreeMl(pref){ for(let k=0;k<=30;k++) for(const v of [pref+k*50,pref-k*50]) if(v>=50&&v<=1500&&!wtCupTaken(v,-1)) return v; return 0; }
+function wtCupNext(i,d){ const c=_wtEdit?.cups[i]; if(!c) return 0; let v=c.ml; do v+=d<0?-50:50; while(v>=50&&v<=1500&&wtCupTaken(v,i)); return v>=50&&v<=1500?v:0; }
+window.wtCupMl=wtEd((i,d)=>{ const c=_wtEdit.cups[i], v=wtCupNext(i,d); if(!c) return; if(v) c.ml=v; else toast(t('wt.cupDup')); });
 window.wtCupDel=wtEd(i=>{ if(_wtEdit.cups.length>1){ _wtEdit.cups.splice(i,1); _wtEmFor=-1; } });
-window.wtCupAdd=wtEd(()=>{ if(_wtEdit.cups.length<WT_MAX_CUPS) _wtEdit.cups.push({ml:250,emoji:'💧'}); });
+window.wtCupAdd=wtEd(()=>{ const v=wtFreeMl(250); if(_wtEdit.cups.length<WT_MAX_CUPS&&v) _wtEdit.cups.push({ml:v,emoji:'💧'}); });
 window.wtEmPick=wtEd(i=>{ _wtEmFor=_wtEmFor===i?-1:i; });
-window.wtCupEm=wtEd((i,em)=>{ const c=_wtEdit.cups[i]; if(c&&WT_EMOJI.includes(em)) c.emoji=em; _wtEmFor=-1; });
+window.wtSetCupEm=wtEd((i,em)=>{ const c=_wtEdit.cups[i]; if(c&&WT_EMOJI.includes(em)) c.emoji=em; _wtEmFor=-1; });
 window.wtEvery=wtEd(v=>{ if(WT_EVERY.includes(v)) _wtEdit.every=v; });
 window.wtPace=on=>{ if(_wtEdit) _wtEdit.pace=!!on; };
 window.wtTime=()=>{
@@ -5825,7 +5840,12 @@ window.wtTime=()=>{
   const f=document.getElementById('wt-from')?.value, to=document.getElementById('wt-to')?.value;
   if(WT_HHMM.test(f)) _wtEdit.from=f;
   if(WT_HHMM.test(to)) _wtEdit.to=to;
+  const hw=document.getElementById('wt-hours-warn'), bad=_wtEdit.remind&&wtHoursBad(_wtEdit);
+  if(hw){ hw.hidden=!bad; hw.textContent=bad?t('wt.badHours',{v:wtHoursMin(_wtEdit)}):''; }
 };
+// Server připomíná nejdřív interval po začátku a nejpozději 15 min před koncem → okno musí být delší než interval + 15 min
+const wtHoursBad=w=>wtMin(w.to)-wtMin(w.from)<=w.every+15;
+const wtHoursMin=w=>{ const m=w.every+15; return t('wt.hm',{h:Math.floor(m/60),m:m%60}); };
 window.wtRemOn=async on=>{
   if(!_wtEdit) return;
   _wtEdit.remind=!!on;
@@ -5835,18 +5855,19 @@ window.wtRemOn=async on=>{
 window.saveWaterSettings=()=>{
   const w=_wtEdit; if(!CU||!w) return;
   window.wtTime();
-  if(w.remind&&wtMin(w.to)-wtMin(w.from)<60){ toast(t('wt.badHours')); return; }
-  const cfg=wtNormCfg(w);
+  if(w.remind&&wtHoursBad(w)){ toast(t('wt.badHours',{v:wtHoursMin(w)})); return; }
+  const cfg=wtNormCfg(w), remOn=cfg.remind&&!prof.water?.remind;
   prof.water=cfg;
   _wtEdit=null; cm('m-water');
   setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
+  if(remOn&&_wtReady&&wtProfDayStale(toDS())) wtProfDay(toDS()); // zapnuté připomínky: server potřebuje aktuální stav dne
   toast(t('wt.saved'));
   renderWaterAll();
   const w2=document.getElementById('wt-dw'); if(w2&&document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
 };
 
-// Otevření z notifikace (?open=water, volitelně &drink=<ml>&at=<ms>): ml 50–1000, at max. 6 h zpět, dnešní, každé jen jednou
-function wtLinkMl(v){ const n=Math.round(Number(v)); return v!=null&&v!==''&&Number.isFinite(n)&&n>=50&&n<=1000?n:0; }
+// Otevření z notifikace (?open=water, volitelně &drink=<ml>&at=<ms>): ml 50–1000 po 50, at povinné (max. 6 h zpět, dnešní), každé jen jednou
+function wtLinkMl(v){ const n=Math.round(Number(v)/50)*50; return v!=null&&v!==''&&Number.isFinite(n)&&n>=50&&n<=1000?n:0; }
 function wtLinkAt(v){
   if(v==null||v==='') return 0;
   const n=Math.round(Number(v)), now=Date.now();
@@ -5855,16 +5876,14 @@ function wtLinkAt(v){
 async function wtOpenFromNotif(p){
   if(!waterOn()) return; // modul mezitím vypnutý
   window.sp('water');
-  if(!(p.drink>0)||p.at<0) return;
+  if(!(p.drink>0)||!(p.at>0)) return; // bez platného času nelze hlídat opakování (lp_wt_seen) → jen otevřít
   const t0=Date.now();
   while(CU&&!_wtReady&&Date.now()-t0<8000) await new Promise(r=>setTimeout(r,250)); // první data (limit, migrace)
   if(!CU||!waterCfg()) return;
-  if(p.at>0){
-    const seen=lsGet('lp_wt_seen',[]), arr=Array.isArray(seen)?seen:[];
-    if(arr.includes(p.at)) return;
-    lsSave('lp_wt_seen',[...arr,p.at].slice(-20));
-  }
-  if(drinkWater(p.drink,{at:p.at>0?p.at:undefined,quiet:true})) whenUiFree(()=>toast(t('wt.notifAdded',{v:fmtMl(p.drink)}),4000),15000);
+  const seen=lsGet('lp_wt_seen',[]), arr=Array.isArray(seen)?seen:[];
+  if(arr.includes(p.at)) return;
+  lsSave('lp_wt_seen',[...arr,p.at].slice(-20));
+  if(drinkWater(p.drink,{at:p.at,quiet:true})) whenUiFree(()=>toast(t('wt.notifAdded',{v:fmtMl(p.drink)}),4000),15000);
 }
 
 // ════════════════════════════════════════════════════════════

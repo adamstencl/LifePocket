@@ -234,7 +234,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
   'aip.ctx.h.stress': 'stres {n}/10',
   'aip.ctx.h.water': 'voda {n} skl.',
   'aip.ctx.h.mood': 'nálada {m}',
-  'aip.ctx.h.waterToday': 'Pitný režim dnes: {ml} z {goal} ({n} zápisů, poslední v {t}). Posledních 7 dní: cíl splněn {k}/7, průměr {avg}.',
+  'aip.ctx.h.waterToday': { one: 'Pitný režim dnes: {ml} z {goal} ({n} zápis, poslední v {t}). Posledních 7 dní: cíl splněn {k}/7, průměr {avg}.', few: 'Pitný režim dnes: {ml} z {goal} ({n} zápisy, poslední v {t}). Posledních 7 dní: cíl splněn {k}/7, průměr {avg}.', other: 'Pitný režim dnes: {ml} z {goal} ({n} zápisů, poslední v {t}). Posledních 7 dní: cíl splněn {k}/7, průměr {avg}.' },
   'aip.ctx.h.waterNone': 'Pitný režim dnes: zatím nic z {goal}. Posledních 7 dní: cíl splněn {k}/7, průměr {avg}.',
   'aip.ctx.f.today': 'Dnes: ',
   'aip.ctx.f.done': ' (splněno)',

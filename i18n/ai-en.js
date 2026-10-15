@@ -228,7 +228,7 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.h.stress': 'stress {n}/10',
   'aip.ctx.h.water': 'water {n} glasses',
   'aip.ctx.h.mood': 'mood {m}',
-  'aip.ctx.h.waterToday': 'Water today: {ml} of {goal} ({n} entries, last at {t}). Last 7 days: goal met {k}/7, average {avg}.',
+  'aip.ctx.h.waterToday': { one: 'Water today: {ml} of {goal} ({n} entry, last at {t}). Last 7 days: goal met {k}/7, average {avg}.', other: 'Water today: {ml} of {goal} ({n} entries, last at {t}). Last 7 days: goal met {k}/7, average {avg}.' },
   'aip.ctx.h.waterNone': 'Water today: nothing yet of {goal}. Last 7 days: goal met {k}/7, average {avg}.',
   'aip.ctx.f.today': 'Today: ',
   'aip.ctx.f.done': ' (done)',
