@@ -1333,7 +1333,7 @@ function clearUserSessionState(){
   try{
     unsubAllGroupPantries(); pantryViewSel=undefined; // osobní listener zásob ruší destroyAllFireSubs
     familyId=null; familyData=null; familyEvents=[];
-    extraGroupsData={}; extraGroupEvents={}; pantryMine=[]; pantryMineLoaded=false;
+    extraGroupsData={}; extraGroupEvents={}; pantryMine=[]; pantryMineLoaded=false; pantryMineErr=0; pantryMineCache=undefined;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
@@ -17157,7 +17157,7 @@ window.toggleShopItem=async(id,wasDone)=>{
   const name = item.name; const shopQty = item.qty||'';
   await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
   bumpShopFreq(item, wasDone?-1:1, null); // často nakupované (osobní)
-  if(!wasDone) offerPantryUpdate(name, shopQty, null); // osobní nákup → osobní zásoby
+  if(!wasDone) offerPantryUpdate(name, shopQty, null); // osobní nákup → Moje (nebo hlavní skupina, viz pantryForShop)
 };
 
 // Koupená položka → zásoby k danému nákupnímu seznamu (sg = skupina seznamu, null = Moje); zásoby se načtou nejdřív,
@@ -17165,8 +17165,9 @@ window.toggleShopItem=async(id,wasDone)=>{
 async function offerPantryUpdate(name, shopQty, sg) {
   if(!name || !CU) return;
   const gid = pantryForShop(sg);
+  if(!gid) await pantryMigSettle(); // Moje: nejdřív přenos lp_pantry
   const items = await pantryItemsReady(gid);
-  if(!items) return;
+  if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
   const lname = name.toLowerCase();
   const match = items.find(p=>p&&p.name&&(p.name.toLowerCase()===lname||lname.includes(p.name.toLowerCase())));
   if(match){
@@ -17188,7 +17189,7 @@ async function offerPantryUpdate(name, shopQty, sg) {
     const newItem = { name: cutName(name, 60), qty: amount, unit, minQty: null, updatedAt: Date.now() };
     const newId = genId();
     try { await setDoc(pantryDoc(gid, newId), newItem); }
-    catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); return; }
+    catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
     // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
@@ -17755,6 +17756,7 @@ function renderSavedRecipes(){
 // listener skupiny vzniká při prvním zobrazení a drží do odhlášení. Zobrazené zásoby jsou zároveň cíl zápisu.
 let pantryMine = []; // osobní zásoby [{id, name, qty, unit, minQty, updatedAt}]
 let pantryMineLoaded = false;
+let pantryMineErr = 0, pantryMineCache; // chyba listeneru (čas), poslední snapshot z cache
 const pantryGrp = {};
 const PANTRY_VIEW_KEY = 'lp_view_pantry';
 let pantryViewSel; // undefined = nenačteno, null = výchozí, '' = Moje, jinak gid (pamatuje se na zařízení)
@@ -17776,8 +17778,12 @@ function pantryItemsOf(gid) { return gid ? (pantryGrp[gid]?.items || []) : pantr
 function pantryReady(gid) { return gid ? !!pantryGrp[gid]?.loaded : pantryMineLoaded; }
 function activePantryItems() { return pantryItemsOf(pantryGid()); }
 function pantryDoc(gid, id) { return gid ? doc(db,'families',gid,'pantry',id) : doc(db,'users',CU.uid,'pantry',id); }
-// Zásoby k nákupnímu seznamu (odškrtnutí, nápověda „v zásobách“): skupina, pokud zásoby sdílí, jinak Moje
-function pantryForShop(gid) { return gid && groupModShared(gid, 'pantry') ? gid : null; }
+// Zásoby k nákupnímu seznamu (odškrtnutí, nápověda „v zásobách“): skupina, pokud zásoby sdílí, jinak Moje.
+// Osobní seznam při hlavní skupině bez sdílených Nákupů → zásoby hlavní skupiny (domácnost, chování před 4.70)
+function pantryForShop(gid) {
+  if(gid) return groupModShared(gid, 'pantry') ? gid : null;
+  return familyId && !groupModShared(familyId, 'shop') && groupModShared(familyId, 'pantry') ? familyId : null;
+}
 // Nákupní seznam k zásobám (Navrhnout nákup): skupina, pokud sdílí nákupy, jinak Moje
 function shopForPantry(gid) { return gid && groupModShared(gid, 'shop') ? gid : null; }
 // Cíl zápisu z tlačítka (data-aN): '' = Moje, gid = skupina se zásobami; bez parametru zobrazené zásoby; undefined = neplatný
@@ -17813,78 +17819,147 @@ function pantryViewForget(gid) { if(pantryViewStored() === gid) pantryViewSave(n
 function subscribeGroupPantry(gid) {
   if(!gid || !CU || grpSubBlocked(pantryGrp[gid])) return;
   const e = pantryGrp[gid] = {items: [], loaded: false, unsub: null};
-  e.unsub = onSnapshot(collection(db,'families',gid,'pantry'), snap => {
+  // includeMetadataChanges: rozliší prázdnou cache offline od prázdných zásob
+  e.unsub = onSnapshot(collection(db,'families',gid,'pantry'), {includeMetadataChanges: true}, snap => {
     if(pantryGrp[gid] !== e) return;
+    const fc = snap.metadata.fromCache, ch = !e.loaded || fc !== e.cache || snap.docChanges().length > 0;
     e.items = snap.docs.map(d => ({id: d.id, ...d.data()}));
-    e.loaded = true; e.err = 0;
-    if(gid === pantryGid()) renderPantry();
+    e.loaded = true; e.err = 0; e.cache = fc;
+    if(ch && gid === pantryGid()) renderPantry();
   }, err => {
     familyListenErr(err);
     if(pantryGrp[gid] !== e) return;
     if(e.unsub) e.unsub();
     e.unsub = null; e.loaded = false; e.items = []; e.err = Date.now();
     console.warn('Pantry load failed:', err?.code || err?.name);
+    if(gid === pantryGid()) renderPantry(); // hláška místo „Načítám…“ (nový pokus až po GRP_SUB_RETRY)
   });
 }
 function unsubGroupPantry(gid) { const e = pantryGrp[gid]; if(e?.unsub) e.unsub(); delete pantryGrp[gid]; }
 function unsubAllGroupPantries() { Object.keys(pantryGrp).forEach(unsubGroupPantry); }
 // Skupina zásoby přestala sdílet (vypnuté Nákupy ve vedlejší skupině) → zrušit listener
 function pantryGroupSync(gid) { if(gid && pantryGrp[gid] && !groupModShared(gid, 'pantry')) unsubGroupPantry(gid); }
-// Osobní zásoby: listener drží do odhlášení (destroyAllFireSubs)
+// Stav načtení zásob: chyba listeneru / data jen z cache (offline)
+function pantryErr(gid) { return gid ? !!pantryGrp[gid]?.err : !!pantryMineErr; }
+function pantryFromCache(gid) { return gid ? !!pantryGrp[gid]?.cache : !!pantryMineCache; }
+// Osobní zásoby: listener drží do odhlášení (destroyAllFireSubs); po chybě nový pokus nejdřív za GRP_SUB_RETRY
 function subPantryMine() {
-  if(_fireSubs['pantry'] || !CU) return;
+  if(_fireSubs['pantry'] || !CU || (pantryMineErr && Date.now() - pantryMineErr < GRP_SUB_RETRY)) return;
   const uid = CU.uid;
   // includeMetadataChanges: migrace až po potvrzení serveru (start offline by jinak viděl prázdný seznam)
   _fireSubs['pantry'] = onSnapshot(collection(db,'users',uid,'pantry'), {includeMetadataChanges: true}, snap => {
     if(CU?.uid !== uid) return;
+    const fc = snap.metadata.fromCache, ch = !pantryMineLoaded || fc !== pantryMineCache || snap.docChanges().length > 0;
     pantryMine = snap.docs.map(d => ({id: d.id, ...d.data()}));
-    pantryMineLoaded = true;
-    if(!snap.metadata.fromCache) migrateLocalPantry(uid, pantryMine);
+    pantryMineLoaded = true; pantryMineErr = 0; pantryMineCache = fc;
+    if(!fc) migrateLocalPantry(uid, pantryMine);
+    if(ch) renderPantry(); // jen při změně dokumentů nebo online/offline
+  }, err => {
+    delete _fireSubs['pantry'];
+    console.warn('Pantry load failed:', err?.code || err?.name);
+    if(CU?.uid !== uid) return;
+    pantryMine = []; pantryMineLoaded = false; pantryMineErr = Date.now();
     renderPantry();
-  }, err => { delete _fireSubs['pantry']; console.warn('Pantry load failed:', err?.code || err?.name); }); // příště zkusit znovu
+  });
 }
-// Migrace 4.70: lokální zásoby (lp_pantry) → users/{uid}/pantry. Idempotentní: položka se stejným ID nebo názvem
-// se nepřidá znovu; lp_pantry se smaže až po potvrzení zápisu serverem (při chybě zůstává a zkusí se příště).
+// Migrace 4.70: lokální zásoby (lp_pantry) → users/{uid}/pantry. Shodný název a jednotka se sloučí (množství se sečte),
+// shodný název s jinou jednotkou se zapíše zvlášť jako „Název (jednotka)“. ID nové položky je odvozené z názvu a jednotky,
+// takže dvě zařízení současně nevytvoří duplicitu; zápis v transakci, značka migIds brání opakovanému přičtení.
+// lp_pantry se smaže až po potvrzení serverem (offline transakce selže, lp_pantry zůstává a zkusí se příště).
 const PANTRY_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+function pantryUnitKey(u) { return typeof u === 'string' && u.trim() ? cutName(u, 10).toLowerCase() : 'ks'; }
+function pantryKey(name, unit) { return cutName(name, 60).toLowerCase() + '|' + pantryUnitKey(unit); }
+// Deterministické ID dokumentu z klíče (2× 32bitový hash)
+function pantryMigId(key) {
+  let a = 5381, b = 0x811c9dc5;
+  for(let i = 0; i < key.length; i++) { const c = key.charCodeAt(i); a = ((a << 5) + a + c) | 0; b = Math.imul(b ^ c, 16777619); }
+  return 'm' + (a >>> 0).toString(36) + (b >>> 0).toString(36);
+}
+// Plán migrace: [[id, {name, qty, unit, minQty, updatedAt}]]; qty je množství k přičtení
 function pantryMigWrites(local, have) {
-  const ids = new Set(), names = new Set(), out = [];
-  (Array.isArray(have) ? have : []).forEach(p => { if(p?.id) ids.add(String(p.id)); const k = String(p?.name ?? '').trim().toLowerCase(); if(k) names.add(k); });
+  const byKey = new Map(), names = new Set(), out = new Map();
+  (Array.isArray(have) ? have : []).forEach(p => {
+    if(!p?.id || !p.name) return;
+    const k = pantryKey(p.name, p.unit);
+    if(!byKey.has(k)) byKey.set(k, p);
+    names.add(cutName(p.name, 60).toLowerCase());
+  });
   for(const p of (Array.isArray(local) ? local : [])) {
     if(!p || typeof p !== 'object') continue;
-    const name = cutName(p.name, 60);
-    const key = name.toLowerCase();
-    if(!key) continue;
-    const id = (typeof p.id === 'string' && PANTRY_ID_RE.test(p.id)) ? p.id : genId();
-    if(ids.has(id) || names.has(key)) continue;
-    ids.add(id); names.add(key);
+    let name = cutName(p.name, 60);
+    if(!name) continue;
+    const unit = typeof p.unit === 'string' && p.unit.trim() ? cutName(p.unit, 10) : 'ks';
+    let k = pantryKey(name, unit), hit = byKey.get(k);
+    if(!hit && names.has(name.toLowerCase())) {
+      // Stejný název, jiná jednotka → samostatná položka s jednotkou v názvu
+      name = cutName(name, 57 - unit.length) + ' (' + unit + ')';
+      k = pantryKey(name, unit); hit = byKey.get(k);
+    }
+    const id = hit ? hit.id : pantryMigId(k);
     const qty = Number(p.qty), minQty = Number(p.minQty), at = Number(p.updatedAt);
-    out.push([id, {name, qty: Number.isFinite(qty) && qty >= 0 ? qty : 0, unit: typeof p.unit === 'string' && p.unit.trim() ? cutName(p.unit, 10) : 'ks',
-      minQty: Number.isFinite(minQty) && minQty > 0 ? minQty : null, updatedAt: Number.isFinite(at) && at > 0 ? at : Date.now()}]);
+    const q = Number.isFinite(qty) && qty >= 0 ? qty : 0, mq = Number.isFinite(minQty) && minQty > 0 ? minQty : null;
+    const ts = Number.isFinite(at) && at > 0 ? at : Date.now();
+    const prev = out.get(id);
+    if(prev) { prev.qty = Math.round((prev.qty + q) * 1000) / 1000; prev.minQty = prev.minQty || mq; prev.updatedAt = Math.max(prev.updatedAt, ts); continue; }
+    out.set(id, {name: hit ? hit.name : name, qty: q, unit: hit ? (hit.unit || unit) : unit, minQty: mq, updatedAt: ts});
   }
-  return out;
+  return [...out.entries()];
 }
-let _pantryMigBusy = false;
-async function migrateLocalPantry(uid, have) {
-  if(_pantryMigBusy) return;
+function pantryMigPending(uid) {
+  try { if(localStorage.getItem('lp_owner_uid') !== uid) return false; return Array.isArray(JSON.parse(localStorage.getItem('lp_pantry'))); } catch(e) { return false; }
+}
+let _pantryMigP = null;
+function migrateLocalPantry(uid, have) {
+  if(_pantryMigP) return _pantryMigP;
   let raw = null;
   try { if(localStorage.getItem('lp_owner_uid') !== uid) return; raw = localStorage.getItem('lp_pantry'); } catch(e) { return; }
   if(raw === null) return;
   let local = null;
   try { local = JSON.parse(raw); } catch(e) {}
   if(!Array.isArray(local)) return; // nečitelná data nemazat
-  _pantryMigBusy = true;
+  return _pantryMigP = pantryMigRun(uid, local, have, 'v' + pantryMigId(getDeviceId() + '|' + raw).slice(1))
+    .finally(() => { _pantryMigP = null; });
+}
+async function pantryMigRun(uid, local, have, migId) {
   try {
     const writes = pantryMigWrites(local, have);
-    for(let i = 0; i < writes.length; i += 400) {
-      const b = writeBatch(db);
-      writes.slice(i, i + 400).forEach(([id, d]) => b.set(doc(db,'users',uid,'pantry',id), d));
-      await b.commit();
+    let n = 0;
+    for(let i = 0; i < writes.length; i += 100) {
+      const chunk = writes.slice(i, i + 100);
+      const res = await runTransaction(db, async tx => {
+        const refs = chunk.map(([id]) => doc(db,'users',uid,'pantry',id));
+        const snaps = await Promise.all(refs.map(r => tx.get(r))); // všechna čtení před zápisy
+        const done = [];
+        snaps.forEach((s, j) => {
+          const [id, d] = chunk[j];
+          if(!s.exists()) { const nd = {...d, migIds: [migId]}; tx.set(refs[j], nd); done.push([id, nd]); return; }
+          const cur = s.data() || {};
+          if(Array.isArray(cur.migIds) && cur.migIds.includes(migId)) return; // z tohoto zařízení už přičteno
+          const q = convertUnits(d.qty, pantryUnitKey(d.unit), pantryUnitKey(cur.unit));
+          const upd = {updatedAt: Date.now()};
+          if(q > 0) upd.qty = Math.round(((Number(cur.qty) || 0) + q) * 1000) / 1000;
+          if(!(Number(cur.minQty) > 0) && d.minQty) upd.minQty = d.minQty;
+          tx.update(refs[j], {...upd, migIds: arrayUnion(migId)});
+          done.push([id, {...cur, ...upd, migIds: [...(cur.migIds || []), migId]}]);
+        });
+        return done;
+      });
+      if(CU?.uid !== uid) return;
+      // Hned do paměti (snapshot může dorazit později): offerPantryUpdate po migraci najde sloučené položky
+      res.forEach(([id, d]) => { const k = pantryMine.findIndex(p => p.id === id); if(k >= 0) pantryMine[k] = {id, ...d}; else pantryMine.push({id, ...d}); });
+      n += res.length;
     }
     if(CU?.uid !== uid) return;
     try { localStorage.removeItem('lp_pantry'); } catch(e) {}
-    if(writes.length) toast(tN('pantry.migrated', writes.length), 5000);
+    if(n) { toast(tN('pantry.migrated', n), 5000); renderPantry(); }
   } catch(e) { console.warn('Pantry migration failed:', e?.code || e?.name); }
-  finally { _pantryMigBusy = false; }
+}
+// Nákup do Moje: počká na přenos lp_pantry (jinak by vedle převáděné položky vznikla druhá). Offline migrace
+// neproběhne; položka se pak zapíše hned a pozdější migrace se s ní sloučí podle názvu a jednotky.
+async function pantryMigSettle() {
+  if(!CU) return;
+  for(let i = 0; i < 20 && !_pantryMigP && pantryMigPending(CU.uid); i++) await new Promise(r => setTimeout(r, 100));
+  if(_pantryMigP) await Promise.race([_pantryMigP, new Promise(r => setTimeout(r, 8000))]);
 }
 // Položky zásob gid; nenačtené počká nejvýš 2 s (null = nedostupné, nic nezapisovat → bez duplicit)
 async function pantryItemsReady(gid) {
@@ -17928,7 +18003,7 @@ function buildPantryHtml(gid) {
   // Přepínač Moje / skupiny (4.70): 1–3 volby segment, 4+ tlačítko se sheetem
   const toggle = gs.length ? '<div class="pantry-view">' + grpChoiceHTML({opts: ['', ...gs], cur: gid || '', label: grpMineLabel,
     aria: t('pantry.viewAria'), pick: 'setPantryView', sheet: 'openPantryViewSheet'}) + '</div>' : '';
-  if (!pantryReady(gid)) return toggle + `<div class="pantry-empty" role="status">${tH('pantry.loading')}</div>`;
+  if (!pantryReady(gid)) return toggle + `<div class="pantry-empty" role="status">${tH(pantryErr(gid) ? 'pantry.loadErr' : 'pantry.loading')}</div>`;
   const { low, sorted } = getPantrySorted(pantryItemsOf(gid));
   return toggle + `
     ${low.length ? `<div class="pantry-alert">⚠️ ${tNH('pantry.low', low.length)}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
@@ -17936,7 +18011,8 @@ function buildPantryHtml(gid) {
       <button class="btn-sv pantry-add-btn" data-a0="${g}" onclick="openPantryAdd({gid:this.dataset.a0})">${tH('pantry.add')}</button>
       ${low.length ? `<button class="btn-cook-suggest" data-a0="${g}" onclick="pantryToShop(this.dataset.a0)">${tH('pantry.toShop')}</button>` : ''}
     </div>
-    ${sorted.length === 0 ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>${tH('pantry.empty')}</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">${tH('pantry.emptyHint')}</div></div>` : ''}
+    ${sorted.length === 0 && pantryFromCache(gid) ? `<div class="pantry-empty" role="status">${tH(navigator.onLine === false ? 'pantry.offline' : 'pantry.loading')}</div>` : ''}
+    ${sorted.length === 0 && !pantryFromCache(gid) ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>${tH('pantry.empty')}</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">${tH('pantry.emptyHint')}</div></div>` : ''}
     <div class="pantry-list">
       ${sorted.map(item => {
         const isLow = item.minQty && item.qty <= item.minQty;
@@ -18053,7 +18129,7 @@ window.changePantryQty = async function(id, delta, gidArg) {
   try {
     await setDoc(pantryDoc(gid, id), pantryData(item));
     if (gid) logGroupActivity(gid, 'pantry', 'edit', item.name || ''); // tlačítka ± sloučí debounce
-  } catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); }
+  } catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); }
 };
 
 window.deletePantryItem = async function(id, gidArg) {

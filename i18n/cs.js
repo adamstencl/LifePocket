@@ -1139,6 +1139,9 @@ export default {
   'pantry.viewGone': 'Zásoby skupiny {name} už nejsou sdílené, ukazuju {to}',
   'pantry.loading': 'Načítám zásoby…',
   'pantry.inWhere': 'Zásoby: {name}',
+  'pantry.loadErr': '⚠️ Zásoby se nepodařilo načíst. Zkus to znovu za chvíli.',
+  'pantry.offline': '📡 Jsi offline a zásoby v zařízení zatím nejsou. Načtou se po připojení.',
+  'pantry.notAdded': '🧊 {name} se nepodařilo přidat do zásob (nenačetly se). Přidej ho ručně.',
   'pantry.saveErr': '❌ Zásoby se nepodařilo uložit, zkus to znovu',
   'pantry.migrated': { one: '🧊 {n} zásoba z tohoto zařízení je teď uložená v tvém účtu', few: '🧊 {n} zásoby z tohoto zařízení jsou teď uložené v tvém účtu', other: '🧊 {n} zásob z tohoto zařízení je teď uloženo v tvém účtu' },
 
