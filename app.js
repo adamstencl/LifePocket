@@ -51,11 +51,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.67';
 const CHANGELOG = [
   { v:'4.67', items:[
-    '💧 Připomínka pití má tlačítko „+2 dl“: zapíše šálek bez hledání v appce',
+    '💧 Připomínka pití má tlačítko, které zapíše tvůj šálek bez hledání v appce',
     '🔗 Pitný režim můžeš propojit s návykem: po splnění denního cíle se návyk sám odškrtne',
     '⭐ Za splněný denní cíl pití dostaneš 10 bodů (s propojeným návykem body přijdou za návyk)'
   ], en:[
-    '💧 Water reminders now have a “+200 ml” button that logs a cup straight away',
+    '💧 Water reminders now have a button that logs your cup straight away',
     '🔗 Link Water to a habit: reaching your daily goal checks the habit off automatically',
     '⭐ Reaching your daily water goal earns 10 points (with a linked habit, the habit earns them)'
   ]},
@@ -1927,7 +1927,7 @@ function buildHabitCard(h){
     if(freq.type==='days') active=(freq.days||[]).includes(dow);
     const isDone=l&&l.done;
     const isFailed=l&&l.failed;
-    const isZero=l&&!l.done&&!l.failed&&l.value===0;
+    const isZero=l&&!l.done&&!l.failed&&!l.manual&&l.value===0;
     const isPartial=l&&l.value>0&&!l.done&&!l.failed;
     const isToday=ds===todayDS;
     const isHabitDay=ds===habitDay;
@@ -2153,7 +2153,7 @@ async function hdRun(hid, fn) {
 }
 window.hdToggleToday = hid => hdRun(hid, async () => {
   const today = toDS();
-  if (hDone(hid, today)) { await delHabitLog(hid + '_' + today); renderHabits(); }
+  if (hDone(hid, today)) { await hbClearLog(hid, today); renderHabits(); }
   else await window.toggleHabit(hid, today, 'empty');
 });
 window.hdAdj = (hid, d) => hdRun(hid, async () => {
@@ -2164,7 +2164,7 @@ window.hdDayTap = (hid, ds) => {
   const h = habits.find(x => x.id === hid); if (!h || ds > toDS()) return;
   if (h.type === 'count') { const l = hLog(hid + '_' + ds); window.directInput(hid, ds, Number(l?.value) || 0, Number(h.goal) || 1); return; }
   hdRun(hid, async () => {
-    if (hDone(hid, ds)) { await delHabitLog(hid + '_' + ds); renderHabits(); }
+    if (hDone(hid, ds)) { await hbClearLog(hid, ds); renderHabits(); }
     else if (ds === toDS()) await window.toggleHabit(hid, ds, 'empty');
     else { installUnlock(); await putHabitLog({ id: hid + '_' + ds, habitId: hid, date: ds, done: true, failed: false, value: 1 }); renderHabits(); }
   });
@@ -2420,7 +2420,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
   if(currentState==='done'){
     await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
   } else if(currentState==='failed'){
-    await delHabitLog(logId);
+    await hbClearLog(hid,date);
   } else {
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
     installUnlock(); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
@@ -2485,11 +2485,11 @@ window.toggleHabitDay=async(hid,date)=>{
   const logId=hid+'_'+date;
   const existing=habitLogs.find(l=>l.id===logId);
   // If skipped, treat as empty → mark done
-  const curState=existing?(existing.skipped?'empty':existing.done?'done':'failed'):'empty';
+  const curState=existing?(existing.skipped||existing.manual&&!existing.done&&!existing.failed?'empty':existing.done?'done':'failed'):'empty';
   if(curState==='done'){
     await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
   } else if(curState==='failed'){
-    await delHabitLog(logId);
+    await hbClearLog(hid,date);
   } else {
     installUnlock();
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
@@ -5667,7 +5667,9 @@ function drinkWater(ml,opts={}){
   if(!Number.isFinite(ml)||ml<50||ml>(opts.mig?3000:1500)) return false;
   const ds=toDS(), es=wtEntries(ds);
   if(es.length>=WT_MAX_ENTRIES){ toast(t('wt.limit')); return false; }
-  let tm=Number.isFinite(opts.at)&&toDS(new Date(opts.at))===ds?Math.round(opts.at):Date.now();
+  const atOk=Number.isFinite(opts.at)&&toDS(new Date(opts.at))===ds;
+  let tm=atOk?Math.round(opts.at):Date.now();
+  if(atOk&&es.some(e=>e.t===tm)) return false; // stejný zápis z notifikace už přišel z jiného zařízení
   while(es.some(e=>e.t===tm)) tm++; // čas je klíč záznamu (arrayUnion / arrayRemove)
   const e={t:tm,ml};
   const before=wtMl(ds), cur=wtDay(ds)||{date:ds,ml:0,entries:[]};
@@ -5708,6 +5710,17 @@ window.undoWater=tm=>{
 const WT_HB_RE=/^[A-Za-z0-9_-]{1,128}$/;
 const wtHabitOk=h=>!!h&&!h.archived&&h.type!=='count';
 function wtHabit(cfg=waterCfg()){ const id=cfg?.habitId; if(!id) return null; const h=habits.find(x=>x.id===id); return wtHabitOk(h)?h:null; }
+// Zrušení dneška propojeného návyku (ruční): místo smazání záznam manual (prázdný den), jinak by ho wtHabitSync znovu splnil.
+// Záznam je v účtu → platí i na dalším zařízení; habitDayState ho počítá jako prázdný den.
+function wtHbKeepOff(hid,ds){
+  if(ds!==toDS()) return false;
+  const l=hLog(hid+'_'+ds);
+  return l?.src==='water'||(prof?.water?.habitId===hid&&(!_wtReady||wtMl(ds)>=wtGoalOf(ds)));
+}
+async function hbClearLog(hid,ds){
+  if(wtHbKeepOff(hid,ds)) await putHabitLog({id:hid+'_'+ds,habitId:hid,date:ds,done:false,failed:false,value:0,manual:true});
+  else await delHabitLog(hid+'_'+ds);
+}
 const _wtHbBusy=new Set();
 let _wtHbWait=false; // čeká na návyky ze serveru (spustí gameKick)
 function wtHabitSync(){
@@ -5722,11 +5735,20 @@ function wtHabitSync(){
   const log=hLog(id), met=wtMl(ds)>=wtGoalOf(ds);
   let job=null;
   if(met&&!log&&habitDayState(h,ds)==='miss') job=()=>putHabitLog({id,habitId:h.id,date:ds,done:true,failed:false,value:1,src:'water'});
-  else if(!met&&log?.done&&log.src==='water') job=()=>delHabitLog(id);
+  else if(!met&&log?.done&&log.src==='water'&&!log.manual) job=()=>delHabitLog(id);
   if(!job) return;
   _wtHbBusy.add(id);
   // Po úspěchu znovu (stav vody se mezitím mohl změnit); po chybě ne, ať se neopakuje dokola
   job().then(()=>{ _wtHbBusy.delete(id); renderHabits(); rAvPage(); if(id.endsWith('_'+toDS())) wtHabitSync(); },
+    e=>{ _wtHbBusy.delete(id); console.warn('[LP] water habit:',e?.code||e?.name); });
+}
+// Změna / zrušení propojení: dnešní automatické splnění starého návyku se smaže (body by se jinak počítaly dvakrát)
+function wtHabitUnlink(oldId,newId){
+  if(!CU||!oldId||oldId===newId) return;
+  const id=oldId+'_'+toDS(), l=hLog(id);
+  if(!l?.done||l.src!=='water'||_wtHbBusy.has(id)) return;
+  _wtHbBusy.add(id);
+  delHabitLog(id).then(()=>{ _wtHbBusy.delete(id); renderHabits(); rAvPage(); gameKick(); },
     e=>{ _wtHbBusy.delete(id); console.warn('[LP] water habit:',e?.code||e?.name); });
 }
 // Body za splněný cíl (dayXP): jen bez splněného propojeného návyku (ten má body za návyk), den přepočítává gameSync
@@ -6007,8 +6029,9 @@ window.saveWaterSettings=()=>{
   const w=_wtEdit; if(!CU||!w) return;
   window.wtTime();
   if(w.remind&&wtHoursBad(w)){ toast(t('wt.badHours',{v:wtHoursMin(w)})); return; }
-  const cfg=wtNormCfg(w), remOn=cfg.remind&&!prof.water?.remind;
+  const cfg=wtNormCfg(w), remOn=cfg.remind&&!prof.water?.remind, oldHb=prof.water?.habitId||null;
   prof.water=cfg;
+  wtHabitUnlink(oldHb,cfg.habitId);
   _wtEdit=null; cm('m-water');
   setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
   if(remOn&&_wtReady&&wtProfDayStale(toDS())) wtProfDay(toDS()); // zapnuté připomínky: server potřebuje aktuální stav dne
@@ -6036,6 +6059,7 @@ async function wtOpenFromNotif(p){
   const seen=lsGet('lp_wt_seen',[]), arr=Array.isArray(seen)?seen:[];
   if(arr.includes(p.at)) return;
   lsSave('lp_wt_seen',[...arr,p.at].slice(-20));
+  if(wtEntries(toDS()).some(e=>e.t===p.at)) return; // už zapsáno z jiného zařízení
   if(drinkWater(p.drink,{at:p.at,quiet:true})) whenUiFree(()=>toast(t('wt.notifAdded',{v:fmtMl(p.drink)}),4000),15000);
 }
 
@@ -6476,8 +6500,8 @@ function gameSync(){
   const patch={}, today=toDS(), before=gameTotal();
   // Pitný režim ještě bez prvního snapshotu: dny nepřepočítávat (body za vodu by na chvíli zmizely), nejvýš 15 s
   const wtWait=waterOn()&&!_wtReady&&Date.now()-_wtSubAt<15000;
-  if(wtWait){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,2000); }
-  else for(const ds of [addDays(today,-1),today]){
+  if(wtWait){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,2000); return; }
+  for(const ds of [addDays(today,-1),today]){
     const v=dayXP(ds);
     if((Number(game.days[ds])||0)!==v){
       if(v){ game.days[ds]=v; patch['days.'+ds]=v; } else { delete game.days[ds]; patch['days.'+ds]=deleteField(); }
