@@ -15788,12 +15788,12 @@ window.setSimple=on=>{
   simpleRefresh();
   toast(t(on?'set.simple.on':'set.simple.off'));
 };
-// Odkryje všechna rozšíření a zruší i limit 3 karet na Domů (simpleAt o 14 dní zpět); fronta nabídek zůstává
+// Odkryje všechna rozšíření a zruší i limit 3 karet na Domů (simpleAt o 15 dní zpět); fronta nabídek zůstává
 window.simpleUnlockAll=()=>{
   if(!CU||!isSimple()) return;
   unlock(...UNL_IDS);
   const prevAt=prof.simpleAt;
-  prof.simpleAt=addDays(toDS(),-14);
+  prof.simpleAt=addDays(toDS(),-15); // simpleDash() počítá od poledne, -15 = jistě po 14 dnech
   updateDoc(doc(db,'users',CU.uid,'profile','main'),{simpleAt:prof.simpleAt}).catch(e=>{
     if(prevAt===undefined) delete prof.simpleAt; else prof.simpleAt=prevAt;
     simpleRefresh();
