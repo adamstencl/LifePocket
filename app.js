@@ -48,8 +48,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.65';
+const APP_VERSION = '4.66';
 const CHANGELOG = [
+  { v:'4.66', items:[
+    '✅ V detailu návyku (i po klepnutí na upozornění) ho splníš jedním tlačítkem; klepnutím na den v kalendáři doplníš nebo zrušíš splnění zpětně'
+  ], en:[
+    '✅ In a habit’s detail (also after tapping a reminder) you can complete it with one button; tap a day in the calendar to mark or unmark it'
+  ]},
   { v:'4.65', items:[
     '🧩 Vypnuté moduly (např. parťák Rex nebo Checklisty) zůstanou vypnuté i po zavření appky'
   ], en:[
@@ -2123,6 +2128,37 @@ window.openHabitDetail = (hid) => {
 window.closeHabitDetail = () => {
   sp('habits');
 };
+// Detail návyku: splnění dneška a klepnutí na den v kalendáři (4.66)
+let _hdBusy = false;
+async function hdRun(hid, fn) {
+  if (_hdBusy || !CU) return;
+  _hdBusy = true;
+  try { await fn(); }
+  catch (e) { userErr(e, 'detail návyku'); }
+  finally {
+    _hdBusy = false;
+    const h = habits.find(x => x.id === hid);
+    if (h && detailHabitId === hid) renderHabitDetail(h);
+  }
+}
+window.hdToggleToday = hid => hdRun(hid, async () => {
+  const today = toDS();
+  if (hDone(hid, today)) { await delHabitLog(hid + '_' + today); renderHabits(); }
+  else await window.toggleHabit(hid, today, 'empty');
+});
+window.hdAdj = (hid, d) => hdRun(hid, async () => {
+  const h = habits.find(x => x.id === hid); if (!h) return;
+  await window.adjustHabit(hid, toDS(), d, Number(h.goal) || 1);
+});
+window.hdDayTap = (hid, ds) => {
+  const h = habits.find(x => x.id === hid); if (!h || ds > toDS()) return;
+  if (h.type === 'count') { const l = hLog(hid + '_' + ds); window.directInput(hid, ds, Number(l?.value) || 0, Number(h.goal) || 1); return; }
+  hdRun(hid, async () => {
+    if (hDone(hid, ds)) { await delHabitLog(hid + '_' + ds); renderHabits(); }
+    else if (ds === toDS()) await window.toggleHabit(hid, ds, 'empty');
+    else { installUnlock(); await putHabitLog({ id: hid + '_' + ds, habitId: hid, date: ds, done: true, failed: false, value: 1 }); renderHabits(); }
+  });
+};
 
 function renderHabitDetail(h) {
   const body = document.getElementById('hd-body');
@@ -2228,7 +2264,8 @@ function renderHabitDetail(h) {
     else if (isPausedDay) cls += ' paused';
     else cls += ' miss';
     if (isToday) cls += ' today';
-    cells += `<div class="${cls}" title="${esc(ds)}">${isDone ? '✓' : isFuture ? '' : isFrozen ? '❄️' : isPausedDay ? '⏸' : day}</div>`;
+    const tap = isFuture ? '' : ` role="button" tabindex="0" data-a0="${esc(h.id)}" data-a1="${esc(ds)}" onclick="hdDayTap(this.dataset.a0,this.dataset.a1)" style="cursor:pointer"`;
+    cells += `<div class="${cls}" title="${esc(fmtDate(new Date(ds+'T12:00:00'),'dm'))}"${tap}>${isDone ? '✓' : isFuture ? '' : isFrozen ? '❄️' : isPausedDay ? '⏸' : day}</div>`;
   }
 
   const monthsHtml = `
@@ -2242,7 +2279,27 @@ function renderHabitDetail(h) {
       ${cells}
     </div>`;
 
-  body.innerHTML = `
+  // Splnění dneška přímo z detailu (otevírá se i z notifikace)
+  const tLog = hLog(h.id + '_' + today);
+  const tDone = hDone(h.id, today);
+  let todayHtml;
+  if (h.type === 'count') {
+    const goal = Number(h.goal) || 1, val = Number(tLog?.value) || 0;
+    todayHtml = `<div class="hd-today">
+      <div class="hd-today-l">${tH('hd.today')}</div>
+      <div class="hd-today-cnt">
+        <button type="button" class="hd-today-pm" aria-label="−1" data-a0="${esc(h.id)}" onclick="hdAdj(this.dataset.a0,-1)" ${val<=0?'disabled':''}>−</button>
+        <span class="hd-today-v${tDone?' done':''}">${val} / ${goal}</span>
+        <button type="button" class="hd-today-pm" aria-label="+1" data-a0="${esc(h.id)}" onclick="hdAdj(this.dataset.a0,1)">+</button>
+      </div></div>`;
+  } else {
+    todayHtml = `<div class="hd-today">
+      <div class="hd-today-l">${tH('hd.today')}</div>
+      <button type="button" class="hd-today-btn${tDone?' done':''}" aria-pressed="${tDone}" data-a0="${esc(h.id)}" onclick="hdToggleToday(this.dataset.a0)">${tDone ? tH('hd.doneToday') : tH('hd.markToday')}</button>
+    </div>`;
+  }
+
+  body.innerHTML = todayHtml + `
     <!-- Stats -->
     <div class="hd-stat-grid">
       <div class="hd-stat" style="${curStreak>0&&curStreak===bestStreak?'border-color:var(--accent);background:rgba(245,200,66,.08)':''}">
