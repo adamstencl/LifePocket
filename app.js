@@ -684,6 +684,64 @@ function simpleDash() {
 }
 // Počet splněných záznamů návyků (odkrytí bodů po 3. splněném návyku)
 const doneLogCount = () => habitLogs.reduce((n, l) => n + (l && l.done ? 1 : 0), 0);
+// ── Fronta nabídek a aktivní dny (4.69, F5; jen jednoduchý režim). Stav v prof.nudge (Firestore, stejný na všech zařízeních):
+// nudge.last = den poslední ukázané nabídky (limit 1 za 3 dny), nudge.cur = nabídka ukázaná ten den (drží se na Domů),
+// nudge.<id> = 'yes' | 'no' | 'later:YYYY-MM-DD', nudge.act.<druh> = {n: počet aktivních dní, d: poslední, f: první}
+const NUDGE_GAP = 3, NUDGE_LATER = 14;
+// dsDiff(a, b) = dny mezi daty YYYY-MM-DD (definice u gamifikace)
+const isDS = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
+// Den účtu: 0 = den založení (místní čas); účet bez createdAt = starý
+function accDay() {
+  const c = prof?.createdAt ? new Date(prof.createdAt) : null;
+  return c && !isNaN(c) ? dsDiff(toDS(c), toDS()) : 9999;
+}
+const nudgeSt = () => (prof?.nudge && typeof prof.nudge === 'object') ? prof.nudge : {};
+const actN = k => Number(nudgeSt().act?.[k]?.n) || 0;
+function nudgeWrite(patch) {
+  if (!CU) return;
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), patch).catch(e => console.warn('[LP] nudge:', e?.code || e?.name));
+}
+// Aktivní den (splněný návyk, položka v nákupu, záznam, událost …): zapíše se jen první akce dne pro každý druh
+function actDay(kind) {
+  if (!CU || !isSimple()) return;
+  const d = toDS(), st = nudgeSt(), act = {...(st.act && typeof st.act === 'object' ? st.act : {})}, patch = {};
+  for (const k of (kind && kind !== 'all' ? ['all', kind] : ['all'])) {
+    const o = act[k] && typeof act[k] === 'object' ? act[k] : {};
+    if (o.d === d) continue;
+    act[k] = {n: (Number(o.n) || 0) + 1, d, f: isDS(o.f) ? o.f : d};
+    patch['nudge.act.' + k] = act[k];
+  }
+  if (!Object.keys(patch).length) return;
+  prof.nudge = {...st, act};
+  nudgeWrite(patch);
+  gameUnlCheck();
+}
+// Je volno na další nabídku? Ne v den založení účtu a nejvýš jedna za 3 dny (fronta i dotaz na upozornění)
+function nudgeFree() {
+  if (!isSimple()) return true;
+  if (accDay() < 1) return false;
+  const l = nudgeSt().last;
+  return !(isDS(l) && dsDiff(l, toDS()) < NUDGE_GAP);
+}
+// Zapíše ukázání (počítá se do limitu); id = nabídka z fronty, bez id = jiná karta pod limitem (dotaz na upozornění)
+function nudgeMark(id) {
+  if (!isSimple()) return;
+  const d = toDS(), st = nudgeSt(), patch = {'nudge.last': d, 'nudge.cur': id || ''};
+  const n = {...st, last: d, cur: id || ''};
+  // Bez odpovědi = jako „Teď ne“: znovu nejdřív za 14 dní
+  if (id && st[id] !== 'yes' && st[id] !== 'no') { n[id] = 'later:' + d; patch['nudge.' + id] = n[id]; }
+  prof.nudge = n;
+  nudgeWrite(patch);
+}
+// Nabídka ještě čeká (bez odpovědi, nebo „později“ starší než 14 dní)
+function nudgeOpen(id) {
+  const v = nudgeSt()[id];
+  if (v === 'yes' || v === 'no') return false;
+  if (typeof v === 'string' && v.startsWith('later:')) { const d = v.slice(6); return isDS(d) && dsDiff(d, toDS()) >= NUDGE_LATER; }
+  return true;
+}
+// Odkryté rozšíření nebo uplynulých 14 dní jednoduchého Domů (pak jako dřív, kromě zamítnuté nabídky)
+const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
 function uiBusy() {
   return tourActive() || !!document.querySelector('.moverlay.open,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
@@ -706,9 +764,11 @@ function installGate() {
   const inApp = !!document.getElementById('app')?.classList.contains('active');
   document.documentElement.classList.toggle('lp-noinstall', !(ok && inApp));
 }
-function installUnlock() {
+// kind = druh aktivního dne pro frontu nabídek (habits, shopping …), viz actDay
+function installUnlock(kind) {
   try { if (!localStorage.getItem('lp_inst_ok')) localStorage.setItem('lp_inst_ok', '1'); } catch (e) {}
   installGate();
+  actDay(kind);
 }
 // Další návštěva = nové spuštění appky aspoň 30 min po prvním (lp_first_open, jen zařízení)
 function installVisitCheck() {
@@ -1464,6 +1524,7 @@ window.saveEntry=async(opts)=>{
   const title=document.getElementById('j-title').value.trim()||t('nt.untitled');
   const text=document.getElementById('j-text').value;
   const now=new Date().toISOString();
+  if(text.trim()) actDay('journal'); // aktivní den (jednoduchý režim, 4.69)
   let createdId=null;
   if(!curEntryId){
     // ID hned (ne až po potvrzení serveru) – druhé uložení nevytvoří duplikát; seznam doplní onSnapshot
@@ -2226,7 +2287,7 @@ window.hdDayTap = (hid, ds) => {
   hdRun(hid, async () => {
     if (hDone(hid, ds)) { await hbClearLog(hid, ds); renderHabits(); }
     else if (ds === toDS()) await window.toggleHabit(hid, ds, 'empty');
-    else { installUnlock(); await putHabitLog({ id: hid + '_' + ds, habitId: hid, date: ds, done: true, failed: false, value: 1 }); renderHabits(); }
+    else { installUnlock('habits'); await putHabitLog({ id: hid + '_' + ds, habitId: hid, date: ds, done: true, failed: false, value: 1 }); renderHabits(); }
   });
 };
 
@@ -2483,7 +2544,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
     await hbClearLog(hid,date);
   } else {
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
-    installUnlock(); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
+    installUnlock('habits'); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     checkAvatarReactions(hid, date, true);
     notifAskSoon('habit'); // po 3. splněném návyku nabídnout upozornění
@@ -2498,7 +2559,7 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   const ex=habitLogs.find(l=>l.id===logId);
   const cur=ex?ex.value:0;
   const newVal=Math.max(0,cur+delta);
-  if(delta>0 && newVal>=goal && cur<goal) { xpPop(hid, XP.habit); installUnlock(); }
+  if(delta>0 && newVal>=goal && cur<goal) { xpPop(hid, XP.habit); installUnlock('habits'); }
   if(newVal===0){
     await delHabitLog(logId);
   } else {
@@ -2551,7 +2612,7 @@ window.toggleHabitDay=async(hid,date)=>{
   } else if(curState==='failed'){
     await hbClearLog(hid,date);
   } else {
-    installUnlock();
+    installUnlock('habits');
     await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
   }
   renderHabits();
@@ -2614,7 +2675,7 @@ window.saveHabit=async()=>{
   const selGoalId=document.getElementById('habit-goal-sel')?.value||null;
   const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
   const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,goalId:selGoalId||null,order:maxOrder+1,createdAt:new Date().toISOString()};
-  installUnlock();
+  installUnlock('habits');
   const hRef=await addDoc(collection(db,'users',CU.uid,'habits'),h);
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
@@ -2668,7 +2729,7 @@ window.directInput=async(hid,date,curVal,goal)=>{
     const newVal = parseInt(inp.value);
     modal.remove();
     if(isNaN(newVal)||newVal<0){toast(t('hb.di.bad'));return;}
-    if(newVal>=goal) installUnlock();
+    if(newVal>=goal) installUnlock('habits');
     await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
     renderHabits();
     toast(t('hb.di.logged',{n:newVal}));
@@ -3468,6 +3529,7 @@ window.saveEvent=async()=>{
   if(!name){toast(t('common.nameReq'));return;}
   if(!date){toast(t('cal.dateReq'));return;}
   if(dateEnd&&dateEnd<date){toast(t('cal.endBad'));return;}
+  actDay('calendar'); // aktivní den (jednoduchý režim, 4.69)
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
@@ -4766,8 +4828,17 @@ window.saveNotifSettings = () => {
   toast(t('notif.saved'));
 };
 
+// Sekce „Řešení potíží s upozorněním“ jen s aspoň jedním viditelným tlačítkem (4.69)
+function notifFixSync() {
+  const sec = document.getElementById('notif-fix-sec');
+  if (!sec) return;
+  sec.hidden = !['notif-test-btn', 'notif-test-server-btn', 'notif-refresh-token-btn'].some(id => { const b = document.getElementById(id); return b && b.style.display && b.style.display !== 'none'; });
+}
 // ── Stav oprávnění ──
 async function checkNotifStatus() {
+  try { await checkNotifStatusInner(); } finally { notifFixSync(); }
+}
+async function checkNotifStatusInner() {
   const box = document.getElementById('notif-status-box');
   const enableBtn = document.getElementById('notif-enable-btn');
   const testBtn = document.getElementById('notif-test-btn');
@@ -4847,6 +4918,7 @@ function notifAskOk(pre) {
   if (!pre && !document.getElementById('app')?.classList.contains('active')) return false;
   if (!pre) { try { if (tourActive() || !localStorage.getItem('lp_tour_done')) return false; } catch (e) { return false; } } // nikdy během průvodce
   if (Date.now() < (Number(lsGet('lp_na_snooze', 0)) || 0)) return false;
+  if (!nudgeFree()) return false; // jednoduchý režim: stejný limit jako fronta nabídek (1 za 3 dny, ne v den založení)
   if (!pre && naCovered()) return false; // instalační banner / výzva ke sdílení dole: tentokrát ne (nabídne se při další příležitosti)
   return !!notifAskMode();
 }
@@ -4867,6 +4939,7 @@ function notifAskShow(why) {
   const mode = notifAskMode();
   if (!mode) return;
   lsSave('lp_na_snooze', Date.now() + NA_SHOWN_MS); // ukázaná karta: další nejdřív zítra
+  nudgeMark(); // jednoduchý režim: počítá se do limitu nabídek
   const el = document.createElement('div');
   el.id = 'notif-ask';
   el.className = 'invite-hint na-card';
@@ -5787,6 +5860,7 @@ function drinkWater(ml,opts={}){
   if(atOk&&es.some(e=>e.t===tm)) return false; // stejný zápis z notifikace už přišel z jiného zařízení
   while(es.some(e=>e.t===tm)) tm++; // čas je klíč záznamu (arrayUnion / arrayRemove)
   const e={t:tm,ml};
+  if(!opts.mig) actDay('water'); // aktivní den (jednoduchý režim, 4.69)
   const before=wtMl(ds), cur=wtDay(ds)||{date:ds,ml:0,entries:[]};
   // Hned v paměti (offline zápis se potvrdí později, snapshot stav přepíše)
   waterDays[ds]={...cur,date:ds,goal:cfg.goal,ml:(Number(cur.ml)||0)+ml,entries:[...(Array.isArray(cur.entries)?cur.entries:[]),e]};
@@ -6433,11 +6507,19 @@ function focusStatsHTML() {
 }
 
 function focusInnerHTML() {
+  // Jednoduchý režim (4.69): řádek „zítra“ až po prvním splněném dni, tečky a statistika od 3. dne s úkolem
+  let tmrw = true, stats = true;
+  if (isSimple()) {
+    tmrw = dailyFocusDone || !!tomorrowFocus || focusHistory.some(h => h && h.done);
+    const days = new Set(focusHistory.filter(h => h && h.text).map(h => h.date));
+    if (dailyFocus) days.add(new Date().toDateString());
+    stats = days.size >= 3;
+  }
   return `<div class="focus-dual">
     ${focusTodayRowHTML()}
-    ${focusTmrwRowHTML()}
+    ${tmrw ? focusTmrwRowHTML() : ''}
   </div>
-  ${focusStatsHTML()}`;
+  ${stats ? focusStatsHTML() : ''}`;
 }
 
 function renderFocusInDash() {
@@ -6558,11 +6640,11 @@ const gameRef=()=>doc(db,'users',CU.uid,'game','main');
 function gameOn(){ return !!game&&!game.off; }
 // Body viditelné v UI: v jednoduchém režimu až po odkrytí (počítají se od 1. dne, 4.68)
 function gameUiOn(){ return gameOn()&&unl('game'); }
-// Odkrytí bodů po 3. splněném návyku; stávající uživatel se zapnutým režimem a historií rovnou bez oznámení
+// Jednoduchý režim: po 3. splněném návyku nebo 3. aktivním dni nabídne fronta kartu „{av} roste s tebou“
+// (nabídka 'game', při ukázání body odkryje). Tady jen překreslit otevřené Domů, ať se karta může ukázat hned.
+const gameUnlReady=()=>doneLogCount()>=3||actN('all')>=3;
 function gameUnlCheck(){
-  if(!isSimple()||prof?.unl?.game||doneLogCount()<3) return;
-  unlock('game');
-  gameRenderUI();
+  if(!isSimple()||!gameOn()||prof?.unl?.gameIntro||!gameUnlReady()||!nudgeFree()) return;
   if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
 }
 function gameNormalize(g){
@@ -6873,9 +6955,16 @@ document.addEventListener('keydown',e=>{
 function renderGameSetting(){
   const el=document.getElementById('set-game');
   if(!el) return;
+  // Jednoduchý režim před odkrytím: body se počítají, jen ještě nejsou vidět (ne vypnutý přepínač)
+  if(isSimple()&&gameOn()&&!prof?.unl?.game){
+    el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('game.set.toggle')}</div><div class="togds">${tH('game.set.later')}</div></div>
+      <button type="button" class="btn-s" onclick="gameUnlNow()">${tH('game.set.showNow')}</button></div>`;
+    return;
+  }
   el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('game.set.toggle')}</div><div class="togds">${tH('game.set.desc')}</div></div>
     <label class="togswitch"><input type="checkbox" ${gameUiOn()?'checked':''} ${game?'':'disabled'} aria-label="${tH('game.set.toggle')}" onchange="setGameOn(this.checked)"><span class="togsl"></span></label></div>`;
 }
+window.gameUnlNow=()=>{ unlock('game','gameIntro'); gameRenderUI(); renderGameSetting(); renderSimpleSetting(); rDash(); };
 window.setGameOn=on=>{
   if(!game) return;
   game.off=!on;
@@ -6889,8 +6978,8 @@ window.setGameOn=on=>{
 // Úvodní karta po prvním spuštění (jednou na zařízení, bez oslav)
 function gameIntroHTML(){
   if(!gameOn()) return '';
-  // Jednoduchý režim (4.68): karta ohlásí odkrytí bodů, jednou na účet (prof.unl.gameIntro)
-  if(isSimple()){ if(!prof?.unl?.game||prof?.unl?.gameIntro) return ''; }
+  // Jednoduchý režim (4.69): odkrytí bodů ohlásí nabídka z fronty (NUDGES 'game', stejné texty), ne tato karta
+  if(isSimple()) return '';
   else {
     if(lsGet('lp_game_intro')) return '';
     if(accNew(7)){ lsSave('lp_game_intro',1); return ''; } // nováček: „novinka“ nedává smysl ani později, body vysvětlí průvodce a Rex
@@ -13530,6 +13619,7 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
   if(!CU) return false;
   if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return false;
   val = String(val || '').slice(0, 200);
+  if(val.trim()) actDay('mealplan'); // aktivní den (jednoduchý režim, 4.69; nabídka Vaření po 2 týdnech)
   const gid = mealTarget(target);
   if(gid) {
     if(!isMealAdmin(gid)) { toast(t('mp.adminOnlyMine')); return false; }
@@ -14589,6 +14679,127 @@ async function loadDailyQuote() {
   return fallback;
 }
 
+// ── Nabídky z fronty (4.69, docs/NAVRH-JEDNODUCHY-START.md kap. 2b): pořadí = priorita, ukáže se první, jejíž podmínka platí.
+// when() = podmínka, txt(av) = {em, t, d, btn} (už escapované přes tH), yes() = akce hlavního tlačítka, show() = při ukázání
+const hasMod = id => (prof?.modules || []).includes(id);
+const pcOpenList = () => (typeof pcDashList === 'function' ? pcDashList() : []).filter(c => !pcMe[c.id] && ['run', 'soon'].includes(pcState(c)));
+const pcJoined = () => (typeof pcDashList === 'function' ? pcDashList() : []).some(c => pcMe[c.id]);
+// Seznam úkolů, který ve skupině nasdílel někdo jiný → id skupiny
+function nudgeClGid() {
+  for (const g of checkGroups()) if ((clGrp[g]?.lists || []).some(c => c && c.owner && c.owner !== CU?.uid)) return g;
+  return null;
+}
+async function nudgeModOn(id) {
+  if (hasMod(id)) return true;
+  if (id === 'water') { wtEnableModule(); return true; }
+  await window.togModSet(id, true);
+  return hasMod(id);
+}
+const NUDGES = [
+  { id:'game', when:() => gameOn() && !prof?.unl?.gameIntro && gameUnlReady(),
+    show:() => { unlock('game'); gameRenderUI(); }, // body se odkryjí spolu s kartou
+    txt:av => { let n = 0; const td = toDS(); for (const l of habitLogs) if (l && l.done && l.date >= _hlCutoff && l.date <= td) n++;
+      return {em:av.emoji, t:tH('game.intro.title', {av:av.name}), d:(n ? tH('game.intro.text', {n, lvl:gameLevel()}) + ' ' : '') + tH('game.intro.how'), btn:tH('game.intro.show')}; },
+    yes:() => window.openGame() },
+  { id:'focus', when:() => accDay() >= 1 && !prof?.unl?.focus,
+    txt:() => ({em:'🎯', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}),
+    yes:() => { unlock('focus'); window.openFocusModal('today'); } },
+  { id:'water', when:() => hasMod('habits') && !waterOn() && accDay() >= 7 && actN('habits') >= 5,
+    txt:() => ({em:'💧', t:tH('nd.water.t'), d:tH('nd.water.d'), btn:tH('nd.on')}),
+    yes:() => { lsSave('lp_wt_intro', 1); wtEnableModule(); window.sp('water'); } },
+  { id:'groups', when:() => hasMod('shopping') && actN('shopping') >= 3 && !myGroupIds().length,
+    txt:() => ({em:'🏠', t:tH('nd.groups.t'), d:tH('nd.groups.d'), btn:tH('nd.groups.btn')}),
+    yes:() => window.openNewGroup() },
+  { id:'mealplan', when:() => hasMod('shopping') && !hasMod('mealplan') && shopItems.length >= 10,
+    txt:() => ({em:'🥗', t:tH('nd.mealplan.t'), d:tH('nd.mealplan.d'), btn:tH('nd.on')}),
+    yes:async () => { if (await nudgeModOn('mealplan')) window.sp('mealplan'); } },
+  { id:'calendar', when:() => accDay() >= 4 && !hasMod('calendar'),
+    txt:() => ({em:'🗓️', t:tH('nd.calendar.t'), d:tH('nd.calendar.d'), btn:tH('nd.on')}),
+    yes:async () => { if (await nudgeModOn('calendar')) window.sp('calendar'); } },
+  { id:'habits', when:() => accDay() >= 4 && !hasMod('habits'),
+    txt:() => ({em:'🔥', t:tH('nd.habits.t'), d:tH('nd.habits.d'), btn:tH('nd.habits.btn')}),
+    yes:async () => {
+      if (!(await nudgeModOn('habits'))) return;
+      window.sp('habits');
+      // Nový návyk předvyplněný příkladem z nabídky
+      if (document.getElementById('add-habit-wrap')?.style.display === 'none') window.toggleAddHabit();
+      setTimeout(() => { const i = document.getElementById('habit-name-inp'); if (i && !i.value) { i.value = t('nd.habits.ex'); i.select(); } }, 150);
+    } },
+  { id:'goals', when:() => hasMod('habits') && habits.length >= 3 && accDay() >= 9 && !hasMod('goals'),
+    txt:() => ({em:'🏆', t:tH('nd.goals.t'), d:tH('nd.goals.d'), btn:tH('nd.on')}),
+    yes:async () => { if (await nudgeModOn('goals')) window.sp('goals'); } },
+  { id:'cooking', when:() => { const a = nudgeSt().act?.mealplan; return hasMod('mealplan') && !hasMod('cooking') && actN('mealplan') >= 2 && isDS(a?.f) && dsDiff(a.f, toDS()) >= 14; },
+    txt:() => ({em:'👨‍🍳', t:tH('nd.cooking.t'), d:tH('nd.cooking.d'), btn:tH('nd.on')}),
+    yes:async () => { if (await nudgeModOn('cooking')) window.sp('cooking'); } },
+  { id:'checklist', when:() => !hasMod('checklist') && !!nudgeClGid(),
+    txt:() => ({em:'✅', t:tH('nd.checklist.t', {grp:groupLabel(nudgeClGid())}), d:tH('nd.checklist.d'), btn:tH('nd.open')}),
+    yes:async () => { if (await nudgeModOn('checklist')) window.sp('checklist'); } },
+  { id:'pc', when:() => actN('all') >= 5 && !prof?.unl?.pc && pcOpenList().length > 0,
+    txt:() => ({em:'🏆', t:tH('nd.pc.t', {name:pcTitle(pcOpenList()[0])}), d:tH('nd.pc.d'), btn:tH('nd.pc.btn')}),
+    yes:() => { unlock('pc'); const c = pcOpenList()[0]; window.pcOpen(c ? c.id : '', 'join'); } },
+  // Upozornění ze skupin (dřív samostatná karta groupNotifIntroHTML)
+  { id:'gnotif', when:() => myGroupIds().length > 0 && actN('all') >= 3 && !lsGet('lp_gn_intro'),
+    txt:() => ({em:'🔔', t:tH('gn.intro.t'), d:tH('gn.intro.d'), btn:tH('gn.intro.btn')}),
+    yes:() => { lsSave('lp_gn_intro', 1); window.openGroupNotifSettings(); } },
+];
+// Jedna nabídka pro Domů: ukázaná dnes (drží se), jinak první čekající, když je volno (limit)
+function nudgePick() {
+  if (!isSimple() || !CU) return null;
+  const st = nudgeSt(), td = toDS();
+  if (st.last === td && st.cur) {
+    const n = NUDGES.find(x => x.id === st.cur);
+    return n && st[n.id] === 'later:' + td && nudgeSafe(n.when) ? n : null;
+  }
+  if (!nudgeFree()) return null;
+  return NUDGES.find(n => nudgeOpen(n.id) && nudgeSafe(n.when)) || null;
+}
+function nudgeSafe(fn) { try { return !!fn(); } catch (e) { return false; } }
+// Karta pro rDash. Poprvé se ukáže, až je otevřené Domů a žádné jiné okno (whenUiFree), pak se zapíše do limitu
+let _nudgeQ = false;
+function nudgeForDash() {
+  const n = nudgePick();
+  if (!n) return '';
+  const st = nudgeSt();
+  if (!(st.cur === n.id && st.last === toDS())) {
+    const onDash = !!document.getElementById('p-dashboard')?.classList.contains('active');
+    if (!onDash || uiBusy()) {
+      if (!_nudgeQ) { _nudgeQ = true; whenUiFree(() => { _nudgeQ = false; if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); }); }
+      return '';
+    }
+    nudgeMark(n.id);
+    if (n.show) n.show();
+  }
+  return nudgeCardHTML(n);
+}
+function nudgeCardHTML(n) {
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0], x = n.txt(av), id = esc(n.id);
+  return `<div class="invite-hint nudge" id="nudge-card" role="region" aria-label="${tH('nd.aria', {av:av.name})}">
+    <span class="invite-hint-em" aria-hidden="true">${esc(x.em)}</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${x.t}</div>
+      ${x.d ? `<div class="invite-hint-d">${x.d}</div>` : ''}
+      <div class="nudge-btns">
+        <button type="button" class="invite-hint-btn" data-a0="${id}" onclick="nudgeYes(this.dataset.a0)">${x.btn}</button>
+        <button type="button" class="btn-s nudge-no" data-a0="${id}" onclick="nudgeLater(this.dataset.a0)">${tH('nd.later')}</button>
+      </div>
+    </div>
+    <button type="button" class="invite-hint-x" data-a0="${id}" aria-label="${tH('nd.never')}" onclick="nudgeNo(this.dataset.a0)">×</button>
+  </div>`;
+}
+// Odpověď: 'yes' | 'no' | 'later:<dnes>' (znovu nejdřív za 14 dní); karta zmizí, nová nejdřív za 3 dny
+function nudgeAnswer(id, v) {
+  const n = NUDGES.find(x => x.id === id);
+  if (!n || !CU) return null;
+  prof.nudge = {...nudgeSt(), [id]: v, cur: ''};
+  nudgeWrite({['nudge.' + id]: v, 'nudge.cur': ''});
+  if (id === 'game') unlock('gameIntro'); // ohlášení bodů jen jednou
+  document.getElementById('nudge-card')?.remove();
+  return n;
+}
+window.nudgeYes = id => { const n = nudgeAnswer(id, 'yes'); if (n) Promise.resolve(n.yes()).catch(e => console.warn('[LP] nudge yes:', e?.code || e?.name)); };
+window.nudgeLater = id => { nudgeAnswer(id, 'later:' + toDS()); };
+window.nudgeNo = id => { nudgeAnswer(id, 'no'); };
+
 // Pořadí modulů pro lištu a sloty Domů v jednoduchém režimu: moduly odpovědi z onboardingu (ONB_START, 4.69),
 // jinak hlavní moduly šablony (NAV_TPL), pak ostatní zapnuté v pořadí MODS
 function simpleModOrder(){
@@ -14659,24 +14870,28 @@ function rDash(){
 
   const today=toDS();
   const mods=prof.modules||[];
-  // Jednoduchý režim (4.68): bez citátu, energie, výzvy měsíce a hlavního úkolu (dokud se neodkryjí), nejvýš 3 karty
-  const simple=isSimple();
+  // Jednoduchý režim (4.68/4.69): prvních 14 dní nejvýš 3 karty (slots), bez citátu, energie a týdenního reportu;
+  // hlavní úkol a výzva měsíce až po odkrytí. Pak Domů jako dřív, jen s odkrýváním (unlD) a s frontou nabídek místo karet novinek.
+  const simple=isSimple(), slots=simple&&simpleDash();
   const mw={}; // karty modulů podle id (v jednoduchém režimu se vybírají v pořadí lišty)
   let html='';
-  if(!simple){
+  if(!slots){
   // Karta Začínáme (nováček) nahoře, pod ní hlavní úkol dne
-  html+=quickStartHTML()+focusWidgetHTML()+waterWidgetHTML();
+  html+=quickStartHTML()+(unlD('focus')?focusWidgetHTML():'')+waterWidgetHTML();
+  if(simple) html+=nudgeForDash(); // nabídka z fronty (pitný režim, body, upozornění ze skupin … pod jedním limitem)
+  else {
   // Novinka Pitný režim (4.62): šablona Zdraví / návyk o pití výš, ostatní níž
   html+=wtIntroSlot(true);
   // Jednorázová karta: upozornění ze skupin (novinka 4.38)
   html+=groupNotifIntroHTML();
   // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
   html+=gameIntroHTML();
+  }
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
-  html+=wtIntroSlot(false);
+  if(!simple) html+=wtIntroSlot(false);
   // Výzva měsíce / týdne pro všechny (4.63), nad výzvami skupin
-  html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
+  if(unlD('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
   // Společné výzvy ve skupinách (4.43)
   html+='<div id="ch-dash">'+chDashHTML()+'</div>';
 
@@ -14833,7 +15048,7 @@ function rDash(){
   }
 
   // ── WIDGET: VAŘENÍ ──
-  if(mods.includes('cooking')&&!simple){ // prázdná pobídka: v jednoduchém režimu ne
+  if(mods.includes('cooking')&&!slots){ // prázdná pobídka: v prvních 14 dnech jednoduchého režimu ne
     mw.cooking=`<div class="dw" onclick="sp('cooking')">
       <div class="dw-head"><div class="dw-title">${tH('dash.cook.title')}</div><div class="dw-arrow">→</div></div>
       <div class="dw-empty">${tH('dash.cook.text')}</div>
@@ -14886,11 +15101,13 @@ function rDash(){
     </div>`;
   }
 
-  if(simple){
-    // Sloty: Začínáme, ohlášení bodů / týdenní souhrn, hlavní úkol (po odkrytí), karty modulů v pořadí lišty
-    const cards=[quickStartHTML(),gameIntroHTML(),weekCardHTML(),unl('focus')?focusWidgetHTML():'',...simpleModOrder().map(id=>mw[id]||'')].filter(Boolean);
-    html+=(simpleDash()?cards.slice(0,3):cards).join('');
-    if(unl('pc')) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
+  if(slots){
+    // Sloty (kap. 3): 1 = Začínáme, 2 = karta modulu č. 1, 3 = nabídka z fronty, jinak hlavní úkol / souhrn / další moduly.
+    // Nálada (starší modul 'mood', není v MODS ani v liště) patří k Poznámkám, proto hned za ně.
+    const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(Boolean);
+    const cards=[quickStartHTML(),modCards[0],nudgeForDash(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean);
+    html+=cards.slice(0,3).join('');
+    if(unl('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
     html+='<div id="ch-dash">'+chDashHTML()+'</div>'; // běžící výzvy skupiny (pozvaný je vidí hned)
   } else {
   html+=['habits','journal','goals','calendar','cooking','shopping','mood'].map(k=>mw[k]||'').join('');
@@ -15171,6 +15388,7 @@ window.sGP=(p,btn)=>{gPriority=p;document.querySelectorAll('#g-prio-row .gprio-b
 window.saveG=async()=>{
   const nm=document.getElementById('g-name').value.trim();
   if(!nm){toast(t('common.nameReq'));return;}
+  actDay('goals'); // aktivní den (jednoduchý režim, 4.69)
   const desc=document.getElementById('g-desc').value.trim();
   const deadline=document.getElementById('g-dl').value;
   const d={name:nm,description:desc,category:document.getElementById('g-cat').value,deadline,progress:parseInt(document.getElementById('g-prog').value)||0,emoji:gEm,color:gCol,priority:gPriority,updatedAt:new Date().toISOString()};
@@ -15543,27 +15761,44 @@ function setGrpOpen(el){ const d=el?.closest?.('details.setgrp'); if(d&&!d.open)
 function renderSimpleSetting(){
   const el=document.getElementById('set-simple');
   if(!el) return;
-  const on=isSimple(), more=on&&UNL_IDS.some(id=>!prof?.unl?.[id]);
+  const on=isSimple(), more=on&&(simpleDash()||UNL_IDS.some(id=>!prof?.unl?.[id]));
   el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('set.simple.toggle')}</div><div class="togds">${tH('set.simple.desc')}</div></div>
     <label class="togswitch"><input type="checkbox" ${on?'checked':''} aria-label="${tH('set.simple.toggle')}" onchange="setSimple(this.checked)"><span class="togsl"></span></label></div>`
     +(more?`<button type="button" class="btn-s set-simple-all" onclick="simpleUnlockAll()">${tH('set.simple.all')}</button>`:'');
 }
-function simpleRefresh(){ buildNav(); gameRenderUI(); rDash(); renderSimpleSetting(); }
+function simpleRefresh(){ buildNav(); gameRenderUI(); rDash(); renderSimpleSetting(); renderGameSetting(); }
 window.setSimple=on=>{
   if(!CU) return;
   on=!!on;
-  const patch={simple:on};
+  const patch={simple:on}, prev={simple:prof.simple,simpleAt:prof.simpleAt};
   prof.simple=on;
   // Zapnutí: 14 dní slotového pravidla na Domů od dneška; moduly se nemění
   if(on){ prof.simpleAt=toDS(); patch.simpleAt=prof.simpleAt; }
-  updateDoc(doc(db,'users',CU.uid,'profile','main'),patch).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),patch).catch(e=>{
+    // Neuloženo: vrátit stav, ať appka neukazuje něco jiného než profil
+    prof.simple=prev.simple;
+    if(prev.simpleAt===undefined) delete prof.simpleAt; else prof.simpleAt=prev.simpleAt;
+    simpleRefresh();
+    toast(t('common.saveFailed',{err:userErr(e,'profil')}));
+  });
   // Stávající uživatel s historií návyků: body zůstanou vidět, bez úvodní karty
   if(on&&doneLogCount()>=3) unlock('game','gameIntro');
+  // Vypnutí s už odkrytými body: karta „novinka“ (gameIntroHTML mimo jednoduchý režim) by je ohlásila podruhé
+  if(!on&&prof?.unl?.game) lsSave('lp_game_intro',1);
   simpleRefresh();
   toast(t(on?'set.simple.on':'set.simple.off'));
 };
+// Odkryje všechna rozšíření a zruší i limit 3 karet na Domů (simpleAt o 14 dní zpět); fronta nabídek zůstává
 window.simpleUnlockAll=()=>{
+  if(!CU||!isSimple()) return;
   unlock(...UNL_IDS);
+  const prevAt=prof.simpleAt;
+  prof.simpleAt=addDays(toDS(),-14);
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),{simpleAt:prof.simpleAt}).catch(e=>{
+    if(prevAt===undefined) delete prof.simpleAt; else prof.simpleAt=prevAt;
+    simpleRefresh();
+    toast(t('common.saveFailed',{err:userErr(e,'profil')}));
+  });
   simpleRefresh();
   toast(t('set.simple.allDone'));
 };
@@ -16448,7 +16683,7 @@ async function addShopEntry({name, category, qty}){
   const cat = category || guessShopCategory(name);
   qty = String(qty||'').trim();
   const fid = shopGid();
-  installUnlock(); // před await: offline zápis čeká na server
+  installUnlock('shopping'); // před await: offline zápis čeká na server
   if(fid) {
     await addDoc(shopCol(fid),{
       name, category:cat, done:false, qty,
@@ -16795,7 +17030,7 @@ window.saveRecurringItem = async function() {
 };
 
 window.toggleShopItem=async(id,wasDone)=>{
-  if(!wasDone) installUnlock(); // odškrtnutí = užitečná akce (před await)
+  if(!wasDone) installUnlock('shopping'); // odškrtnutí = užitečná akce (před await)
   const fid = shopGid();
   if(fid) {
     const item = shopGrpItems(fid).find(i=>i.id===id);

@@ -1061,7 +1061,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <div id="set-game"></div>
         </div>
         <div class="setsec">
-            <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:8px" data-i18n="set.notif.which">Které připomínky chceš?</div>
+            <div class="setsec-t" data-i18n="set.notif.which">🔔 Které připomínky chceš?</div>
             <div style="display:flex;flex-direction:column;gap:8px" id="notif-toggles">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-habits" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
@@ -1097,7 +1097,8 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <button class="btn-sv" onclick="restartTour()" data-i18n="set.tour.btn">Spustit průvodce</button>
         </div>
         </div>
-        <div class="setsec">
+        <!-- Skrytá, dokud checkNotifStatus neukáže aspoň jedno tlačítko (notifFixSync) -->
+        <div class="setsec" id="notif-fix-sec" hidden>
           <div class="setsec-t" data-i18n="set.notif.fix.title">🛠️ Řešení potíží s upozorněním</div>
           <div class="setsec-d" data-i18n="set.notif.fix.desc">Testovací tlačítka. Hodí se, když ti připomínky nechodí.</div>
           <div class="setrow" style="flex-wrap:wrap;gap:10px">

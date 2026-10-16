@@ -159,6 +159,10 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .invite-hint-d{font-size:14px;color:var(--text2);line-height:1.45;margin-top:3px}
 .invite-hint-btn{margin-top:10px;min-height:44px;padding:10px 18px;border:none;border-radius:10px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
 .invite-hint-btn:disabled{opacity:.6;cursor:default}
+/* Nabídka z fronty (jednoduchý režim, 4.69) */
+.nudge-btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.nudge-btns button{min-height:44px;padding:0 16px;width:auto}
+.nudge-btns .invite-hint-btn{margin-top:0}
 .invite-hint-x{flex-shrink:0;width:44px;height:44px;margin-top:-10px;background:none;border:none;border-radius:10px;color:var(--text2);font-size:22px;cursor:pointer}
 .invite-hint-btn:focus-visible,.invite-hint-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Měkký dotaz na upozornění (4.61): plovoucí karta nad spodní lištou, pod okny (.moverlay 500) */
