@@ -1397,6 +1397,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 /* PANTRY */
 .pantry-alert{background:rgba(255,165,0,.12);border:1px solid rgba(255,165,0,.35);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--text);margin-bottom:12px}
 .pantry-actions-top{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pantry-view{margin-bottom:14px}
+.pantry-view .seg--block,.pantry-view .grp-pick{margin-bottom:0}
 .pantry-add-btn{flex:1}
 .btn-cook-suggest{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);font-family:'Crimson Pro',serif}
 .btn-cook-suggest:hover{border-color:var(--accent);color:var(--accent)}
