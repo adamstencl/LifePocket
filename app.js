@@ -14701,7 +14701,7 @@ const NUDGES = [
     txt:av => { let n = 0; const td = toDS(); for (const l of habitLogs) if (l && l.done && l.date >= _hlCutoff && l.date <= td) n++;
       return {em:av.emoji, t:tH('game.intro.title', {av:av.name}), d:(n ? tH('game.intro.text', {n, lvl:gameLevel()}) + ' ' : '') + tH('game.intro.how'), btn:tH('game.intro.show')}; },
     yes:() => window.openGame() },
-  { id:'focus', when:() => accDay() >= 1 && !prof?.unl?.focus,
+  { id:'focus', when:() => accDay() >= 1 && !unlD('focus'), // po 14 dnech už Domů hlavní úkol ukazuje
     txt:() => ({em:'🎯', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}),
     yes:() => { unlock('focus'); window.openFocusModal('today'); } },
   { id:'water', when:() => hasMod('habits') && !waterOn() && accDay() >= 7 && actN('habits') >= 5,
@@ -14734,7 +14734,7 @@ const NUDGES = [
   { id:'checklist', when:() => !hasMod('checklist') && !!nudgeClGid(),
     txt:() => ({em:'✅', t:tH('nd.checklist.t', {grp:groupLabel(nudgeClGid())}), d:tH('nd.checklist.d'), btn:tH('nd.open')}),
     yes:async () => { if (await nudgeModOn('checklist')) window.sp('checklist'); } },
-  { id:'pc', when:() => actN('all') >= 5 && !prof?.unl?.pc && pcOpenList().length > 0,
+  { id:'pc', when:() => actN('all') >= 5 && !unlD('pc') && pcOpenList().length > 0, // po 14 dnech už Domů výzvu ukazuje
     txt:() => ({em:'🏆', t:tH('nd.pc.t', {name:pcTitle(pcOpenList()[0])}), d:tH('nd.pc.d'), btn:tH('nd.pc.btn')}),
     yes:() => { unlock('pc'); const c = pcOpenList()[0]; window.pcOpen(c ? c.id : '', 'join'); } },
   // Upozornění ze skupin (dřív samostatná karta groupNotifIntroHTML)
