@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.66';
+const APP_VERSION = '4.67';
 const CHANGELOG = [
+  { v:'4.67', items:[
+    '💧 Připomínka pití má tlačítko „+2 dl“: zapíše šálek bez hledání v appce',
+    '🔗 Pitný režim můžeš propojit s návykem: po splnění denního cíle se návyk sám odškrtne',
+    '⭐ Za splněný denní cíl pití dostaneš 10 bodů (s propojeným návykem body přijdou za návyk)'
+  ], en:[
+    '💧 Water reminders now have a “+200 ml” button that logs a cup straight away',
+    '🔗 Link Water to a habit: reaching your daily goal checks the habit off automatically',
+    '⭐ Reaching your daily water goal earns 10 points (with a linked habit, the habit earns them)'
+  ]},
   { v:'4.66', items:[
     '✅ V detailu návyku (i po klepnutí na upozornění) ho splníš jedním tlačítkem; klepnutím na den v kalendáři doplníš nebo zrušíš splnění zpětně'
   ], en:[
@@ -1166,7 +1175,7 @@ function clearUserSessionState(){
     familyId=null; familyData=null; familyEvents=[];
     extraGroupsData={}; extraGroupEvents={}; pantryItems=[]; _pantryFamilyReady=false; _pantryChatTried=false;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
-    waterDays={}; _wtReady=false; _wtSubFrom=''; clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
+    waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
@@ -1991,6 +2000,7 @@ function buildHabitCard(h){
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="${tH('hb.historyTitle')}">
         <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
+        ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
         <div class="cta-slot" data-cta-sh="h" data-id="${esc(h.id)}">${ctaShareBtnHTML('h',h.id)}</div>
@@ -5521,7 +5531,7 @@ async function generateWeeklyReportSilent() {
 // ════════════════════════════════════════════════════════════
 // 💧  PITNÝ REŽIM (4.62)
 // ════════════════════════════════════════════════════════════
-// Nastavení: profile/main.water {goal, cups:[{ml,emoji}], remind, every, from, to, pace} – čte i server (připomínky)
+// Nastavení: profile/main.water {goal, cups:[{ml,emoji}], remind, every, from, to, pace, habitId} – čte i server (připomínky)
 // Stav dne pro server: profile/main.waterDay {d, ml, last} (last = ms nejnovějšího zbývajícího zápisu, 0 = žádný)
 // Den: users/{uid}/water/{YYYY-MM-DD} {date, goal, ml, entries:[{t, ml}]} přes increment / arrayUnion / arrayRemove
 const WT_EMOJI=['🥛','☕','🍵','🫖','🧃','🥤','🧋','🍶','💧','🍼'];
@@ -5533,7 +5543,7 @@ const WT_HHMM=/^([01]\d|2[0-3]):([0-5]\d)$/;
 // Návyk o pití (priorita karty Novinka)
 const WT_HABIT_RE=/vod|pít|pit[ií]|litr|water|drink/i;
 let waterDays={};          // ds → dokument dne
-let _wtReady=false, _wtSubFrom='', _wtDayTimer=null;
+let _wtReady=false, _wtSubFrom='', _wtDayTimer=null, _wtSubAt=0;
 let _wtSuggestGoal=0;      // cíl z dřívějšího počítadla sklenic (lp_water)
 let _wtOnbGoal=0, _wtOnbRem=true; // průvodce prvním otevřením (připomínky předzaškrtnuté)
 let _wtEdit=null, _wtEmFor=-1, _wtSel='', _wtIntroQ=false;
@@ -5555,6 +5565,7 @@ function wtNormCfg(w){
     from:WT_HHMM.test(w.from)?w.from:'08:00',
     to:WT_HHMM.test(w.to)?w.to:'21:00',
     pace:w.pace===true,
+    habitId:typeof w.habitId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(w.habitId)?w.habitId:null, // 4.67: propojený návyk
   };
 }
 function waterOn(){ return (prof?.modules||[]).includes('water'); }
@@ -5593,7 +5604,7 @@ function subWater(){
   if(!CU||!waterOn()) return;
   const from=addDays(toDS(),-27);
   if(_fireSubs['water']&&_wtSubFrom===from) return;
-  _wtSubFrom=from; _wtReady=false;
+  _wtSubFrom=from; _wtReady=false; _wtSubAt=Date.now();
   clearTimeout(_wtDayTimer);
   const next=new Date(); next.setHours(24,0,5,0);
   _wtDayTimer=setTimeout(checkWaterDay,next-Date.now());
@@ -5605,6 +5616,8 @@ function subWater(){
     if(!snap.metadata.hasPendingWrites&&wtProfDayStale(toDS())) wtProfDay(toDS());
     wtMigrate();
     renderWaterAll();
+    wtHabitSync();
+    gameKick(); // body za splněný cíl (dayXP)
   });
 }
 // Nový den (půlnoc, návrat do appky): nový rozsah a překreslení (widget nesmí ukazovat včerejší láhev)
@@ -5666,6 +5679,7 @@ function drinkWater(ml,opts={}){
   renderWaterAll();
   try{ navigator.vibrate?.(12); }catch(x){}
   wtPop(opts.el,'+'+fmtMl(ml));
+  wtHabitSync();
   if(before<cfg.goal&&before+ml>=cfg.goal) toast(t('wt.goalDone'),3000);
   else if(!opts.quiet&&!document.getElementById('p-water')?.classList.contains('active')) toast(t('wt.added',{v:fmtMl(ml),sum:fmtMl(before+ml)}));
   return true;
@@ -5686,7 +5700,41 @@ window.undoWater=tm=>{
     .catch(err=>{ toast(t('common.saveFailed',{err:userErr(err,'water')})); });
   wtProfDay(ds);
   renderWaterAll();
+  wtHabitSync();
 };
+
+// ── Propojení s návykem (4.67): splněný denní cíl odškrtne návyk ano/ne na dnešek (log src:'water').
+// Pod cílem se zruší jen automatické splnění; ruční záznam (bez src, i „nesplněno“) se nikdy nepřepisuje.
+const WT_HB_RE=/^[A-Za-z0-9_-]{1,128}$/;
+const wtHabitOk=h=>!!h&&!h.archived&&h.type!=='count';
+function wtHabit(cfg=waterCfg()){ const id=cfg?.habitId; if(!id) return null; const h=habits.find(x=>x.id===id); return wtHabitOk(h)?h:null; }
+const _wtHbBusy=new Set();
+let _wtHbWait=false; // čeká na návyky ze serveru (spustí gameKick)
+function wtHabitSync(){
+  if(!CU||_accDeleting||_accDeleted||_accStopped) return;
+  const cfg=waterCfg(); if(!cfg?.habitId) return;
+  // Bez úplných dat (návyky a záznamy ze serveru, první snapshot vody) by šlo přepsat ruční záznam
+  if(!_wtReady||!_habitsSnapOk||!_hlServerOk){ _wtHbWait=true; return; }
+  _wtHbWait=false;
+  const h=wtHabit(cfg); if(!h) return;
+  const ds=toDS(), id=h.id+'_'+ds;
+  if(_wtHbBusy.has(id)) return;
+  const log=hLog(id), met=wtMl(ds)>=wtGoalOf(ds);
+  let job=null;
+  if(met&&!log&&habitDayState(h,ds)==='miss') job=()=>putHabitLog({id,habitId:h.id,date:ds,done:true,failed:false,value:1,src:'water'});
+  else if(!met&&log?.done&&log.src==='water') job=()=>delHabitLog(id);
+  if(!job) return;
+  _wtHbBusy.add(id);
+  // Po úspěchu znovu (stav vody se mezitím mohl změnit); po chybě ne, ať se neopakuje dokola
+  job().then(()=>{ _wtHbBusy.delete(id); renderHabits(); rAvPage(); if(id.endsWith('_'+toDS())) wtHabitSync(); },
+    e=>{ _wtHbBusy.delete(id); console.warn('[LP] water habit:',e?.code||e?.name); });
+}
+// Body za splněný cíl (dayXP): jen bez splněného propojeného návyku (ten má body za návyk), den přepočítává gameSync
+function wtDayXP(ds){
+  const cfg=waterCfg();
+  if(!cfg||!_wtReady||wtMl(ds)<wtGoalOf(ds)) return 0;
+  return cfg.habitId&&hDone(cfg.habitId,ds)?0:XP.water;
+}
 // „+2 dl“ nad šálkem (jen vizuální)
 function wtPop(el,txt){
   if(!el||!el.getBoundingClientRect||!el.offsetParent) return;
@@ -5896,6 +5944,7 @@ function renderWaterSettings(){
       ${cups}
       ${w.cups.length<WT_MAX_CUPS?`<button type="button" class="btn-s wt-add-cup" data-wf="add" onclick="wtCupAdd()">${tH('wt.addCup')}</button>`:''}
     </div>
+    ${wtHabitSecHTML(w)}
     <div class="wt-sec" id="wt-sec-rem">
       <div class="togrow"><div class="toginf"><div class="tognm wt-sec-h">${tH('wt.rem')}</div></div><label class="togswitch"><input type="checkbox" data-wf="rem" ${w.remind?'checked':''} aria-label="${tH('wt.remOn')}" onchange="wtRemOn(this.checked)"><span class="togsl"></span></label></div>
       ${w.remind?`<div class="wt-rem-det">
@@ -5911,6 +5960,18 @@ function renderWaterSettings(){
     <button type="button" class="btn-p wt-save" onclick="saveWaterSettings()">${tH('common.save')}</button>`;
   if(wf) b.querySelector(`[data-wf="${CSS.escape(wf)}"]`)?.focus();
 }
+// Výběr propojeného návyku (jen ano/ne, nearchivované); smazaný nebo nevhodný návyk = bez propojení
+function wtHabitSecHTML(w){
+  const list=habits.filter(wtHabitOk);
+  if(w.habitId&&_habitsSnapOk&&!list.some(h=>h.id===w.habitId)) w.habitId=null;
+  const opts=list.map(h=>`<option value="${esc(h.id)}"${h.id===w.habitId?' selected':''}>${esc((h.emoji||'🎯')+' '+h.name)}</option>`).join('');
+  return `<div class="wt-sec" id="wt-sec-habit">
+      <div class="wt-sec-h" id="wt-hb-h">${tH('wt.habit')}</div>
+      ${list.length?`<select class="finp wt-hb-sel" data-wf="hb" aria-labelledby="wt-hb-h" onchange="wtSetHabit(this.value)"><option value="">${tH('wt.habitNone')}</option>${opts}</select>
+      <div class="wt-hint wt-hint--hb">${tH('wt.habitHint')}</div>`:`<div class="wt-hint wt-hint--hb">${tH('wt.habitEmpty')}</div>`}
+    </div>`;
+}
+window.wtSetHabit=v=>{ if(_wtEdit) _wtEdit.habitId=WT_HB_RE.test(v)&&habits.some(h=>h.id===v&&wtHabitOk(h))?v:null; };
 const wtEd=fn=>(...a)=>{ if(!_wtEdit) return; fn(...a); renderWaterSettings(); };
 window.wtSetGoal=wtEd(v=>{ if(WT_GOALS.includes(v)) _wtEdit.goal=v; });
 window.wtGoalStep=wtEd(d=>{ _wtEdit.goal=wtClamp(_wtEdit.goal+(d<0?-250:250),500,6000); });
@@ -5953,6 +6014,8 @@ window.saveWaterSettings=()=>{
   if(remOn&&_wtReady&&wtProfDayStale(toDS())) wtProfDay(toDS()); // zapnuté připomínky: server potřebuje aktuální stav dne
   toast(t('wt.saved'));
   renderWaterAll();
+  wtHabitSync(); gameKick(); // nově propojený návyk se splní hned, body se přesunou
+  renderHabits();
   const w2=document.getElementById('wt-dw'); if(w2&&document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
 };
 
@@ -6332,7 +6395,7 @@ window.dismissQS = () => {
 // Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
 // mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
 const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
-  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,pcMonth:50,pcWeek:20,bonusCap:200};
+  gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,pcMonth:50,pcWeek:20,bonusCap:200,water:10};
 const GAME_MAX_LVL=50;
 const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
 function levelOf(xp){ let L=1; while(L<GAME_MAX_LVL&&xp>=lvlXP(L+1)) L++; return L; }
@@ -6378,7 +6441,7 @@ function isPerfectDay(ds){
 }
 function dayXP(ds){
   const done=habits.filter(h=>hDone(h.id,ds)).length;
-  return Math.min(done,XP.habitCap)*XP.habit+(isPerfectDay(ds)?XP.perfect:0);
+  return Math.min(done,XP.habitCap)*XP.habit+(isPerfectDay(ds)?XP.perfect:0)+wtDayXP(ds); // + pitný režim (4.67)
 }
 // Bonusy dnes (podcíle, úkoly, mezníky a hodnoty cílů) – strop proti „farmení“ zakládáním cílů
 const GAME_CAPPED=/^(sg|tk|gm|mv|ch)_/;
@@ -6411,7 +6474,10 @@ function gameAward(key,x,extra){
 function gameSync(){
   if(!CU||!game||_accDeleting||_accDeleted) return;
   const patch={}, today=toDS(), before=gameTotal();
-  for(const ds of [addDays(today,-1),today]){
+  // Pitný režim ještě bez prvního snapshotu: dny nepřepočítávat (body za vodu by na chvíli zmizely), nejvýš 15 s
+  const wtWait=waterOn()&&!_wtReady&&Date.now()-_wtSubAt<15000;
+  if(wtWait){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,2000); }
+  else for(const ds of [addDays(today,-1),today]){
     const v=dayXP(ds);
     if((Number(game.days[ds])||0)!==v){
       if(v){ game.days[ds]=v; patch['days.'+ds]=v; } else { delete game.days[ds]; patch['days.'+ds]=deleteField(); }
@@ -6443,6 +6509,7 @@ function gameAfter(before,after){
 // Spouštěč: záznamy návyků ze serveru (snapshot), návyky, cíle, nový den
 function gameKick(){
   if(!CU||!_hlServerOk) return;
+  if(_wtHbWait) wtHabitSync(); // propojení s pitným režimem čekalo na návyky
   if(_habitsSnapOk) gameAutoShield();      // štíty fungují i s vypnutými body
   if(!game){ if(_goalsOk&&_habitsSnapOk) gameLoad(); return; }
   gameQueue();
