@@ -115,7 +115,7 @@ export default {
   'nav.more': 'Více',
   'nav.rexAria': 'AI parťák {av}',
   'nav.rexMore': '{av}, tvůj AI parťák',
-  'dash.chatAria': 'Napsat {av}',
+  'dash.chatAria': 'Napsat parťákovi {av}',
 
   // ── Moduly (MODS[].id) ──
   'mod.rex': 'AI asistent',
@@ -537,7 +537,7 @@ export default {
   'nd.goals.d': 'Cíl ukáže, kam tvoje malé kroky vedou.',
   'nd.cooking.t': 'Ulož si recepty, které vaříš',
   'nd.cooking.d': 'Do jídelníčku je pak přidáš jedním klepnutím.',
-  'nd.checklist.t': '{grp} ti nasdílela seznam úkolů',
+  'nd.checklist.t': 'Ve skupině {grp} je sdílený seznam úkolů',
   'nd.checklist.d': 'Zapni si Checklist a uvidíš ho.',
   'nd.pc.t': 'Výzva měsíce: {name}',
   'nd.pc.d': 'Přidej se k ostatním, stačí odškrtnout den.',
@@ -756,7 +756,7 @@ export default {
   'game.intro.later': 'Později',
   'game.set.toggle': '🌱 Body a úrovně',
   'game.set.desc': 'Body, úrovně a oslavy. Štíty série a mezníky cílů fungují vždy.',
-  'game.set.later': 'Body se počítají od začátku. Ukážou se po 3 splněných návycích nebo 3 aktivních dnech.',
+  'game.set.later': 'Body se počítají od začátku. Ukážou se brzy, až splníš 3 návyky nebo budeš aktivní 3 dny.',
   'game.set.showNow': 'Ukázat hned',
   // ── Gamifikace F2: odznaky ──
   'game.tab.grow': '🌱 Růst',

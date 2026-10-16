@@ -529,7 +529,7 @@ export default {
   'nd.goals.d': 'A goal shows where your small steps lead.',
   'nd.cooking.t': 'Save the recipes you cook',
   'nd.cooking.d': 'Then add them to your meal plan with one tap.',
-  'nd.checklist.t': '{grp} shared a to-do list with you',
+  'nd.checklist.t': 'There’s a shared to-do list in {grp}',
   'nd.checklist.d': 'Turn on Checklist to see it.',
   'nd.pc.t': 'Challenge of the month: {name}',
   'nd.pc.d': 'Join the others, just tick off the day.',
@@ -748,7 +748,7 @@ export default {
   'game.intro.later': 'Later',
   'game.set.toggle': '🌱 Points and levels',
   'game.set.desc': 'Points, levels and celebrations. Streak shields and goal milestones always work.',
-  'game.set.later': 'Points are counted from the start. They appear after 3 completed habits or 3 active days.',
+  'game.set.later': 'Points are counted from the start. They’ll show up soon, once you complete 3 habits or are active on 3 days.',
   'game.set.showNow': 'Show now',
   // ── Gamification F2: badges ──
   'game.tab.grow': '🌱 Growth',
