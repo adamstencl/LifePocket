@@ -686,7 +686,8 @@ function simpleDash() {
 const doneLogCount = () => habitLogs.reduce((n, l) => n + (l && l.done ? 1 : 0), 0);
 // ── Fronta nabídek a aktivní dny (4.69, F5; jen jednoduchý režim). Stav v prof.nudge (Firestore, stejný na všech zařízeních):
 // nudge.last = den poslední ukázané nabídky (limit 1 za 3 dny), nudge.cur = nabídka ukázaná ten den (drží se na Domů),
-// nudge.<id> = 'yes' | 'no' | 'later:YYYY-MM-DD', nudge.act.<druh> = {n: počet aktivních dní, d: poslední, f: první}
+// nudge.shown.<id> = den, kdy se nabídka naposledy ukázala (bez odpovědi = jako „Teď ne“),
+// nudge.<id> = odpověď 'yes' | 'no' | 'later:YYYY-MM-DD' (píše jen uživatel), nudge.act.<druh> = {n: počet aktivních dní, d: poslední, f: první}
 const NUDGE_GAP = 3, NUDGE_LATER = 14;
 // dsDiff(a, b) = dny mezi daty YYYY-MM-DD (definice u gamifikace)
 const isDS = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x);
@@ -709,7 +710,10 @@ function actDay(kind) {
     const o = act[k] && typeof act[k] === 'object' ? act[k] : {};
     if (o.d === d) continue;
     act[k] = {n: (Number(o.n) || 0) + 1, d, f: isDS(o.f) ? o.f : d};
-    patch['nudge.act.' + k] = act[k];
+    // n atomicky (druhé zařízení nepřepíše počet), d a f přepisem
+    patch['nudge.act.' + k + '.n'] = increment(1);
+    patch['nudge.act.' + k + '.d'] = d;
+    if (!isDS(o.f)) patch['nudge.act.' + k + '.f'] = d;
   }
   if (!Object.keys(patch).length) return;
   prof.nudge = {...st, act};
@@ -723,23 +727,47 @@ function nudgeFree() {
   const l = nudgeSt().last;
   return !(isDS(l) && dsDiff(l, toDS()) < NUDGE_GAP);
 }
-// Zapíše ukázání (počítá se do limitu); id = nabídka z fronty, bez id = jiná karta pod limitem (dotaz na upozornění)
+// Zapíše ukázání (počítá se do limitu); id = nabídka z fronty, bez id = jiná karta pod limitem (dotaz na upozornění).
+// Odpověď nudge.<id> nepřepisuje (tu mohl mezitím dát uživatel na jiném zařízení)
 function nudgeMark(id) {
   if (!isSimple()) return;
   const d = toDS(), st = nudgeSt(), patch = {'nudge.last': d, 'nudge.cur': id || ''};
   const n = {...st, last: d, cur: id || ''};
-  // Bez odpovědi = jako „Teď ne“: znovu nejdřív za 14 dní
-  if (id && st[id] !== 'yes' && st[id] !== 'no') { n[id] = 'later:' + d; patch['nudge.' + id] = n[id]; }
+  if (id) { n.shown = {...(st.shown && typeof st.shown === 'object' ? st.shown : {}), [id]: d}; patch['nudge.shown.' + id] = d; }
   prof.nudge = n;
   nudgeWrite(patch);
 }
-// Nabídka ještě čeká (bez odpovědi, nebo „později“ starší než 14 dní)
+// Nabídka ještě čeká: bez odpovědi a „později“ i poslední ukázání (bez odpovědi = jako „Teď ne“) starší než 14 dní
 function nudgeOpen(id) {
-  const v = nudgeSt()[id];
+  const st = nudgeSt(), v = st[id], sh = st.shown?.[id], td = toDS();
   if (v === 'yes' || v === 'no') return false;
-  if (typeof v === 'string' && v.startsWith('later:')) { const d = v.slice(6); return isDS(d) && dsDiff(d, toDS()) >= NUDGE_LATER; }
-  return true;
+  if (typeof v === 'string' && v.startsWith('later:')) { const d = v.slice(6); if (!(isDS(d) && dsDiff(d, td) >= NUDGE_LATER)) return false; }
+  return !(isDS(sh) && dsDiff(sh, td) < NUDGE_LATER);
 }
+// Stav nabídek z jiného zařízení: před výběrem nové nabídky obnoví prof.nudge a prof.unl ze serveru
+// (nejvýš 1× za 10 min, i po návratu do appky). Ostatní pole profilu se nepřepisují.
+const NUDGE_SYNC_MS = 600000;
+let _nudgeSyncAt = 0, _nudgeSyncP = null, _nudgeSyncWant = false;
+const nudgeSyncDue = () => Date.now() - _nudgeSyncAt >= NUDGE_SYNC_MS;
+function nudgeSync() {
+  if (!CU || !isSimple() || _nudgeSyncP || !nudgeSyncDue()) return _nudgeSyncP;
+  const uid = CU.uid, ok = x => x && typeof x === 'object' && !Array.isArray(x);
+  _nudgeSyncAt = Date.now();
+  const p = _nudgeSyncP = getDoc(doc(db, 'users', uid, 'profile', 'main')).then(s => {
+    if (CU?.uid !== uid || !s.exists()) return;
+    const d = s.data(), before = JSON.stringify([prof.nudge, prof.unl]);
+    if (ok(d.nudge)) prof.nudge = d.nudge;
+    if (ok(d.unl)) prof.unl = d.unl;
+    if (JSON.stringify([prof.nudge, prof.unl]) !== before) _nudgeSyncWant = true;
+  }).catch(e => console.warn('[LP] nudge sync:', e?.code || e?.name)).finally(() => {
+    if (_nudgeSyncP === p) _nudgeSyncP = null;
+    if (CU?.uid !== uid) return;
+    const want = _nudgeSyncWant; _nudgeSyncWant = false;
+    if (want && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+  });
+  return p;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') nudgeSync(); });
 // Odkryté rozšíření nebo uplynulých 14 dní jednoduchého Domů (pak jako dřív, kromě zamítnuté nabídky)
 const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
@@ -1120,6 +1148,7 @@ async function startSession(u){
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
   if(s.exists()){prof=s.data();
+    if(!s.metadata.fromCache) _nudgeSyncAt=Date.now(); // čerstvý profil: stav nabídek je aktuální (nudgeSync)
     if(await syncProfileLang(u.uid)) return; // jazyk profilu se liší od zařízení → reload
     // Moduly se berou přesně podle uloženého výběru (dřívější migrace vynucovala rex + checklist i po vypnutí – 4.65 zrušeno)
     selMods=new Set(prof.modules||[]);initApp();
@@ -1244,6 +1273,7 @@ onAuthStateChanged(auth,async u=>{
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
     clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
+    _nudgeSyncAt=0; _nudgeSyncP=null; _nudgeSyncWant=false; _nudgeQ=false; // fronta nabídek (4.69)
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
     unsubAllGroupMeals(); mealViewSel=undefined; unsubAllGroupChecks();
@@ -14747,10 +14777,14 @@ function nudgePick() {
   if (!isSimple() || !CU) return null;
   const st = nudgeSt(), td = toDS();
   if (st.last === td && st.cur) {
-    const n = NUDGES.find(x => x.id === st.cur);
-    return n && st[n.id] === 'later:' + td && nudgeSafe(n.when) ? n : null;
+    // Ukázaná dnes drží, dokud na ni uživatel neodpoví (stav ze serveru se mezitím obnoví na pozadí)
+    nudgeSync();
+    const n = NUDGES.find(x => x.id === st.cur), v = n && st[n.id];
+    return n && v !== 'yes' && v !== 'no' && v !== 'later:' + td && nudgeSafe(n.when) ? n : null;
   }
   if (!nudgeFree()) return null;
+  // Nová nabídka až s čerstvým stavem (jiné zařízení mohlo odpovědět nebo ukázat jinou); offline po chybě s místním
+  if (_nudgeSyncP || nudgeSyncDue()) { _nudgeSyncWant = true; nudgeSync(); return null; }
   return NUDGES.find(n => nudgeOpen(n.id) && nudgeSafe(n.when)) || null;
 }
 function nudgeSafe(fn) { try { return !!fn(); } catch (e) { return false; } }
