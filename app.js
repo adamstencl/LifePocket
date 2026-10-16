@@ -4339,7 +4339,7 @@ window.finishOnboard=async()=>{
   prof.lastSeen=prof.createdAt;
   prof.simple=simple; // stávající profily pole nemají
   if(simple) prof.start=selStart;
-  // Ukázkové návyky: v mřížce podle zaškrtávátka, u odpovědi s návyky vždy (smažou se jako běžné návyky)
+  // Ukázkové návyky: v mřížce podle zaškrtávátka, u odpovědi s návyky vždy (sample:true, smaže je „Ukázky nechci“ v Začínáme)
   const addSamples=!!(selTpl&&selMods.has('habits')&&(simple||document.getElementById('tpl-samples-chk')?.checked));
   if(selTpl) prof.template=selTpl;
   prof.lang=LANG;
@@ -4356,7 +4356,7 @@ window.finishOnboard=async()=>{
         const freq={type:tp.freq.type};
         if(tp.freq.type==='weekly')freq.times=tp.freq.times;
         if(tp.freq.type==='days')freq.days=[...tp.freq.days];
-        const h={name:tplHabitName(selTpl,i),emoji:tp.emoji,type:tp.type,goal:tp.goal,freq,group:tp.group,reminderTime:null,goalId:null,order:ord[tp.group],createdAt:now};
+        const h={name:tplHabitName(selTpl,i),emoji:tp.emoji,type:tp.type,goal:tp.goal,freq,group:tp.group,reminderTime:null,goalId:null,order:ord[tp.group],createdAt:now,sample:true};
         return addDoc(collection(db,'users',CU.uid,'habits'),h);
       }));
     }catch(e){console.warn('[LP] ukázkové návyky:',e?.code||e?.name);}
@@ -6636,9 +6636,32 @@ function quickStartHTML() {
       <button class="qs-dismiss" onclick="dismissQS()" title="${tH('common.hide')}">×</button>
     </div>
     <div class="qs-bar-wrap"><div class="qs-bar" style="width:${pct}%"></div></div>
-    <div class="qs-tasks">${taskHTML}</div>
+    <div class="qs-tasks">${taskHTML}</div>${habits.some(h => h && h.sample === true) ? `<button type="button" class="btn-s" style="margin-top:10px" onclick="removeSamples()">${tH('qs.noSamples')}</button>` : ''}
   </div>`;
 }
+// „Ukázky nechci“: smaže najednou ukázkové návyky z onboardingu (sample:true) i s jejich záznamy
+window.removeSamples = async () => {
+  if (!CU) return;
+  const ids = habits.filter(h => h && h.sample === true && h.id).map(h => h.id);
+  if (!ids.length || !confirm(t('qs.noSamplesQ', {n: ids.length}))) return;
+  const uid = CU.uid, set = new Set(ids);
+  const delIds = new Set(habitLogs.filter(l => l && set.has(l.habitId)).map(l => l.id));
+  // Listener drží jen okno záznamů → dotáhnout i starší (offline aspoň ty v paměti)
+  try { (await getDocs(query(collection(db, 'users', uid, 'habitLogs'), where('habitId', 'in', ids)))).docs.forEach(d => delIds.add(d.id)); }
+  catch (e) { console.warn('[LP] mazání ukázek:', e?.code || e?.name); }
+  if (CU?.uid !== uid) return;
+  ids.forEach(id => unshareAll('h', id)); // zrcadla ve skupinách pryč dřív, než návyky zmizí
+  const b = writeBatch(db);
+  ids.forEach(id => b.delete(doc(db, 'users', uid, 'habits', id)));
+  delIds.forEach(lid => { atRemember(hLog(lid)); b.delete(doc(db, 'users', uid, 'habitLogs', lid)); });
+  // Bez await: offline se zápis odešle později, appka se překreslí hned
+  b.commit().catch(e => toast(t('common.saveFailed', {err: userErr(e, 'habits')})));
+  habits = habits.filter(h => !set.has(h.id));
+  habitLogs = habitLogs.filter(l => !(l && set.has(l.habitId)));
+  shieldCacheReset();
+  renderHabits(); rDash();
+  toast(t('qs.noSamplesDone'));
+};
 
 window.dismissQS = () => {
   lsSave('lp_qs_dismissed', true);
