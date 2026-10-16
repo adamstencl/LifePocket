@@ -774,13 +774,14 @@ const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 function uiBusy() {
   return tourActive() || !!document.querySelector('.moverlay.open,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
 }
-// Fronta: fn se spustí, až nebude otevřené jiné okno (kontrola po 1,5 s, nejdéle maxMs, pak se vzdá)
-function whenUiFree(fn, maxMs = 600000) {
+// Fronta: fn se spustí, až nebude otevřené jiné okno (kontrola po 1,5 s, nejdéle maxMs, pak se vzdá a zavolá onGiveUp)
+function whenUiFree(fn, maxMs = 600000, onGiveUp) {
   const uid = CU?.uid, t0 = Date.now();
   const tick = () => {
-    if (!CU || CU.uid !== uid) return; // odhlášení / jiný účet
+    if (!CU || CU.uid !== uid) { if (onGiveUp) onGiveUp(); return; } // odhlášení / jiný účet
     if (!uiBusy()) { fn(); return; }
     if (Date.now() - t0 < maxMs) setTimeout(tick, 1500);
+    else if (onGiveUp) onGiveUp();
   };
   setTimeout(tick, 0);
 }
@@ -13672,10 +13673,10 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
   if(!CU) return false;
   if(!/^d[0-6]$/.test(dayKey) || !/^m[0-2]$/.test(mealKey)) return false;
   val = String(val || '').slice(0, 200);
-  if(val.trim()) actDay('mealplan'); // aktivní den (jednoduchý režim, 4.69; nabídka Vaření po 2 týdnech)
   const gid = mealTarget(target);
+  if(gid && !isMealAdmin(gid)) { toast(t('mp.adminOnlyMine')); return false; }
+  if(val.trim()) actDay('mealplan'); // aktivní den (jednoduchý režim, 4.69; nabídka Vaření po 2 týdnech), až po kontrole správce
   if(gid) {
-    if(!isMealAdmin(gid)) { toast(t('mp.adminOnlyMine')); return false; }
     // Vnořená mapa (setDoc s merge bere tečku v klíči jako součást názvu pole)
     const update = {[dayKey]: {[mealKey]: val}};
     const fid = gid, prev = String(mealPlanOf(gid)?.[dayKey]?.[mealKey] || '').trim();
@@ -14838,7 +14839,7 @@ function nudgeForDash() {
   if (!(st.cur === n.id && st.last === toDS())) {
     const onDash = !!document.getElementById('p-dashboard')?.classList.contains('active');
     if (!onDash || uiBusy()) {
-      if (!_nudgeQ) { _nudgeQ = true; whenUiFree(() => { _nudgeQ = false; if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); }); }
+      if (!_nudgeQ) { _nudgeQ = true; whenUiFree(() => { _nudgeQ = false; if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); }, undefined, () => { _nudgeQ = false; }); }
       return '';
     }
     nudgeMark(n.id);
@@ -14868,7 +14869,11 @@ function nudgeAnswer(id, v) {
   prof.nudge = {...nudgeSt(), [id]: v, cur: ''};
   nudgeWrite({['nudge.' + id]: v, 'nudge.cur': ''});
   if (id === 'game') unlock('gameIntro'); // ohlášení bodů jen jednou
-  document.getElementById('nudge-card')?.remove();
+  const card = document.getElementById('nudge-card'), ae = document.activeElement;
+  const lost = !!card && (!ae || ae === document.body || !!card.contains?.(ae));
+  card?.remove();
+  // Fokus z odstraněné karty na nadpis Domů (čtečka obrazovky neskončí na začátku stránky)
+  if (lost) { const h = document.getElementById('d-greet'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll: true}); } }
   return n;
 }
 window.nudgeYes = id => { const n = nudgeAnswer(id, 'yes'); if (n) Promise.resolve(n.yes()).catch(e => console.warn('[LP] nudge yes:', e?.code || e?.name)); };
