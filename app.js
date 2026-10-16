@@ -1273,7 +1273,7 @@ onAuthStateChanged(auth,async u=>{
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
     clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
-    _nudgeSyncAt=0; _nudgeSyncP=null; _nudgeSyncWant=false; _nudgeQ=false; // fronta nabídek (4.69)
+    _nudgeSyncAt=0; _nudgeSyncP=null; _nudgeSyncWant=false; _nudgeQ=false; clearTimeout(_nudgeWait); _nudgeWait=0; // fronta nabídek (4.69)
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
     unsubAllGroupMeals(); mealViewSel=undefined; unsubAllGroupChecks();
@@ -14772,9 +14772,27 @@ const NUDGES = [
     txt:() => ({em:'🔔', t:tH('gn.intro.t'), d:tH('gn.intro.d'), btn:tH('gn.intro.btn')}),
     yes:() => { lsSave('lp_gn_intro', 1); window.openGroupNotifSettings(); } },
 ];
+// Data pro podmínky nabídek: body, návyky a záznamy ze serveru, nákupy, sdílené seznamy úkolů skupin (odebírané)
+function nudgeDataReady() {
+  if (!_habitsSnapOk || !_hlServerOk || !shopItemsLoaded || !(game || _gameFailAt)) return false;
+  return checkGroups().every(g => clGrp[g] ? (clGrp[g].ready || !!clGrp[g].err) : g !== familyId);
+}
+// Data ještě nedorazila: počkat bez zápisu a Domů překreslit, až budou (kontrola po 1,5 s, nejdéle 2 min)
+let _nudgeWait = 0;
+function nudgeWaitData() {
+  if (_nudgeWait) return;
+  const uid = CU?.uid, t0 = Date.now();
+  const tick = () => {
+    if (!CU || CU.uid !== uid) { _nudgeWait = 0; return; }
+    if (nudgeDataReady()) { _nudgeWait = 0; if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); return; }
+    _nudgeWait = Date.now() - t0 < 120000 ? setTimeout(tick, 1500) : 0;
+  };
+  _nudgeWait = setTimeout(tick, 1500);
+}
 // Jedna nabídka pro Domů: ukázaná dnes (drží se), jinak první čekající, když je volno (limit)
 function nudgePick() {
   if (!isSimple() || !CU) return null;
+  if (!nudgeDataReady()) { nudgeWaitData(); return null; }
   const st = nudgeSt(), td = toDS();
   if (st.last === td && st.cur) {
     // Ukázaná dnes drží, dokud na ni uživatel neodpoví (stav ze serveru se mezitím obnoví na pozadí)
