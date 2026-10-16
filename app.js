@@ -48,8 +48,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.67';
+const APP_VERSION = '4.68';
 const CHANGELOG = [
+  { v:'4.68', items:[
+    '🌱 Jednodušší začátek: noví uživatelé mají na Domů jen to hlavní, body a další věci se ukážou postupně',
+    '🔧 Přehlednější Nastavení: nahoře to hlavní, zbytek ve sbalených skupinách Pokročilé, Podpora a Účet',
+    '🌱 Nový přepínač Jednoduchý režim v Nastavení (zapneš i vypneš kdykoli)',
+    '🗓️ Prázdný kalendář ti poradí, jak začít, a panel Více má ve světlém režimu světlé pozadí'
+  ], en:[
+    '🌱 A simpler start: new users see just the essentials on Home, points and more appear step by step',
+    '🔧 Clearer Settings: the essentials on top, the rest in collapsible Advanced, Support and Account groups',
+    '🌱 New Simple mode switch in Settings (turn it on or off any time)',
+    '🗓️ An empty calendar now shows how to start, and the More panel is light in light mode'
+  ]},
   { v:'4.67', items:[
     '💧 Připomínka pití má tlačítko, které zapíše tvůj šálek bez hledání v appce',
     '🔗 Pitný režim můžeš propojit s návykem: po splnění denního cíle se návyk sám odškrtne',
@@ -639,6 +650,29 @@ function accNew(days) {
   const c = prof?.createdAt ? new Date(prof.createdAt).getTime() : NaN;
   return Number.isFinite(c) && Date.now() - c < days * 86400000;
 }
+// ── Jednoduchý start (4.68, docs/NAVRH-JEDNODUCHY-START.md): prof.simple dostane jen nový účet ve finishOnboard ──
+const isSimple = () => prof?.simple === true;
+// Odkryté rozšíření; mimo jednoduchý režim je odkryté vše. Uložené v prof.unl.<id> = 'YYYY-MM-DD'
+const unl = id => !isSimple() || !!prof?.unl?.[id];
+const UNL_IDS = ['game', 'gameIntro', 'focus', 'pc'];
+function unlock(...ids) {
+  if (!CU || !isSimple()) return false;
+  const fresh = ids.filter(id => !prof?.unl?.[id]);
+  if (!fresh.length) return false;
+  const d = toDS(), patch = {};
+  prof.unl = {...(prof.unl || {})};
+  for (const id of fresh) { prof.unl[id] = d; patch['unl.' + id] = d; }
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), patch).catch(e => console.warn('[LP] unl:', e?.code || e?.name));
+  return true;
+}
+// Slotové pravidlo Domů (max. 3 karty) platí prvních 14 dní od založení účtu nebo od zapnutí režimu
+function simpleDash() {
+  if (!isSimple()) return false;
+  const s = prof?.simpleAt ? new Date(prof.simpleAt + 'T12:00:00').getTime() : NaN;
+  return Number.isFinite(s) ? Date.now() - s < 14 * 86400000 : accNew(14);
+}
+// Počet splněných záznamů návyků (odkrytí bodů po 3. splněném návyku)
+const doneLogCount = () => habitLogs.reduce((n, l) => n + (l && l.done ? 1 : 0), 0);
 // Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
 function uiBusy() {
   return tourActive() || !!document.querySelector('.moverlay.open,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
@@ -1140,7 +1174,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2893,6 +2927,16 @@ function renderEvList(){
 
   const filtered=calFilter==='all'?allEvents:allEvents.filter(e=>(e.type||'event')===calFilter);
   if(!filtered.length){
+    // Úplně prázdný kalendář (ani události skupin): prázdný stav s tlačítkem a příkladem (4.68)
+    if(calFilter==='all'&&!events.length&&!getAllFamilyEvents().length){
+      container.innerHTML='<div class="lp-es" role="region" aria-label="'+tH('mod.calendar')+'">'
+        +'<div class="lp-es-em" aria-hidden="true">🗓️</div>'
+        +'<p class="lp-es-t">'+tH('cal.es.t')+'</p>'
+        +'<button type="button" class="btn-p lp-es-btn" onclick="openEvModal()">'+tH('cal.addBtn')+'</button>'
+        +'<button type="button" class="lp-es-ex" onclick="calEmptyBday()">'+tH('cal.es.ex')+'</button>'
+        +'</div>';
+      return;
+    }
     container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">'+(calFilter==='all'?tH('cal.none14'):tH('cal.noneType14'))+'</div>';
     return;
   }
@@ -3304,6 +3348,15 @@ window.openEvModal=()=>{
   updateEvShareUI(false);
   om('m-event');
   setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
+};
+
+// Příklad z prázdného kalendáře: formulář s typem Narozeniny, opakováním každý rok a předvyplněným názvem
+window.calEmptyBday=()=>{
+  window.openEvModal();
+  selEvType_val='birthday';
+  window.selEvType('birthday',document.querySelector('.ev-type-btn[data-t="birthday"]'));
+  const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='yes';
+  const eni=document.getElementById('ev-name-inp'); if(eni){ eni.value=t('cal.es.exName'); setTimeout(()=>eni.select(),120); }
 };
 
 // ── Vlastní typy událostí ──────────────────────────────────────────────────
@@ -4133,6 +4186,7 @@ window.finishOnboard=async()=>{
   if(!prof.gender) prof.gender='x';
   selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();
   prof.lastSeen=prof.createdAt;
+  prof.simple=true; // jednoduchý start (4.68): jen nový účet, stávající profily pole nemají
   const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
   if(selTpl) prof.template=selTpl;
   prof.lang=LANG;
@@ -4813,7 +4867,7 @@ window.refreshFcmToken = async () => {
   }
   box.style.display = 'none';
   box.innerHTML = `<div style="color:#f5c842;font-weight:bold">${tH('notif.dbg.title')}</div>`;
-  const showBox = () => { box.style.display = 'block'; box.scrollIntoView({behavior:'smooth', block:'center'}); };
+  const showBox = () => { box.style.display = 'block'; setGrpOpen(box); box.scrollIntoView({behavior:'smooth', block:'center'}); };
 
   await msgReady;
   log('1. messaging: ' + (messaging ? '✅' : '❌ ' + (msgUnsupportedReason || t('notif.dbg.noMsg'))));
@@ -6360,7 +6414,9 @@ function quickStartHTML() {
   ];
 
   // Filtruj podle aktivních modulů + základní (focus je vždy)
+  // Jednoduchý režim (4.68): bez hlavního úkolu (dokud se neodkryje) a bez pobídky „Pozvi rodinu“ (skupiny jdou ručně v Nastavení)
   const relevant = allTasks.filter(t => {
+    if (isSimple() && (t.id === 'family' || (t.id === 'focus' && !unl('focus')))) return false;
     if (t.id === 'focus') return true;
     if (t.id === 'water') return waterOn();
     if (t.id === 'habit' && mods.includes('habits')) return true;
@@ -6371,6 +6427,7 @@ function quickStartHTML() {
     if (t.id === 'note' && mods.includes('journal')) return true;
     return false;
   }).slice(0, 5);
+  if (!relevant.length) return '';
 
   // Aktualizuj done status
   const completedIds = relevant.filter(t => t.done || done.includes(t.id)).map(t => t.id);
@@ -6438,6 +6495,15 @@ let game=null, _gTimer=0, _gameLoadP=null, _gameFailAt=0, _goalsOk=false, _gameD
 const gameRef=()=>doc(db,'users',CU.uid,'game','main');
 // Body a úrovně viditelné (načtené a nevypnuté v Nastavení)
 function gameOn(){ return !!game&&!game.off; }
+// Body viditelné v UI: v jednoduchém režimu až po odkrytí (počítají se od 1. dne, 4.68)
+function gameUiOn(){ return gameOn()&&unl('game'); }
+// Odkrytí bodů po 3. splněném návyku; stávající uživatel se zapnutým režimem a historií rovnou bez oznámení
+function gameUnlCheck(){
+  if(!isSimple()||prof?.unl?.game||doneLogCount()<3) return;
+  unlock('game');
+  gameRenderUI();
+  if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+}
 function gameNormalize(g){
   g=g&&typeof g==='object'?g:{};
   const obj=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
@@ -6518,6 +6584,7 @@ function gameSync(){
   gameBadges();
   chCheckDone(); // splněná společná výzva (XP a odznak 🧩), i když se body načetly až po výzvě
   pcCheckDone(); // splněná výzva měsíce / týdne (4.63)
+  gameUnlCheck(); // jednoduchý režim: odkrytí bodů (až po zápisu lvlSeen, bez vlny oslav)
 }
 function gameQueue(){ clearTimeout(_gTimer); _gTimer=setTimeout(gameSync,800); }
 // Po změně XP: překreslit kruh a lištu, případně oslavit novou úroveň (jen jednou, lvlSeen se hned zapíše)
@@ -6528,7 +6595,7 @@ function gameAfter(before,after){
   if(L<=seen) return;
   game.lvlSeen=L;
   gameWrite({lvlSeen:L});
-  if(!game.off) celebrateLevel(seen,L);
+  if(gameUiOn()) celebrateLevel(seen,L); // skryté body (jednoduchý režim): úroveň se jen zapíše jako viděná
 }
 // Spouštěč: záznamy návyků ze serveru (snapshot), návyky, cíle, nový den
 function gameKick(){
@@ -6641,7 +6708,7 @@ function gameBarHTML(){
 }
 // Překreslí banner na Domů, hlavičku avatara a otevřený sheet
 function gameRenderUI(){
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], on=gameOn();
+  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], on=gameUiOn();
   const dem=document.getElementById('d-avem');
   if(dem){ if(on){ dem.innerHTML=gameRingHTML(64); dem.classList.add('has-ring'); } else { dem.textContent=av.emoji; dem.classList.remove('has-ring'); } }
   const dl=document.getElementById('d-avlvl');
@@ -6656,7 +6723,7 @@ function gameRenderUI(){
 }
 // Odezva „+10“ nad tlačítkem návyku (jen vizuální, nic neukládá)
 function xpPop(hid,x){
-  if(!gameOn()) return;
+  if(!gameUiOn()) return;
   const el=[...document.querySelectorAll('.habit-check,.cnt-btn')].find(b=>b.dataset.a0===hid&&b.offsetParent);
   if(!el) return;
   const r=el.getBoundingClientRect(), p=document.createElement('div');
@@ -6666,7 +6733,7 @@ function xpPop(hid,x){
   setTimeout(()=>p.remove(),950);
 }
 // Sheet „Můj růst“
-window.openGame=(tab)=>{ if(!gameOn()) return; _gameTab=tab==='badges'?'badges':'grow'; _bdgSeen=null; renderGameSheet(); om('m-game'); };
+window.openGame=(tab)=>{ if(!gameUiOn()) return; _gameTab=tab==='badges'?'badges':'grow'; _bdgSeen=null; renderGameSheet(); om('m-game'); };
 function renderGameSheet(){
   const body=document.getElementById('game-body'), tt=document.getElementById('game-title');
   if(tt) tt.textContent=t('game.growth');
@@ -6746,7 +6813,7 @@ function renderGameSetting(){
   const el=document.getElementById('set-game');
   if(!el) return;
   el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('game.set.toggle')}</div><div class="togds">${tH('game.set.desc')}</div></div>
-    <label class="togswitch"><input type="checkbox" ${gameOn()?'checked':''} ${game?'':'disabled'} aria-label="${tH('game.set.toggle')}" onchange="setGameOn(this.checked)"><span class="togsl"></span></label></div>`;
+    <label class="togswitch"><input type="checkbox" ${gameUiOn()?'checked':''} ${game?'':'disabled'} aria-label="${tH('game.set.toggle')}" onchange="setGameOn(this.checked)"><span class="togsl"></span></label></div>`;
 }
 window.setGameOn=on=>{
   if(!game) return;
@@ -6754,13 +6821,19 @@ window.setGameOn=on=>{
   const patch={off:game.off};
   // Po zapnutí žádná vlna oslav: dosažená úroveň se vezme jako už viděná
   if(on){ const L=levelOf(gameTotal()); if(L>game.lvlSeen){ game.lvlSeen=L; patch.lvlSeen=L; } }
+  if(on) unlock('game','gameIntro'); // ruční zapnutí v jednoduchém režimu body rovnou odkryje (bez úvodní karty)
   gameWrite(patch);
-  gameRenderUI(); rDash();
+  gameRenderUI(); rDash(); renderSimpleSetting();
 };
 // Úvodní karta po prvním spuštění (jednou na zařízení, bez oslav)
 function gameIntroHTML(){
-  if(!gameOn()||lsGet('lp_game_intro')) return '';
-  if(accNew(7)){ lsSave('lp_game_intro',1); return ''; } // nováček: „novinka“ nedává smysl ani později, body vysvětlí průvodce a Rex
+  if(!gameOn()) return '';
+  // Jednoduchý režim (4.68): karta ohlásí odkrytí bodů, jednou na účet (prof.unl.gameIntro)
+  if(isSimple()){ if(!prof?.unl?.game||prof?.unl?.gameIntro) return ''; }
+  else {
+    if(lsGet('lp_game_intro')) return '';
+    if(accNew(7)){ lsSave('lp_game_intro',1); return ''; } // nováček: „novinka“ nedává smysl ani později, body vysvětlí průvodce a Rex
+  }
   const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
   let n=0; const today=toDS();
   for(const l of habitLogs) if(l&&l.done&&l.date>=_hlCutoff&&l.date<=today) n++;
@@ -6774,7 +6847,7 @@ function gameIntroHTML(){
     </div>
   </div>`;
 }
-window.dismissGameIntro=()=>{ lsSave('lp_game_intro',1); document.getElementById('game-intro-card')?.remove(); };
+window.dismissGameIntro=()=>{ lsSave('lp_game_intro',1); unlock('gameIntro'); document.getElementById('game-intro-card')?.remove(); };
 window.gameIntroOpen=()=>{ window.dismissGameIntro(); window.openGame(); };
 
 // ── GAMIFIKACE F2: sbírka odznaků (badges.<id> = datum, odměna once.bd_<id>; jen přibývají, přepis pevných klíčů) ──
@@ -6881,7 +6954,7 @@ function gameBadges(){
   gameAfter(before,game.xp);
   // Odznaky za úroveň mohou přibýt až po připsání bodů za jiné odznaky
   if(fresh.some(b=>!b.id.startsWith('lvl_'))) gameQueue();
-  if(gameOn()) celebrateBadges(fresh);
+  if(gameUiOn()) celebrateBadges(fresh);
   return fresh;
 }
 function celebrateBadges(list){
@@ -7128,10 +7201,12 @@ const weekSayIdx=p=>p>=90?3:p>=70?2:p>=40?1:0;
 function weekRange(S){ return fmtDate(S.mon,'dm')+' – '+fmtDate(S.sun,'dm'); }
 // Karta na Domů: pondělí a úterý, zavíratelná (lp_week_card = pondělí shrnutého týdne)
 function weekCardHTML(){
-  if(!gameOn()) return '';
+  if(!gameUiOn()) return '';
   const today=toDS(), wd=new Date(today+'T12:00:00').getDay();
   if(wd!==1&&wd!==2) return '';
   const mon=addDays(weekStartDS(today),-7);
+  // Jednoduchý režim: až po prvním celém týdnu účtu (4.68)
+  if(isSimple()&&prof?.createdAt&&toDS(new Date(prof.createdAt))>mon) return '';
   if(lsGet('lp_week_card','')===mon) return '';
   const S=calcWeekSummary(mon);
   if(!S.hasData) return '';
@@ -10580,7 +10655,7 @@ function chDashHTML() {
   if(!CU) return '';
   let h = '';
   for(const gid of myGroupIds()) { const {cur} = chCurrent(gid); if(cur) h += chCardHTML(gid, cur, 'dash'); }
-  return h ? `<div class="dw ch-dw" style="cursor:default"><div class="dw-head"><div class="dw-title">🤝 ${tH('ch.title')}</div></div>${h}</div>` : ctaChHTML();
+  return h ? `<div class="dw ch-dw" style="cursor:default"><div class="dw-head"><div class="dw-title">🤝 ${tH('ch.title')}</div></div>${h}</div>` : (isSimple() ? '' : ctaChHTML()); // jednoduchý režim: bez nabídky skupinové výzvy
 }
 function renderChallengeUI() {
   document.querySelectorAll('[data-ch-slot]').forEach(el => { el.innerHTML = chGroupHTML(el.dataset.gid); });
@@ -10890,7 +10965,7 @@ function celebrateChallenge(gid, c, st) {
       <div class="lu-title" id="gwin-title">${tH('ch.win.t')}</div>
       <div class="gs-lvl">${esc(line)}</div>
       <div class="lu-say">${esc(chNumText(c, st))} · ${esc(groupLabel(gid))}</div>
-      ${gameOn() ? `<div class="ch-xp">${game?.once?.['ch_' + c.id]?.x ? '+' + game.once['ch_' + c.id].x + ' XP · ' : ''}🧩 ${tH('game.badge.team_player')}</div>` : ''}
+      ${gameUiOn() ? `<div class="ch-xp">${game?.once?.['ch_' + c.id]?.x ? '+' + game.once['ch_' + c.id].x + ' XP · ' : ''}🧩 ${tH('game.badge.team_player')}</div>` : ''}
       <div class="lu-say">„${tH('ch.win.say')}“ — ${esc(av.name)}</div></div>
     <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
   om('m-gwin');
@@ -11365,7 +11440,7 @@ function celebratePc(c, badge) {
   body.innerHTML = `<div class="gs-top"><div class="gwin-em" aria-hidden="true">${esc(c.emoji)}</div>
       <div class="lu-title" id="gwin-title">${tH('pc.win.t')}</div>
       <div class="gs-lvl">${esc(line)}</div>
-      ${gameOn() && (x || badge) ? `<div class="ch-xp">${[x ? '+' + x + ' XP' : '', badge ? `${BADGES.find(b => b.id === badge)?.em || '🎖️'} ${tH('game.badge.' + badge)}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
+      ${gameUiOn() && (x || badge) ? `<div class="ch-xp">${[x ? '+' + x + ' XP' : '', badge ? `${BADGES.find(b => b.id === badge)?.em || '🎖️'} ${tH('game.badge.' + badge)}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
       <div class="lu-say">„${tH('pc.win.say')}“ — ${esc(av.name)}</div></div>
     <div class="gwin-btns"><button type="button" class="btn-p" id="gwin-ok" onclick="cm('m-gwin')">${tH('game.goal.ok')}</button></div>`;
   om('m-gwin');
@@ -13274,6 +13349,7 @@ window.setGroupQuiet = () => {
 window.openGroupNotifSettings = () => {
   cm('m-grpfeed');
   sp('settings');
+  setGrpOpen(document.getElementById('gn-box')); // je ve sbalené skupině Pokročilé (4.68)
   setTimeout(() => document.getElementById('gn-box')?.scrollIntoView({block:'start', behavior:'smooth'}), 200);
 };
 
@@ -14443,6 +14519,12 @@ async function loadDailyQuote() {
   return fallback;
 }
 
+// Pořadí modulů pro sloty Domů: hlavní moduly šablony (jako lišta, NAV_TPL), pak ostatní v pořadí MODS
+function simpleModOrder(){
+  const mods=prof?.modules||[];
+  const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof?.template)?NAV_TPL[prof.template]:[]).filter(id=>mods.includes(id));
+  return [...first,...MODS.map(m=>m.id).filter(id=>mods.includes(id)&&!first.includes(id))];
+}
 function rDash(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const g=prof.gender==='f'||prof.gender==='x'?prof.gender:'m'; // x = neutrální tvary (#x)
@@ -14502,8 +14584,13 @@ function rDash(){
 
   const today=toDS();
   const mods=prof.modules||[];
+  // Jednoduchý režim (4.68): bez citátu, energie, výzvy měsíce a hlavního úkolu (dokud se neodkryjí), nejvýš 3 karty
+  const simple=isSimple();
+  const mw={}; // karty modulů podle id (v jednoduchém režimu se vybírají v pořadí lišty)
+  let html='';
+  if(!simple){
   // Karta Začínáme (nováček) nahoře, pod ní hlavní úkol dne
-  let html=quickStartHTML()+focusWidgetHTML()+waterWidgetHTML();
+  html+=quickStartHTML()+focusWidgetHTML()+waterWidgetHTML();
   // Novinka Pitný režim (4.62): šablona Zdraví / návyk o pití výš, ostatní níž
   html+=wtIntroSlot(true);
   // Jednorázová karta: upozornění ze skupin (novinka 4.38)
@@ -14551,6 +14638,8 @@ function rDash(){
       if (el) el.textContent = q;
     });
   }
+  } // konec bloků mimo jednoduchý režim
+  else mw.water=waterWidgetHTML();
 
   // ── WIDGET: NÁVYKY ──
   if(mods.includes('habits')&&habits.length){
@@ -14575,7 +14664,7 @@ function rDash(){
       </div>`;
     }).join('');
     const more=habits.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:habits.length-4})}</div>`:'';
-    html+=`<div class="dw" onclick="sp('habits')">
+    mw.habits=`<div class="dw" onclick="sp('habits')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.h.title')}</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -14594,7 +14683,7 @@ function rDash(){
     const lastEntry=entries[0];
     const todayMood=todayEntries.find(e=>e.mood)?.mood||'';
     if(lastEntry){
-      html+=`<div class="dw" onclick="sp('journal')">
+      mw.journal=`<div class="dw" onclick="sp('journal')">
         <div class="dw-head">
           <div class="dw-title">${tH('dash.j.title')}</div>
           <div class="dw-arrow">→</div>
@@ -14608,7 +14697,7 @@ function rDash(){
         </div>
       </div>`;
     } else {
-      html+=`<div class="dw" onclick="sp('journal')">
+      mw.journal=`<div class="dw" onclick="sp('journal')">
         <div class="dw-head"><div class="dw-title">${tH('dash.j.title')}</div><div class="dw-arrow">→</div></div>
         <div class="dw-empty">${tH('dash.j.empty')}</div>
       </div>`;
@@ -14627,7 +14716,7 @@ function rDash(){
         </div>
         <div class="dw-pbar"><div class="dw-pbar-fill" style="width:${g.progress||0}%;background:${esc(g.color||'var(--accent)')}"></div></div>
       </div>`).join('');
-    html+=`<div class="dw" onclick="sp('goals')">
+    mw.goals=`<div class="dw" onclick="sp('goals')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.g.title')}</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -14658,7 +14747,7 @@ function rDash(){
         </div>`;
       }).join('');
       const more=upcoming.length>3?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.c.more',{n:upcoming.length-3})}</div>`:'';
-      html+=`<div class="dw" onclick="sp('calendar')">
+      mw.calendar=`<div class="dw" onclick="sp('calendar')">
         <div class="dw-head">
           <div class="dw-title">${tH('dash.c.title')}</div>
           <div class="dw-arrow">→</div>
@@ -14669,8 +14758,8 @@ function rDash(){
   }
 
   // ── WIDGET: VAŘENÍ ──
-  if(mods.includes('cooking')){
-    html+=`<div class="dw" onclick="sp('cooking')">
+  if(mods.includes('cooking')&&!simple){ // prázdná pobídka: v jednoduchém režimu ne
+    mw.cooking=`<div class="dw" onclick="sp('cooking')">
       <div class="dw-head"><div class="dw-title">${tH('dash.cook.title')}</div><div class="dw-arrow">→</div></div>
       <div class="dw-empty">${tH('dash.cook.text')}</div>
     </div>`;
@@ -14687,7 +14776,7 @@ function rDash(){
       const shopPct = shopItemsArr.length ? Math.round(done/shopItemsArr.length*100) : 0;
       const shopLabel = pending.length===0 ? tH('dash.s.allDone') : tH('dash.s.left',{n:pending.length});
       const firstItems = esc(pending.slice(0,3).map(i=>i.name).join(', ')); // názvy můžou být od členů skupiny
-      html+=`<div class="dw" onclick="sp('shopping')">
+      mw.shopping=`<div class="dw" onclick="sp('shopping')">
         <div class="dw-head">
           <div class="dw-title">${tH('dash.s.title')}${sg?` <span class="dw-grp">· ${esc(grpLabel(sg))}</span>`:''}</div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -14707,7 +14796,7 @@ function rDash(){
     const todayMoodVal=todayMoodEntry[0]?.mood||'';
     const weekMoods=[];
     for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=toDS(d);const me=entries.filter(e=>entryDS(e)===ds&&e.mood);weekMoods.push(me[0]?.mood||'');}
-    html+=`<div class="dw" onclick="sp('journal')">
+    mw.mood=`<div class="dw" onclick="sp('journal')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.mood.title')}</div>
         <div class="dw-arrow">→</div>
@@ -14721,6 +14810,15 @@ function rDash(){
       </div>
     </div>`;
   }
+
+  if(simple){
+    // Sloty: Začínáme, ohlášení bodů / týdenní souhrn, hlavní úkol (po odkrytí), karty modulů v pořadí lišty
+    const cards=[quickStartHTML(),gameIntroHTML(),weekCardHTML(),unl('focus')?focusWidgetHTML():'',...simpleModOrder().map(id=>mw[id]||'')].filter(Boolean);
+    html+=(simpleDash()?cards.slice(0,3):cards).join('');
+    if(unl('pc')) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
+    html+='<div id="ch-dash">'+chDashHTML()+'</div>'; // běžící výzvy skupiny (pozvaný je vidí hned)
+  } else {
+  html+=['habits','journal','goals','calendar','cooking','shopping','mood'].map(k=>mw[k]||'').join('');
 
   // ── WIDGET: TÝDENNÍ REPORT ──
   const weeklyData = localStorage.getItem('lp_weekly_report');
@@ -14765,6 +14863,7 @@ function rDash(){
       </div>`;
     }
   }
+  } // konec mimo jednoduchý režim
 
   // ── Pokud žádné moduly (bez focus widgetu) — ukáž nápovědu ──
   if(!mods.length){
@@ -15348,10 +15447,51 @@ function initSet(){
   document.getElementById('set-avem').textContent=av.emoji;
   document.getElementById('set-avnm').textContent=av.name;
   renderGameSetting(); // přepínač Body a úrovně (4.40)
+  renderSimpleSetting(); setGrpInit(); // jednoduchý režim a sbalené skupiny (4.68)
   document.getElementById('set-avsub').textContent=prof.nickname||'';
   renderLangSwitch();
   renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
 }
+// Sbalené skupiny Nastavení: otevřené si pamatuje lp_set_open (jen zařízení)
+function setGrpInit(){
+  const open=lsGet('lp_set_open',[]);
+  document.querySelectorAll('#p-settings details.setgrp').forEach(d=>{
+    if(d.dataset.init) return;
+    d.dataset.init='1';
+    d.open=Array.isArray(open)&&open.includes(d.id);
+    d.addEventListener('toggle',()=>lsSave('lp_set_open',[...document.querySelectorAll('#p-settings details.setgrp[open]')].map(x=>x.id)));
+  });
+}
+// Otevře sbalenou skupinu, ve které je prvek (odkaz na upozornění ze skupin, ladicí box FCM)
+function setGrpOpen(el){ const d=el?.closest?.('details.setgrp'); if(d&&!d.open) d.open=true; }
+// Přepínač Jednoduchý režim (oběma směry) + „Odkrýt všechno hned“
+function renderSimpleSetting(){
+  const el=document.getElementById('set-simple');
+  if(!el) return;
+  const on=isSimple(), more=on&&UNL_IDS.some(id=>!prof?.unl?.[id]);
+  el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('set.simple.toggle')}</div><div class="togds">${tH('set.simple.desc')}</div></div>
+    <label class="togswitch"><input type="checkbox" ${on?'checked':''} aria-label="${tH('set.simple.toggle')}" onchange="setSimple(this.checked)"><span class="togsl"></span></label></div>`
+    +(more?`<button type="button" class="btn-s set-simple-all" onclick="simpleUnlockAll()">${tH('set.simple.all')}</button>`:'');
+}
+function simpleRefresh(){ gameRenderUI(); rDash(); renderSimpleSetting(); }
+window.setSimple=on=>{
+  if(!CU) return;
+  on=!!on;
+  const patch={simple:on};
+  prof.simple=on;
+  // Zapnutí: 14 dní slotového pravidla na Domů od dneška; moduly se nemění
+  if(on){ prof.simpleAt=toDS(); patch.simpleAt=prof.simpleAt; }
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),patch).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  // Stávající uživatel s historií návyků: body zůstanou vidět, bez úvodní karty
+  if(on&&doneLogCount()>=3) unlock('game','gameIntro');
+  simpleRefresh();
+  toast(t(on?'set.simple.on':'set.simple.off'));
+};
+window.simpleUnlockAll=()=>{
+  unlock(...UNL_IDS);
+  simpleRefresh();
+  toast(t('set.simple.allDone'));
+};
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
 }

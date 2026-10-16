@@ -906,8 +906,9 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
     <div class="page" id="p-settings">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:26px">🔧</span><div class="ptitle" data-i18n="nav.settings">Nastavení</div></div>
 
+      <!-- Základní nastavení (4.68): 6 sekcí nahoře, zbytek ve sbalených skupinách níž -->
       <div class="setsec">
-        <div class="setsec-t" data-i18n="set.profile.title">👤 Profil &amp; Avatar</div>
+        <div class="setsec-t" data-i18n="set.profile.title">👤 Ty a parťák</div>
         <div class="setsec-d" data-i18n="set.profile.desc">Tvoje osobní nastavení.</div>
         <div class="avprofile">
           <div class="avpem" id="set-avem">⭐</div>
@@ -918,43 +919,6 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <span class="setlbl" data-i18n="set.profile.name">Jméno</span>
           <input class="setinp" type="text" id="set-nick" placeholder="Tvoje jméno…" data-i18n-attr="placeholder:onb.namePh">
           <button class="btn-sv" onclick="saveNick()" data-i18n="common.save">Uložit</button>
-        </div>
-      </div>
-
-      <!-- Téma -->
-      <div class="setsec">
-        <div class="setsec-t" data-i18n="set.theme.title">🎨 Vzhled</div>
-        <div class="setsec-d" data-i18n="set.theme.desc">Tmavé, světlé nebo oranžové — vyber, co ti sedí.</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px" id="theme-cards">
-          <div class="theme-card" data-t="dark-gold" onclick="setTheme('dark-gold')" style="background:#0c0c10;border:2px solid #f5c842;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
-            <div style="font-size:28px;margin-bottom:8px">🌑</div>
-            <div style="color:#f5c842;font-weight:700;font-size:15px" data-i18n="set.theme.dark">Tmavé</div>
-            <div style="color:#9090a8;font-size:12px;margin-top:3px" data-i18n="set.theme.darkSub">Výchozí</div>
-          </div>
-          <div class="theme-card" data-t="sunshine" onclick="setTheme('sunshine')" style="background:#faf8f0;border:2px solid #e0d8c0;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
-            <div style="font-size:28px;margin-bottom:8px">☀️</div>
-            <div style="color:#d4870a;font-weight:700;font-size:15px" data-i18n="set.theme.light">Světlé</div>
-            <div style="color:#6a5f40;font-size:12px;margin-top:3px" data-i18n="set.theme.lightSub">Denní režim</div>
-          </div>
-          <div class="theme-card" data-t="tangerine" onclick="setTheme('tangerine')" style="background:#fff1e6;border:2px solid #f0d3b6;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
-            <div style="font-size:28px;margin-bottom:8px">🍊</div>
-            <div style="color:#c94800;font-weight:700;font-size:15px" data-i18n="set.theme.orange">Oranžové</div>
-            <div style="color:#7a4d26;font-size:12px;margin-top:3px" data-i18n="set.theme.orangeSub">Šťavnatý režim</div>
-          </div>
-        </div>
-        <!-- Body a úrovně (vykresluje renderGameSetting) -->
-        <div id="set-game" style="margin-top:12px"></div>
-      </div>
-
-
-
-      <!-- Jazyk (názvy jazyků se nepřekládají) -->
-      <div class="setsec">
-        <div class="setsec-t" id="set-lang-t" data-i18n="set.lang.title">🌍 Jazyk</div>
-        <div class="setsec-d" data-i18n="set.lang.desc">Jazyk aplikace. Po přepnutí se appka znovu načte.</div>
-        <div class="lang-row" role="group" aria-labelledby="set-lang-t">
-          <button type="button" class="lang-btn" data-lang="cs" lang="cs" translate="no" aria-pressed="false" onclick="setLang(this.dataset.lang)"><span aria-hidden="true">🇨🇿</span> Čeština</button>
-          <button type="button" class="lang-btn" data-lang="en" lang="en" translate="no" aria-pressed="false" onclick="setLang(this.dataset.lang)"><span aria-hidden="true">🇬🇧</span> English</button>
         </div>
       </div>
 
@@ -975,15 +939,6 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <button id="notif-enable-btn" onclick="enableNotifications()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:10px;padding:10px 20px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;font-weight:700;cursor:pointer;display:none" data-i18n="set.notif.enable">
             🔔 Povolit notifikace
           </button>
-          <button id="notif-test-btn" onclick="sendTestNotif()" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:var(--text);cursor:pointer;display:none" data-i18n="set.notif.testLocal">
-            🧪 Test (lokální)
-          </button>
-          <button id="notif-test-server-btn" onclick="sendTestServerPush()" style="background:var(--accent);border:none;border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer;display:none" data-i18n="set.notif.testServer">
-            📡 Test server push
-          </button>
-          <button id="notif-refresh-token-btn" onclick="refreshFcmToken()" style="background:none;border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:var(--text2);cursor:pointer;display:none" data-i18n="set.notif.refresh">
-            🔄 Obnovit token
-          </button>
         </div>
         <div style="margin-top:16px">
           <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:10px" data-i18n="set.notif.times">⏰ Časy připomínek</div>
@@ -997,37 +952,6 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
               <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
           </div>
-          <div style="margin-top:12px">
-            <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:8px" data-i18n="set.notif.which">Které připomínky chceš?</div>
-            <div style="display:flex;flex-direction:column;gap:8px" id="notif-toggles">
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-habits" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.habits">🎯 Připomínka nesplněných návyků</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-morning" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co jsi splnil/a)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
-              </label>
-
-            </div>
-          </div>
-
-          <!-- Upozornění ze skupin (vykresluje renderGroupNotifSettings) -->
-          <div id="gn-box" class="gn-box" hidden></div>
-
-          <div style="margin-top:12px;font-size:13px;color:var(--text3)" data-i18n="set.notif.hint">
-            💡 Připomínky návyků nastavíš u každého návyku zvlášť. Narozeniny dostaneš automaticky 7 dní předem a ráno v den události. Události s nastaveným časem tě upozorní hodinu předem.
-          </div>
-
-
         </div>
       </div>
 
@@ -1055,7 +979,108 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <div id="family-group-view" style="display:none"></div>
           <div id="family-extra-groups"></div>
         </div>
-        <div class="setsec-t" style="margin-top:20px" data-i18n="set.share.title">💛 Doporuč LifePocket</div>
+      </div>
+
+      <!-- Vzhled a jazyk (názvy jazyků se nepřekládají) -->
+      <div class="setsec">
+        <div class="setsec-t" data-i18n="set.look.title">🎨 Vzhled a jazyk</div>
+        <div class="setsec-d" data-i18n="set.theme.desc">Tmavé, světlé nebo oranžové — vyber, co ti sedí.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px" id="theme-cards">
+          <div class="theme-card" data-t="dark-gold" onclick="setTheme('dark-gold')" style="background:#0c0c10;border:2px solid #f5c842;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
+            <div style="font-size:28px;margin-bottom:8px">🌑</div>
+            <div style="color:#f5c842;font-weight:700;font-size:15px" data-i18n="set.theme.dark">Tmavé</div>
+            <div style="color:#9090a8;font-size:12px;margin-top:3px" data-i18n="set.theme.darkSub">Výchozí</div>
+          </div>
+          <div class="theme-card" data-t="sunshine" onclick="setTheme('sunshine')" style="background:#faf8f0;border:2px solid #e0d8c0;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
+            <div style="font-size:28px;margin-bottom:8px">☀️</div>
+            <div style="color:#d4870a;font-weight:700;font-size:15px" data-i18n="set.theme.light">Světlé</div>
+            <div style="color:#6a5f40;font-size:12px;margin-top:3px" data-i18n="set.theme.lightSub">Denní režim</div>
+          </div>
+          <div class="theme-card" data-t="tangerine" onclick="setTheme('tangerine')" style="background:#fff1e6;border:2px solid #f0d3b6;border-radius:14px;padding:16px 8px;cursor:pointer;transition:all .2s;text-align:center">
+            <div style="font-size:28px;margin-bottom:8px">🍊</div>
+            <div style="color:#c94800;font-weight:700;font-size:15px" data-i18n="set.theme.orange">Oranžové</div>
+            <div style="color:#7a4d26;font-size:12px;margin-top:3px" data-i18n="set.theme.orangeSub">Šťavnatý režim</div>
+          </div>
+        </div>
+        <div class="set-sub" id="set-lang-t" data-i18n="set.lang.title">🌍 Jazyk</div>
+        <div class="setsec-d" data-i18n="set.lang.desc">Jazyk aplikace. Po přepnutí se appka znovu načte.</div>
+        <div class="lang-row" role="group" aria-labelledby="set-lang-t">
+          <button type="button" class="lang-btn" data-lang="cs" lang="cs" translate="no" aria-pressed="false" onclick="setLang(this.dataset.lang)"><span aria-hidden="true">🇨🇿</span> Čeština</button>
+          <button type="button" class="lang-btn" data-lang="en" lang="en" translate="no" aria-pressed="false" onclick="setLang(this.dataset.lang)"><span aria-hidden="true">🇬🇧</span> English</button>
+        </div>
+      </div>
+
+      <!-- Jednoduchý režim (vykresluje renderSimpleSetting) -->
+      <div class="setsec">
+        <div class="setsec-t" data-i18n="set.simple.title">🌱 Jednoduchý režim</div>
+        <div id="set-simple"></div>
+      </div>
+
+      <!-- Pokročilé: sbalené, stav pamatuje lp_set_open -->
+      <details class="setgrp" id="setgrp-adv">
+        <summary class="setgrp-s"><span data-i18n="set.adv.t">⚙️ Pokročilé</span><span class="setgrp-d" data-i18n="set.adv.d">body, připomínky, průvodce</span></summary>
+        <div class="setsec">
+          <!-- Body a úrovně (vykresluje renderGameSetting) -->
+          <div id="set-game"></div>
+        </div>
+        <div class="setsec">
+            <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:8px" data-i18n="set.notif.which">Které připomínky chceš?</div>
+            <div style="display:flex;flex-direction:column;gap:8px" id="notif-toggles">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-habits" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.habits">🎯 Připomínka nesplněných návyků</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-morning" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co jsi splnil/a)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
+              </label>
+
+            </div>
+
+          <!-- Upozornění ze skupin (vykresluje renderGroupNotifSettings) -->
+          <div id="gn-box" class="gn-box" hidden></div>
+
+          <div style="margin-top:12px;font-size:13px;color:var(--text3)" data-i18n="set.notif.hint">
+            💡 Připomínky návyků nastavíš u každého návyku zvlášť. Narozeniny dostaneš automaticky 7 dní předem a ráno v den události. Události s nastaveným časem tě upozorní hodinu předem.
+          </div>
+
+        </div>
+        <div class="setsec">
+        <div class="setsec-t" data-i18n="set.tour.title">🗺️ Průvodce</div>
+        <div class="setrow">
+          <span class="setlbl" style="font-size:13px;color:var(--text3)" data-i18n="set.tour.desc">Projdi si znovu co LifePocket umí</span>
+          <button class="btn-sv" onclick="restartTour()" data-i18n="set.tour.btn">Spustit průvodce</button>
+        </div>
+        </div>
+        <div class="setsec">
+          <div class="setsec-t" data-i18n="set.notif.fix.title">🛠️ Řešení potíží s upozorněním</div>
+          <div class="setsec-d" data-i18n="set.notif.fix.desc">Testovací tlačítka. Hodí se, když ti připomínky nechodí.</div>
+          <div class="setrow" style="flex-wrap:wrap;gap:10px">
+          <button id="notif-test-btn" onclick="sendTestNotif()" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:var(--text);cursor:pointer;display:none" data-i18n="set.notif.testLocal">
+            🧪 Test (lokální)
+          </button>
+          <button id="notif-test-server-btn" onclick="sendTestServerPush()" style="background:var(--accent);border:none;border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:#1a1a1a;font-weight:700;cursor:pointer;display:none" data-i18n="set.notif.testServer">
+            📡 Test server push
+          </button>
+          <button id="notif-refresh-token-btn" onclick="refreshFcmToken()" style="background:none;border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;color:var(--text2);cursor:pointer;display:none" data-i18n="set.notif.refresh">
+            🔄 Obnovit token
+          </button>
+          </div>
+        </div>
+      </details>
+
+      <details class="setgrp" id="setgrp-sup">
+        <summary class="setgrp-s"><span data-i18n="set.supGrp.t">💛 Podpora, kontakt a dokumenty</span><span class="setgrp-d" data-i18n="set.supGrp.d">doporučit, podpořit, napsat nám</span></summary>
+        <div class="setsec">
+        <div class="setsec-t" data-i18n="set.share.title">💛 Doporuč LifePocket</div>
         <div class="setsec-d" data-i18n="set.share.desc">Nejvíc pomůžeš, když o appce řekneš kamarádům. Stačí jedno klepnutí.</div>
         <button type="button" class="share-app-btn" onclick="shareApp()" data-i18n="set.share.btn">📤 Sdílet LifePocket</button>
         <!-- Podpora projektu: v aplikaci z Google Play (TWA) skrytá přes html.is-twa -->
@@ -1083,12 +1108,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         </div>
         </div>
 
-                <div class="setsec-t" style="margin-top:20px" data-i18n="set.legal.title">📄 Právní dokumenty</div>
-        <div style="display:flex;gap:10px;margin-top:8px;margin-bottom:20px">
-          <a href="privacy.html" target="_blank" data-i18n-attr="href:legal.privacyUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.privacyIcon">🔒 Ochrana osobních údajů</a>
-          <a href="terms.html" target="_blank" data-i18n-attr="href:legal.termsUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.termsIcon">📋 Podmínky použití</a>
-        </div>
-                <div class="setsec-t" style="margin-top:20px" data-i18n="set.contact.title">📬 Napiš nám</div>
+        <div class="setsec-t" style="margin-top:20px" data-i18n="set.contact.title">📬 Napiš nám</div>
         <div class="setsec-d" data-i18n="set.contact.desc">Máš dotaz, nápad nebo chybu v appce? Napiš nám!</div>
         <div style="margin-top:10px">
           <form class="contact-form" action="https://formspree.io/f/xlgpyjaa" method="POST" onsubmit="handleContactSubmit(event)">
@@ -1106,18 +1126,16 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <div id="contact-success" class="cf-success" style="display:none" data-i18n="set.contact.sent">✅ Zpráva odeslána! Ozveme se brzy.</div>
         </div>
 
-                <div class="setsec-t" style="margin-top:20px" data-i18n="set.tour.title">🗺️ Průvodce</div>
-        <div class="setrow">
-          <span class="setlbl" style="font-size:13px;color:var(--text3)" data-i18n="set.tour.desc">Projdi si znovu co LifePocket umí</span>
-          <button class="btn-sv" onclick="restartTour()" data-i18n="set.tour.btn">Spustit průvodce</button>
+        <div class="setsec-t" style="margin-top:20px" data-i18n="set.legal.title">📄 Právní dokumenty</div>
+        <div style="display:flex;gap:10px;margin-top:8px;margin-bottom:20px">
+          <a href="privacy.html" target="_blank" data-i18n-attr="href:legal.privacyUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.privacyIcon">🔒 Ochrana osobních údajů</a>
+          <a href="terms.html" target="_blank" data-i18n-attr="href:legal.termsUrl" style="flex:1;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13px;color:var(--text2);text-decoration:none;font-family:'Crimson Pro',serif" data-i18n="legal.termsIcon">📋 Podmínky použití</a>
         </div>
-                <div class="setsec-t" style="margin-top:20px" data-i18n="set.logout.title">🚪 Odhlášení</div>
-        <div class="setrow">
-          <span class="setlbl" data-i18n="set.logout.label">Účet</span>
-          <button class="btn-sv" style="background:var(--red);color:white" onclick="doLogout()" data-i18n="set.logout.btn">Odhlásit se</button>
         </div>
-      </div>
+      </details>
 
+      <details class="setgrp" id="setgrp-acc">
+        <summary class="setgrp-s"><span data-i18n="set.accGrp.t">🔐 Účet a data</span><span class="setgrp-d" data-i18n="set.accGrp.d">stažení dat, smazání účtu</span></summary>
       <!-- ÚČET: export dat a smazání účtu -->
       <div class="setsec" id="set-account">
         <div class="setsec-t" data-i18n="set.account.title">🔐 Účet</div>
@@ -1127,6 +1145,15 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()" style="margin-top:10px" data-i18n="set.account.export">📥 Stáhnout moje data</button>
         <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
         <button type="button" class="acc-del-link" onclick="openDeleteAccount()" data-i18n="set.account.delete">🗑️ Smazat účet</button>
+      </div>
+      </details>
+
+      <div class="setsec">
+        <div class="setsec-t" data-i18n="set.logout.title">🚪 Odhlášení</div>
+        <div class="setrow">
+          <span class="setlbl" data-i18n="set.logout.label">Účet</span>
+          <button class="btn-sv" style="background:var(--red);color:white" onclick="doLogout()" data-i18n="set.logout.btn">Odhlásit se</button>
+        </div>
       </div>
       <!-- Správa výzev měsíce (4.63): jen admin podle config/admins, obsah vykresluje renderPcSettings -->
       <div class="setsec" id="set-pcadmin" hidden></div>

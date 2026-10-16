@@ -645,7 +645,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .bnbtn.active{color:var(--accent)}
 .bnbtn.active .bn-lbl{font-weight:700}
 .bnbtn.active .bn-em{transform:scale(1.15)}
-.bn-more-panel{display:none;position:fixed;bottom:var(--bn-h);left:0;right:0;background:rgba(20,20,24,.98);border-top:1px solid var(--border);padding:16px;backdrop-filter:blur(10px);z-index:199;flex-wrap:wrap;gap:10px;justify-content:center}
+.bn-more-panel{display:none;position:fixed;bottom:var(--bn-h);left:0;right:0;background:var(--bg);box-shadow:var(--shadow-lg);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:16px;z-index:199;flex-wrap:wrap;gap:10px;justify-content:center} /* pozadí podle motivu (4.68: ve světlém režimu nebylo tmavé) */
 .bn-more-panel.open{display:flex}
 .bn-more-item{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;min-width:70px;text-align:center}
 .bn-more-item.active,.bn-more-item:hover{border-color:var(--accent);color:var(--accent)}
@@ -2211,3 +2211,22 @@ html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!importa
 .wt-hb-sel{width:100%}
 .wt-hint--hb{margin:8px 0 0}
 .wt-hb-link{color:var(--water-text);background:var(--card2)}
+
+/* ── Nastavení: sbalené skupiny Pokročilé / Podpora / Účet (4.68) ── */
+.setgrp{background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:14px}
+.setgrp-s{position:relative;display:flex;flex-direction:column;gap:2px;min-height:48px;padding:14px 48px 14px 24px;cursor:pointer;list-style:none;font-size:16px;font-weight:700;color:var(--text);font-family:'Playfair Display',serif}
+.setgrp-s::-webkit-details-marker{display:none}
+.setgrp-s::after{content:'›';position:absolute;right:24px;top:50%;margin-top:-12px;font-size:22px;line-height:24px;transform:rotate(90deg);color:var(--text2);transition:transform .2s}
+.setgrp[open] .setgrp-s::after{transform:rotate(-90deg)}
+.setgrp-s:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:16px}
+.setgrp-d{font-size:13px;font-weight:400;color:var(--text2);font-family:'Crimson Pro',serif}
+.setgrp .setsec,[data-theme="sunshine"] .setgrp .setsec,[data-theme="tangerine"] .setgrp .setsec{border:none;margin:0;background:none;border-top:1px solid var(--border);border-radius:0}
+.set-sub{font-size:15px;font-weight:700;color:var(--text);margin:18px 0 4px}
+.set-simple-all{margin-top:12px;min-height:44px}
+
+/* ── Prázdný stav modulu (4.68, zatím Kalendář) ── */
+.lp-es{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:32px 16px}
+.lp-es-em{font-size:44px}
+.lp-es-t{font-size:17px;color:var(--text);max-width:280px;line-height:1.4;margin:0}
+.lp-es-btn{width:auto;min-height:48px;padding:0 24px}
+.lp-es-ex{min-height:44px;padding:0 14px;background:none;border:1px dashed var(--border2);border-radius:50px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer}
