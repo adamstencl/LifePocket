@@ -231,7 +231,7 @@ console.log('Zakázané vzory (app.js)');
 const FORBIDDEN = [
   { name: 'toISOString() pro datum (použij toDS())', allow: 0,
     re: /toISOString\(\)\s*\.\s*(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\)\s*\[\s*0\s*\])/g },
-  { name: "interpolace '${…}' v inline handleru (použij data-aN)", allow: 14,
+  { name: "interpolace '${…}' v inline handleru (použij data-aN)", allow: 13,
     re: /\bon\w+=\\?"[^"]*'\$\{/g },
   // Záznam návyku se píše jen přes putHabitLog / delHabitLog (zrcadlo sdíleného návyku ve skupině)
   { name: "přímý zápis doc(…'habitLogs'…) mimo putHabitLog/delHabitLog", allow: 2,

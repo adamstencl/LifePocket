@@ -1069,11 +1069,11 @@ exports.sendScheduledNotifications = onSchedule(
           const fam = famSnap.exists ? famSnap.data() : null;
           if (!fam || !fam.members || !fam.members[uid]) continue;
           // Sdílení modulů jako v klientu (groupModShared): kalendář, nákupy, jídelníček a checklist (sdílený,
-          // dokud není false) podle příznaků v každé skupině (4.53), zásoby jen hlavní skupina
+          // dokud není false) podle příznaků v každé skupině (4.53), zásoby v hlavní vždy, v ostatních s Nákupy (4.70)
           const isMain = gid === prof.familyId;
           // Osobní moduly (sdílené návyky, cíle, poznámky, recepty, reakce) v každé skupině
           const shared = {cal: !!fam.shareCal, shop: !!fam.shareShop, meal: !!fam.shareMeal,
-            check: fam.shareChecklist !== false, pantry: isMain, habit: true, goal: true, react: true, challenge: true,
+            check: fam.shareChecklist !== false, pantry: isMain || !!fam.shareShop, habit: true, goal: true, react: true, challenge: true,
             note: true, recipe: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};

@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.69';
+const APP_VERSION = '4.70';
 const CHANGELOG = [
+  { v:'4.70', items:[
+    '🧊 Zásoby pro každou skupinu: v Zásobách přepínáš Moje a skupiny, které sdílí nákupy',
+    '🛒 Odškrtnutý nákup přibude do zásob té skupiny, ze které je seznam, osobní nákup do tvých zásob',
+    '☁️ Tvoje osobní zásoby jsou nově uložené v účtu, takže je uvidíš na všech zařízeních (z tohoto zařízení se přenesou samy)'
+  ], en:[
+    '🧊 A pantry for every group: in Pantry you switch between Mine and the groups that share shopping',
+    '🛒 A ticked-off purchase goes to the pantry of the group the list belongs to, a personal purchase to your own pantry',
+    '☁️ Your personal pantry is now saved in your account, so you see it on all your devices (items from this device move over automatically)'
+  ]},
   { v:'4.69', items:[
     '🌱 Nový začátek jednou otázkou „Co chceš hlavně řešit?“: appka zapne jen 3 moduly, další ti nabídne postupně',
     '🧭 V jednoduchém režimu má spodní lišta Domů, tvoje 3 moduly a Více, parťákovi napíšeš z Domů přes 💬',
@@ -1322,9 +1331,9 @@ function claimLocalDataOwner(uid){
 // Při odhlášení vyčistí osobní a rodinná data v paměti (localStorage zůstává, patří tomuto zařízení)
 function clearUserSessionState(){
   try{
-    if(pantryUnsub){pantryUnsub();pantryUnsub=null;} pantryFamilyId=null;
+    unsubAllGroupPantries(); pantryViewSel=undefined; // osobní listener zásob ruší destroyAllFireSubs
     familyId=null; familyData=null; familyEvents=[];
-    extraGroupsData={}; extraGroupEvents={}; pantryItems=[]; _pantryFamilyReady=false; _pantryChatTried=false;
+    extraGroupsData={}; extraGroupEvents={}; pantryMine=[]; pantryMineLoaded=false;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
@@ -3813,7 +3822,7 @@ window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGr
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
 // Popisek kolekce: klíč exp.col.<název kolekce>
-const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats',
+const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats','pantry',
   'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
@@ -4007,7 +4016,7 @@ function stopSessionActivity() {
   unsub = null; unsubHabits = null; unsubLogs = null;
   unsubFamily = null; unsubFamilyCal = null;
   unsubExtraGroupDocs = {}; unsubExtraGroupCals = {};
-  if (pantryUnsub) { pantryUnsub(); pantryUnsub = null; }
+  unsubAllGroupPantries();
   entryDirty = false; _chatDirty = false;  // automatické uložení zápisku a chatu nic nezapíše
   _errLogCount = ERRLOG_MAX;               // zapisovač chyb nesmí znovu založit data
 }
@@ -8192,7 +8201,7 @@ window.createFamily = async (presetName, opts) => {
     prof.familyId = fid;
     familyId = fid;
     subscribeFamily();
-    initPantry(); // zásoby přepnout z lokálních na skupinové
+    initPantry(); // zásoby: výchozí zobrazení nové hlavní skupiny
     if(nameInp) nameInp.value = '';
     renderFamilySettings();
     toast(t('grp.created'), 4000);
@@ -8254,6 +8263,7 @@ function resetFamilyLocal() {
   flushAllGroupActivity(); // čekající aktivita ještě do staré skupiny
   stopGroupUnread(familyId);
   unsubGroupShop(familyId); // nákupy staré hlavní skupiny
+  unsubGroupPantry(familyId); // zásoby (4.70)
   unsubGroupMeal(familyId); unsubGroupCheck(familyId); // jídelníček a checklisty (4.53)
   familyId = null; familyData = null;
   familyEvents = [];
@@ -8262,7 +8272,7 @@ function resetFamilyLocal() {
 }
 // Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
 function renderAfterFamilyChange() {
-  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist();
+  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist(); renderPantry();
 }
 
 // ── Karta „Pozvat rodinu“ v Nákupech a Kalendáři ──
@@ -8344,9 +8354,9 @@ async function leaveFamilyNow(fid) {
     try { await clearProfileFamilyIdIf(fid); }
     catch(e) { profOk = false; console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); }
     if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
-    shopViewForget(fid); mealViewForget(fid);
+    shopViewForget(fid); mealViewForget(fid); pantryViewForget(fid);
     resetFamilyLocal();
-    initPantry(); // zpět na lokální zásoby
+    initPantry(); // zásoby: výchozí zobrazení bez staré skupiny
     renderAfterFamilyChange();
     toast(t(profOk ? 'grp.leave.done' : 'grp.leave.doneProf'));
     return true;
@@ -8380,9 +8390,9 @@ function leaveSetStatus(txt, isErr) {
   st.style.color = isErr ? 'var(--red)' : 'var(--text2)';
 }
 window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById('m-leavegrp')?.remove(); };
-// Popis kopie u vedlejší skupiny podle toho, co sdílí (kalendář, nákupy, jídelníček, checklisty; zásoby jen hlavní)
+// Popis kopie u vedlejší skupiny podle toho, co sdílí (kalendář, nákupy a s nimi zásoby, jídelníček, checklisty)
 function leaveCopyText(gData) {
-  const parts = [gData?.shareCal && t('grp.leave.cpCal'), gData?.shareShop && t('grp.leave.cpShop'),
+  const parts = [gData?.shareCal && t('grp.leave.cpCal'), gData?.shareShop && t('grp.leave.cpShop'), gData?.shareShop && t('grp.leave.cpPantry'),
     gData?.shareMeal && t('grp.leave.cpMeal'), gData?.shareChecklist !== false && t('grp.leave.cpCheck')].filter(Boolean);
   return parts.length ? t('grp.leave.optAllList', {list: parts.join(', ')}) : t('grp.leave.optAllNone');
 }
@@ -8462,7 +8472,7 @@ window.confirmLeaveGroup = async (gid) => {
 };
 
 // Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
-// Každá skupina: nekoupené nákupy, události, checklisty, (all) jídelníček podle sdílených modulů; hlavní navíc (all) zásoby.
+// Každá skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby podle sdílených modulů (zásoby 4.70).
 // Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
 async function copyGroupToPersonal(gid, mode) {
   const uid = CU.uid;
@@ -8541,20 +8551,27 @@ async function copyGroupToPersonal(gid, mode) {
         n += filled;
       }
     }
-    // Zásoby (jen hlavní skupina): osobní zásoby jsou jen v tomto zařízení (lp_pantry); stejný název se nepřidá dvakrát
-    if(isMain) {
-      const ps = await getDocs(collection(db,'families',gid,'pantry'));
-      const local = lsGet('lp_pantry', []);
-      const have = new Set((Array.isArray(local) ? local : []).map(p => String(p?.name || '').trim().toLowerCase()));
+    // Zásoby (hlavní skupina vždy, ostatní se sdílenými Nákupy, 4.70) → osobní zásoby v účtu (users/{uid}/pantry);
+    // stejný název se nepřidá dvakrát (porovnání s osobními zásobami na serveru)
+    if(groupModShared(gid, 'pantry')) {
+      const [ps, mineSn] = await Promise.all([getDocs(collection(db,'families',gid,'pantry')), getDocs(collection(db,'users',uid,'pantry'))]);
+      const have = new Set(mineSn.docs.map(d => String(d.data()?.name || '').trim().toLowerCase()));
       const add = [];
       ps.docs.forEach(d => {
         const p = d.data() || {};
-        const key = String(p.name || '').trim().toLowerCase();
+        const name = cutName(p.name, 60), key = name.toLowerCase();
         if(!key || have.has(key)) return;
         have.add(key);
-        add.push({id: genId(), name: String(p.name), qty: p.qty ?? 1, unit: p.unit || 'ks', minQty: p.minQty ?? null, updatedAt: Date.now()});
+        const qty = Number(p.qty), minQty = Number(p.minQty);
+        add.push({name, qty: Number.isFinite(qty) && qty >= 0 ? qty : 1, unit: typeof p.unit === 'string' && p.unit ? cutName(p.unit, 10) : 'ks',
+          minQty: Number.isFinite(minQty) && minQty > 0 ? minQty : null, updatedAt: Date.now(), copiedFrom: src});
       });
-      if(add.length) { lsSave('lp_pantry', [...(Array.isArray(local) ? local : []), ...add]); n += add.length; }
+      for(let i = 0; i < add.length; i += 400) {
+        const b = writeBatch(db);
+        add.slice(i, i + 400).forEach(d => b.set(doc(collection(db,'users',uid,'pantry')), d));
+        await b.commit();
+      }
+      n += add.length;
     }
   }
   return n;
@@ -8976,7 +8993,7 @@ window.toggleFamilyModule = async (key, gid = null) => {
     }
   }
   if(gid && key === 'shareShop' && !newVal) unsubGroupShop(gid); // seznam už se nezobrazí
-  if(key === 'shareShop') renderShop(); // přepínač seznamů (4.50)
+  if(key === 'shareShop') { renderShop(); pantryGroupSync(targetGid); renderPantry(); } // přepínač seznamů (4.50) i zásob (4.70)
   // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener, přepínač plánů a štítky seznamů překreslit
   if(key === 'shareMeal') { if(!newVal) unsubGroupMeal(targetGid); renderMealPlan(); }
   if(key === 'shareChecklist') { if(!newVal) unsubGroupCheck(targetGid); renderChecklist(); }
@@ -9069,7 +9086,7 @@ async function leaveExtraGroupNow(gid) {
     }
   } catch(e){ _leavingGids.delete(gid); toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
   rememberFormerGroup(gid);
-  shopViewForget(gid); mealViewForget(gid);
+  shopViewForget(gid); mealViewForget(gid); pantryViewForget(gid);
   try {
     await dropExtraGroupLocal(gid);
     toast(t('grp.leave.done'));
@@ -9085,13 +9102,13 @@ function forgetExtraGroupLocal(gid) {
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
-  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid);
+  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid); unsubGroupPantry(gid);
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
 }
 // Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
 async function dropExtraGroupLocal(gid) {
   forgetExtraGroupLocal(gid);
-  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); // i přepínače seznamů a plánů
+  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); renderPantry(); // i přepínače seznamů a plánů
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
 }
@@ -9129,6 +9146,7 @@ function switchGroupLocal(oldGid, newGid) {
   const seenOld = prof?.groupFeedSeen?.[oldGid];
   if(Number.isFinite(seenOld) && !Number.isFinite(prof.groupFeedSeen[newGid])) prof.groupFeedSeen = {...prof.groupFeedSeen, [newGid]: seenOld};
   let changed = false;
+  if(pantryViewStored() === oldGid) pantryViewSave(newGid); // vybrané zásoby na novém kódu (před initPantry)
   if(familyId === oldGid) {
     resetFamilyLocal();
     prof.familyId = newGid;
@@ -9337,6 +9355,10 @@ function subscribeExtraGroup(gid) {
     if (prevShop !== !!extraGroupsData[gid].shareShop || shopViewStored() === gid
       || (extraGroupsData[gid].shareShop && prevLbl !== grpLabel(gid))) renderShop(); // i přejmenování
     if (_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
+    // Zásoby (4.70) se sdílí spolu s Nákupy: vypnuté → zrušit listener; změna, vybrané zásoby nebo přejmenování → překreslit
+    pantryGroupSync(gid);
+    if (prevShop !== !!extraGroupsData[gid].shareShop || pantryViewStored() === gid
+      || (extraGroupsData[gid].shareShop && prevLbl !== grpLabel(gid))) renderPantry();
     // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener; změna sdílení, vybraný plán nebo přejmenování → překreslit
     const xd = extraGroupsData[gid], xMeal = !!xd.shareMeal, xCheck = xd.shareChecklist !== false;
     if (!xMeal) unsubGroupMeal(gid);
@@ -9393,6 +9415,7 @@ function subscribeFamily() {
     // Přepínač Moje / skupiny (4.50): změna sdílení nebo přejmenování
     if(prevShop !== !!familyData.shareShop || (familyData.shareShop && prevLbl !== grpLabel(fid))) renderShop();
     if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na načtení skupiny
+    if(prevLbl !== grpLabel(fid)) renderPantry(); // zásoby hlavní skupiny (přepínač, 4.70): načtení nebo přejmenování
     // Jídelníček a checklisty (4.53): vypnutý modul → zrušit listener (zapnutý znovu přihlásí konec snapshotu)
     const fMeal = !!familyData.shareMeal, fCheck = familyData.shareChecklist !== false;
     if(!fMeal) unsubGroupMeal(fid);
@@ -10203,18 +10226,18 @@ const GA_ACTS = new Set(['add','edit','del','done','clear','plan','share','strea
 const GA_DEBOUNCE = 4000, GA_MAX_WAIT = 20000, GA_TTL_MS = 7*86400000;
 const _gaBuf = new Map();
 // Je modul ve skupině sdílený? Stejně jako server: kalendář, nákupy, jídelníček a checklisty podle příznaků
-// v každé skupině (4.53), zásoby jen hlavní skupina
+// v každé skupině (4.53), zásoby v hlavní skupině vždy, v ostatních spolu s Nákupy (4.70)
 function groupModShared(gid, module) {
   if(!gid) return false;
   const isMain = gid === familyId;
   if(!isMain && !extraGroupIds.includes(gid)) return false;
   if(GA_PERSONAL.includes(module) || module === 'challenge') return true;
-  if(module === 'pantry') return isMain;
+  if(module === 'pantry' && isMain) return true;
   // Vedlejší skupina bez načtených dat nesdílí nic (checklist bez pole by jinak vyšel zapnutý)
   const d = isMain ? (familyData || {}) : extraGroupsData[gid];
   if(!d) return false;
   if(module === 'cal') return !!d.shareCal;
-  if(module === 'shop') return !!d.shareShop;
+  if(module === 'shop' || module === 'pantry') return !!d.shareShop;
   if(module === 'meal') return !!d.shareMeal;
   if(module === 'check') return d.shareChecklist !== false;
   return false;
@@ -13242,7 +13265,7 @@ window.gfOpenModule = m => {
   cm('m-grpfeed');
   sp(GF_PAGE[m]);
   if(m === 'shop' && shopGroups().includes(fgid)) window.setShopView(fgid); // seznam skupiny z feedu
-  if(m === 'pantry') window.switchShopTab?.('pantry');
+  if(m === 'pantry') { if(pantryGroups().includes(fgid)) window.setPantryView(fgid); window.switchShopTab?.('pantry'); } // zásoby skupiny z feedu
   // Poznámky a recepty: rovnou seznam „Od skupiny“
   if(m === 'note') { window.setJView('group'); }
   if(m === 'recipe') { window.switchCookTab?.('recipes'); window.setRcView('group'); document.getElementById('saved-recipes-section')?.scrollIntoView({block:'start'}); }
@@ -16189,15 +16212,25 @@ function buildChatContext(){
     }),...ctxMore(list.length,25)];
   });
 
-  add(tA('aip.ctx.s.pantry'),1,()=>{
-    const arr=pantryItems.filter(i=>i&&i.name);
-    const isLow=i=>i.minQty&&ctxNum(i.qty)<=ctxNum(i.minQty);
-    const fmt=i=>ctxT(i.name,30)+' '+ctxNum(i.qty)+(i.unit?' '+ctxT(i.unit,8):'');
-    const low=arr.filter(isLow);
-    const rest=arr.filter(i=>!isLow(i)).sort((a,b)=>String(a.name).localeCompare(String(b.name),LANG));
+  // Zásoby (4.70): osobní a hlavní skupiny; další skupiny ve svých sekcích níž
+  const isLowP=i=>i.minQty&&ctxNum(i.qty)<=ctxNum(i.minQty);
+  const fmtP=i=>ctxT(i.name,30)+' '+ctxNum(i.qty)+(i.unit?' '+ctxT(i.unit,8):'');
+  const pantryCtx=(items,tag,maxLow,maxHave)=>{
+    const arr=(Array.isArray(items)?items:[]).filter(i=>i&&i.name);
+    const low=arr.filter(isLowP);
+    const rest=arr.filter(i=>!isLowP(i)).sort((a,b)=>String(a.name).localeCompare(String(b.name),LANG));
     return [
-      ...(low.length?ctxList(tA('aip.ctx.pantry.low',{n:low.length}),low.slice(0,10).map(i=>fmt(i)+tA('aip.ctx.pantry.min',{n:ctxNum(i.minQty)}))).concat(ctxMore(low.length,10)):[]),
-      ...(rest.length?ctxList(tA('aip.ctx.pantry.have',{n:rest.length}),rest.slice(0,12).map(fmt),6).concat(ctxMore(rest.length,12)):[])
+      ...(low.length?ctxList(tag+tA('aip.ctx.pantry.low',{n:low.length}),low.slice(0,maxLow).map(i=>fmtP(i)+tA('aip.ctx.pantry.min',{n:ctxNum(i.minQty)}))).concat(ctxMore(low.length,maxLow)):[]),
+      ...(rest.length?ctxList(tag+tA('aip.ctx.pantry.have',{n:rest.length}),rest.slice(0,maxHave).map(fmtP),6).concat(ctxMore(rest.length,maxHave)):[])
+    ];
+  };
+  add(tA('aip.ctx.s.pantry'),1,()=>{
+    const famP=famOk&&groupModShared(familyId,'pantry')?pantryItemsOf(familyId).filter(i=>i&&i.name):[];
+    const mine=pantryMine.filter(i=>i&&i.name);
+    const both=famP.length&&mine.length; // štítky jen když jsou zásoby ve více místech
+    return [
+      ...pantryCtx(famP,both?tA('aip.ctx.pantry.group',{group:ctxGrp(familyId)}):'',10,12),
+      ...pantryCtx(mine,both?tA('aip.ctx.pantry.mine'):'',10,12)
     ];
   });
 
@@ -16285,6 +16318,7 @@ function buildChatContext(){
         const it=shopGrpItems(gid).filter(i=>i&&i.name&&!i.done);
         if(it.length) lines.push(...ctxList(tA('aip.ctx.grp.shop',{n:it.length}),it.slice(0,8).map(shopFmt),4),...ctxMore(it.length,8));
       }
+      if(groupModShared(gid,'pantry')) lines.push(...pantryCtx(pantryItemsOf(gid),tA('aip.ctx.grp.pantry'),6,8));
       if(groupModShared(gid,'meal')) lines.push(...fmtPlan(mealPlanOf(gid),tA('aip.ctx.grp.meal'),[0,1,2].map(k=>(todayIdx+k)%7)));
       if(groupModShared(gid,'check')){
         const mine=new Set(checklists.map(c=>c&&c.id)); // můj sdílený seznam je už v CHECKLISTY
@@ -16317,22 +16351,16 @@ function buildChatContext(){
   return out;
 }
 
-// Před odesláním do chatu dotáhne data, která se načítají líně (zásoby skupiny se jinak načtou až po otevření kuchyně)
-let _pantryFamilyReady=false, _pantryChatTried=false;
+// Před odesláním do chatu dotáhne data, která se načítají líně (zásoby, nákupy, jídelníček a checklisty skupin)
 const _grpCtxWaited=new Set(); // sady skupin, na jejichž data už chat jednou čekal
 async function chatDataReady(){
-  try{
-    if(familyId&&prof.familyId===familyId&&!_pantryFamilyReady&&!_pantryChatTried){
-      _pantryChatTried=true; // čekáme jen jednou, ať případná chyba nebrzdí každou zprávu
-      if(!pantryUnsub) initPantry();
-      for(let i=0;i<15&&!_pantryFamilyReady;i++) await new Promise(r=>setTimeout(r,100));
-    }
-  }catch(e){}
   // Data všech skupin pro kontext (4.54): listenery nákupů, jídelníčku a checklistů vzniknou při první zprávě
   // a drží do odhlášení (jako po otevření modulu). Na načtení se čeká nejvýš 1,5 s, pro danou sadu skupin jen jednou.
   try{
     const gs=myGroupIds(), wait=[];
+    subPantryMine(); wait.push(()=>pantryMineLoaded||!_fireSubs['pantry']); // osobní zásoby (4.70)
     gs.forEach(g=>{
+      if(groupModShared(g,'pantry')){ subscribeGroupPantry(g); wait.push(()=>!!(pantryGrp[g]?.loaded||pantryGrp[g]?.err)); }
       if(groupModShared(g,'shop')){ subscribeGroupShop(g); wait.push(()=>!!(shopGrp[g]?.loaded||shopGrp[g]?.err)); }
       if(groupModShared(g,'meal')){ subscribeGroupMeal(g); wait.push(()=>!!(mealGrp[g]?.loaded||mealGrp[g]?.err)); }
       if(groupModShared(g,'check')){ subscribeGroupChecklist(g); wait.push(()=>!!(clGrp[g]?.ready||clGrp[g]?.err)); }
@@ -16707,8 +16735,11 @@ window.onShopInpKey=()=>{
   if(sel&&cat!=='Ostatní') sel.value=cat;
   // Pantry hint
   const hint=document.getElementById('shop-pantry-hint');
-  if(hint&&pantryItems.length){
-    const match=pantryItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
+  // Zásoby stejné skupiny jako zobrazený seznam (4.70), načtou se při prvním psaní
+  const hpg=pantryForShop(shopGid()), hItems=pantryItemsOf(hpg).filter(p=>p&&p.name);
+  if(!pantryReady(hpg)){ if(hpg) subscribeGroupPantry(hpg); else subPantryMine(); }
+  if(hint&&hItems.length){
+    const match=hItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
     if(match){ hint.textContent=t('shop.inPantry',{qty:match.qty,unit:unitLabel(match.unit)}); hint.style.display=''; }
     else hint.style.display='none';
   }
@@ -17117,8 +17148,8 @@ window.toggleShopItem=async(id,wasDone)=>{
     const name = item?.name; const shopQty = item?.qty||'';
     await toggleFamilyShopItem(fid,id,wasDone);
     if(item) bumpShopFreq(item, wasDone?-1:1, fid); // často nakupované (skupina)
-    // Zásoby jsou jen v hlavní skupině (domácnost): nákup v jiné skupině je nemění
-    if(!wasDone && name && fid === familyId) offerPantryUpdate(name, shopQty);
+    // Koupené přibude do zásob téže skupiny (4.70)
+    if(!wasDone && name) offerPantryUpdate(name, shopQty, fid);
     return;
   }
   const item=shopItems.find(i=>i.id===id);
@@ -17126,12 +17157,18 @@ window.toggleShopItem=async(id,wasDone)=>{
   const name = item.name; const shopQty = item.qty||'';
   await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
   bumpShopFreq(item, wasDone?-1:1, null); // často nakupované (osobní)
-  if(!wasDone) offerPantryUpdate(name, shopQty);
+  if(!wasDone) offerPantryUpdate(name, shopQty, null); // osobní nákup → osobní zásoby
 };
 
-async function offerPantryUpdate(name, shopQty) {
-  if(!name) return;
-  const match = pantryItems.find(p=>p.name.toLowerCase()===name.toLowerCase()||name.toLowerCase().includes(p.name.toLowerCase()));
+// Koupená položka → zásoby k danému nákupnímu seznamu (sg = skupina seznamu, null = Moje); zásoby se načtou nejdřív,
+// nenačtené (offline, bez přístupu) se nemění, ať nevznikne duplicita
+async function offerPantryUpdate(name, shopQty, sg) {
+  if(!name || !CU) return;
+  const gid = pantryForShop(sg);
+  const items = await pantryItemsReady(gid);
+  if(!items) return;
+  const lname = name.toLowerCase();
+  const match = items.find(p=>p&&p.name&&(p.name.toLowerCase()===lname||lname.includes(p.name.toLowerCase())));
   if(match){
     // Položka už v zásobách — přičti správné množství
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
@@ -17142,25 +17179,20 @@ async function offerPantryUpdate(name, shopQty) {
       const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
       delta = converted !== null ? converted : 1;
     }
-    const newQty = Math.round(((match.qty||0) + delta) * 1000) / 1000;
-    changePantryQty(match.id, delta);
-    toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}));
+    const newQty = Math.round(((Number(match.qty)||0) + delta) * 1000) / 1000;
+    changePantryQty(match.id, delta, gid || '');
+    toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}) + pantrySfx(gid));
   } else {
     // Nová položka — auto-přidej bez modálu
     const {amount, unit} = parseIngQty(shopQty||'1 ks');
-    const newItem = { name, qty: amount, unit, minQty: null, updatedAt: Date.now() };
-    const newId = Math.random().toString(36).substr(2,9);
-    if(familyId){
-      await setDoc(doc(db,'families',familyId,'pantry',newId), newItem);
-    } else {
-      pantryItems.push({id:newId,...newItem});
-      lsSave('lp_pantry', pantryItems);
-      renderPantry();
-    }
+    const newItem = { name: cutName(name, 60), qty: amount, unit, minQty: null, updatedAt: Date.now() };
+    const newId = genId();
+    try { await setDoc(pantryDoc(gid, newId), newItem); }
+    catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); return; }
     // Toast s "Upravit" tlačítkem
     const t = document.createElement('div');
     t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" onclick="openPantryAdd({id:'${newId}',name:this.dataset.a0,qty:${Number(amount)||0},unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
     document.body.appendChild(t);
     setTimeout(()=>t.remove(), 6000);
   }
@@ -17364,7 +17396,7 @@ window.askRecipe=async()=>{
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
-    if(pantryItems.length) offerPantryDeduct(recipe.ingredients);
+    if(activePantryItems().length) offerPantryDeduct(recipe.ingredients);
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
     toast('❌ '+userErr(e,'recept'));
@@ -17718,8 +17750,149 @@ function renderSavedRecipes(){
 }
 
 // ===== ZÁSOBY (PANTRY) =====
-let pantryItems = []; // [{id, name, qty, unit, minQty, updatedAt}]
-let pantryUnsub = null;
+// 4.70: zásoby „Moje“ (users/{uid}/pantry; dřív jen v zařízení v lp_pantry → jednorázová migrace) nebo kterékoli skupiny,
+// která zásoby sdílí (hlavní vždy, ostatní spolu s Nákupy). Vzor Nákupů 4.50: pantryGrp gid → {items, loaded, unsub, err},
+// listener skupiny vzniká při prvním zobrazení a drží do odhlášení. Zobrazené zásoby jsou zároveň cíl zápisu.
+let pantryMine = []; // osobní zásoby [{id, name, qty, unit, minQty, updatedAt}]
+let pantryMineLoaded = false;
+const pantryGrp = {};
+const PANTRY_VIEW_KEY = 'lp_view_pantry';
+let pantryViewSel; // undefined = nenačteno, null = výchozí, '' = Moje, jinak gid (pamatuje se na zařízení)
+function pantryGroups() { return myGroupIds().filter(g => groupModShared(g, 'pantry')); }
+function pantryViewStored() {
+  // Uloženo s uid: jiný účet na stejném zařízení volbu nepřebírá
+  if(pantryViewSel === undefined) { if(!CU) return null; const v = lsGet(PANTRY_VIEW_KEY, null); pantryViewSel = (v && v.u === CU.uid && typeof v.g === 'string') ? v.g : null; }
+  return pantryViewSel;
+}
+function pantryViewSave(gid) { pantryViewSel = gid; lsSave(PANTRY_VIEW_KEY, gid === null ? null : {u: CU?.uid, g: gid}); }
+// Zobrazené zásoby: gid, nebo null = Moje. Výchozí = hlavní skupina (zásoby domácnosti jako dřív), jinak Moje.
+function pantryGid() {
+  const v = pantryViewStored(), gs = pantryGroups();
+  if(v === '') return null;
+  if(v && gs.includes(v)) return v;
+  return gs.includes(familyId) ? familyId : null;
+}
+function pantryItemsOf(gid) { return gid ? (pantryGrp[gid]?.items || []) : pantryMine; }
+function pantryReady(gid) { return gid ? !!pantryGrp[gid]?.loaded : pantryMineLoaded; }
+function activePantryItems() { return pantryItemsOf(pantryGid()); }
+function pantryDoc(gid, id) { return gid ? doc(db,'families',gid,'pantry',id) : doc(db,'users',CU.uid,'pantry',id); }
+// Zásoby k nákupnímu seznamu (odškrtnutí, nápověda „v zásobách“): skupina, pokud zásoby sdílí, jinak Moje
+function pantryForShop(gid) { return gid && groupModShared(gid, 'pantry') ? gid : null; }
+// Nákupní seznam k zásobám (Navrhnout nákup): skupina, pokud sdílí nákupy, jinak Moje
+function shopForPantry(gid) { return gid && groupModShared(gid, 'shop') ? gid : null; }
+// Cíl zápisu z tlačítka (data-aN): '' = Moje, gid = skupina se zásobami; bez parametru zobrazené zásoby; undefined = neplatný
+function pantryTarget(g) { if(typeof g !== 'string') return pantryGid(); if(!g) return null; return pantryGroups().includes(g) ? g : undefined; }
+// Přípona toastu („ · 👥 Tým“), jen když má uživatel víc zásob než Moje
+function pantrySfx(gid) { return pantryGroups().length ? ' · ' + grpMineLabel(gid) : ''; }
+// Data dokumentu bez id (id je ID dokumentu)
+function pantryData(item) { const d = {...item}; delete d.id; return d; }
+window.setPantryView = (gid) => {
+  gid = typeof gid === 'string' ? gid : '';
+  if(gid && !pantryGroups().includes(gid)) return;
+  pantryViewSave(gid);
+  renderPantry();
+};
+window.openPantryViewSheet = () => {
+  const box = document.getElementById('p-cooking')?.classList.contains('active') ? '#pantry-content' : '#shop-pantry-content';
+  openGrpChoiceSheet({opts: ['', ...pantryGroups()], cur: pantryGid() || '', label: grpMineLabel, aria: t('pantry.viewAria'),
+    focusSel: box + ' .grp-pick', onPick: g => window.setPantryView(g)});
+};
+// Uložená skupina už zásoby nesdílí (vypnuté Nákupy, odchod) → zpět na výchozí s upozorněním
+function pantryViewCheck() {
+  const v = pantryViewStored();
+  if(!v || !prof) return;
+  const member = myGroupIds().includes(v);
+  const gone = !member && prof.familyId !== v && !(prof.extraGroupIds || []).includes(v);
+  const off = member && !!groupDataOf(v) && !groupModShared(v, 'pantry');
+  if(!gone && !off) return;
+  const name = groupDataOf(v) ? grpName(v) : t('grp.defName');
+  pantryViewSave(null);
+  if(!_leavingGids.has(v)) toast(t('pantry.viewGone', {name, to: grpMineLabel(pantryGid())}), 5000);
+}
+function pantryViewForget(gid) { if(pantryViewStored() === gid) pantryViewSave(null); }
+function subscribeGroupPantry(gid) {
+  if(!gid || !CU || grpSubBlocked(pantryGrp[gid])) return;
+  const e = pantryGrp[gid] = {items: [], loaded: false, unsub: null};
+  e.unsub = onSnapshot(collection(db,'families',gid,'pantry'), snap => {
+    if(pantryGrp[gid] !== e) return;
+    e.items = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    e.loaded = true; e.err = 0;
+    if(gid === pantryGid()) renderPantry();
+  }, err => {
+    familyListenErr(err);
+    if(pantryGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.loaded = false; e.items = []; e.err = Date.now();
+    console.warn('Pantry load failed:', err?.code || err?.name);
+  });
+}
+function unsubGroupPantry(gid) { const e = pantryGrp[gid]; if(e?.unsub) e.unsub(); delete pantryGrp[gid]; }
+function unsubAllGroupPantries() { Object.keys(pantryGrp).forEach(unsubGroupPantry); }
+// Skupina zásoby přestala sdílet (vypnuté Nákupy ve vedlejší skupině) → zrušit listener
+function pantryGroupSync(gid) { if(gid && pantryGrp[gid] && !groupModShared(gid, 'pantry')) unsubGroupPantry(gid); }
+// Osobní zásoby: listener drží do odhlášení (destroyAllFireSubs)
+function subPantryMine() {
+  if(_fireSubs['pantry'] || !CU) return;
+  const uid = CU.uid;
+  // includeMetadataChanges: migrace až po potvrzení serveru (start offline by jinak viděl prázdný seznam)
+  _fireSubs['pantry'] = onSnapshot(collection(db,'users',uid,'pantry'), {includeMetadataChanges: true}, snap => {
+    if(CU?.uid !== uid) return;
+    pantryMine = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    pantryMineLoaded = true;
+    if(!snap.metadata.fromCache) migrateLocalPantry(uid, pantryMine);
+    renderPantry();
+  }, err => { delete _fireSubs['pantry']; console.warn('Pantry load failed:', err?.code || err?.name); }); // příště zkusit znovu
+}
+// Migrace 4.70: lokální zásoby (lp_pantry) → users/{uid}/pantry. Idempotentní: položka se stejným ID nebo názvem
+// se nepřidá znovu; lp_pantry se smaže až po potvrzení zápisu serverem (při chybě zůstává a zkusí se příště).
+const PANTRY_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+function pantryMigWrites(local, have) {
+  const ids = new Set(), names = new Set(), out = [];
+  (Array.isArray(have) ? have : []).forEach(p => { if(p?.id) ids.add(String(p.id)); const k = String(p?.name ?? '').trim().toLowerCase(); if(k) names.add(k); });
+  for(const p of (Array.isArray(local) ? local : [])) {
+    if(!p || typeof p !== 'object') continue;
+    const name = cutName(p.name, 60);
+    const key = name.toLowerCase();
+    if(!key) continue;
+    const id = (typeof p.id === 'string' && PANTRY_ID_RE.test(p.id)) ? p.id : genId();
+    if(ids.has(id) || names.has(key)) continue;
+    ids.add(id); names.add(key);
+    const qty = Number(p.qty), minQty = Number(p.minQty), at = Number(p.updatedAt);
+    out.push([id, {name, qty: Number.isFinite(qty) && qty >= 0 ? qty : 0, unit: typeof p.unit === 'string' && p.unit.trim() ? cutName(p.unit, 10) : 'ks',
+      minQty: Number.isFinite(minQty) && minQty > 0 ? minQty : null, updatedAt: Number.isFinite(at) && at > 0 ? at : Date.now()}]);
+  }
+  return out;
+}
+let _pantryMigBusy = false;
+async function migrateLocalPantry(uid, have) {
+  if(_pantryMigBusy) return;
+  let raw = null;
+  try { if(localStorage.getItem('lp_owner_uid') !== uid) return; raw = localStorage.getItem('lp_pantry'); } catch(e) { return; }
+  if(raw === null) return;
+  let local = null;
+  try { local = JSON.parse(raw); } catch(e) {}
+  if(!Array.isArray(local)) return; // nečitelná data nemazat
+  _pantryMigBusy = true;
+  try {
+    const writes = pantryMigWrites(local, have);
+    for(let i = 0; i < writes.length; i += 400) {
+      const b = writeBatch(db);
+      writes.slice(i, i + 400).forEach(([id, d]) => b.set(doc(db,'users',uid,'pantry',id), d));
+      await b.commit();
+    }
+    if(CU?.uid !== uid) return;
+    try { localStorage.removeItem('lp_pantry'); } catch(e) {}
+    if(writes.length) toast(tN('pantry.migrated', writes.length), 5000);
+  } catch(e) { console.warn('Pantry migration failed:', e?.code || e?.name); }
+  finally { _pantryMigBusy = false; }
+}
+// Položky zásob gid; nenačtené počká nejvýš 2 s (null = nedostupné, nic nezapisovat → bez duplicit)
+async function pantryItemsReady(gid) {
+  if(pantryReady(gid)) return pantryItemsOf(gid);
+  if(gid) subscribeGroupPantry(gid); else subPantryMine();
+  for(let i = 0; i < 20 && !pantryReady(gid); i++) await new Promise(r => setTimeout(r, 100));
+  return pantryReady(gid) ? pantryItemsOf(gid) : null;
+}
 
 window.switchCookTab = function(tab) {
   document.getElementById('cook-tab-recipes')?.classList.toggle('active', tab === 'recipes');
@@ -17742,32 +17915,26 @@ window.switchShopTab = function(tab) {
   if (tab === 'pantry') renderShopPantry();
 };
 
-let pantryFamilyId = null; // skupina, pro kterou běží pantryUnsub
+// Start a změna skupin: osobní listener + zobrazené zásoby (opakované volání nic nezdvojí)
 function initPantry() {
-  if (familyId) {
-    if (pantryUnsub && pantryFamilyId === familyId) return; // listener už běží (otevření Vaření ho znovu nezakládá)
-    if (pantryUnsub) { pantryUnsub(); pantryUnsub = null; } // změna skupiny
-    pantryFamilyId = familyId;
-    try {
-      pantryUnsub = onSnapshot(collection(db, 'families', familyId, 'pantry'), snap => {
-        pantryItems = snap.docs.map(d => ({id: d.id, ...d.data()}));
-        _pantryFamilyReady = true; // AI chat počká na první data skupiny
-        renderPantry();
-      }, e => { pantryUnsub = null; pantryFamilyId = null; console.warn('Pantry load failed:', e?.code || e?.name); }); // příště zkusit znovu
-    } catch(e) { pantryFamilyId = null; console.warn('Pantry load failed:', e?.code || e?.name); }
-  } else {
-    if (pantryUnsub) { pantryUnsub(); pantryUnsub = null; pantryFamilyId = null; } // odchod ze skupiny
-    pantryItems = lsGet('lp_pantry', []);
-    renderPantry();
-  }
+  if (!CU) return;
+  subPantryMine();
+  renderPantry();
 }
 
-function buildPantryHtml(low, sorted) {
-  return `
+function buildPantryHtml(gid) {
+  const gs = pantryGroups();
+  const g = esc(gid || '');
+  // Přepínač Moje / skupiny (4.70): 1–3 volby segment, 4+ tlačítko se sheetem
+  const toggle = gs.length ? '<div class="pantry-view">' + grpChoiceHTML({opts: ['', ...gs], cur: gid || '', label: grpMineLabel,
+    aria: t('pantry.viewAria'), pick: 'setPantryView', sheet: 'openPantryViewSheet'}) + '</div>' : '';
+  if (!pantryReady(gid)) return toggle + `<div class="pantry-empty" role="status">${tH('pantry.loading')}</div>`;
+  const { low, sorted } = getPantrySorted(pantryItemsOf(gid));
+  return toggle + `
     ${low.length ? `<div class="pantry-alert">⚠️ ${tNH('pantry.low', low.length)}: ${low.map(i => esc(i.name)).join(', ')}</div>` : ''}
     <div class="pantry-actions-top">
-      <button class="btn-sv pantry-add-btn" onclick="openPantryAdd()">${tH('pantry.add')}</button>
-      ${low.length ? `<button class="btn-cook-suggest" onclick="pantryToShop()">${tH('pantry.toShop')}</button>` : ''}
+      <button class="btn-sv pantry-add-btn" data-a0="${g}" onclick="openPantryAdd({gid:this.dataset.a0})">${tH('pantry.add')}</button>
+      ${low.length ? `<button class="btn-cook-suggest" data-a0="${g}" onclick="pantryToShop(this.dataset.a0)">${tH('pantry.toShop')}</button>` : ''}
     </div>
     ${sorted.length === 0 ? `<div class="pantry-empty"><div style="font-size:40px;margin-bottom:8px">🧊</div><div>${tH('pantry.empty')}</div><div style="font-size:13px;margin-top:4px;color:var(--text3)">${tH('pantry.emptyHint')}</div></div>` : ''}
     <div class="pantry-list">
@@ -17779,10 +17946,10 @@ function buildPantryHtml(low, sorted) {
             ${isLow ? `<span class="pantry-low-badge">${tH('pantry.lowBadge')}</span>` : ''}
           </div>
           <div class="pantry-item-qty">
-            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, -1)">−</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" onclick="changePantryQty(this.dataset.a0, -1, this.dataset.a1)">−</button>
             <span class="pantry-qty-val">${Number(item.qty)||0} ${esc(item.unit ? unitLabel(item.unit) : '')}</span>
-            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" onclick="changePantryQty(this.dataset.a0, 1)">+</button>
-            <button class="pantry-item-del" data-a0="${esc(item.id)}" onclick="deletePantryItem(this.dataset.a0)">🗑</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" onclick="changePantryQty(this.dataset.a0, 1, this.dataset.a1)">+</button>
+            <button class="pantry-item-del" data-a0="${esc(item.id)}" data-a1="${g}" onclick="deletePantryItem(this.dataset.a0, this.dataset.a1)">🗑</button>
           </div>
         </div>`;
       }).join('')}
@@ -17790,20 +17957,21 @@ function buildPantryHtml(low, sorted) {
   `;
 }
 
-function getPantrySorted() {
-  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
-  const sorted = [...pantryItems].sort((a, b) => {
+function getPantrySorted(items) {
+  const arr = (Array.isArray(items) ? items : []).filter(i => i && i.name);
+  const low = arr.filter(i => i.minQty && i.qty <= i.minQty);
+  const sorted = [...arr].sort((a, b) => {
     const aLow = a.minQty && a.qty <= a.minQty;
     const bLow = b.minQty && b.qty <= b.minQty;
     if (aLow && !bLow) return -1;
     if (!aLow && bLow) return 1;
-    return a.name.localeCompare(b.name, 'cs');
+    return String(a.name).localeCompare(String(b.name), 'cs');
   });
   return { low, sorted };
 }
 
 function updatePantryBadge() {
-  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+  const low = activePantryItems().filter(i => i && i.minQty && i.qty <= i.minQty);
   const badge = document.getElementById('shop-pantry-badge');
   if (badge) {
     if (low.length) { badge.textContent = '⚠️ ' + low.length; badge.style.display = ''; }
@@ -17811,30 +17979,28 @@ function updatePantryBadge() {
   }
 }
 
-function renderShopPantry() {
-  const el = document.getElementById('shop-pantry-content');
-  if (!el) return;
-  const { low, sorted } = getPantrySorted();
-  el.innerHTML = buildPantryHtml(low, sorted);
-  updatePantryBadge();
-}
+// Zásoby jsou ve Vaření i v Nákupech: obojí se kreslí z jedné funkce
+function renderShopPantry() { renderPantry(); }
 
 function renderPantry() {
-  const el = document.getElementById('pantry-content');
-  if (!el) return;
-  const { low, sorted } = getPantrySorted();
-  el.innerHTML = buildPantryHtml(low, sorted);
+  pantryViewCheck();
+  const gid = pantryGid();
+  if (CU) { if (gid) subscribeGroupPantry(gid); else subPantryMine(); } // zásoby skupiny se načtou při prvním zobrazení
+  const html = buildPantryHtml(gid);
+  ['pantry-content', 'shop-pantry-content'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
   updatePantryBadge();
-  renderShopPantry();
 }
 
 window.openPantryAdd = function(prefill = {}) {
   document.getElementById('pantry-add-modal')?.remove();
+  const gid = pantryTarget(prefill.gid);
+  if (gid === undefined) return;
   const m = document.createElement('div');
   m.id = 'pantry-add-modal';
   m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:380px">
     <h3 style="margin:0 0 14px;font-family:'Playfair Display',serif">🧊 ${prefill.id ? tH('pantry.editTitle') : tH('pantry.addTitle')}</h3>
+    ${pantryGroups().length ? `<div style="font-size:13px;color:var(--text3);margin:-8px 0 10px">${tH('pantry.inWhere', {name: grpMineLabel(gid)})}</div>` : ''}
     <div style="display:flex;flex-direction:column;gap:10px">
       <input id="pi-name" class="finp" placeholder="${tH('pantry.namePh')}" value="${esc(prefill.name || '')}" style="width:100%;box-sizing:border-box">
       <div style="display:flex;gap:8px">
@@ -17846,7 +18012,7 @@ window.openPantryAdd = function(prefill = {}) {
       <input id="pi-min" class="finp" type="number" min="0" step="0.1" placeholder="${tH('pantry.minPh')}" value="${esc(prefill.minQty || '')}" style="width:100%;box-sizing:border-box">
     </div>
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" onclick="savePantryItem(this.dataset.a0)">${tH('pantry.save')}</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(prefill.id || '')}" data-a1="${esc(gid || '')}" onclick="savePantryItem(this.dataset.a0, this.dataset.a1)">${tH('pantry.save')}</button>
       <button class="btn-s" onclick="document.getElementById('pantry-add-modal').remove()">${tH('common.cancel')}</button>
     </div>
   </div>`;
@@ -17855,74 +18021,64 @@ window.openPantryAdd = function(prefill = {}) {
   document.getElementById('pi-name').focus();
 };
 
-window.savePantryItem = async function(existingId) {
-  const name = document.getElementById('pi-name')?.value.trim();
+window.savePantryItem = async function(existingId, gidArg) {
+  const name = cutName(document.getElementById('pi-name')?.value, 60);
   const qty = parseFloat(document.getElementById('pi-qty')?.value) || 0;
   const unit = document.getElementById('pi-unit')?.value.trim();
   const minQty = parseFloat(document.getElementById('pi-min')?.value) || 0;
 
   if (!name) { toast(t('common.nameReq')); return; }
+  const gid = pantryTarget(gidArg);
+  if (gid === undefined || !CU) { toast(t('pantry.saveErr')); return; }
 
   document.getElementById('pantry-add-modal')?.remove();
 
   const item = { name, qty, unit, minQty: minQty || null, updatedAt: Date.now() };
-
-  if (familyId) {
-    const id = existingId || Math.random().toString(36).substr(2, 9), fid = familyId;
-    await setDoc(doc(db, 'families', fid, 'pantry', id), item);
-    logGroupActivity(fid, 'pantry', existingId ? 'edit' : 'add', name);
-  } else {
-    const id = existingId || Math.random().toString(36).substr(2, 9);
-    if (existingId) {
-      const idx = pantryItems.findIndex(i => i.id === existingId);
-      if (idx >= 0) pantryItems[idx] = { id, ...item };
-      else pantryItems.push({ id, ...item });
-    } else {
-      pantryItems.push({ id, ...item });
-    }
-    lsSave('lp_pantry', pantryItems);
-    renderPantry();
-  }
+  const id = (typeof existingId === 'string' && PANTRY_ID_RE.test(existingId)) ? existingId : genId();
+  try {
+    await setDoc(pantryDoc(gid, id), item);
+    if (gid) logGroupActivity(gid, 'pantry', existingId ? 'edit' : 'add', name);
+  } catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
   toast(t('pantry.saved'));
 };
 
-window.changePantryQty = async function(id, delta) {
-  const item = pantryItems.find(i => i.id === id);
+window.changePantryQty = async function(id, delta, gidArg) {
+  const gid = pantryTarget(gidArg);
+  if (gid === undefined || !CU) return;
+  const item = pantryItemsOf(gid).find(i => i.id === id);
   if (!item) return;
-  item.qty = Math.max(0, (item.qty || 0) + delta);
-
-  if (familyId) {
-    const fid = familyId;
-    await setDoc(doc(db, 'families', fid, 'pantry', id), item);
-    logGroupActivity(fid, 'pantry', 'edit', item.name || ''); // tlačítka ± sloučí debounce
-  } else {
-    lsSave('lp_pantry', pantryItems);
-    renderPantry();
-  }
+  item.qty = Math.max(0, Math.round(((Number(item.qty) || 0) + delta) * 1000) / 1000);
+  item.updatedAt = Date.now();
+  if (gid === pantryGid()) renderPantry(); // hned, snapshot dorazí po zápisu
+  try {
+    await setDoc(pantryDoc(gid, id), pantryData(item));
+    if (gid) logGroupActivity(gid, 'pantry', 'edit', item.name || ''); // tlačítka ± sloučí debounce
+  } catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); }
 };
 
-window.deletePantryItem = async function(id) {
+window.deletePantryItem = async function(id, gidArg) {
+  const gid = pantryTarget(gidArg);
+  if (gid === undefined || !CU) return;
   if (!confirm(t('pantry.delConfirm'))) return;
-
-  if (familyId) {
-    const fid = familyId, gone = pantryItems.find(i => i.id === id);
-    await deleteDoc(doc(db, 'families', fid, 'pantry', id));
-    logGroupActivity(fid, 'pantry', 'del', gone?.name || '');
-  } else {
-    pantryItems = pantryItems.filter(i => i.id !== id);
-    lsSave('lp_pantry', pantryItems);
-    renderPantry();
-  }
+  const gone = pantryItemsOf(gid).find(i => i.id === id);
+  try {
+    await deleteDoc(pantryDoc(gid, id));
+    if (gid) logGroupActivity(gid, 'pantry', 'del', gone?.name || '');
+  } catch(e) { console.warn('Pantry delete failed:', e?.code || e?.name); toast(t('pantry.saveErr')); }
 };
 
-window.pantryToShop = async function() {
-  const low = pantryItems.filter(i => i.minQty && i.qty <= i.minQty);
+// Docházející zásoby → nákupní seznam stejné skupiny (sdílí-li nákupy), jinak Moje (4.70)
+window.pantryToShop = async function(gidArg) {
+  const gid = pantryTarget(gidArg);
+  if (gid === undefined || !CU) return;
+  const low = pantryItemsOf(gid).filter(i => i && i.name && i.minQty && i.qty <= i.minQty);
   if (!low.length) { toast(t('pantry.noneLow')); return; }
   try {
     let added = 0;
-    const fid = shopHomeGid(); // zásoby patří hlavní skupině: její seznam, jinak Moje (4.50)
+    const fid = shopForPantry(gid);
     for (const item of low) {
       const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: guessShopCategory(item.name), done: false, createdAt: new Date().toISOString() };
+      if (fid) shopItem.addedBy = CU.uid;
       await addDoc(shopCol(fid), shopItem);
       added++;
     }
@@ -17936,7 +18092,7 @@ window.aiShopSuggest = async function() {
   const btn = document.querySelector('[onclick="aiShopSuggest()"]');
   if(btn){ btn.textContent = t('pantry.aiBusy'); btn.disabled = true; }
   const recipeNames = savedRecipes.slice(0, 15).map(r => r.name).join(', ');
-  const pantryList = pantryItems.map(p => `${p.name} (${p.qty} ${p.unit||'ks'})`).join(', ') || tA('aip.shopAi.empty');
+  const pantryList = activePantryItems().filter(p => p && p.name).map(p => `${p.name} (${p.qty} ${p.unit||'ks'})`).join(', ') || tA('aip.shopAi.empty');
   const sys = tA('aip.shopAi.sys');
   try {
     const raw = await callClaude([
@@ -18031,41 +18187,49 @@ function convertUnits(amount, from, to) {
   return null; // nekompatibilní jednotky
 }
 
+// Shoda suroviny se zásobou (název obsahuje zásobu nebo zásoba první slovo suroviny)
+function pantryMatch(items, ingName) {
+  const n = String(ingName || '').toLowerCase();
+  if (!n) return null;
+  return items.find(p => p && p.name && (n.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(n.split(' ')[0]))) || null;
+}
+// Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
-  if (!pantryItems.length || !ingredients?.length) return;
+  const gid = pantryGid(), items = pantryItemsOf(gid);
+  if (!items.length || !ingredients?.length) return;
   // ingredients může být pole objektů {name,qty} nebo pole stringů
-  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i);
-  const matches = normalized.filter(ing => {
-    const n = ing.name.toLowerCase();
-    return pantryItems.some(p => n.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(n.split(' ')[0]));
-  });
+  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i).filter(i => i && typeof i.name === 'string');
+  const matches = normalized.filter(ing => pantryMatch(items, ing.name));
   if (!matches.length) return;
 
+  document.getElementById('pantry-deduct-modal')?.remove();
   const m = document.createElement('div');
   m.id = 'pantry-deduct-modal';
   m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:400px">
     <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">${tH('pantry.deductTitle')}</h3>
-    <p style="font-size:13px;color:var(--text3);margin:0 0 12px">${tH('pantry.deductText')}</p>
+    <p style="font-size:13px;color:var(--text3);margin:0 0 12px">${tH('pantry.deductText')}${pantryGroups().length ? ' ' + tH('pantry.inWhere', {name: grpMineLabel(gid)}) : ''}</p>
     <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
       ${matches.slice(0,10).map(ing=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</div>`).join('')}
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0));document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.deduct')}</button>
+      <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" data-a1="${esc(gid || '')}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0), this.dataset.a1);document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.deduct')}</button>
       <button class="btn-s" onclick="document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.skip')}</button>
     </div>
   </div>`;
   document.body.appendChild(m);
 }
 
-window.deductPantryIngredients = async function(ingredients) {
-  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i);
+window.deductPantryIngredients = async function(ingredients, gidArg) {
+  const gid = pantryTarget(gidArg);
+  if (gid === undefined || !CU || !Array.isArray(ingredients)) return;
+  const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i).filter(i => i && typeof i.name === 'string');
+  const items = pantryItemsOf(gid);
   let matched = 0, firstName = '';
-  const fid = familyId;
+  const changed = new Map(); // id → položka (stejná zásoba z více surovin se zapíše jednou)
   for (const ing of normalized) {
-    const ingName = ing.name.toLowerCase();
-    const pantryItem = pantryItems.find(p => ingName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(ingName.split(' ')[0]));
-    if (!pantryItem || pantryItem.qty <= 0) continue;
+    const pantryItem = pantryMatch(items, ing.name);
+    if (!pantryItem || !(Number(pantryItem.qty) > 0)) continue;
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(ing.qty);
     if (!(ingAmt > 0)) continue; // nulové množství („0 g“) nic neodečítá
     const pantryUnit = (pantryItem.unit||'ks').toLowerCase();
@@ -18075,17 +18239,25 @@ window.deductPantryIngredients = async function(ingredients) {
       if (converted === null) { deduct = 1; } // nekompatibilní — odečti 1
       else { deduct = converted; }
     }
-    pantryItem.qty = Math.max(0, Math.round((pantryItem.qty - deduct) * 1000) / 1000);
-    if (fid) {
-      await setDoc(doc(db, 'families', fid, 'pantry', pantryItem.id), pantryItem);
-    }
+    pantryItem.qty = Math.max(0, Math.round((Number(pantryItem.qty) - deduct) * 1000) / 1000);
+    pantryItem.updatedAt = Date.now();
+    changed.set(pantryItem.id, pantryItem);
     if (!matched) firstName = pantryItem.name || '';
     matched++;
   }
-  if (fid && matched) logGroupActivity(fid, 'pantry', 'edit', firstName, matched);
-  if (!familyId) { lsSave('lp_pantry', pantryItems); renderPantry(); }
-  toast(matched > 0 ? tN('pantry.deducted', matched) : t('pantry.noneFound'));
+  if (changed.size) {
+    if (gid === pantryGid()) renderPantry();
+    try {
+      const b = writeBatch(db);
+      changed.forEach((it, id) => b.set(pantryDoc(gid, id), pantryData(it)));
+      await b.commit();
+      if (gid) logGroupActivity(gid, 'pantry', 'edit', firstName, matched);
+    } catch(e) { console.warn('Pantry deduct failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
+  }
+  toast(matched > 0 ? tN('pantry.deducted', matched) + pantrySfx(gid) : t('pantry.noneFound'));
 };
+
+
 
 // ── COOKING MIC ───────────────────────────────────────
 

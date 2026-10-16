@@ -217,6 +217,8 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
   'aip.ctx.pantry.low': 'Dochází ({n}): ',
   'aip.ctx.pantry.min': ' [min {n}]',
   'aip.ctx.pantry.have': 'Máme ({n}): ',
+  'aip.ctx.pantry.mine': 'osobní – ',
+  'aip.ctx.pantry.group': 'skupina {group} – ',
   'aip.ctx.meal.today': ' (dnes)',
   'aip.ctx.meal.m0': 'sn.',
   'aip.ctx.meal.m1': 'ob.',
@@ -256,6 +258,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
   // Sekce další skupiny (zkráceně)
   'aip.ctx.grp.shop': 'Nákupy ({n}): ',
   'aip.ctx.grp.meal': 'jídelníček ',
+  'aip.ctx.grp.pantry': 'Zásoby – ',
   'aip.ctx.grp.check': '- checklist ',
   'aip.ctx.g.def': 'Skupina',
   'aip.ctx.g.main': ' ⭐ hlavní',
