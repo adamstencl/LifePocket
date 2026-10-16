@@ -4885,7 +4885,7 @@ function sendNotif(title, body, icon = '✨', data = {}, actions = [], tag = '')
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(reg => {
         const swOpts = actions.length > 0
-          ? {...opts, actions, requireInteraction: true}
+          ? {...opts, actions, requireInteraction: data.sticky !== '0'} // sticky '0' = sama se schová (připomínka pití)
           : opts;
         return reg.showNotification(title, swOpts);
       }).catch(() => {

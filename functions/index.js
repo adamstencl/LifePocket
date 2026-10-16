@@ -575,6 +575,9 @@ function waterDecide(W, WD, WS, zn, quiet) {
   // Šálky: nejmenší nabídnout, největší = hranice „skoro hotovo“
   const cups = (Array.isArray(W.cups) ? W.cups.slice(0, 5) : []).map(c => (c && typeof c === 'object') ? numIn(c.ml, 50, 1500, 0) : 0).filter(v => v > 0);
   const cup = cups.length ? Math.min(...cups) : WATER_DEF.cup;
+  // Tlačítko „+2 dl“ (4.67): první šálek uživatele; klient z odkazu přijme jen 50–1000 ml po 50
+  const btnMl = Math.round((cups.find(v => v <= 1000) || (cups.length ? 0 : WATER_DEF.cup)) / 50) * 50;
+  const drink = btnMl >= 50 && btnMl <= 1000 ? btnMl : 0;
   const maxCup = cups.length ? Math.max(...cups) : WATER_DEF.cup;
   const left = goal - ml;
   let key;
@@ -588,7 +591,19 @@ function waterDecide(W, WD, WS, zn, quiet) {
   const sent = {d: today, a: anchor, k, t: key};
   if (r !== null) sent.r = r;
   return {sent, key,
-    vars: {left, ml, goal, cup, plan: Math.round(plan / 50) * 50, pct: Math.round(ml / goal * 100)}};
+    vars: {left, ml, goal, cup, drink, plan: Math.round(plan / 50) * 50, pct: Math.round(ml / goal * 100)}};
+}
+
+// Návyk propojený s pitným režimem (4.67): jeho připomínku nahrazují připomínky pití, a když je dnešní cíl
+// pití splněný, návyk se splní sám → připomínka návyku se nepošle
+function waterHabitSkip(prof, habitId, today) {
+  const W = prof && prof.water;
+  if (!W || typeof W !== 'object' || typeof W.habitId !== 'string' || W.habitId !== habitId) return false;
+  if (Array.isArray(prof.modules) && !prof.modules.includes('water')) return false;
+  if (W.remind === true) return true;
+  const WD = prof.waterDay;
+  const goal = numIn(W.goal, 500, 6000, WATER_DEF.goal);
+  return !!WD && typeof WD === 'object' && WD.d === today && numIn(WD.ml, 0, 20000, 0) >= goal;
 }
 
 // Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
@@ -1216,6 +1231,7 @@ exports.sendScheduledNotifications = onSchedule(
             const habit = habitDoc.data();
             if (!habit.reminderTime) continue;
             if (!isTimeMatch(h, m, habit.reminderTime)) continue;
+            if (waterHabitSkip(prof, habitDoc.id, today)) continue; // propojený s pitným režimem (4.67)
             // ID logu = ID dokumentu návyku (pole habit.id v datech není)
             const logId = `${habitDoc.id}_${today}`;
             const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
@@ -1241,8 +1257,14 @@ exports.sendScheduledNotifications = onSchedule(
                 cup: fmtMlS(L, v.cup), plan: fmtMlS(L, v.plan)};
               // Dedup klíč dřív než push (jako kurzory skupin): když zápis selže, nic se neposílá → nikdy dvakrát
               await db.doc(`users/${uid}/profile/main`).update({waterSent: wr.sent});
-              await push(tS(L, `wt.n.${wr.key}.t`, tv), tS(L, `wt.n.${wr.key}.b`, tv), 'water',
-                {data: {open: 'water', date: today}, sticky: false});
+              // Tlačítko „+2 dl“ (4.67): at = jedinečný čas odeslání, klient podle něj zápis nezdvojí (lp_wt_seen)
+              const opt = {data: {open: 'water', date: today}, sticky: false};
+              if (v.drink) {
+                opt.data.drink = v.drink;
+                opt.data.at = Date.now();
+                opt.actions = [{action: 'drink', title: tS(L, 'wt.n.act', {v: fmtMlS(L, v.drink)})}];
+              }
+              await push(tS(L, `wt.n.${wr.key}.t`, tv), tS(L, `wt.n.${wr.key}.b`, tv), 'water', opt);
             }
           } catch(e) { console.error(`[LP] water push uid=${uid}:`, e.message); }
         }

@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v62';
+const CACHE = 'lifepocket-v63';
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -116,7 +116,14 @@ function onNotifClick(e) {
   if (fcm) e.stopImmediatePropagation();
   const data = (fcm && fcm.data) || raw;
   e.notification.close();
-  if (e.action === 'done') {
+  if (e.action === 'drink') {
+    // Tlačítko „+2 dl“ u připomínky pití (4.67): SW nemá přihlášení → zápis udělá appka (zpráva, jinak parametry v URL).
+    // Tady jen tvar čísel, rozsah (50–1000 ml, čas max. 6 h zpět, dnešní) a jednorázovost hlídá app.js
+    const ml = /^\d{2,4}$/.test(String(data.drink)) ? Number(data.drink) : 0;
+    const at = /^\d{12,14}$/.test(String(data.at)) ? Number(data.at) : 0;
+    if (ml && at) e.waitUntil(openInApp({type: 'WATER_ADD', ml, at}, '/?open=water&drink=' + ml + '&at=' + at));
+    else e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'water', id: ''}, '/?open=water'));
+  } else if (e.action === 'done') {
     // Datum z notifikace (den, pro který připomínka platí); jinak lokální dnešek (ne UTC).
     // Tady jen kontrola tvaru, rozsah (ne budoucnost, max. 14 dní) ověří app.js přes validNotifDate().
     const now = new Date();

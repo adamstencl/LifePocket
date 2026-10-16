@@ -51,6 +51,7 @@ const cs = {
   'wt.n.r3.b': 'Hlava i soustředění ti poděkují.',
   'wt.n.r4.t': '💧 Jak jsi na tom s pitím?',
   'wt.n.r4.b': 'Dnes zatím {ml} z {goal}.',
+  'wt.n.act': '+{v}', // tlačítko v notifikaci (4.67): zapíše šálek
 
   // ── Upozornění ze skupin ──
   'gn.groupDef': 'Skupina',
@@ -217,6 +218,7 @@ const en = {
   'wt.n.r3.b': 'Your head and focus will thank you.',
   'wt.n.r4.t': '💧 How’s your water going?',
   'wt.n.r4.b': 'So far today: {ml} of {goal}.',
+  'wt.n.act': '+{v}',
 
   'gn.groupDef': 'Group',
   'gn.someone': 'Someone',
