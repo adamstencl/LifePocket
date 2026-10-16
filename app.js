@@ -6648,14 +6648,14 @@ window.removeSamples = async () => {
   const delIds = new Set(habitLogs.filter(l => l && set.has(l.habitId)).map(l => l.id));
   // Listener drží jen okno záznamů → dotáhnout i starší (offline aspoň ty v paměti)
   try { (await getDocs(query(collection(db, 'users', uid, 'habitLogs'), where('habitId', 'in', ids)))).docs.forEach(d => delIds.add(d.id)); }
-  catch (e) { console.warn('[LP] mazání ukázek:', e?.code || e?.name); }
+  catch (e) { console.warn('[LP] samples:', e?.code || e?.name); }
   if (CU?.uid !== uid) return;
   ids.forEach(id => unshareAll('h', id)); // zrcadla ve skupinách pryč dřív, než návyky zmizí
   const b = writeBatch(db);
   ids.forEach(id => b.delete(doc(db, 'users', uid, 'habits', id)));
-  delIds.forEach(lid => { atRemember(hLog(lid)); b.delete(doc(db, 'users', uid, 'habitLogs', lid)); });
-  // Bez await: offline se zápis odešle později, appka se překreslí hned
+  // Bez await: offline se zápis odešle později, appka se překreslí hned (záznamy přes delHabitLog souběžně)
   b.commit().catch(e => toast(t('common.saveFailed', {err: userErr(e, 'habits')})));
+  delIds.forEach(lid => delHabitLog(lid, true).catch(e => console.warn('[LP] samples:', e?.code || e?.name)));
   habits = habits.filter(h => !set.has(h.id));
   habitLogs = habitLogs.filter(l => !(l && set.has(l.habitId)));
   shieldCacheReset();
