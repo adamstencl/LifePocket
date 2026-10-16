@@ -48,8 +48,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.68';
+const APP_VERSION = '4.69';
 const CHANGELOG = [
+  { v:'4.69', items:[
+    '🌱 Nový začátek jednou otázkou „Co chceš hlavně řešit?“: appka zapne jen 3 moduly, další ti nabídne postupně',
+    '🧭 V jednoduchém režimu má spodní lišta Domů, tvoje 3 moduly a Více, parťákovi napíšeš z Domů přes 💬',
+    '💡 Tipy na další moduly a funkce chodí nejvýš jednou za 3 dny a jen ve chvíli, kdy dávají smysl',
+    '🔧 Opravy v Nastavení: „Odkrýt všechno hned“ odkryje opravdu vše a Body a úrovně ukazují, kdy se odkryjí'
+  ], en:[
+    '🌱 A new start with one question, “What do you mainly want to sort out?”: the app turns on just 3 modules and offers more step by step',
+    '🧭 In Simple mode the bottom bar has Home, your 3 modules and More, and you can message your companion from Home via 💬',
+    '💡 Tips for more modules and features come at most once every 3 days and only when they make sense',
+    '🔧 Settings fixes: “Show everything now” really shows everything, and Points and levels say when they will appear'
+  ]},
   { v:'4.68', items:[
     '🌱 Jednodušší začátek: noví uživatelé mají na Domů jen to hlavní, body a další věci se ukážou postupně',
     '🔧 Přehlednější Nastavení: nahoře to hlavní, zbytek ve sbalených skupinách Pokročilé, Podpora a Účet',
@@ -746,7 +757,7 @@ const MODS=[
 // Onboarding (4.60): moduly určuje jen šablona, parťák je jen vzhled a styl řeči.
 // Bez šablony („Vlastní výběr“) tyto moduly; doporučený parťák podle šablony.
 const ONB_BASE_MODS=['habits','shopping','calendar','goals'];
-const AV_REC={family:'nora',student:'rio',health:'ash'};
+const AV_REC={family:'nora',student:'rio',health:'ash',growth:'sage'};
 // Šablony onboardingu (krok 3): předvybrané moduly + ukázkové návyky (pole jako v saveHabit; days: 0 = neděle; název tpl.<id>.hN)
 const ONB_TPLS = {
   family: { mods:['shopping','mealplan','cooking','calendar','habits'], habits:[
@@ -764,8 +775,23 @@ const ONB_TPLS = {
     {emoji:'🥗', type:'count', goal:3, freq:{type:'daily'},          group:'day'},
     {emoji:'🧘', type:'yesno', goal:1, freq:{type:'weekly',times:3}, group:'morning'},
   ]},
+  // Jen pro odpověď „Cíle a osobní rozvoj“ (4.69), v nabídce šablon není
+  growth: { mods:['goals','habits','journal'], habits:[
+    {emoji:'🧘', type:'yesno', goal:1,  freq:{type:'daily'}, group:'morning'},
+    {emoji:'📖', type:'count', goal:10, freq:{type:'daily'}, group:'evening'},
+    {emoji:'📝', type:'yesno', goal:1,  freq:{type:'daily'}, group:'evening'},
+  ]},
 };
 let selTpl = null;
+// Otázka „Co chceš hlavně řešit?“ (4.69, jednoduchý start): odpověď → max. 3 moduly v pořadí lišty, šablona (ukázky, průvodce)
+const ONB_START = {
+  home:   {mods:['shopping','mealplan','calendar'], tpl:'family'},
+  health: {mods:['habits','water','goals'],         tpl:'health'},
+  study:  {mods:['calendar','habits','journal'],    tpl:'student'},
+  growth: {mods:['goals','habits','journal'],       tpl:'growth'},
+  basic:  {mods:['habits','shopping','calendar'],   tpl:null},
+};
+let selStart = null, _onbCustom = false;
 // Denní hláška společníka: av.<id>.msg0–2
 const AVMSGS=Object.fromEntries(['rex','sage','ash','nora','rio'].map(id=>[id,[0,1,2].map(i=>t('av.'+id+'.msg'+i))]));
 const MOODS=[['😄','great'],['🙂','good'],['😐','ok'],['😔','tired'],['😤','frustr']].map(([emoji,k])=>({emoji,label:t('mood.'+k)}));
@@ -4133,26 +4159,56 @@ window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
 // Zpět z 1. kroku: profil ještě neexistuje → jen odhlásit, nic nezapisovat (doLogout by profil založil); pozvánka zůstane
 window.onbBackToLogin=async()=>{try{await signOut(auth);}catch(e){}location.reload();};
-// Krok 2 = šablona. Poprvé: s pozvánkou do skupiny předvybraná Rodina (Nákupy, Kalendář)
+// Krok 2 = otázka „Co chceš hlavně řešit?“ (4.69). Poprvé: s pozvánkou do skupiny předvybrané „Nákupy a jídlo doma“
+// „Vyberu si moduly sám/a“ přepne na mřížku šablon a modulů (bez jednoduchého režimu)
 let _onbTplInit=false, _selAvTouched=false;
 window.gS2=()=>{
   const nick=cutName(document.getElementById('u-nick').value,40); if(!nick) return;
   prof.nickname=nick;prof.gender=selG||'x';prof.addrMode='jmeno';prof.prezdivka=prof.nickname;
   const inv=!!readPendingJoin();
-  if(!_onbTplInit){_onbTplInit=true;window.pickTpl(inv?'family':null);}else window.pickTpl(selTpl,true);
+  if(!_onbTplInit){_onbTplInit=true;window.pickStart(inv?'home':null);}
+  else if(_onbCustom) window.pickTpl(selTpl,true);
+  else window.pickStart(selStart);
+  onbS2View();
   ss('s-step2');
 };
+// Přepne krok 2 mezi otázkou a mřížkou modulů (titulek, podtitulek, poznámka k pozvánce)
+function onbS2View(){
+  const q=document.getElementById('onb-q'), gr=document.getElementById('onb-grid');
+  if(q) q.hidden=_onbCustom; if(gr) gr.hidden=!_onbCustom;
+  const s2t=document.getElementById('s2-title');
+  if(s2t) s2t.textContent=_onbCustom?(prof.nickname?t('onb.use.titleName',{name:prof.nickname}):t('onb.use.title')):t('onb.start.title');
+  const s2s=document.getElementById('s2-sub'); if(s2s) s2s.textContent=t(_onbCustom?'onb.use.sub':'onb.start.sub');
+  const n=document.getElementById('tpl-inv-note');
+  if(n){ n.hidden=!(readPendingJoin()&&(_onbCustom?selTpl==='family':selStart==='home')); n.textContent=t(_onbCustom?'onb.tpl.invNote':'onb.start.invNote'); }
+}
+// Odpověď na otázku: moduly a šablona podle ONB_START (id null = nic nevybráno)
+window.pickStart=id=>{
+  selStart=Object.prototype.hasOwnProperty.call(ONB_START,id)?id:null;
+  _onbCustom=false;
+  const o=selStart?ONB_START[selStart]:null;
+  selTpl=o&&o.tpl?o.tpl:null;
+  selMods=new Set(o?o.mods:[]);
+  document.querySelectorAll('.startq-opt').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.a0===selStart)));
+  onbS2View();
+};
+window.pickStartCustom=()=>{
+  _onbCustom=true;
+  window.pickTpl(readPendingJoin()?'family':null);
+  onbS2View();
+  document.getElementById('onb-grid')?.querySelector('.tpl-card')?.focus();
+};
+window.pickStartBack=()=>{ window.pickStart(selStart); document.querySelector('.startq-opt[aria-checked="true"],.startq-opt')?.focus(); };
 function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${avVibe(a).replace('\n','<br>')}</div></div>`).join('');}
 window.selAv2=id=>{if(!AVS.some(a=>a.id===id))return;selAv=id;_selAvTouched=true;rAvGrid('av-grid',false);};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 // Krok 3 = parťák: předvybraný podle šablony (dokud ho uživatel sám nezměnil), „Jdeme na to!“ aktivní hned
 window.gS3=()=>{
-  if(selMods.size===0){toast(t('onb.pickOne'));return;}
+  if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return;}
   if(!_selAvTouched) selAv=(selTpl&&AV_REC[selTpl])||'rex';
   rAvGrid('av-grid',false);ss('s-step3');
 };
 function rMods(){
-  const s2t=document.getElementById('s2-title'); if(s2t) s2t.textContent=prof.nickname?t('onb.use.titleName',{name:prof.nickname}):t('onb.use.title');
   const p=selTpl?ONB_TPLS[selTpl].mods:ONB_BASE_MODS;
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
   const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
@@ -4178,16 +4234,21 @@ window.pickTpl=(id,keep)=>{
 let _onbBusy=false;
 window.finishOnboard=async()=>{
   if(_onbBusy) return false; // dvojklik nesmí založit návyky dvakrát
-  if(selMods.size===0){toast(t('onb.pickOne'));return false;}
+  if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return false;}
   _onbBusy=true;
   const fb=document.getElementById('onb-finish-btn'); if(fb) fb.disabled=true;
   try{
   prof.avatarId=AVS.some(a=>a.id===selAv)?selAv:'rex'; // parťák jen vzhled, moduly nemění
   if(!prof.gender) prof.gender='x';
-  selMods.add('rex');selMods.add('checklist');prof.modules=[...selMods];prof.createdAt=new Date().toISOString();
+  // Jednoduchý start (4.68/4.69): jen nový účet přes otázku; „Vyberu si moduly sám/a“ = jako dřív (s checklistem, bez simple)
+  const simple=!_onbCustom&&!!selStart;
+  selMods.add('rex'); if(!simple) selMods.add('checklist'); // checklist se v jednoduchém režimu nabídne, až ho skupina nasdílí
+  prof.modules=[...selMods];prof.createdAt=new Date().toISOString();
   prof.lastSeen=prof.createdAt;
-  prof.simple=true; // jednoduchý start (4.68): jen nový účet, stávající profily pole nemají
-  const addSamples=!!(selTpl&&document.getElementById('tpl-samples-chk')?.checked&&selMods.has('habits'));
+  prof.simple=simple; // stávající profily pole nemají
+  if(simple) prof.start=selStart;
+  // Ukázkové návyky: v mřížce podle zaškrtávátka, u odpovědi s návyky vždy (smažou se jako běžné návyky)
+  const addSamples=!!(selTpl&&selMods.has('habits')&&(simple||document.getElementById('tpl-samples-chk')?.checked));
   if(selTpl) prof.template=selTpl;
   prof.lang=LANG;
   const tz=deviceTz(); if(tz) prof.tz=tz;
@@ -14426,9 +14487,18 @@ function buildNav(){
   const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
   const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
+  const settings={id:'settings',emoji:'🔧',label:t('nav.settings')};
+  let all;
+  if(isSimple()){
+    // Jednoduchý režim (4.69): Domů · 3 moduly · Více (parťák první, Nastavení, ostatní moduly); parťák i z banneru 💬
+    const first=simpleModOrder().map(id=>uMods.find(m=>m.id===id)).filter(Boolean).slice(0,3);
+    const rexS=showRex?[{id:'avatar',emoji:av.emoji,label:t('nav.rexMore',{av:av.name}),aria:t('nav.rexAria',{av:av.name})}]:[];
+    all=[home,...first,...rexS,settings,...uMods.filter(m=>!first.includes(m))];
+  } else {
   // Šablona (4.59): Domů · hlavní moduly šablony · parťák · ostatní; bez šablony Domů · parťák · moduly
   const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof.template)?NAV_TPL[prof.template]:[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
-  const all=[home,...first,...rex,...uMods.filter(m=>!first.includes(m)),{id:'settings',emoji:'🔧',label:t('nav.settings')}];
+  all=[home,...first,...rex,...uMods.filter(m=>!first.includes(m)),settings];
+  }
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
@@ -14519,10 +14589,13 @@ async function loadDailyQuote() {
   return fallback;
 }
 
-// Pořadí modulů pro sloty Domů: hlavní moduly šablony (jako lišta, NAV_TPL), pak ostatní v pořadí MODS
+// Pořadí modulů pro lištu a sloty Domů v jednoduchém režimu: moduly odpovědi z onboardingu (ONB_START, 4.69),
+// jinak hlavní moduly šablony (NAV_TPL), pak ostatní zapnuté v pořadí MODS
 function simpleModOrder(){
   const mods=prof?.modules||[];
-  const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof?.template)?NAV_TPL[prof.template]:[]).filter(id=>mods.includes(id));
+  const src=Object.prototype.hasOwnProperty.call(ONB_START,prof?.start)?ONB_START[prof.start].mods
+    :Object.prototype.hasOwnProperty.call(NAV_TPL,prof?.template)?NAV_TPL[prof.template]:[];
+  const first=src.filter(id=>mods.includes(id));
   return [...first,...MODS.map(m=>m.id).filter(id=>mods.includes(id)&&!first.includes(id))];
 }
 function rDash(){
@@ -14544,6 +14617,8 @@ function rDash(){
     if(upImg) upImg.addEventListener('error',()=>{const d=document.createElement('div');d.style.cssText=uCircle;d.textContent=uInit;upImg.replaceWith(d);});
   }
   const dnm=document.getElementById('d-avnm'); if(dnm) dnm.textContent=av.name;
+  const dch=document.getElementById('d-avchat'); // 💬 v banneru: v jednoduchém režimu parťák není v liště (4.69)
+  if(dch){ dch.hidden=!(isSimple()&&(prof.modules||[]).includes('rex')); dch.setAttribute('aria-label',t('dash.chatAria',{av:av.name})); }
   gameRenderUI(); // emoji nebo kruh úrovně v banneru
   // Dynamická Rex zpráva podle skutečného stavu
   const today_r=toDS();
@@ -15473,7 +15548,7 @@ function renderSimpleSetting(){
     <label class="togswitch"><input type="checkbox" ${on?'checked':''} aria-label="${tH('set.simple.toggle')}" onchange="setSimple(this.checked)"><span class="togsl"></span></label></div>`
     +(more?`<button type="button" class="btn-s set-simple-all" onclick="simpleUnlockAll()">${tH('set.simple.all')}</button>`:'');
 }
-function simpleRefresh(){ gameRenderUI(); rDash(); renderSimpleSetting(); }
+function simpleRefresh(){ buildNav(); gameRenderUI(); rDash(); renderSimpleSetting(); }
 window.setSimple=on=>{
   if(!CU) return;
   on=!!on;
@@ -18160,7 +18235,9 @@ function tourSteps() {
   const mods = prof?.modules || [];
   // Člen skupiny s Nákupy (pozvaný) uvidí hned sdílený nákup
   const grpShop = !!(familyId || extraGroupIds.length) && mods.includes('shopping') ? 'shopping' : null;
-  const main = [grpShop, Object.prototype.hasOwnProperty.call(TOUR_MAIN, prof?.template) ? TOUR_MAIN[prof.template] : null, ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
+  // Jednoduchý režim (4.69): první modul z lišty (odpověď z onboardingu)
+  const simpleMain = isSimple() ? simpleModOrder().find(m => TOUR_MODULES[m]) : null;
+  const main = [grpShop, simpleMain, Object.prototype.hasOwnProperty.call(TOUR_MAIN, prof?.template) ? TOUR_MAIN[prof.template] : null, ...TOUR_FALLBACK].find(m => m && mods.includes(m) && TOUR_MODULES[m]);
   return ['dashboard', ...(main ? [main] : []), ...(mods.includes('rex') ? ['avatar'] : [])];
 }
 let _tourStep = 0;
