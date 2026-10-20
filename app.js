@@ -19084,6 +19084,8 @@ window.sp = id => {
 // (pravidla: jen vlastník, limit dokumentu 1 MB), Formspree dostane jen počet a cestu dokumentu
 const CF_IMG_MAX = 3, CF_IMG_LEN = 250000, CF_DOC_LEN = 900000;
 let _cfImgs = [];
+let _cfBusy = false; // zmenšování obrázků běží → tlačítko zakázané, další výběr se ignoruje
+let _cfRef = null;   // dokument feedback drží mezi pokusy o odeslání (stejné ID, opakování nevytvoří nový)
 async function cfShrink(file) {
   for (const [px, q] of [[1280, 0.7], [1280, 0.55], [1024, 0.5], [800, 0.45], [640, 0.4]]) {
     const u = await compressImage(file, px, q);
@@ -19094,36 +19096,43 @@ async function cfShrink(file) {
 function cfRenderImgs() {
   const box = document.getElementById('cf-imgs'), btn = document.getElementById('cf-img-btn');
   if (box) box.innerHTML = _cfImgs.map((u, i) => `<div class="cf-img"><img src="${esc(u)}" alt=""><button type="button" class="cf-img-x" data-a0="${i}" onclick="contactRemoveImg(this.dataset.a0)" aria-label="${tH('set.contact.imgDel')}">×</button></div>`).join('');
-  if (btn) btn.disabled = _cfImgs.length >= CF_IMG_MAX;
+  if (btn) btn.disabled = _cfBusy || _cfImgs.length >= CF_IMG_MAX;
 }
 window.contactRemoveImg = i => { _cfImgs.splice(Number(i), 1); cfRenderImgs(); };
 window.contactPickImg = async inp => {
   const files = Array.from(inp.files || []).filter(f => /^image\//.test(f.type));
   inp.value = '';
-  if (!files.length) return;
+  if (!files.length || _cfBusy) return;
   if (_cfImgs.length + files.length > CF_IMG_MAX) { toast(t('set.contact.imgMax', {n: CF_IMG_MAX})); return; }
+  _cfBusy = true; cfRenderImgs();
   toast(t('nt.photoBusy'));
-  for (const f of files) {
-    let u = null;
-    try { u = await cfShrink(f); } catch (e) { u = null; }
-    if (!u) { toast(t('set.contact.imgBig')); continue; }
-    if (_cfImgs.reduce((n, x) => n + x.length, 0) + u.length > CF_DOC_LEN) { toast(t('set.contact.imgBig')); break; }
-    _cfImgs.push(u);
-  }
-  cfRenderImgs();
+  try {
+    for (const f of files) {
+      let u = null;
+      try { u = await cfShrink(f); } catch (e) { u = null; }
+      if (!u) { toast(t('set.contact.imgBig')); continue; }
+      // Počet znovu až před vložením (mezitím mohl přibýt obrázek)
+      if (_cfImgs.length >= CF_IMG_MAX) { toast(t('set.contact.imgMax', {n: CF_IMG_MAX})); break; }
+      if (_cfImgs.reduce((n, x) => n + x.length, 0) + u.length > CF_DOC_LEN) { toast(t('set.contact.imgBig')); break; }
+      _cfImgs.push(u);
+    }
+  } finally { _cfBusy = false; cfRenderImgs(); }
 };
 
 window.handleContactSubmit = async function(e) {
   e.preventDefault();
   const form = e.target;
   const btn = form.querySelector('.cf-submit');
+  if (_cfBusy) { toast(t('nt.photoBusy')); return; }
+  if (navigator.onLine === false) { toast(t('err.offline')); return; } // offline: nic nezapisovat ani neposílat
   btn.disabled = true;
   btn.textContent = t('set.contact.sending');
   try {
     const fd = new FormData(form);
     if (_cfImgs.length) {
       if (!CU) { toast(t('set.contact.imgLogin')); btn.disabled = false; btn.textContent = t('set.contact.send'); return; }
-      const ref = doc(collection(db, 'users', CU.uid, 'feedback'));
+      if (!_cfRef || _cfRef.parent?.parent?.id !== CU.uid) _cfRef = doc(collection(db, 'users', CU.uid, 'feedback'));
+      const ref = _cfRef;
       // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu (zpráva se neodešle)
       await Promise.race([
         setDoc(ref, {createdAt: serverTimestamp(), v: APP_VERSION, msg: String(fd.get('message') || '').slice(0, 2000), images: _cfImgs.slice(0, CF_IMG_MAX)}),
@@ -19137,7 +19146,7 @@ window.handleContactSubmit = async function(e) {
       headers: { 'Accept': 'application/json' }
     });
     if (res.ok) {
-      _cfImgs = []; cfRenderImgs();
+      _cfImgs = []; _cfRef = null; cfRenderImgs();
       form.style.display = 'none';
       const successEl = document.getElementById('contact-success');
       if (successEl) successEl.style.display = 'block';
