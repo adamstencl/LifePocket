@@ -15467,7 +15467,7 @@ const NUDGES = [
 ];
 // Data pro podmínky nabídek: body, návyky a záznamy ze serveru, nákupy, sdílené seznamy úkolů skupin (odebírané)
 function nudgeDataReady() {
-  if (!_habitsSnapOk || !_hlServerOk || !shopItemsLoaded || !(game || _gameFailAt)) return false;
+  if (!_habitsSnapOk || !_hlServerOk || (_fireSubs['shop'] && !shopItemsLoaded) || !(game || _gameFailAt)) return false;
   return checkGroups().every(g => clGrp[g] ? (clGrp[g].ready || !!clGrp[g].err) : g !== familyId);
 }
 // Data ještě nedorazila: počkat bez zápisu a Domů překreslit, až budou (kontrola po 1,5 s, nejdéle 2 min)
