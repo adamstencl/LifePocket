@@ -1370,7 +1370,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -1818,9 +1818,9 @@ function entryDS(e){return e && e.createdAt ? toDS(new Date(e.createdAt)) : '';}
 
 let habits=[], habitLogs=[], unsubHabits=null, unsubLogs=null;
 
-// Listener záznamů návyků hlídá jen posledních HL_WINDOW dní (série a statistiky sahají max. rok zpět).
-// Starší záznamy se dotahují jednorázově (detail návyku, listování daleko do minulosti) a drží se v habitLogs dál.
-const HL_WINDOW=400;
+// Listener záznamů návyků hlídá jen posledních HL_WINDOW dní (4.75: 60 místo 400, méně čtení při startu).
+// Starší záznamy se dotahují jednorázově (detail návyku, den před oknem, série sahající přes okraj okna) a drží se v habitLogs dál.
+const HL_WINDOW=60, HL_STREAK_MAX=1500; // HL_STREAK_MAX: strop délky série (dny), nezávislý na okně
 let _hlCutoff='', _hlOldAll=false, _hlOldLoading=null;
 const _hlOldHabits=new Set(); // návyky, jejichž celá historie už je načtená
 function hlCutoffDS(){const d=new Date();d.setDate(d.getDate()-HL_WINDOW);return toDS(d);}
@@ -1874,7 +1874,19 @@ function loadOldHabitLogs(){
   _hlOldLoading=p;
   return p;
 }
-function resetHabitLogCache(){ _hlOldAll=false; _hlOldLoading=null; _hlOldHabits.clear(); }
+function resetHabitLogCache(){ _hlOldAll=false; _hlOldLoading=null; _hlOldHabits.clear(); _hlHistWant.clear(); _hlHistFail.clear(); }
+// Série došla až na okraj okna → dotáhnout historii toho návyku (1× za relaci, po chybě nejdřív za minutu)
+const _hlHistWant=new Set(), _hlHistFail=new Map();
+function hlNeedHistory(hid){
+  if(!CU||!hid||_hlOldAll||_hlOldHabits.has(hid)||_hlHistWant.has(hid)) return;
+  if(Date.now()-(_hlHistFail.get(hid)||0)<60000) return;
+  _hlHistWant.add(hid);
+  setTimeout(()=>{
+    loadHabitHistory(hid).then(added=>{ if(added){ shieldCacheReset(); renderHabits(); gameQueue(); } })
+      .catch(e=>{ _hlHistFail.set(hid,Date.now()); console.warn('[LP] historie návyku:',e?.code||e?.name); })
+      .finally(()=>_hlHistWant.delete(hid));
+  },0);
+}
 
 // Zápis a mazání záznamu návyku – jediné místo (zrcadlo sdíleného návyku ve skupině musí sedět).
 // Po zápisu doplní cache v paměti a ohlásí změnu (onHabitLogChanged → zrcadlo, aktivita, milník).
@@ -2004,10 +2016,10 @@ function habitStreak(hid,ds){
   const today=toDS(), start=habitStartDS(h);
   let d=ds, n=0;
   if(ds===today&&habitDayState(h,ds,today)!=='done') d=addDays(ds,-1);
-  for(let i=0;i<HL_WINDOW;i++){
+  for(let i=0;i<HL_STREAK_MAX;i++){
     if(start&&d<start&&!hDone(hid,d)) break;
     const st=habitDayState(h,d,today);
-    if(st==='done') n++; else if(st==='miss') break;
+    if(st==='done') n++; else if(st==='miss'){ if(_hlCutoff&&d<_hlCutoff) hlNeedHistory(hid); break; } // před oknem nemusí být data
     d=addDays(d,-1);
   }
   return n;
@@ -2385,7 +2397,7 @@ window.openHabitDetail = (hid) => {
     if(added&&hh&&detailHabitId===hid&&document.getElementById('p-habit-detail')?.classList.contains('active')) renderHabitDetail(hh);
   }).catch(e=>{
     console.warn('[LP] historie návyku:',e?.code||e?.name);
-    // Drobný popisek místo tichého selhání (statistiky pak počítají jen posledních 400 dní)
+    // Drobný popisek místo tichého selhání (statistiky pak počítají jen posledních HL_WINDOW dní)
     const body=document.getElementById('hd-body');
     if(detailHabitId===hid&&body&&!document.getElementById('hd-hist-err')){
       const n=document.createElement('div'); n.id='hd-hist-err';
@@ -2671,9 +2683,8 @@ window.saveHabitReminder = async (hid, time) => {
 window.habitPrevDay=()=>{
   const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()-1);
   habitDay=toDS(d); renderHabits();
-  // Série na kartě sahá až 365 dní před zobrazený den → u dnů blízko okraje okna dotáhnout starší záznamy
-  const edge=new Date(habitDay+'T12:00:00'); edge.setDate(edge.getDate()-366);
-  if(_hlCutoff&&toDS(edge)<_hlCutoff) loadOldHabitLogs().then(added=>{ if(added) renderHabits(); }).catch(e=>console.warn('[LP] starší návyky:',e?.code||e?.name));
+  // Den před oknem listeneru → dotáhnout starší záznamy (série přes okraj okna řeší hlNeedHistory po návycích)
+  if(_hlCutoff&&habitDay<_hlCutoff) loadOldHabitLogs().then(added=>{ if(added) renderHabits(); }).catch(e=>console.warn('[LP] starší návyky:',e?.code||e?.name));
 };
 window.habitNextDay=()=>{
   const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -12404,14 +12415,19 @@ async function pcCheckAdmin() {
   if(!CU || _pcAdminChecked === CU.uid) return;
   const uid = CU.uid;
   _pcAdminChecked = uid;
+  // 4.75: config/admins nejvýš 1× denně na účet a zařízení (výsledek v lp_adm)
+  let c = null; try { c = JSON.parse(localStorage.getItem('lp_adm') || 'null'); } catch(e) {}
+  if(c && c.u === uid && c.d === toDS() && typeof c.a === 'boolean') { _isAppAdmin = c.a; renderPcSettings(); return; }
   try {
     const s = await getDoc(doc(db,'config','admins'));
     if(CU?.uid !== uid) return;
     const u = s.exists() ? s.data()?.uids : null;
     _isAppAdmin = Array.isArray(u) && u.includes(uid);
+    try { localStorage.setItem('lp_adm', JSON.stringify({u: uid, d: toDS(), a: _isAppAdmin})); } catch(e) {}
   } catch(e) {
     _isAppAdmin = false;   // permission-denied = není admin (tiše)
-    if(e?.code !== 'permission-denied') _pcAdminChecked = '';   // offline: zkusit znovu příště
+    if(e?.code === 'permission-denied') { try { localStorage.setItem('lp_adm', JSON.stringify({u: uid, d: toDS(), a: false})); } catch(x) {} }
+    else _pcAdminChecked = '';   // offline: zkusit znovu příště
   }
   renderPcSettings();
 }
@@ -15123,7 +15139,8 @@ let _weeklyReportIv=null;
 async function initApp(){
   // Init history state pro Android back button
   history.replaceState({type:'root'}, ''); backGuard();
-  wtInitLegacy();subWater();initFocus();subChecklist();buildNav();rDash();rAvPage();subGoals();subEvents();subHabits();subEntries();subShop();subRecurringShop();subShopFreq();subSavedRecipes();loadPlannedMeals();initSet();subFoodLogs();initPantry();ss('app');sp('dashboard');
+  _modSubUid=''; // initApp znovu (onboarding): moduly přihlásit podle nového výběru
+  wtInitLegacy();initFocus();buildNav();rDash();rAvPage();subGoals();subHabits();subModules();initSet();ss('app');sp('dashboard');
   installVisitCheck(); installGate();
   setTimeout(checkChangelog,1500);
   setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
@@ -15158,6 +15175,24 @@ async function initApp(){
   clearTimeout(_pendingJoinTimer); _pendingJoinTimer=setTimeout(checkPendingJoin,2200);
 }
 
+// Listenery modulů (4.75): jen pro zapnuté moduly (méně čtení při startu); zapnutí modulu je doplní (subModules).
+// Návyky a cíle běží vždy: body, štíty a odznaky na nich stojí. Volání je idempotentní.
+let _modSubUid='', _pmLoadedUid='';
+function subModules(){
+  if(!CU) return;
+  if(_modSubUid!==CU.uid){ _modSubUid=CU.uid; _pmLoadedUid=''; }
+  const on=id=>hasMod(id), any=(...ids)=>ids.some(on);
+  subWater(); // sám hlídá waterOn()
+  if(on('checklist')&&!_fireSubs['checklist']) subChecklist();
+  if(on('calendar')&&!_fireSubs['events']) subEvents();
+  if(on('journal')&&!_fireSubs['entries']) subEntries();
+  // Nákupy plní i vaření a jídelníček (suroviny do seznamu)
+  if(any('shopping','cooking','mealplan')){ subShop(); subRecurringShop(); subShopFreq(); }
+  if(on('cooking')) subSavedRecipes();
+  if(any('cooking','mealplan')&&_pmLoadedUid!==CU.uid){ _pmLoadedUid=CU.uid; loadPlannedMeals(); }
+  if(any('cooking','mealplan')) subFoodLogs();
+  if(any('cooking','shopping','mealplan')) initPantry();
+}
 function buildNav(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const showRex=(prof.modules||[]).includes('rex');
@@ -15227,7 +15262,7 @@ window.bnmOn=id=>{
         if(document.getElementById('p-'+id)?.classList.contains('active')) window.sp('dashboard');
         toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
       });
-      if(id==='water') subWater(); // server posílá připomínky jen se 'water' v prof.modules
+      subModules(); // listenery zapnutého modulu (water: server posílá připomínky jen se 'water' v prof.modules)
       buildNav(); rSetMods();
       toast(t('set.mod.on',{name:modName(m)}));
     }
@@ -16478,7 +16513,7 @@ window.togModSet=async(id,on)=>{
   prof.modules=[...ms];
   try{
     await updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules});
-    if(id==='water'&&on) subWater();
+    if(on) subModules(); // listenery zapnutého modulu
     buildNav();rDash();rSetMods();
     const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
     toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
