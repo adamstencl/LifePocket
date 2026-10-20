@@ -997,18 +997,23 @@ function aiPlain(text) {
   const s = String(text ?? '');
   return stripMd(AI_LATIN_LANGS.includes(LANG) ? aiStripForeign(s) : s);
 }
-// Recepty, reporty a zprávy Rexe (jen cs): jistá oprava častých chyb AI. Hranice slov přes \p{L} (\b neumí diakritiku); jen jednoznačné náhrady.
-const AI_CS_FIX = [
-  [/(^|[^\p{L}])kaper[sn](?!\p{L})/giu, () => 'kapary'],
-  [/(^|[^\p{L}])křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)(?!\p{L}))/giu, () => 'krémov'],
-  [/(^|[^\p{L}])ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)(?!\p{L}))/giu, () => 'dochuťte'],
-  [/(^|[^\p{L}])paprikou\s+(sladkou|pálivou|uzenou)(?!\p{L})/giu, (m, a) => a + ' paprikou'],
+// Text od AI (jen cs): jistá oprava častých chyb. Hranice slov přes \p{L}\p{N}_ (\b neumí diakritiku); jen jednoznačné náhrady.
+// Před slovem smí být i JSON escape \n \r \t (recept přichází jako JSON). URL se nemění.
+const AI_CS_W = String.raw`(^|[^\p{L}\p{N}_]|\\[nrt])`, AI_CS_E = String.raw`(?![\p{L}\p{N}_])`;
+const aiCsRe = (body) => new RegExp(AI_CS_W + body, 'giu');
+// Obecná pravidla (chat, report, pozdrav, citát): zatím žádná
+const AI_CS_FIX = [];
+// Jen recepty (aiFixCs(text, {recipe:true})): kuchyňské výrazy, jinde by mohly změnit význam
+const AI_CS_FIX_RECIPE = [
+  [aiCsRe(String.raw`kaper[sn]` + AI_CS_E), () => 'kapary'],
+  [aiCsRe(String.raw`křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)` + AI_CS_E + ')'), () => 'krémov'],
+  [aiCsRe(String.raw`ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)` + AI_CS_E + ')'), () => 'dochuťte'],
+  [aiCsRe(String.raw`paprikou\s+(sladkou|pálivou|uzenou)` + AI_CS_E), (m, a) => a + ' paprikou'],
 ];
-function aiFixCs(text) {
-  if (LANG !== 'cs' || typeof text !== 'string') return text;
-  let s = text;
+const AI_CS_URL_RE = /((?:https?:\/\/|www\.)[^\s"'<>()\[\]{}\\]+)/i;
+function aiFixCsPart(s, rules) {
   // Bez lookbehind (starší Safari by modul nenačetl): znak před slovem jde do 1. skupiny a vrací se beze změny
-  for (const [re, fn] of AI_CS_FIX) s = s.replace(re, (all, pre, ...g) => {
+  for (const [re, fn] of rules) s = s.replace(re, (all, pre, ...g) => {
     const m = all.slice(pre.length);
     const r = fn(m, ...g);
     // velikost písmen podle originálu (KAPERS → KAPARY, Kapers → Kapary)
@@ -1016,6 +1021,13 @@ function aiFixCs(text) {
     return pre + (/^\p{Lu}/u.test(m) ? r[0].toUpperCase() + r.slice(1).toLowerCase() : r.toLowerCase());
   });
   return s;
+}
+function aiFixCs(text, opts) {
+  if (LANG !== 'cs' || typeof text !== 'string') return text;
+  const rules = opts?.recipe ? [...AI_CS_FIX, ...AI_CS_FIX_RECIPE] : AI_CS_FIX;
+  if (!rules.length) return text;
+  // Liché části po split jsou URL (zachycující skupina) → beze změny
+  return text.split(AI_CS_URL_RE).map((part, i) => i % 2 ? part : aiFixCsPart(part, rules)).join('');
 }
 // Opakovaný dotaz: instrukce se připojí k systémové zprávě (server povolí jen jednu)
 function aiRetryMessages(messages) {
@@ -16515,7 +16527,7 @@ window.rexRecipe=async(food,btnEl)=>{
   try{
     const rawRecipe=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food,n:4})}],1500);
     if(!rawRecipe)throw new Error('AI unavailable');
-    let raw=aiFixCs(rawRecipe).trim();
+    let raw=aiFixCs(rawRecipe,{recipe:true}).trim();
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
@@ -17484,7 +17496,7 @@ window.askRecipe=async()=>{
   try{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food:query,n:cookPortions})}],1500);
     if(!rawR)throw new Error('AI unavailable');
-    let raw=aiFixCs(rawR).trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
+    let raw=aiFixCs(rawR,{recipe:true}).trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const recipe=JSON.parse(raw);
     lastRecipe=recipe;
     renderRecipe(recipe);
@@ -17549,7 +17561,7 @@ window.aiSuggestSteps = async function() {
     const user = tA('aip.steps.user', {name, n: portions, ingr: ingr || tA('aip.steps.noIngr')});
     const result = await callClaude([{role:'system',content:sys},{role:'user',content:user}], 600);
     if (result && stepsEl) {
-      stepsEl.value = aiFixCs(aiPlain(result));
+      stepsEl.value = aiFixCs(aiPlain(result), {recipe:true});
       toast(t('ck.mr.stepsDone'));
     }
   } catch(e) {
