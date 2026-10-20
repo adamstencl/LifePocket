@@ -6962,6 +6962,7 @@ window.removeSamples = async () => {
 window.dismissQS = () => {
   lsSave('lp_qs_dismissed', true);
   document.getElementById('qs-card')?.remove();
+  document.getElementById('ct-card')?.remove(); // karta „Co teď“ (jednoduchý režim)
 };
 
 // ── GAMIFIKACE: body (XP) a úrovně v users/{uid}/game/main (docs/NAVRH-GAMIFIKACE.md, F1) ──
