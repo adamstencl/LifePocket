@@ -86,14 +86,40 @@ window.__lpLang=l; // rychlý start landingu (skript za #s-login)
 
 <!-- LOADING SPLASH -->
 <div class="screen active" id="s-loading" style="flex-direction:column;gap:16px;background:var(--bg)">
-  <img src="icon-192.png" loading="lazy" width="80" height="80" alt="" style="width:80px;height:80px;border-radius:20px;box-shadow:0 4px 24px rgba(245,200,66,.2)">
+  <img src="icon-192.png" width="80" height="80" alt="" style="width:80px;height:80px;border-radius:20px;box-shadow:0 4px 24px rgba(245,200,66,.2)">
   <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent)">LifePocket</div>
   <div id="load-spin" style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
   <div id="load-err" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:0 24px;text-align:center">
     <div style="font-size:15px;color:var(--text2);max-width:280px;line-height:1.5" data-i18n="load.err">📶 Nepodařilo se načíst data – zkontroluj připojení</div>
     <button class="btn-p" style="width:auto;padding:9px 22px" onclick="retryLoad()" data-i18n="common.retry">Zkusit znovu</button>
   </div>
+  <!-- Hlídač startu (4.75): appka se do 12 s neukázala nebo app.js nenačetla → nabídnout nové načtení -->
+  <div id="load-slow" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:0 24px;text-align:center">
+    <div id="load-slow-t" style="font-size:15px;color:var(--text2);max-width:280px;line-height:1.5" data-i18n="load.slow">⏳ Načítání trvá déle než obvykle. Zkus aplikaci načíst znovu.</div>
+    <button id="load-slow-b" class="btn-p" style="width:auto;padding:9px 22px" onclick="location.reload()" data-i18n="load.reload">Načíst znovu</button>
+  </div>
 </div>
+<script>(function(){
+var d=document,T={en:['⏳ Loading is taking longer than usual. Try reloading the app.','Reload']};
+// hard: app.js se nenačetla (chyba modulu) → ukázat i místo landingu z rychlého startu
+window.lpBootFail=function(hard){
+  if(window.__lpBooted)return;
+  var ld=d.getElementById('s-loading'),b=d.getElementById('load-slow'),e=d.getElementById('load-err');
+  if(!ld||!b)return;
+  if(!ld.classList.contains('active')){
+    if(!hard)return;
+    d.querySelectorAll('.screen').forEach(function(x){x.classList.remove('active');});ld.classList.add('active');
+  }
+  if(e&&e.style.display==='flex')return; // app.js už ukazuje vlastní hlášku
+  var l=window.__lpLang,tt=d.getElementById('load-slow-t'),bb=d.getElementById('load-slow-b');
+  if(hard){var sp=d.getElementById('load-spin');if(sp)sp.style.display='none';}
+  if(T[l]&&tt&&bb){tt.textContent=T[l][0];bb.textContent=T[l][1];}
+  b.style.display='flex';
+};
+setTimeout(function(){window.lpBootFail(false);},12000);
+// Chyba při vyhodnocení app.js nebo slovníku před startem appky
+window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');if(!window.__lpBooted&&/\/(app|i18n)\.js$|\/i18n\/[\w-]+\.js$/.test(f.split(/[?#]/)[0]))window.lpBootFail(true);}catch(e){}});
+})();</script>
 
 <!-- ÚČET SMAZÁN (po deleteAccount) -->
 <div class="screen" id="s-deleted" style="flex-direction:column;gap:16px;background:var(--bg);text-align:center;padding:24px">
@@ -1525,7 +1551,7 @@ else show();
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js" onerror="lpBootFail(true)"></script>
 <div class="av-reaction" id="av-reaction">
   <div class="av-reaction-em" id="av-r-em">⭐</div>
   <div class="av-reaction-txt"><strong id="av-r-title"></strong><span id="av-r-msg"></span></div>

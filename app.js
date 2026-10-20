@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import{getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,terminate,clearIndexedDbPersistence,doc,setDoc,getDoc,getDocFromCache,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 // Messaging a Functions se načítají až za běhu (4.74), nebrzdí první vykreslení; verze musí sedět s importy výše
 const FB_SDK='https://www.gstatic.com/firebasejs/10.12.0/';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
@@ -10,7 +10,11 @@ await initI18n();
 applyI18n();
 
 const FC={apiKey:"AIzaSyAwI761FoCCd6vWhXANRbOOQrVih_JDz0w",authDomain:"lifepocket-d8f0e.firebaseapp.com",projectId:"lifepocket-d8f0e",storageBucket:"lifepocket-d8f0e.firebasestorage.app",messagingSenderId:"763710336120",appId:"1:763710336120:web:84085b690117f605f8918d"};
-const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAuthProvider();
+const fb=initializeApp(FC),auth=getAuth(fb),gp=new GoogleAuthProvider();
+// Offline start (4.75): trvalá cache Firestore v IndexedDB (sdílená mezi taby); bez podpory obyčejná paměťová
+let db;
+try{ db=initializeFirestore(fb,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
+catch(e){ console.warn('[LP] cache Firestore:',e?.code||e?.name); db=getFirestore(fb); }
 // E-maily Auth (ověření, reset hesla) a okno Google v jazyce appky; čeština beze změny (výchozí šablony projektu)
 if(LANG!=='cs') auth.languageCode=LANG;
 // Push: messaging se vytvoří jen když to prohlížeč podporuje; důvod nepodpory se ukáže v nastavení notifikací
@@ -1205,6 +1209,12 @@ window.addEventListener('unhandledrejection', ev => {
   } catch (e) {}
 });
 
+// Profil při startu (4.75): offline rovnou z trvalé cache (getDoc by čekal na server ~10 s), jinak ze serveru
+async function profileGet(uid){
+  const ref=doc(db,'users',uid,'profile','main');
+  if(navigator.onLine===false){ try{ const c=await getDocFromCache(ref); if(c.exists()) return c; }catch(e){} }
+  return getDoc(ref);
+}
 // Načte profil a spustí appku; bez připojení ukáže hlášku s tlačítkem Zkusit znovu (místo nekonečného spinneru)
 let _profLoading=null; // uid, pro který právě běží načítání (dvojklik na Zkusit znovu)
 async function startSession(u){
@@ -1212,7 +1222,7 @@ async function startSession(u){
   _profLoading=u.uid;
   showLoadError(false);
   let s;
-  try{ s=await getDoc(doc(db,'users',u.uid,'profile','main')); }
+  try{ s=await profileGet(u.uid); }
   catch(e){ if(CU?.uid===u.uid){ userErr(e,'načtení profilu'); showLoadError(true); } return; }
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
@@ -1321,6 +1331,7 @@ function showLoadError(on){
   const spin=document.getElementById('load-spin'), box=document.getElementById('load-err');
   if(spin) spin.style.display=on?'none':'';
   if(box) box.style.display=on?'flex':'none';
+  const slow=document.getElementById('load-slow'); if(slow&&on) slow.style.display='none'; // hlídač startu (index.html)
   if(on) ss('s-loading');
 }
 window.retryLoad=()=>{ if(CU) startSession(CU); else location.reload(); };
@@ -1405,7 +1416,8 @@ function clearUserSessionState(){
   }catch(e){}
 }
 
-function ss(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}installGate();}
+function ss(id){if(id!=='s-loading')window.__lpBooted=true; // hlídač startu v index.html (4.75)
+document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}installGate();}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
@@ -3912,7 +3924,12 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();location.reload();};
+window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();await clearFsCache();location.reload();};
+// Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování)
+async function clearFsCache(){
+  try{ await Promise.race([terminate(db).then(()=>clearIndexedDbPersistence(db)),new Promise(r=>setTimeout(r,2500))]); }
+  catch(e){ console.warn('[LP] cache Firestore (odhlášení):',e?.code||e?.name); }
+}
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť

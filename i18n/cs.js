@@ -25,6 +25,8 @@ export default {
 
   // ── Načítání a smazaný účet ──
   'load.err': '📶 Nepodařilo se načíst data – zkontroluj připojení',
+  'load.slow': '⏳ Načítání trvá déle než obvykle. Zkus aplikaci načíst znovu.',
+  'load.reload': 'Načíst znovu',
   'deleted.title': 'Účet byl smazán',
   'deleted.text': 'Tvoje data jsme smazali a odešel/odešla jsi ze všech skupin. Díky, že jsi LifePocket používal/a.',
   'deleted.home': 'Na úvod',

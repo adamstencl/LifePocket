@@ -24,6 +24,8 @@ export default {
 
   // ── Loading and deleted account ──
   'load.err': '📶 Couldn’t load your data – check your connection',
+  'load.slow': '⏳ Loading is taking longer than usual. Try reloading the app.',
+  'load.reload': 'Reload',
   'deleted.title': 'Account deleted',
   'deleted.text': 'We’ve deleted your data and removed you from all groups. Thanks for using LifePocket.',
   'deleted.home': 'Back to start',
