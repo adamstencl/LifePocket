@@ -5698,6 +5698,7 @@ async function rexProactiveGreeting() {
   const today = toDS();
   if (lastGreet === today) return; // jednou denně
   if (accNew(1)) return; // první den: bez AI pozdravu (průvodce, žádná data, šetří denní limit)
+  if (!hasMod('rex')) return; // vypnutý parťák (4.75): žádný AI dotaz
   localStorage.setItem('lp_rex_greet', today);
 
   const today_date = new Date();
@@ -5713,8 +5714,9 @@ async function rexProactiveGreeting() {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const tmmw = `${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
   const todayMMDD = `${String(today_date.getMonth()+1).padStart(2,'0')}-${String(today_date.getDate()).padStart(2,'0')}`;
-  const bdayToday = events.filter(e => e.type==='birthday' && e.date.slice(5)===todayMMDD).map(e=>e.name);
-  const bdayTmrw = events.filter(e => e.type==='birthday' && e.date.slice(5)===tmmw).map(e=>e.name);
+  const bdayOn = (e, md) => e && e.type==='birthday' && typeof e.date==='string' && e.date.slice(5)===md; // událost bez data nespadne
+  const bdayToday = events.filter(e => bdayOn(e, todayMMDD)).map(e=>e.name);
+  const bdayTmrw = events.filter(e => bdayOn(e, tmmw)).map(e=>e.name);
 
   // Vzory v návycích — posledních 7 dní
   const weekPatterns = analyzeWeekPatterns();
@@ -17004,7 +17006,14 @@ async function chatDataReady(){
 window.askC=t=>{document.getElementById('c-inp').value=t;send();};
 window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
 window.ar=el=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px';};
+// Jen jeden dotaz naráz (4.75): Enter, mikrofon a návrhy otázek nesmí poslat druhý dřív, než dorazí odpověď
+let _chatSending=false;
 window.send=async()=>{
+  if(_chatSending) return;
+  _chatSending=true;
+  try{ await chatSend(); } finally{ _chatSending=false; }
+};
+async function chatSend(){
   const inp=document.getElementById('c-inp'),userMsg=inp.value.trim();if(!userMsg)return;
   document.getElementById('cwelcome')?.remove();
   inp.value='';inp.style.height='auto';
@@ -17038,7 +17047,7 @@ window.send=async()=>{
     }
   }catch(e){if(CU?.uid===uid)persistChat();appendMsg('bot','❌ '+userErr(e,'chat'),t('chat.errLbl'),'⚠️');}
   document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
-};
+}
 window.rexRecipe=async(food,btnEl)=>{
   btnEl?.remove();
   // Zobraz loading v chatu
