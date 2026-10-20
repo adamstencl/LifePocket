@@ -61,6 +61,7 @@ export default {
   'auth.modeLogin': '🔑 Přihlásit se',
   'auth.modeRegister': '✨ Nový účet',
   'auth.google': 'Pokračovat přes Google',
+  'auth.googlePwa': 'Přihlášení přes Google se v aplikaci nedokončilo. Přihlas se níže e-mailem a heslem. Máš účet přes Google bez hesla? Klepni na „Zapomenuté heslo?“ a nastav si ho.',
   'auth.orEmail': 'nebo e-mailem',
   'auth.email': 'E-mail',
   'auth.password': 'Heslo',

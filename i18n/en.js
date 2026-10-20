@@ -60,6 +60,7 @@ export default {
   'auth.modeLogin': '🔑 Log in',
   'auth.modeRegister': '✨ New account',
   'auth.google': 'Continue with Google',
+  'auth.googlePwa': 'Google sign-in didn’t finish in the app. Please sign in below with your e-mail and password. Have a Google account without a password? Tap “Forgot password?” to set one.',
   'auth.orEmail': 'or with email',
   'auth.email': 'Email',
   'auth.password': 'Password',

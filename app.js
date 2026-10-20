@@ -3921,16 +3921,24 @@ window.doLogin=async()=>{
   const b=document.getElementById('login-btn'),e=document.getElementById('login-err');
   e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> '+tH('auth.signingIn');
   try{
-    await signInWithPopup(auth,gp);
+    // Appka z plochy / Google Play (4.75): okno Google se často neotevře nebo nevrátí → po 60 s nebo chybě okna nabídnout e-mail
+    const sa=IS_TWA||isStandaloneApp();
+    let tm=0;
+    try{ await (sa?Promise.race([signInWithPopup(auth,gp),new Promise((_,rj)=>{tm=setTimeout(()=>rj({code:'lp/popup-timeout'}),60000);})]):signInWithPopup(auth,gp)); }
+    finally{ clearTimeout(tm); }
   } catch(ex){
     b.disabled=false;
     resetLoginBtn();
-    if(ex.code!=='auth/popup-closed-by-user'){
+    if((IS_TWA||isStandaloneApp())&&GOOGLE_PWA_FAIL.includes(ex?.code)){
+      e.textContent=t('auth.googlePwa');
+      e.classList.add('show');
+    } else if(ex.code!=='auth/popup-closed-by-user'){
       e.textContent=userErr(ex,'login');
       e.classList.add('show');
     }
   }
 };
+const GOOGLE_PWA_FAIL=['lp/popup-timeout','auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'];
 function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
