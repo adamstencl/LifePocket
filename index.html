@@ -33,18 +33,28 @@
 <meta name="twitter:image" content="https://lifepocket.app/img/og-image.png?v=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<!-- Fonty neblokují první vykreslení (4.74): do načtení systémové písmo, pak výměna (display=swap) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap"></noscript>
 <!-- Téma před prvním vykreslením (stejná logika jako loadTheme v app.js), ať obrazovka nebliká -->
 <script>(function(){var c={'dark-gold':'#0c0c10','sunshine':'#faf8f0','tangerine':'#fff1e6'},t='sunshine';try{var s=localStorage.getItem('lp_theme');if(Object.prototype.hasOwnProperty.call(c,s))t=s;}catch(e){}
 document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=c[t];
 /* Instalační banner: skrytý, dokud ho appka nepovolí (app.js, installGate) */
 document.documentElement.classList.add('lp-noinstall');})();</script>
 <link rel="stylesheet" href="style.css">
+<!-- app.js a Firebase stahovat hned a souběžně (4.74); dřív je prohlížeč našel až po stažení app.js.
+     Verze SDK musí sedět s importy v app.js. Messaging a Functions si app.js načte samo později. -->
+<link rel="modulepreload" href="/app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js">
 <script src="pwa.js"></script>
 <!-- Jazyk: přednačtení slovníku (stejná logika jako resolveLang v i18n.js) -->
 <script>(function(){var l='cs';try{var q=new URLSearchParams(location.search).get('lang'),s=null;try{s=localStorage.getItem('lp_lang');}catch(e){}
 l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||'']).map(function(x){return String(x||'').slice(0,2).toLowerCase();});return n.some(function(x){return x==='cs'||x==='sk';})?'cs':n.some(function(x){return /^[a-z]{2}$/.test(x);})?'en':'cs';})();}catch(e){}
-['/i18n.js','/i18n/cs.js'].concat(l==='en'?['/i18n/en.js']:[]).forEach(function(h){var k=document.createElement('link');k.rel='modulepreload';k.href=h;document.head.appendChild(k);});})();</script>
+window.__lpLang=l; // rychlý start landingu (skript za #s-login)
+['/i18n.js','/i18n/cs.js','/i18n/ai-cs.js'].concat(l==='en'?['/i18n/en.js','/i18n/ai-en.js']:[]).forEach(function(h){var k=document.createElement('link');k.rel='modulepreload';k.href=h;document.head.appendChild(k);});})();</script>
 </head>
 <body>
 
@@ -76,7 +86,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
 
 <!-- LOADING SPLASH -->
 <div class="screen active" id="s-loading" style="flex-direction:column;gap:16px;background:var(--bg)">
-  <img src="icon-192.png" style="width:80px;height:80px;border-radius:20px;box-shadow:0 4px 24px rgba(245,200,66,.2)">
+  <img src="icon-192.png" loading="lazy" width="80" height="80" alt="" style="width:80px;height:80px;border-radius:20px;box-shadow:0 4px 24px rgba(245,200,66,.2)">
   <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent)">LifePocket</div>
   <div id="load-spin" style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
   <div id="load-err" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:0 24px;text-align:center">
@@ -87,7 +97,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
 
 <!-- ÚČET SMAZÁN (po deleteAccount) -->
 <div class="screen" id="s-deleted" style="flex-direction:column;gap:16px;background:var(--bg);text-align:center;padding:24px">
-  <img src="icon-192.png" style="width:72px;height:72px;border-radius:18px" alt="">
+  <img src="icon-192.png" loading="lazy" width="72" height="72" style="width:72px;height:72px;border-radius:18px" alt="">
   <div style="font-family:'Playfair Display',serif;font-size:24px;color:var(--text)" data-i18n="deleted.title">Účet byl smazán</div>
   <div style="font-size:15px;color:var(--text2);max-width:320px;line-height:1.5" data-i18n="deleted.text">Tvoje data jsme smazali a odešel/odešla jsi ze všech skupin. Díky, že jsi LifePocket používal/a.</div>
   <button class="btn-p" style="width:auto;padding:10px 24px" onclick="goHomeAfterDelete()" data-i18n="deleted.home">Na úvod</button>
@@ -195,6 +205,34 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
     </section>
   </div>
 </div>
+
+<!-- Rychlý start (4.74): nový návštěvník v prohlížeči vidí landing hned, bez čekání na app.js a Firebase.
+     Přihlášený (lp_owner_uid) nebo appka z plochy dál čeká na app.js (jinak by landing problikl).
+     Do načtení appky: html.lp-boot vypne tlačítka přihlášení (style.css), zástupné funkce níže
+     jen přepínají landing/panel; app.js je přepíše a v initLoginScreen převezme zvolený režim. -->
+<script>(function(){
+var d=document,h=d.documentElement,known=false,sa=false;
+try{known=!!localStorage.getItem('lp_owner_uid');}catch(e){}
+try{sa=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;}catch(e){}
+if(known||sa) return;
+h.classList.add('lp-boot');
+function panel(on){var l=d.getElementById('lp-landing'),a=d.getElementById('auth-panel');if(l&&a){l.hidden=on;a.hidden=!on;}}
+window.showAuthPanel=function(m){window.__lpAuthMode=m==='register'?'register':'login';panel(true);window.scrollTo(0,0);};
+window.showLanding=function(){window.__lpAuthMode=null;panel(false);};
+window.landLang=function(l){if(l===window.__lpLang)return false;
+  try{if(window.__lpAuthMode)sessionStorage.setItem('lp_auth_panel',window.__lpAuthMode);}catch(e){}
+  try{var u=new URL(location.href);u.searchParams.set('lang',l);location.replace(u.href);return false;}catch(e){return true;}};
+function show(){
+  var ld=d.getElementById('s-loading'),lg=d.getElementById('s-login');
+  if(!h.classList.contains('lp-boot')||!ld||!lg||!ld.classList.contains('active'))return; // app.js už rozhodla
+  var b=null;try{b=sessionStorage.getItem('lp_auth_panel');}catch(e){}
+  if(b==='login'||b==='register')panel(true);
+  ld.classList.remove('active');lg.classList.add('active');
+}
+// Čeština je přímo v HTML; jiný jazyk nejdřív přeloží landing (stejný modul i18n.js jako app.js)
+if(window.__lpLang==='en'){import('/i18n.js').then(function(m){return m.initI18n().then(function(){m.applyI18n(d.getElementById('s-login'));show();});}).catch(function(){});}
+else show();
+})();</script>
 
 <!-- STEP 1 -->
 <div class="screen" id="s-step1">

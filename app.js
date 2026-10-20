@@ -1,8 +1,8 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,doc,setDoc,getDoc,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import{getMessaging,getToken,deleteToken,isSupported,onMessage}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
-import{getFunctions,httpsCallable}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+// Messaging a Functions se načítají až za běhu (4.74), nebrzdí první vykreslení; verze musí sedět s importy výše
+const FB_SDK='https://www.gstatic.com/firebasejs/10.12.0/';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
@@ -14,21 +14,34 @@ const fb=initializeApp(FC),auth=getAuth(fb),db=getFirestore(fb),gp=new GoogleAut
 // E-maily Auth (ověření, reset hesla) a okno Google v jazyce appky; čeština beze změny (výchozí šablony projektu)
 if(LANG!=='cs') auth.languageCode=LANG;
 // Push: messaging se vytvoří jen když to prohlížeč podporuje; důvod nepodpory se ukáže v nastavení notifikací
-let messaging=null,msgUnsupportedReason='';
+let messaging=null,msgUnsupportedReason='',fcmSdk=null; // fcmSdk: modul firebase-messaging (getToken, deleteToken)
 const msgReady=(async()=>{
   try{
-    if(await isSupported()){messaging=getMessaging(fb);onMessage(messaging,showForegroundPush);}
+    const m=await import(FB_SDK+'firebase-messaging.js');
+    if(await m.isSupported()){fcmSdk=m;messaging=m.getMessaging(fb);m.onMessage(messaging,showForegroundPush);}
     else msgUnsupportedReason=t('notif.unsupported');
   }catch(e){msgUnsupportedReason=t('notif.initFailed',{code:e&&e.code||t('notif.error')});}
 })();
-const functions=getFunctions(fb,'europe-west1');
-const claudeProxyFn=httpsCallable(functions,'claudeProxy');
-const testPushFn=httpsCallable(functions,'testPush');
-const deleteAccountFn=httpsCallable(functions,'deleteAccount');
+// Cloud Functions: SDK až při prvním volání; chyba načtení se zahodí, další volání to zkusí znovu
+let _fnSdkP=null;
+const callableFn=(name,opts)=>{
+  let f=null;
+  return async data=>{
+    if(!f){
+      if(!_fnSdkP) _fnSdkP=import(FB_SDK+'firebase-functions.js').then(m=>({m,fns:m.getFunctions(fb,'europe-west1')}),e=>{_fnSdkP=null;throw e;});
+      const {m,fns}=await _fnSdkP;
+      f=m.httpsCallable(fns,name,opts);
+    }
+    return f(data);
+  };
+};
+const claudeProxyFn=callableFn('claudeProxy');
+const testPushFn=callableFn('testPush');
+const deleteAccountFn=callableFn('deleteAccount');
 // Kopie velké skupiny může trvat déle než výchozích 70 s (funkce má limit 300 s)
-const rotateGroupCodeFn=httpsCallable(functions,'rotateGroupCode',{timeout:300000});
-const restoreGroupFn=httpsCallable(functions,'restoreGroup',{timeout:120000}); // obnova opuštěné skupiny (4.47)
-const adminOverviewFn=httpsCallable(functions,'adminOverview'),adminFeedbackFn=httpsCallable(functions,'adminFeedback'); // přehled pro správce (4.73)
+const rotateGroupCodeFn=callableFn('rotateGroupCode',{timeout:300000});
+const restoreGroupFn=callableFn('restoreGroup',{timeout:120000}); // obnova opuštěné skupiny (4.47)
+const adminOverviewFn=callableFn('adminOverview'),adminFeedbackFn=callableFn('adminFeedback'); // přehled pro správce (4.73)
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 // Mazání účtu: během něj neběží AI ani zápisy na pozadí (viz sekce ÚČET)
 let _accDeleting=false, _accDeleted=false, _accStopped=false; // _accStopped: listenery zastavené (po chybě obnoví reload)
@@ -49,8 +62,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.73';
+const APP_VERSION = '4.74';
 const CHANGELOG = [
+  { v:'4.74', items:[
+    '⚡ Rychlejší start aplikace: úvodní stránka se ukáže hned a appka se načítá rychleji'
+  ], en:[
+    '⚡ Faster app start: the welcome page appears right away and the app loads faster'
+  ]},
   { v:'4.73', items:[
     '🧭 V panelu Více jsou vypnuté moduly jasně označené a zapneš je klepnutím',
     '🔧 Drobná vylepšení a opravy, nový interní přehled pro správu aplikace'
@@ -4200,7 +4218,7 @@ window.confirmDeleteAccount = async () => {
 async function finishAccountDeleted() {
   _accDeleted = true;
   // Push token tohoto zařízení zneplatnit (profil s tokeny už smazal server)
-  try { if (messaging && fcmState === 'ok') await Promise.race([deleteToken(messaging), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
+  try { if (messaging && fcmState === 'ok') await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
   try { await signOut(auth); } catch (e) {}
   // Lokální data aplikace (lp_*); lp_twa_seen zůstává – je to vlastnost instalace, ne účtu
   try {
@@ -4814,7 +4832,7 @@ async function unregisterFcmDevice() {
   })());
   // deleteToken jen když se token v této relaci získal (SDK zná SW registraci) — jinak zbytečný 404 na /firebase-messaging-sw.js
   if (messaging && notifGranted() && fcmState === 'ok') steps.push((async () => {
-    try { await deleteToken(messaging); }
+    try { await fcmSdk.deleteToken(messaging); }
     catch(e) { console.warn('[LP] deleteToken selhal:', e && e.code || ''); }
   })());
   await Promise.race([Promise.allSettled(steps), new Promise(r => setTimeout(r, 3000))]);
@@ -4850,7 +4868,7 @@ async function doRegisterFcmToken() {
     const swReg = await navigator.serviceWorker.ready;
     let token;
     try {
-      token = await getToken(messaging, {
+      token = await fcmSdk.getToken(messaging, {
         vapidKey: VAPID_KEY,
         serviceWorkerRegistration: swReg
       });
@@ -5134,7 +5152,7 @@ window.refreshFcmToken = async () => {
     log('7. SW ready: ✅ ' + swReg.active?.scriptURL);
 
     log('8. ' + t('notif.dbg.getting'));
-    const token = await getToken(messaging, {
+    const token = await fcmSdk.getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg
     });
@@ -9222,10 +9240,14 @@ window.showLanding=()=>{
 function initLoginScreen(){
   let known=false; try{ known=!!localStorage.getItem('lp_owner_uid'); }catch(e){}
   let back=null; try{ back=sessionStorage.getItem('lp_auth_panel'); sessionStorage.removeItem('lp_auth_panel'); }catch(e){}
+  const early=window.__lpAuthMode; // panel otevřený před načtením appky (rychlý start v index.html)
   if(back==='login'||back==='register') showAuthPanel(back);
+  else if(early==='login'||early==='register') window.toggleLoginMode(early); // bez posunu a fokusu, uživatel už píše
   else if(known || isStandaloneApp()) showAuthPanel('login');
+  window.__lpAuthMode=null;
   const hasInv=!!readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
+  document.documentElement.classList.remove('lp-boot'); // tlačítka přihlášení už fungují
 }
 initLoginScreen();
 function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} }

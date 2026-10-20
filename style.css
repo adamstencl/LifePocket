@@ -2095,6 +2095,9 @@ label.sc-tog{cursor:pointer;min-height:48px}
 @keyframes ctaAskIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 /* Instalační banner: skrytý, dokud ho appka nepovolí (třída lp-noinstall, app.js installGate) */
 html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!important}
+/* Rychlý start (4.74): landing je vidět dřív než app.js; přihlašovací tlačítka do načtení appky vypnutá */
+html.lp-boot #auth-panel button:not(.lp-back){pointer-events:none;opacity:.55;cursor:progress}
+html.lp-boot #auth-mode-lbl{visibility:hidden}
 
 /* ── PITNÝ REŽIM (4.62) ── */
 :root,[data-theme="dark-gold"]{--water:#5b9cf6;--water-text:#7db3ff;--water-glass:rgba(91,156,246,.08);--on-water:#0c0c10}

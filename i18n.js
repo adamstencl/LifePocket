@@ -68,7 +68,10 @@ function urlWithoutLang() {
   return u;
 }
 
-export async function initI18n() {
+// Jednou za načtení stránky: volá ji rychlý start landingu v index.html i app.js (sdílí stejný slib)
+let _initP = null;
+export function initI18n() { return _initP || (_initP = initOnce()); }
+async function initOnce() {
   LANG = resolveLang();
   PR_CS = plural('cs');
   if (LANG !== 'cs') {

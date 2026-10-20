@@ -49,7 +49,10 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v69';
+const CACHE = 'lifepocket-v70';
+// Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
+const CDN_CACHE = 'lp-cdn-v1';
+const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
 const OFFLINE_URLS = [
   '/',
   '/index.html',
@@ -76,7 +79,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   // 'lp-pending' drží čekající akce z notifikací — nesmí se smazat při updatu SW
-  const KEEP = [CACHE, 'lp-pending'];
+  const KEEP = [CACHE, 'lp-pending', CDN_CACHE];
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => !KEEP.includes(k)).map(k => caches.delete(k)))
   ));
@@ -85,6 +88,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (isImmutableCdn(e.request.url)) { e.respondWith(cdnFirst(e.request)); return; }
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request).then(res => {
     if (res) return res;
     // Navigace bez cache zásahu — spadni na hlavní stránku appky
@@ -92,6 +96,18 @@ self.addEventListener('fetch', e => {
     return new Response('', {status: 503, statusText: 'Offline'});
   })));
 });
+
+// Z cache, jinak ze sítě a uložit (jen úspěšnou CORS odpověď, neprůhledné se neukládají)
+// Nedostupná Cache API (soukromý režim apod.) nesmí požadavek shodit → rovnou síť
+function cdnFirst(req) {
+  return caches.open(CDN_CACHE).then(c => c.match(req)).catch(() => null).then(hit => hit || fetch(req).then(res => {
+    if (res && res.ok && res.type === 'cors') {
+      const copy = res.clone();
+      caches.open(CDN_CACHE).then(c => c.put(req, copy)).catch(() => {});
+    }
+    return res;
+  }));
+}
 
 // ── Klik na notifikaci nebo její tlačítko (registrováno nahoře, před Firebase) ──
 // Okno appky: přednostně viditelné / zaměřené, jinak první
