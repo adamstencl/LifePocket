@@ -298,6 +298,8 @@ export default {
   'set.notif.fix.desc': 'Testovací tlačítka. Hodí se, když ti připomínky nechodí.',
   'set.groups.namePh': 'Název skupiny (např. Rodina, Spolubydlící…)',
   'set.support.lnAlt': 'QR platba Lightning',
+  'set.support.sats': '≈ {sats} sats',
+  'set.support.lnSats': 'Částka do peněženky: {sats} sats (≈ {czk} Kč)',
   'set.contact.emailPh': 'tvuj@email.cz',
   'set.contact.msgPh': 'Váš dotaz nebo nápad...',
   'set.notif.habits': '🎯 Připomínka nesplněných návyků',

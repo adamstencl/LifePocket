@@ -297,6 +297,8 @@ export default {
   'set.notif.fix.desc': 'Test buttons. Handy when your reminders don’t arrive.',
   'set.groups.namePh': 'Group name (e.g. Family, Roommates…)',
   'set.support.lnAlt': 'Lightning payment QR',
+  'set.support.sats': '≈ {sats} sats',
+  'set.support.lnSats': 'Amount for your wallet: {sats} sats (≈ {czk} CZK)',
   'set.contact.emailPh': 'you@email.com',
   'set.contact.msgPh': 'Your question or idea...',
   'set.notif.habits': '🎯 Reminder for unfinished habits',

@@ -8804,9 +8804,48 @@ function czAccountFromIban(iban){
   const v=normIban(iban), pre=v.slice(8,14).replace(/^0+/,''), num=v.slice(14).replace(/^0+/,'');
   return (pre?pre+'-':'')+num+'/'+v.slice(4,8);
 }
+// Kurz BTC/CZK pro ekvivalent v sats (4.71): veřejné API CoinGecko bez klíče a bez osobních dat,
+// cache 10 min v sessionStorage (lp_btc_czk), timeout 5 s, při chybě null = ekvivalent se nezobrazí
+let btcCzk=null, btcLoading=null;
+const SUP_LN_AMTS=[50,100,200];
+async function loadBtcCzk(){
+  try{ const c=JSON.parse(sessionStorage.getItem('lp_btc_czk')||'null'); if(c&&c.r>0&&Date.now()-c.t<600000) return (btcCzk=c.r); }catch(e){}
+  if(btcLoading) return btcLoading;
+  btcLoading=(async()=>{
+    const ac=typeof AbortController==='function'?new AbortController():null;
+    const tm=setTimeout(()=>ac?.abort(),5000);
+    try{
+      const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=czk',{signal:ac?.signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+      const j=r.ok?await r.json():null;
+      const v=Number(j?.bitcoin?.czk);
+      if(!(v>0)) return null;
+      btcCzk=v;
+      try{ sessionStorage.setItem('lp_btc_czk',JSON.stringify({r:v,t:Date.now()})); }catch(e){}
+      return v;
+    }catch(e){ return null; }
+    finally{ clearTimeout(tm); btcLoading=null; }
+  })();
+  return btcLoading;
+}
+function czkToSats(czk){ return btcCzk>0&&czk>0?Math.round(czk/btcCzk*1e8):0; }
+// Lightning karta: stejné předvolby jako QR platba (jinak 50/100/200 Kč) a částka v sats k zadání v peněžence
+function renderSupportLn(){
+  const box=document.getElementById('support-ln');
+  if(!box) return;
+  if(!(btcCzk>0)){ box.hidden=true; return; }
+  const amts=supCfg?supCfg.amounts:SUP_LN_AMTS;
+  const custom=supCfg?supCustomVal():0;
+  if(!supAmt||!custom&&!amts.includes(supAmt)) supAmt=amts[Math.min(1,amts.length-1)];
+  const amt=custom||supAmt;
+  document.getElementById('support-ln-amts').innerHTML=amts.map(n=>
+    `<button type="button" class="sup-amt sup-amt--s${!custom&&n===supAmt?' on':''}" aria-pressed="${!custom&&n===supAmt}" onclick="pickSupportAmt(this.dataset.a1)" data-a1="${n}">${tH('set.support.amt',{n})}</button>`).join('');
+  document.getElementById('support-ln-sats').textContent=t('set.support.lnSats',{sats:fmtNum(czkToSats(amt)),czk:fmtNum(amt)});
+  box.hidden=false;
+}
 async function loadSupport(){
   const box=document.getElementById('support-bank');
   if(!box||IS_TWA||supLoading) return;
+  loadBtcCzk().then(()=>{ renderSupportLn(); if(supCfg) renderSupport(); });
   supLoading=true;
   try{
     const r=await fetch('/support.json',{cache:'no-store'});
@@ -8833,6 +8872,9 @@ function renderSupport(){
   const svg=qr.querySelector('svg'); if(svg) svg.setAttribute('aria-label',t('set.support.qrAlt',{n:amt}));
   document.getElementById('support-acc').textContent=czAccountFromIban(supCfg.iban)+(supCfg.accountName?' · '+supCfg.accountName:'');
   document.getElementById('support-iban').textContent='IBAN '+supCfg.iban.replace(/(.{4})/g,'$1 ').trim();
+  const sEl=document.getElementById('support-sats'), sats=czkToSats(amt);
+  if(sEl){ sEl.hidden=!sats; sEl.textContent=sats?t('set.support.sats',{sats:fmtNum(sats)}):''; }
+  renderSupportLn();
 }
 // Vlastní částka: celé Kč 1–100 000, jinak se použije předvolba
 function supCustomVal(){
@@ -8842,7 +8884,7 @@ function supCustomVal(){
 window.pickSupportAmt=n=>{
   supAmt=Number(n)||supAmt;
   const inp=document.getElementById('support-custom'); if(inp) inp.value='';
-  renderSupport();
+  if(supCfg) renderSupport(); else renderSupportLn();
 };
 window.supportCustom=()=>renderSupport();
 window.copySupportAccount=async()=>{

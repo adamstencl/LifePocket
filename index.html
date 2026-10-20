@@ -1133,6 +1133,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <div class="sup-amts" id="support-amts" role="group" data-i18n-attr="aria-label:set.support.amtLabel" aria-label="Částka příspěvku"></div>
           <input class="finp sup-custom" id="support-custom" type="number" inputmode="numeric" min="1" max="100000" step="1" oninput="supportCustom()" placeholder="Vlastní částka v Kč" aria-label="Vlastní částka v Kč" data-i18n-attr="placeholder:set.support.customPh;aria-label:set.support.customPh">
           <div class="sup-qr" id="support-qr"></div>
+          <div class="sup-sats" id="support-sats" hidden></div>
           <div class="sup-note" data-i18n="set.support.qrNote">Česká QR platba: naskenuj kód v aplikaci své banky a platbu tam potvrď.</div>
           <div class="sup-acc" id="support-acc" translate="no"></div>
           <div class="sup-iban" id="support-iban" translate="no"></div>
@@ -1145,6 +1146,11 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
             <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:8px">⚡ BTC Lightning</div>
             <img src="img/ln-qr.jpg" loading="lazy" width="110" height="110" style="width:110px;height:110px;border-radius:8px;display:block;margin:0 auto" alt="QR platba Lightning" data-i18n-attr="alt:set.support.lnAlt">
             <div style="font-size:11px;color:var(--text3);margin-top:6px;font-family:'Crimson Pro',serif" data-i18n="set.support.scanLn">naskenuj Lightning peněženkou</div>
+            <!-- Částka v sats k zadání v peněžence (4.71, kurz z CoinGecko; bez kurzu skryté) -->
+            <div class="sup-ln" id="support-ln" hidden>
+              <div class="sup-ln-amts" id="support-ln-amts" role="group" data-i18n-attr="aria-label:set.support.amtLabel" aria-label="Částka příspěvku"></div>
+              <div class="sup-ln-sats" id="support-ln-sats"></div>
+            </div>
           </div>
         </div>
         </div>
