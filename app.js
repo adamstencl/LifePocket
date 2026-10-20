@@ -15036,13 +15036,23 @@ window.bnmPick=id=>{
   bmp.querySelector('.btn-p')?.focus();
 };
 window.renderBnMore=renderBnMore;
-// Zapnutí: stávající togModSet (pitný režim přes wtEnableModule), pak se modul hned otevře
+// Zapnutí: optimisticky (lišta a modul hned, i offline), zápis do profilu na pozadí; při chybě zápisu zpět + toast
 window.bnmOn=id=>{
   const m=MODS.find(x=>x.id===id);
   if(!m) return;
-  quickOnce('mod-on',async()=>{
-    if(!(await nudgeModOn(id))) return;
-    if(id==='water') toast(t('set.mod.on',{name:modName(m)}));
+  quickOnce('mod-on',()=>{
+    if(!hasMod(id)){
+      prof.modules=[...new Set([...(prof.modules||[]),id])];
+      updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules}).catch(e=>{
+        prof.modules=(prof.modules||[]).filter(x=>x!==id);
+        buildNav(); rSetMods();
+        if(document.getElementById('p-'+id)?.classList.contains('active')) window.sp('dashboard');
+        toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
+      });
+      if(id==='water') subWater(); // server posílá připomínky jen se 'water' v prof.modules
+      buildNav(); rSetMods();
+      toast(t('set.mod.on',{name:modName(m)}));
+    }
     window.closeBnMore();
     window.sp(id);
   });
