@@ -1103,7 +1103,16 @@ function createFireSub(key, ref, opts, callback) {
   if (!CU) return;
   if (typeof opts === 'function') { callback = opts; opts = null; }
   if (_fireSubs[key]) { _fireSubs[key](); delete _fireSubs[key]; }
-  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback) : onSnapshot(ref, callback);
+  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback, snapErr(key)) : onSnapshot(ref, callback, snapErr(key));
+}
+// Chyba listeneru (4.75): jen varování a technický záznam (bez dat), appka běží dál s posledními daty
+function snapErr(tag) {
+  return e => {
+    try {
+      console.warn('[LP] listener ' + tag + ':', e?.code || e?.name);
+      logClientError('snapshot ' + tag + ': ' + (e?.code || e?.name || 'error'), 'onSnapshot', e?.stack);
+    } catch (x) {}
+  };
 }
 function destroyAllFireSubs() {
   Object.keys(_fireSubs).forEach(k => { if (_fireSubs[k]) _fireSubs[k](); delete _fireSubs[k]; });
@@ -1944,7 +1953,7 @@ function subHabits(){
     renderHabits();
     hOk=true;if(lOk)markReady();
     gameKick();
-  });
+  }, snapErr('habits'));
   _hlCutoff=hlCutoffDS();
   unsubLogs=onSnapshot(query(collection(db,'users',CU.uid,'habitLogs'),where('date','>=',_hlCutoff)),{includeMetadataChanges:true},snap=>{
     // Jen změna metadat (cache → server): nepřekreslovat, jen potvrdit úplná data
@@ -1958,7 +1967,7 @@ function subHabits(){
     renderHabits();
     gameKick();
     lOk=true;if(hOk)markReady();
-  });
+  }, snapErr('habitLogs'));
 }
 
 function habitDayLabel(){
@@ -9817,7 +9826,7 @@ function subscribeExtraGroup(gid) {
       delete extraGroupEvents[gid]; renderCal();
     }
     renderFamilySettings();
-  });
+  }, snapErr('groupDoc'));
 }
 
 function subscribeFamily() {
@@ -9869,7 +9878,7 @@ function subscribeFamily() {
     if(familyData.shareCal) subscribeSharedCal();
     if(familyData.shareMeal) subscribeSharedMeal();
     if(familyData.shareChecklist!==false) subscribeSharedChecklist();
-  });
+  }, snapErr('familyDoc'));
 }
 
 // Chyba listeneru sdílených dat (typicky po odebrání ze skupiny) – jen tichý log, bez toastu a bez dat
@@ -16066,7 +16075,7 @@ function subGoals(){
     missing.forEach((g,i)=>{ const r=loaded[i]; if(r.status==='fulfilled'&&!subs[g.id]) subs[g.id]=r.value.docs.map(d=>({id:d.id,...d.data()})); });
     rGoals();rAvPage();rDash();
     _goalsOk=true; gameKick();
-  });
+  }, snapErr('goals'));
 }
 
 // Synchronizace deadline → osobní kalendář

@@ -79,6 +79,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   // 'lp-pending' drží čekající akce z notifikací — nesmí se smazat při updatu SW
+  // Smaže i starší CDN cache (lp-cdn-*) kromě aktuální CDN_CACHE (4.75)
   const KEEP = [CACHE, 'lp-pending', CDN_CACHE];
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => !KEEP.includes(k)).map(k => caches.delete(k)))

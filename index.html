@@ -244,15 +244,16 @@ if(known||sa) return;
 h.classList.add('lp-boot');
 function panel(on){var l=d.getElementById('lp-landing'),a=d.getElementById('auth-panel');if(l&&a){l.hidden=on;a.hidden=!on;}}
 window.showAuthPanel=function(m){window.__lpAuthMode=m==='register'?'register':'login';panel(true);window.scrollTo(0,0);};
-window.showLanding=function(){window.__lpAuthMode=null;panel(false);};
+window.showLanding=function(){window.__lpAuthMode=null;try{sessionStorage.removeItem('lp_auth_panel');}catch(e){}panel(false);};
 window.landLang=function(l){if(l===window.__lpLang)return false;
   try{if(window.__lpAuthMode)sessionStorage.setItem('lp_auth_panel',window.__lpAuthMode);}catch(e){}
   try{var u=new URL(location.href);u.searchParams.set('lang',l);location.replace(u.href);return false;}catch(e){return true;}};
 function show(){
   var ld=d.getElementById('s-loading'),lg=d.getElementById('s-login');
   if(!h.classList.contains('lp-boot')||!ld||!lg||!ld.classList.contains('active'))return; // app.js už rozhodla
-  var b=null;try{b=sessionStorage.getItem('lp_auth_panel');}catch(e){}
-  if(b==='login'||b==='register')panel(true);
+  // Režim panelu převezme __lpAuthMode a záznam se smaže: Zpět během načítání pak app.js panel znovu neotevře (4.75)
+  var b=null;try{b=sessionStorage.getItem('lp_auth_panel');sessionStorage.removeItem('lp_auth_panel');}catch(e){}
+  if(b==='login'||b==='register'){window.__lpAuthMode=b;panel(true);}
   ld.classList.remove('active');lg.classList.add('active');
 }
 // Čeština je přímo v HTML; jiný jazyk nejdřív přeloží landing (stejný modul i18n.js jako app.js)
