@@ -1364,6 +1364,9 @@ onAuthStateChanged(auth,async u=>{
     extraGroupIds=[]; extraGroupsData={}; extraGroupEvents={}; unsubExtraGroupDocs={}; unsubExtraGroupCals={};
     // Reset dat
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; shopItemsLoaded=false; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
+    // Profil a výběry patří odhlášenému účtu (4.75): další přihlášení nesmí vidět jeho moduly, parťáka ani zámky
+    prof={}; selMods=new Set(); selG=''; selAv=''; tmpAv=''; mood=''; customReminders=[];
+    _onbBusy=false; _tzUid=''; _profLoading=null; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
     clearUserSessionState();
     ss(_accDeleted?'s-deleted':'s-login');
   }
