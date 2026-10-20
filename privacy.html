@@ -33,7 +33,7 @@
     </div>
 
     <h1>Ochrana osobních údajů</h1>
-    <p class="date">Platnost od: 16. října 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
+    <p class="date">Platnost od: 20. října 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
 
     <p>Tato stránka vysvětluje, jaké osobní údaje LifePocket zpracovává, proč, kdo k nim má přístup a jak dlouho je uchováváme. Aplikace je zdarma, bez reklam a bez sledovacích nástrojů. Tvá data neprodáváme.</p>
 
@@ -84,7 +84,7 @@
     </ul>
     <p>AI dostává i tvoje jméno nebo přezdívku. Neposíláme jí e-mail, heslo, tokeny zařízení, pohlaví ani fotografie. Dobu uchování dat u Anthropicu určují zásady tohoto poskytovatele.</p>
     <p><strong>Nahlášení odpovědi AI</strong>: u každé odpovědi AI společníka můžeš klepnout na „⚑ Nahlásit“. Do tvého účtu (podkolekce <code>aiReports</code>) se pak uloží zvolený důvod (nevhodná, nepravdivá, urážlivá, jiné), tvoje volitelná poznámka (nejvýš 500 znaků), text nahlášené odpovědi (nejvýš 2000 znaků), čas a verze aplikace. Nahlášení slouží jen ke kontrole a zlepšování odpovědí AI a k ochraně před nevhodným obsahem. Nikam dál, ani Anthropicu, se neposílá. Smaže se spolu s účtem.</p>
-    <p><strong>Obrázky ke zprávě „Napiš nám“</strong>: ke zprávě můžeš přiložit 1 až 3 obrázky (např. snímek obrazovky). Aplikace je přímo v zařízení zmenší a uloží do tvého účtu (podkolekce <code>feedback</code>) spolu s textem zprávy, časem a verzí aplikace. Formspree obrázky nedostane, jen počet příloh a odkaz na tento záznam, který obsahuje identifikátor tvého účtu (UID). Obrázky slouží jen k vyřešení tvé zprávy a smažou se spolu s účtem. Na snímku obrazovky mohou být i tvoje data z aplikace, proto přikládej jen to, co nám chceš ukázat.</p>
+    <p><strong>Obrázky ke zprávě „Napiš nám“</strong>: ke zprávě můžeš přiložit 1 až 3 obrázky (např. snímek obrazovky). Aplikace je přímo v zařízení zmenší a uloží do tvého účtu (podkolekce <code>feedback</code>) spolu s textem zprávy, časem a verzí aplikace. Formspree obrázky nedostane, jen počet příloh a odkaz na tento záznam, který obsahuje identifikátor tvého účtu (UID). Obrázky slouží jen k vyřešení tvé zprávy, vidí je jen správce aplikace (bod 8) a smažou se spolu s účtem. Na snímku obrazovky mohou být i tvoje data z aplikace, proto přikládej jen to, co nám chceš ukázat.</p>
 
     <h2>5. Skupiny (sdílení s rodinou a dalšími lidmi)</h2>
     <p>Skupinu může kdokoli založit a pozvat do ní další lidi. Data skupiny jsou ve společném prostoru ve Firestore, do kterého mají přístup jen její členové. Kdo má kód nebo odkaz pozvánky, uvidí před připojením název skupiny a jméno toho, kdo ji založil.</p>
@@ -129,7 +129,7 @@
     <h2>8. Technické záznamy</h2>
     <ul>
       <li><strong>Počet AI dotazů</strong>: pro ochranu před zneužitím je limit 50 AI dotazů denně (počítá se každé volání AI, i automatická analýza zápisku). Server si ukládá jen datum a počet dotazů za ten den. Den se počítá podle českého času, limit se tedy nuluje o půlnoci. Prvním dotazem dalšího dne se záznam přepíše.</li>
-      <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb.</li>
+      <li><strong>Záznamy chyb</strong>: když v aplikaci nastane technická chyba, uloží se do tvého účtu (podkolekce <code>errorLogs</code>) text chybové hlášky, místo v kódu, začátek výpisu zásobníku, čas, verze aplikace a zkrácené označení prohlížeče. Před uložením z textu odstraníme e-maily, parametry webových adres, kódy skupin, identifikátory a delší citované texty. Ukládá se nejvýš 15 záznamů za jedno spuštění aplikace a jen když jsi přihlášený a online. Slouží jen k opravě chyb. Záznamy chyb a zprávy s obrázky si v aplikaci může prohlédnout jen správce aplikace, a to bez jména a e-mailu, jen se zkrácenou částí identifikátoru účtu.</li>
       <li><strong>Provozní logy serveru</strong>: serverové funkce zapisují do logů Google Cloud jen technické údaje (např. ID účtu, kód chyby, počet odeslaných notifikací), ne obsah tvých dat ani text notifikací.</li>
       <li><strong>Datum posledního otevření</strong>: Při otevření aplikace ukládáme do tvého profilu datum posledního otevření (nejvýš jednou denně). Server z toho jednou denně spočítá jen souhrnná anonymní čísla (např. kolik lidí appku použilo za poslední týden, počet skupin a AI dotazů) bez jmen, e-mailů a obsahu tvých záznamů.</li>
       <li><strong>Hosting</strong>: web běží na <strong>GitHub Pages</strong> (GitHub, Inc., USA). Při načtení stránky vidí GitHub v serverových záznamech tvou IP adresu a údaje o prohlížeči.</li>

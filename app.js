@@ -49,8 +49,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.72';
+const APP_VERSION = '4.73';
 const CHANGELOG = [
+  { v:'4.73', items:[
+    '🔧 Drobná vylepšení a opravy, nový interní přehled pro správu aplikace'
+  ], en:[
+    '🔧 Minor improvements and fixes, a new internal overview for managing the app'
+  ]},
   { v:'4.72', items:[
     '🌱 V jednoduchém režimu ukáže Domů kartu „Co teď“: vždy jen jeden další krok a splníš ho přímo v kartě',
     '🧭 Panel Více má kategorie Domácnost, Já a Čas a vypnutý modul v něm zapneš jedním klepnutím',
