@@ -6687,7 +6687,8 @@ const quickAdd = {
   },
   checklist(text) {
     const list = clEditFind(activeChecklist);
-    if (!list) { window.sp('checklist'); return; }
+    // Bez seznamu otevřít Úkoly; seznam skupiny se načítá (toast dal clEditFind) → zůstat, text v kartě zůstane
+    if (!list) { if (!checklists.some(c => c && c.id === activeChecklist)) window.sp('checklist'); return false; }
     const item = {id: genId(), text, done: false};
     list.items = Array.isArray(list.items) ? list.items : [];
     list.items.unshift(item);
@@ -6698,7 +6699,9 @@ const quickAdd = {
   },
   // Dnešní večeře (zobrazený plán; plán skupiny jen správce, hlídá saveMealPlanItem)
   mealplan(val) {
-    if (window.saveMealPlanItem('d' + mealTodayIdx(), 'm2', val)) renderMealPlan();
+    const ok = window.saveMealPlanItem('d' + mealTodayIdx(), 'm2', val);
+    if (ok) renderMealPlan();
+    return !!ok;
   },
   // Ukázkový recept (suroviny a postup ze slovníku), pak se zobrazí ve Vaření
   cooking() {
@@ -6843,7 +6846,10 @@ window.ctAdd = () => {
   const fn = {shopping: v => quickAdd.shopping(v), habits: v => quickAdd.habits(v), goals: v => quickAdd.goals(v),
     mealplan: v => quickAdd.mealplan(v), checklist: v => quickAdd.checklist(v)}[mod];
   if (!fn) return;
-  if (quickOnce('ct-' + mod, () => { const w = fn(val); quickRefresh(); return w; })) inp.value = '';
+  // Vstup vymazat jen při skutečném zápisu (fn vrací false = nic nezapsáno, text zůstane)
+  let wrote = false;
+  quickOnce('ct-' + mod, () => { const w = fn(val); if (w === false || w == null) return; wrote = true; quickRefresh(); return w; });
+  if (wrote) inp.value = '';
 };
 window.ctHabit = hid => {
   quickOnce('ct-h', () => {
