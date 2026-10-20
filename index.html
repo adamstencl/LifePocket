@@ -456,6 +456,9 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <button onclick="toggleArchivedHabits()" id="arch-toggle-btn" data-i18n="hb.archShow" style="background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:6px 18px;font-size:13px;color:var(--text2);cursor:pointer;transition:all .2s">📦 Zobrazit archiv</button>
       </div>
 
+      <!-- Filtr „Jen nevyřízené“ (toggleHabitPending) -->
+      <div class="hb-filter" hidden><button type="button" id="hb-pend-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitPending()" data-i18n="hb.pendOnly">⏳ Jen nevyřízené</button></div>
+
       <!-- Habits list -->
       <div id="habits-list"></div>
 

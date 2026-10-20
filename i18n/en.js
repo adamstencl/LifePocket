@@ -1315,6 +1315,8 @@ export default {
   'hb.skipToday': 'Skip today',
   'hb.skipped': '⏭ Skipped',
   'hb.allArchived': 'All habits are archived. 📦',
+  'hb.pendOnly': '⏳ Pending only',
+  'hb.pendEmpty': 'All done 🎉',
   'hb.grp.morning': 'Morning',
   'hb.grp.day': 'Daytime',
   'hb.grp.evening': 'Evening',

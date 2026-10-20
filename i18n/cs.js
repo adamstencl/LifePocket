@@ -1329,6 +1329,8 @@ export default {
   'hb.skipToday': 'Přeskočit dnes',
   'hb.skipped': '⏭ Přeskočeno',
   'hb.allArchived': 'Všechny návyky jsou archivovány. 📦',
+  'hb.pendOnly': '⏳ Jen nevyřízené',
+  'hb.pendEmpty': 'Vše vyřízeno 🎉',
   'hb.grp.morning': 'Ráno',
   'hb.grp.day': 'Přes den',
   'hb.grp.evening': 'Večer',

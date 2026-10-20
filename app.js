@@ -1300,7 +1300,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2189,6 +2189,25 @@ function buildHabitCard(h){
   </div>`;
 }
 
+// Filtr „Jen nevyřízené“ (lp_hb_pending, jen zařízení): návyk na řadě ve zvolený den bez splnění, nesplnění i přeskočení
+function habitPendingOn(){ try{ return localStorage.getItem('lp_hb_pending')==='1'; }catch(e){ return false; } }
+window.toggleHabitPending=()=>{
+  const on=!habitPendingOn();
+  try{ if(on) localStorage.setItem('lp_hb_pending','1'); else localStorage.removeItem('lp_hb_pending'); }catch(e){}
+  renderHabits();
+};
+function isHabitPending(h,ds){
+  if(!h||h.archived) return false;
+  if(habitDayState(h,ds)!=='miss') return false;           // splněno, přeskočeno, pauza, mimo dny, před založením, budoucnost
+  const l=hLog(h.id+'_'+ds);
+  if(l&&(l.done||l.failed||l.skipped)) return false;
+  if(h.freq&&h.freq.type==='weekly'){                       // týdenní cíl už splněný = nic nečeká
+    const dow=(new Date(ds+'T12:00:00').getDay()+6)%7, ws=addDays(ds,-dow);
+    let n=0; for(let i=0;i<7;i++) if(hDone(h.id,addDays(ws,i))) n++;
+    if(n>=(Number(h.freq.times)||3)) return false;
+  }
+  return true;
+}
 function renderHabits(){
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
   const scrollEl=document.getElementById('abody');
@@ -2201,6 +2220,8 @@ function renderHabits(){
 
   const activeHabits = habits.filter(h => !h.archived);
   const archivedHabits = habits.filter(h => h.archived);
+  const pendWrap=document.getElementById('hb-pend-chip')?.parentElement;
+  if(pendWrap) pendWrap.hidden=!activeHabits.length;
   const archToggle = document.getElementById('habits-archive-toggle');
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
@@ -2215,6 +2236,9 @@ function renderHabits(){
     return;
   }
   empty.style.display='none';
+  const pendOnly=habitPendingOn();
+  const pendChip=document.getElementById('hb-pend-chip');
+  if(pendChip){ pendChip.classList.toggle('on',pendOnly); pendChip.setAttribute('aria-pressed',String(pendOnly)); }
 
   const GROUPS=[
     {id:'morning', emoji:'🌅', label:t('hb.grp.morning')},
@@ -2239,7 +2263,9 @@ function renderHabits(){
     const pctCls=pct===100?'full':pct>0?'partial':'empty';
 
     // Is group open? Default: all open
-    const isOpen=openGroups.has(g.id);
+    const isOpen=pendOnly||openGroups.has(g.id);
+    const shown=pendOnly?groupHabits.filter(h=>isHabitPending(h,habitDay)):groupHabits;
+    if(!shown.length) return;
 
     html+=`<div class="habit-group" data-group="${g.id}">
       <div class="habit-group-header" data-a0="${esc(g.id)}" onclick="toggleHabitGroup(this.dataset.a0)">
@@ -2254,13 +2280,15 @@ function renderHabits(){
         </div>
       </div>
       <div class="habit-group-body ${isOpen?'open':''}">
-        ${groupHabits.map(h=>buildHabitCard(h)).join('')}
+        ${shown.map(h=>buildHabitCard(h)).join('')}
       </div>
     </div>`;
   });
 
+  if(pendOnly&&!html) html=`<div class="hb-pend-empty">${tH('hb.pendEmpty')}</div>`;
   list.innerHTML='<div data-cta-tip="h">'+ctaListTipHTML('h')+'</div>'+html;
-  list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
+  // Při filtru bez přetahování (pořadí podmnožiny by přepsalo pořadí celé skupiny)
+  if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
   requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
 }
 
