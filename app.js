@@ -52,8 +52,10 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.73';
 const CHANGELOG = [
   { v:'4.73', items:[
+    '🧭 V panelu Více jsou vypnuté moduly jasně označené a zapneš je klepnutím',
     '🔧 Drobná vylepšení a opravy, nový interní přehled pro správu aplikace'
   ], en:[
+    '🧭 Turned-off modules in the More panel are clearly marked and you turn them on with a tap',
     '🔧 Minor improvements and fixes, a new internal overview for managing the app'
   ]},
   { v:'4.72', items:[
@@ -19551,16 +19553,22 @@ window.handleContactSubmit = async function(e) {
   btn.textContent = t('set.contact.sending');
   try {
     const fd = new FormData(form);
-    if (_cfImgs.length) {
-      if (!CU) { toast(t('set.contact.imgLogin')); btn.disabled = false; btn.textContent = t('set.contact.send'); return; }
+    if (_cfImgs.length && !CU) { toast(t('set.contact.imgLogin')); btn.disabled = false; btn.textContent = t('set.contact.send'); return; }
+    // 4.73: každá zpráva přihlášeného se uloží i do users/{uid}/feedback (přehled pro správce), Formspree beze změny
+    if (CU) {
       if (!_cfRef || _cfRef.parent?.parent?.id !== CU.uid) _cfRef = doc(collection(db, 'users', CU.uid, 'feedback'));
       const ref = _cfRef;
-      // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu (zpráva se neodešle)
-      await Promise.race([
-        setDoc(ref, {createdAt: serverTimestamp(), v: APP_VERSION, msg: String(fd.get('message') || '').slice(0, 2000), images: _cfImgs.slice(0, CF_IMG_MAX)}),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
-      ]);
-      fd.append('attachments', _cfImgs.length + ' × img → users/' + CU.uid + '/feedback/' + ref.id);
+      try {
+        // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu
+        await Promise.race([
+          setDoc(ref, {createdAt: serverTimestamp(), v: APP_VERSION, msg: String(fd.get('message') || '').slice(0, 2000), images: _cfImgs.slice(0, CF_IMG_MAX)}),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+        ]);
+      } catch (err) {
+        if (_cfImgs.length) throw err; // s obrázky bez záznamu nemá smysl posílat (odkaz by vedl nikam)
+        // bez obrázků: zpráva dojde aspoň přes Formspree
+      }
+      if (_cfImgs.length) fd.append('attachments', _cfImgs.length + ' × img → users/' + CU.uid + '/feedback/' + ref.id);
     }
     const res = await fetch('https://formspree.io/f/xlgpyjaa', {
       method: 'POST',

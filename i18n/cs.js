@@ -1654,7 +1654,7 @@ export default {
   'exp.col.checklists': 'checklisty',
   'exp.col.chatMemory': 'chat s AI',
   'exp.col.aiReports': 'nahlášení AI',
-  'exp.col.feedback': 'zprávy s přílohami',
+  'exp.col.feedback': 'zprávy „Napiš nám“',
   'exp.col.errorLogs': 'technické chyby',
   'exp.col.game': 'body a odznaky',
   'exp.col.water': 'pitný režim',

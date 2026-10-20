@@ -1640,7 +1640,7 @@ export default {
   'exp.col.checklists': 'checklists',
   'exp.col.chatMemory': 'AI chat',
   'exp.col.aiReports': 'AI reports',
-  'exp.col.feedback': 'messages with attachments',
+  'exp.col.feedback': '“Write to us” messages',
   'exp.col.errorLogs': 'technical errors',
   'exp.col.game': 'points and badges',
   'exp.col.water': 'water intake',
