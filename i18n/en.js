@@ -1112,6 +1112,7 @@ export default {
   'shop.moveSheet': 'Move the list where?',
   'grp.maxGroups': 'You already have {n} groups. Leave one first.',
   'shop.addedPlain': '✓ Added',
+  'shop.loading': '⏳ Loading the shopping list, try again in a moment',
   'shop.favRemoved': 'Removed from favourites',
   'shop.favAdded': '⭐ Added to favourites',
   'shop.rec.autoAdded': '🔄 Added automatically: {name}',

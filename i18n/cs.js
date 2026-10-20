@@ -1126,6 +1126,7 @@ export default {
   'shop.moveSheet': 'Kam seznam přesunout?',
   'grp.maxGroups': 'Máš už {n} skupin. Nejdřív nějakou opusť.',
   'shop.addedPlain': '✓ Přidáno',
+  'shop.loading': '⏳ Načítám nákupní seznam, zkus to za chvilku znovu',
   'shop.favRemoved': 'Odebráno z oblíbených',
   'shop.favAdded': '⭐ Přidáno k oblíbeným',
   'shop.rec.autoAdded': '🔄 Automaticky přidáno: {name}',

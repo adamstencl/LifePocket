@@ -6659,13 +6659,15 @@ const quickAdd = {
     toast(t('hb.added'));
     return w;
   },
+  // Jen do načteného seznamu (jinak duplicity / špatný cíl); úspěch až po zápisu, chybu hlásí quickOnce
   shopping(raw) {
     const {name, qty} = parseShopInput(raw);
-    if (!name) return;
+    if (!name) return false;
+    const gid = shopGid();
+    if (!shopListReady()) { shopWaitToast(); return false; }
     unhideQuickShop(name);
-    const gid = shopGid(), w = addShopEntry({name, category: guessShopCategory(name), qty});
-    toast(gid ? t('shop.addedTo', {name, to: grpLabel(gid)}) : t('shop.addedPlain'));
-    return w;
+    return addShopEntry({name, category: guessShopCategory(name), qty})
+      .then(() => toast(gid ? t('shop.addedTo', {name, to: grpLabel(gid)}) : t('shop.addedPlain')));
   },
   goals(name, emoji) {
     actDay('goals');
@@ -6715,7 +6717,7 @@ const quickAdd = {
 // Prázdné stavy modulů: emoji, podmínka „prázdný“, hlavní tlačítko a příklad (založí jednu položku)
 const ES = {
   habits:   {em: '🔥', empty: () => !habits.length, ex: () => quickAdd.habits(t('es.habits.exName'), '💧')},
-  shopping: {em: '🧺', empty: () => !activeShopItems().length, ex: () => quickAdd.shopping(t('es.shopping.exName'))},
+  shopping: {em: '🧺', wait: () => !shopListReady(), waitMsg: () => shopWaitToast(), empty: () => shopListReady() && !activeShopItems().length, ex: () => quickAdd.shopping(t('es.shopping.exName'))},
   goals:    {em: '🏆', empty: () => !goals.length, ex: () => quickAdd.goals(t('es.goals.exName'), '🏃')},
   journal:  {em: '📒', empty: () => !entries.length, ex: () => quickAdd.journal(t('es.journal.exName'))},
   checklist:{em: '✅', empty: () => !((clFind(activeChecklist)?.items) || []).length, ex: () => quickAdd.checklist(t('es.checklist.exName'))},
@@ -6726,6 +6728,7 @@ const ES = {
 window.esEx = mod => {
   const e = Object.prototype.hasOwnProperty.call(ES, mod) ? ES[mod] : null;
   if (!e) return;
+  if (e.wait?.()) { e.waitMsg(); return; } // seznam ještě nedorazil: nic naslepo
   quickOnce('es-' + mod, () => { if (!e.empty()) return; const w = e.ex(); quickRefresh(); return w; });
 };
 
@@ -8051,6 +8054,9 @@ function shopGrpItems(gid) { return (gid && shopGrp[gid]?.items) || []; }
 function shopGrpFreq(gid) { return (gid && shopGrp[gid]?.freq) || {}; }
 // Položky zobrazeného seznamu
 function activeShopItems() { const g = shopGid(); return g ? shopGrpItems(g) : shopItems; }
+// Zobrazený seznam (skupiny nebo osobní) už dorazil ze snapshotu
+function shopListReady() { const g = shopGid(); return g ? !!shopGrp[g]?.loaded : shopItemsLoaded; }
+function shopWaitToast() { const g = shopGid(); if (g) subscribeGroupShop(g); toast(t(g ? 'mp.shopLoading' : 'shop.loading')); }
 // Kolekce seznamu: gid = skupina, null = osobní
 function shopCol(gid) { return gid ? collection(db,'families',gid,'shopItems') : collection(db,'users',CU.uid,'shopItems'); }
 // Emoji skupiny (pole emoji, fáze 2), jinak 👥
