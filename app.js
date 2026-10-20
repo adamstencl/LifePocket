@@ -17797,8 +17797,9 @@ async function offerPantryUpdate(name, shopQty, sg) {
   if(!gid) await pantryMigSettle(); // Moje: nejdřív přenos lp_pantry
   const items = await pantryItemsReady(gid);
   if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
-  const lname = name.toLowerCase();
-  const match = items.find(p=>p&&p.name&&(p.name.toLowerCase()===lname||lname.includes(p.name.toLowerCase())));
+  // Přesná shoda po normalizaci (4.75): „kokosové mléko“ nepřičte k „mléko“
+  const lname = pantryNorm(name);
+  const match = items.find(p=>p&&p.name&&pantryNorm(p.name)===lname);
   if(match){
     // Položka už v zásobách — přičti správné množství
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
@@ -17819,12 +17820,12 @@ async function offerPantryUpdate(name, shopQty, sg) {
     const newId = genId();
     try { await setDoc(pantryDoc(gid, newId), newItem); }
     catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
-    // Toast s "Upravit" tlačítkem
-    const t = document.createElement('div');
-    t.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    t.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
-    document.body.appendChild(t);
-    setTimeout(()=>t.remove(), 6000);
+    // Toast s "Upravit" tlačítkem (tw: jméno t by zastínilo překlad t() v celém bloku → TDZ v catch výše)
+    const tw = document.createElement('div');
+    tw.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    tw.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
+    document.body.appendChild(tw);
+    setTimeout(()=>tw.remove(), 6000);
   }
 }
 
@@ -18893,11 +18894,15 @@ function convertUnits(amount, from, to) {
   return null; // nekompatibilní jednotky
 }
 
-// Shoda suroviny se zásobou (název obsahuje zásobu nebo zásoba první slovo suroviny)
+// Název pro porovnání zásob: malá písmena, bez diakritiky a okrajových mezer, vnitřní mezery sloučené
+function pantryNorm(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+// Shoda suroviny se zásobou: přesná po normalizaci (4.75; dřív podřetězec → odečet z jiné zásoby)
 function pantryMatch(items, ingName) {
-  const n = String(ingName || '').toLowerCase();
+  const n = pantryNorm(ingName);
   if (!n) return null;
-  return items.find(p => p && p.name && (n.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(n.split(' ')[0]))) || null;
+  return items.find(p => p && p.name && pantryNorm(p.name) === n) || null;
 }
 // Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
