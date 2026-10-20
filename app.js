@@ -999,16 +999,15 @@ function aiPlain(text) {
 }
 // Text od AI (jen cs): jistá oprava častých chyb. Hranice slov přes \p{L}\p{N}_ (\b neumí diakritiku); jen jednoznačné náhrady.
 // Před slovem smí být i JSON escape \n \r \t (recept přichází jako JSON). URL se nemění.
-const AI_CS_W = String.raw`(^|[^\p{L}\p{N}_]|\\[nrt])`, AI_CS_E = String.raw`(?![\p{L}\p{N}_])`;
-const aiCsRe = (body) => new RegExp(AI_CS_W + body, 'giu');
+// Hranice: (^|[^\p{L}\p{N}_]|\\[nrt]) před slovem, (?![\p{L}\p{N}_]) za ním
 // Obecná pravidla (chat, report, pozdrav, citát): zatím žádná
 const AI_CS_FIX = [];
 // Jen recepty (aiFixCs(text, {recipe:true})): kuchyňské výrazy, jinde by mohly změnit význam
 const AI_CS_FIX_RECIPE = [
-  [aiCsRe(String.raw`kaper[sn]` + AI_CS_E), () => 'kapary'],
-  [aiCsRe(String.raw`křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)` + AI_CS_E + ')'), () => 'krémov'],
-  [aiCsRe(String.raw`ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)` + AI_CS_E + ')'), () => 'dochuťte'],
-  [aiCsRe(String.raw`paprikou\s+(sladkou|pálivou|uzenou)` + AI_CS_E), (m, a) => a + ' paprikou'],
+  [/(^|[^\p{L}\p{N}_]|\\[nrt])kaper[sn](?![\p{L}\p{N}_])/giu, () => 'kapary'],
+  [/(^|[^\p{L}\p{N}_]|\\[nrt])křemičit(?=(?:á|é|ý|ou|ého|ém|ým|ých|ými)(?![\p{L}\p{N}_]))/giu, () => 'krémov'],
+  [/(^|[^\p{L}\p{N}_]|\\[nrt])ochutnejte(?=\s+(?:solí|pepřem|paprikou|šťávou|cukrem|octem|kořením|bylinkami|česnekem|sladkou|pálivou|uzenou|citronovou|citrónovou|limetkovou|mletým|čerstvě|trochou|špetkou)(?![\p{L}\p{N}_]))/giu, () => 'dochuťte'],
+  [/(^|[^\p{L}\p{N}_]|\\[nrt])paprikou\s+(sladkou|pálivou|uzenou)(?![\p{L}\p{N}_])/giu, (m, a) => a + ' paprikou'],
 ];
 const AI_CS_URL_RE = /((?:https?:\/\/|www\.)[^\s"'<>()\[\]{}\\]+)/i;
 function aiFixCsPart(s, rules) {
