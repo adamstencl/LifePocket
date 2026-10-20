@@ -28,6 +28,7 @@ const deleteAccountFn=httpsCallable(functions,'deleteAccount');
 // Kopie velké skupiny může trvat déle než výchozích 70 s (funkce má limit 300 s)
 const rotateGroupCodeFn=httpsCallable(functions,'rotateGroupCode',{timeout:300000});
 const restoreGroupFn=httpsCallable(functions,'restoreGroup',{timeout:120000}); // obnova opuštěné skupiny (4.47)
+const adminOverviewFn=httpsCallable(functions,'adminOverview'),adminFeedbackFn=httpsCallable(functions,'adminFeedback'); // přehled pro správce (4.73)
 const VAPID_KEY='BCSH4S7n__eSj1QKSo22lC9Z7HrkMCR5d_pHIjv2qT-1WNYEuWrc_yjDA7KiCvqei6Tux4zWGQDFGdGZOdr6Sn4';
 // Mazání účtu: během něj neběží AI ani zápisy na pozadí (viz sekce ÚČET)
 let _accDeleting=false, _accDeleted=false, _accStopped=false; // _accStopped: listenery zastavené (po chybě obnoví reload)
@@ -11806,7 +11807,7 @@ function pcReset() {
   for(const k of Object.keys(_pcBoard)) delete _pcBoard[k];
   for(const k of Object.keys(_pcPending)) delete _pcPending[k];
   _pcPidC.clear(); _pcDrawnDay = '';
-  pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null;
+  pcList = []; _pcAt = 0; _pcLoadP = null; _pcSheet = null; _isAppAdmin = false; _pcAdminChecked = ''; _pcAdm = null; _admOv = null;
 }
 window.addEventListener('online', () => { if(CU && prof && !_pcAt) pcLoad(); });
 document.addEventListener('visibilitychange', () => {
@@ -12377,13 +12378,121 @@ function renderPcSettings() {
   if(!a) return;
   a.hidden = !_isAppAdmin;
   a.innerHTML = _isAppAdmin ? `<div class="setsec-t">🛠️ ${tH('pc.adm.title')}</div><div class="setsec-d">${tH('pc.adm.desc')}</div>
-    <button type="button" class="btn-sv" onclick="pcAdmOpen()">${tH('pc.adm.open')}</button>` : '';
+    <div class="pcadm-acts"><button type="button" class="btn-sv" onclick="pcAdmOpen()">${tH('pc.adm.open')}</button>
+    <button type="button" class="btn-sv" onclick="admOvOpen()">📊 ${tH('adm.ov.open')}</button></div>` : '';
 }
 window.copyUid = async () => {
   if(!CU) return;
   try { await navigator.clipboard.writeText(CU.uid); toast(t('pc.uidCopied')); }
   catch(e) { prompt(t('pc.uid'), CU.uid); }
 };
+
+// ── Přehled pro správce (4.73): statistiky, chyby a zprávy přes adminOverview / adminFeedback ──
+// Obsah od uživatelů (zprávy, chybové texty) vždy přes esc(); obrázky jen data:image/…
+let _admOv = null;   // {tab, data, busy, fb: null | {id, busy, d}}
+const ADM_OV_TILES = ['active1d','active7d','active30d','newUsers1d','newUsers7d','aiCallsToday','withPushToken','errorLogs24h','pcCheckedYesterday'];
+const admOvTs = ms => Number.isFinite(ms) ? fmtDate(new Date(ms), 'dmy') + ' ' + fmtTime(ms) : '';
+const admOvNum = n => Number.isFinite(n) ? fmtNum(n) : '–';
+window.admOvOpen = () => {
+  if(!CU || !_isAppAdmin) return;
+  if(!_admOv) _admOv = {tab: 'stats', data: null, busy: false, fb: null};
+  _admOv.fb = null;
+  const ov = document.getElementById('m-admov');
+  if(ov && !ov.classList.contains('open')) { om('m-admov'); focusOverlay(ov); }
+  admOvRender();
+  if(!_admOv.data) admOvLoad();
+};
+window.admOvLoad = async () => {
+  const A = _admOv, uid = CU?.uid;
+  if(!A || A.busy || !uid) return;
+  A.busy = true; admOvRender();
+  try {
+    const r = await adminOverviewFn({lang: LANG});
+    if(_admOv === A && CU?.uid === uid) A.data = r.data || null;
+  } catch(e) { console.warn('[LP] prehled', e?.code); if(_admOv === A) toast(t('adm.ov.err')); }
+  if(_admOv === A) { A.busy = false; admOvRender(); }
+};
+window.admOvTab = tab => {
+  if(!_admOv || !['stats','err','fb'].includes(tab)) return;
+  _admOv.tab = tab; _admOv.fb = null; admOvRender();
+};
+window.admOvFb = async i => {
+  const A = _admOv, f = A?.data?.feedback?.[Number(i)];
+  if(!f) return;
+  A.fb = {id: f.id, busy: true, d: f};
+  admOvRender();
+  try {
+    const r = await adminFeedbackFn({id: f.id, lang: LANG});
+    if(_admOv === A && A.fb?.id === f.id) A.fb.d = r.data || f;
+  } catch(e) { console.warn('[LP] prehled zprava', e?.code); if(_admOv === A) toast(t('adm.ov.fbErr')); }
+  if(_admOv === A && A.fb?.id === f.id) { A.fb.busy = false; admOvRender(); }
+};
+window.admOvBack = () => { if(_admOv) { _admOv.fb = null; admOvRender(); } };
+// Mini sloupcový graf (CSS): výška podle maxima za období
+function admOvBars(stats, key, title) {
+  const vals = stats.map(s => Number.isFinite(s[key]) ? s[key] : 0), max = Math.max(1, ...vals);
+  return `<div class="ch-h">${tH(title)}</div><div class="admov-bars" role="img" aria-label="${tH(title)}">${stats.map((s, i) =>
+    `<div class="admov-bar" style="height:${Math.round(vals[i] / max * 100)}%" title="${esc(fmtDate(s.date, 'dm') + ': ' + admOvNum(s[key]))}"></div>`).join('')}</div>
+    <div class="admov-ax"><span>${esc(fmtDate(stats[0].date, 'dm'))}</span><span>${esc(admOvNum(max))}</span><span>${esc(fmtDate(stats[stats.length - 1].date, 'dm'))}</span></div>`;
+}
+function admOvStatsHTML(D) {
+  const S = D.summary || {}, st = Array.isArray(D.stats) ? D.stats : [], last = st[st.length - 1];
+  const tile = (lbl, val, sub) => `<div class="admov-tile"><div class="admov-v">${esc(val)}</div><div class="admov-l">${esc(lbl)}</div>${sub ? `<div class="admov-l">${esc(sub)}</div>` : ''}</div>`;
+  const pc = S.pc ? (fmtNum(S.pc.n) + (S.pc.active ? '' : ' (' + t('adm.ov.pcHidden') + ')')) : t('adm.ov.none');
+  let h = `<div class="admov-tiles">${tile(t('adm.ov.users'), admOvNum(S.users))}${tile(t('adm.ov.families'), admOvNum(S.families))}${tile(t('adm.ov.pc'), pc, S.pc?.title || '')}</div>`;
+  if(!last) return h + `<p class="ch-note">${tH('adm.ov.noStats')}</p>`;
+  h += `<p class="ch-note">${esc(t('adm.ov.lastDay', {date: fmtDate(last.date, 'dmy')}))}</p>
+    <div class="admov-tiles">${ADM_OV_TILES.map(k => tile(t('adm.ov.s.' + k), admOvNum(last[k]))).join('')}</div>`;
+  return h + admOvBars(st, 'active1d', 'adm.ov.chActive') + admOvBars(st, 'aiCallsToday', 'adm.ov.chAi') + admOvBars(st, 'newUsers1d', 'adm.ov.chNew');
+}
+// Stejná zpráva + místo = jedna skupina s počtem, verzemi a počtem účtů
+function admOvErrGroups(list) {
+  const m = new Map();
+  for(const e of list) {
+    const k = (e.msg || '') + '|' + (e.src || '');
+    let g = m.get(k);
+    if(!g) { g = {msg: e.msg || '', src: e.src || '', n: 0, ts: 0, v: new Set(), u: new Set()}; m.set(k, g); }
+    g.n++; if(e.ts > g.ts) g.ts = e.ts;
+    if(e.v) g.v.add(e.v); if(e.u) g.u.add(e.u);
+  }
+  return [...m.values()].sort((a, b) => b.n - a.n || b.ts - a.ts);
+}
+function admOvErrHTML(D) {
+  if(D.errorsIndex === false) return `<p class="ch-note">${tH('adm.ov.noIndex')}</p>`;
+  const list = Array.isArray(D.errors) ? D.errors : [];
+  if(!list.length) return `<p class="ch-note">${tH('adm.ov.noErr')}</p>`;
+  return `<p class="ch-note">${esc(t('adm.ov.errHint', {n: list.length}))}</p>` + admOvErrGroups(list).map(g =>
+    `<div class="admov-item"><div class="admov-top"><span class="pc-n">${esc(g.n + '×')}</span><span class="admov-meta">${esc([admOvTs(g.ts), [...g.v].join(', '), t('adm.ov.accounts', {n: g.u.size})].filter(Boolean).join(' · '))}</span></div>
+      <div class="admov-msg">${esc(g.msg)}</div>${g.src ? `<div class="admov-meta">${esc(g.src)}</div>` : ''}</div>`).join('');
+}
+function admOvFbHTML(D) {
+  const A = _admOv;
+  if(A.fb) {
+    const f = A.fb.d || {}, imgs = (Array.isArray(f.images) ? f.images : []).filter(u => typeof u === 'string' && u.startsWith('data:image/'));
+    return `<button type="button" class="btn-s ch-btn" onclick="admOvBack()">← ${tH('pc.adm.back')}</button>
+      <div class="admov-item"><div class="admov-meta">${esc([admOvTs(f.ts), f.v, t('adm.ov.acc', {u: f.u || '?'})].filter(Boolean).join(' · '))}</div>
+      <div class="admov-msg admov-full">${f.msg ? esc(f.msg) : tH('adm.ov.noText')}</div></div>
+      <div class="ch-h">${tH('adm.ov.imgs')}</div>
+      ${A.fb.busy ? `<p class="ch-note">${tH('pc.loading')}</p>` : imgs.length ? `<div class="admov-imgs">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(t('adm.ov.imgAlt', {n: i + 1}))}" loading="lazy">`).join('')}</div>` : `<p class="ch-note">${tH('adm.ov.noImg')}</p>`}`;
+  }
+  if(D.feedbackIndex === false) return `<p class="ch-note">${tH('adm.ov.noIndex')}</p>`;
+  const list = Array.isArray(D.feedback) ? D.feedback : [];
+  if(!list.length) return `<p class="ch-note">${tH('adm.ov.noFb')}</p>`;
+  return list.map((f, i) => `<button type="button" class="pcadm-row admov-row" data-a0="${i}" onclick="admOvFb(this.dataset.a0)"><span class="pcadm-nm"><span class="admov-prev">${f.msg ? esc(f.msg) : tH('adm.ov.noText')}</span>
+    <span class="pc-sub">${esc([admOvTs(f.ts), f.v, t('adm.ov.acc', {u: f.u || '?'})].filter(Boolean).join(' · '))}</span></span><span aria-hidden="true">📎</span></button>`).join('');
+}
+function admOvRender() {
+  const el = document.getElementById('admov-body'), tEl = document.getElementById('admov-title'), A = _admOv;
+  if(!el || !A) return;
+  if(tEl) tEl.textContent = '📊 ' + t('adm.ov.title');
+  const tabs = `<div class="seg seg--block" role="group" aria-label="${tH('adm.ov.tabs')}">${[['stats','adm.ov.tStats'],['err','adm.ov.tErr'],['fb','adm.ov.tFb']].map(([v, k]) =>
+    `<button type="button" class="seg-btn${A.tab === v ? ' active' : ''}" aria-pressed="${A.tab === v}" data-a0="${v}" onclick="admOvTab(this.dataset.a0)">${tH(k)}</button>`).join('')}</div>`;
+  const D = A.data;
+  const body = !D ? `<p class="ch-note">${tH(A.busy ? 'pc.loading' : 'adm.ov.err')}</p>`
+    : A.tab === 'err' ? admOvErrHTML(D) : A.tab === 'fb' ? admOvFbHTML(D) : admOvStatsHTML(D);
+  const foot = D?.at ? `<span class="admov-meta">${esc(admOvTs(D.at))}</span>` : '';
+  el.innerHTML = tabs + body + `<div class="admov-foot">${foot}<button type="button" class="btn-s" onclick="admOvLoad()"${A.busy ? ' disabled' : ''}>🔄 ${tH(A.busy ? 'pc.loading' : 'pc.refresh')}</button></div>`;
+}
 
 let _pcAdm = null;   // {list:[{id, data, c}], counts:{}, view, cid, parts, last, more, q, busy}
 const pcAdmEl = () => document.getElementById('pcadm-body');
