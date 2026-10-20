@@ -6773,6 +6773,7 @@ const CT = {
   checklist:{em: '✅', done: () => checklists.some(c => Array.isArray(c?.items) && c.items.length), kind: () => 'inp'},
 };
 let _ctThanks = false; // poděkování po 3. kroku drží do konce relace (pak karta zmizí, lp_qs_dismissed)
+const _ctOpen = new Set(); // kroky, které byly v této relaci nesplněné (poděkování jen po skutečném splnění)
 function ctSteps() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   return simpleModOrder().filter(id => Object.prototype.hasOwnProperty.call(CT, id)).slice(0, 3)
@@ -6795,10 +6796,12 @@ function coTedHTML() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const add = st.filter(s => s.done && !done.includes('ct.' + s.id)).map(s => 'ct.' + s.id);
   if (add.length) lsSave('lp_qs_done', [...done, ...add]);
+  st.forEach(s => { if (!s.done) _ctOpen.add(s.id); });
   const i = st.findIndex(s => !s.done);
   if (_ctThanks || i < 0) {
-    _ctThanks = true;
     lsSave('lp_qs_dismissed', true);
+    if (!_ctThanks && !st.some(s => _ctOpen.has(s.id))) return ''; // vše hotové už dřív: bez poděkování, tiše pryč
+    _ctThanks = true;
     return `<div class="card ct-card ct-done" id="ct-card" data-step="done" role="region" aria-label="${tH('ct.aria')}">
       <div class="ct-head"><span class="ct-t"><span aria-hidden="true">🎉</span> ${tH('ct.done')}</span>
       <button type="button" class="qs-dismiss ct-x" onclick="ctClose()" aria-label="${tH('common.hide')}">×</button></div>
