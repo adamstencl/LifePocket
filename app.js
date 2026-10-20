@@ -4494,21 +4494,25 @@ window.finishOnboard=async()=>{
   if(selTpl) prof.template=selTpl;
   prof.lang=LANG;
   const tz=deviceTz(); if(tz) prof.tz=tz;
-  await setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
+  // Offline (4.75): na potvrzení serveru čekat nejvýš 4 s, zápis se pak dokončí z fronty; chyba do 4 s jde do catch
+  const pw=setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
+  const pr=await Promise.race([pw.then(()=>'ok'),new Promise(r=>setTimeout(()=>r('wait'),4000))]);
+  if(pr==='wait') pw.catch(e=>console.warn('[LP] profile (onboarding):',e?.code||e?.name));
   clearLangSync();
   lsSave('lp_seen_version',APP_VERSION); // nový účet: bez okna „Co je nového“
   // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start
   if(addSamples){
     try{
       const now=new Date().toISOString(), ord={};
-      await Promise.all(ONB_TPLS[selTpl].habits.map((tp,i)=>{
+      // Bez čekání na server (offline by start visel); snapshot návyků je ukáže hned z lokálního zápisu
+      ONB_TPLS[selTpl].habits.forEach((tp,i)=>{
         ord[tp.group]=(ord[tp.group]||0)+1;
         const freq={type:tp.freq.type};
         if(tp.freq.type==='weekly')freq.times=tp.freq.times;
         if(tp.freq.type==='days')freq.days=[...tp.freq.days];
         const h={name:tplHabitName(selTpl,i),emoji:tp.emoji,type:tp.type,goal:tp.goal,freq,group:tp.group,reminderTime:null,goalId:null,order:ord[tp.group],createdAt:now,sample:true};
-        return addDoc(collection(db,'users',CU.uid,'habits'),h);
-      }));
+        setDoc(doc(collection(db,'users',CU.uid,'habits')),h).catch(e=>console.warn('[LP] sample habit:',e?.code||e?.name));
+      });
     }catch(e){console.warn('[LP] ukázkové návyky:',e?.code||e?.name);}
   }
   initApp();
