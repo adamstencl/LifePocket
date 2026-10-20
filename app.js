@@ -7327,7 +7327,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin','m-admov']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){

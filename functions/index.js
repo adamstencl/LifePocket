@@ -2164,7 +2164,7 @@ const ADM_FB_PATH_RE = /^users\/[A-Za-z0-9_-]{1,128}\/feedback\/[A-Za-z0-9_-]{1,
 const admStr = (v, max) => typeof v === 'string' ? v.slice(0, max) : '';
 const admUid = ref => { const u = ref && ref.parent && ref.parent.parent; return u ? String(u.id).slice(0, 6) : ''; };
 // Chybějící index collection group = FAILED_PRECONDITION (kód 9)
-const admNoIndex = e => !!e && (e.code === 9 || e.code === 'failed-precondition' || /\bindex\b/i.test(String(e.message || '')));
+const admNoIndex = e => !!e && (e.code === 9 || e.code === 'failed-precondition');
 
 async function assertAppAdmin(request) {
   const L = reqLang(request);
@@ -2197,7 +2197,7 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
     // Chyby napříč uživateli (errorLogs.ts = ISO řetězec); bez indexu prázdný seznam s příznakem
     part('errors', async () => {
       try {
-        const s = await db.collectionGroup('errorLogs').orderBy('ts', 'desc').limit(ADM_ERR_LIMIT).get();
+        const s = await db.collectionGroup('errorLogs').where('ts', '<=', new Date(Date.now() + 300000).toISOString()).orderBy('ts', 'desc').limit(ADM_ERR_LIMIT).get();
         out.errors = s.docs.map(d => {
           const x = d.data() || {};
           return {msg: admStr(x.msg, 300), src: admStr(x.src, 80), v: admStr(x.v, 12), ts: toMillis(x.ts), u: admUid(d.ref)};
@@ -2207,7 +2207,7 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
     // Zprávy s obrázky (users/*/feedback): bez pole images, to jde jen přes adminFeedback
     part('feedback', async () => {
       try {
-        const s = await db.collectionGroup('feedback').orderBy('createdAt', 'desc').limit(ADM_FB_LIMIT).select('createdAt', 'v', 'msg').get();
+        const s = await db.collectionGroup('feedback').where('createdAt', '<=', Timestamp.now()).orderBy('createdAt', 'desc').limit(ADM_FB_LIMIT).select('createdAt', 'v', 'msg').get();
         out.feedback = s.docs.map(d => {
           const x = d.data() || {};
           return {id: d.ref.path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(d.ref)};

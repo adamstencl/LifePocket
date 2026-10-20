@@ -676,7 +676,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .bnm-grid{display:flex;flex-wrap:wrap;gap:10px}
 .bnm-cat{margin-bottom:12px} /* 4.73: kategorie nad dlaždicemi (ne vlevo) – srozumitelnější na úzkém displeji */
 .bnm-cat-l{font-size:14px;font-weight:600;color:var(--text2);margin:0 0 6px 2px}
-.bn-more-item.bnm-off{border:1px dashed var(--border2);background:none;color:var(--text2);opacity:.6}
+.bn-more-item.bnm-off{border:1px dashed var(--border2);background:none;color:var(--text2)}
 .bn-more-item.bnm-off:hover,.bn-more-item.bnm-off:focus-visible{opacity:1}
 .bnm-off-tag{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1;padding:2px 6px;border-radius:999px;border:1px solid var(--border2);color:var(--text2)}
 .bnm-pick{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:8px 4px}
