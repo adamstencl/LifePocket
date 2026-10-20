@@ -14984,12 +14984,49 @@ function buildNav(){
   const primary=all.slice(0,4);
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
-  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em" aria-hidden="true">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
-  const bmp=document.getElementById('bn-more-panel'); if(bmp) bmp.innerHTML=more.map(p=>`<div class="bn-more-item" id="bnm-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><div class="bn-more-em">${p.emoji}</div><div class="bn-more-lbl">${p.label}</div></div>`).join('');
+  // Více (4.72): parťák a Nastavení, tvoje moduly mimo lištu, vypnuté moduly po kategoriích (zapnutí přímo z panelu)
+  const off=MORE_CATS.flatMap(c=>c.mods).filter(id=>hasUI.includes(id)&&!(prof.modules||[]).includes(id));
+  _bnMore=more;
+  if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length||off.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em" aria-hidden="true">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
+  renderBnMore();
   const cur=document.querySelector('.page.active')?.id?.slice(2); if(cur) markBn(cur); // přestavba lišty (změna modulů)
 }
 // Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
 const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','water']};
+// Kategorie modulů v panelu Více (4.72)
+const MORE_CATS=[{id:'home',mods:['shopping','mealplan','cooking','checklist']},{id:'me',mods:['habits','water','goals','journal']},{id:'time',mods:['calendar']}];
+let _bnMore=[];
+const bnmTile=p=>`<button type="button" class="bn-more-item" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bn-more-lbl">${esc(p.label)}</span></button>`;
+function renderBnMore(){
+  const bmp=document.getElementById('bn-more-panel'); if(!bmp) return;
+  const mods=prof?.modules||[], isMod=p=>MODS.some(m=>m.id===p.id&&m.id!=='rex');
+  const rows=_bnMore.filter(p=>!isMod(p)), mine=_bnMore.filter(isMod);
+  let h=rows.map(p=>`<button type="button" class="bnm-row" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bnm-row-l">${esc(p.label)}</span><span class="bnm-row-a" aria-hidden="true">›</span></button>`).join('');
+  if(mine.length) h+=`<div class="bnm-sec">${tH('nav.moreMine')}</div><div class="bnm-grid">${mine.map(bnmTile).join('')}</div>`;
+  const cats=MORE_CATS.map(c=>({id:c.id,ms:c.mods.map(id=>MODS.find(m=>m.id===id)).filter(m=>m&&!mods.includes(m.id))})).filter(c=>c.ms.length);
+  if(cats.length) h+=`<div class="bnm-sec">${tH('nav.moreAdd')}</div>`+cats.map(c=>`<div class="bnm-cat"><div class="bnm-cat-l">${tH('nav.cat.'+c.id)}</div><div class="bnm-grid">${c.ms.map(m=>`<button type="button" class="bn-more-item bnm-off" data-a0="${esc(m.id)}" aria-label="${tH('nav.modAddAria',{name:modName(m)})}" onclick="bnmPick(this.dataset.a0)"><span class="bn-more-em" aria-hidden="true">${m.emoji}</span><span class="bn-more-lbl">${esc(modName(m))}</span></button>`).join('')}</div></div>`).join('');
+  bmp.innerHTML=h;
+}
+// Vypnutý modul z Více: malý list (emoji, popis, Zapnout / Zpět) přímo v panelu
+window.bnmPick=id=>{
+  const m=MODS.find(x=>x.id===id), bmp=document.getElementById('bn-more-panel');
+  if(!m||!bmp) return;
+  bmp.innerHTML=`<div class="bnm-pick" role="group" aria-label="${esc(modName(m))}"><div class="bnm-pick-em" aria-hidden="true">${m.emoji}</div><div class="bnm-pick-n">${esc(modName(m))}</div><p class="bnm-pick-d">${esc(modDesc(m))}</p>`
+    +`<div class="bnm-pick-btns"><button type="button" class="btn-s" onclick="renderBnMore()">${tH('nav.modBack')}</button><button type="button" class="btn-p" data-a0="${esc(m.id)}" onclick="bnmOn(this.dataset.a0)">${tH('nav.modOn')}</button></div></div>`;
+  bmp.querySelector('.btn-p')?.focus();
+};
+window.renderBnMore=renderBnMore;
+// Zapnutí: stávající togModSet (pitný režim přes wtEnableModule), pak se modul hned otevře
+window.bnmOn=id=>{
+  const m=MODS.find(x=>x.id===id);
+  if(!m) return;
+  quickOnce('mod-on',async()=>{
+    if(!(await nudgeModOn(id))) return;
+    if(id==='water') toast(t('set.mod.on',{name:modName(m)}));
+    window.closeBnMore();
+    window.sp(id);
+  });
+};
 // Aktivní položka spodní lišty (stránka z „Více“ zvýrazní „Více“)
 function markBn(id){
   const inMore=!!document.getElementById('bnm-'+id);
@@ -15001,13 +15038,17 @@ function markBn(id){
 }
 
 window.togBnMore=()=>{
-  document.getElementById('bn-more-panel')?.classList.toggle('open');
+  const p=document.getElementById('bn-more-panel');
+  if(p&&!p.classList.contains('open')) renderBnMore(); // otevření vždy s přehledem
+  p?.classList.toggle('open');
 };
 window.closeBnMore=()=>{
-  document.getElementById('bn-more-panel')?.classList.remove('open');
+  const p=document.getElementById('bn-more-panel');
+  if(p?.classList.contains('open')){ p.classList.remove('open'); renderBnMore(); } // příště zase přehled, ne list modulu
 };
 document.addEventListener('click',e=>{
   const panel=document.getElementById('bn-more-panel');
+  if(!e.target.isConnected) return; // prvek z panelu, který se právě překreslil (list modulu, Zpět)
   if(panel&&panel.classList.contains('open')&&!panel.contains(e.target)&&!e.target.closest('#bn-more'))
     panel.classList.remove('open');
 });

@@ -664,8 +664,27 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .bnbtn.active .bn-lbl{font-weight:700}
 .bnbtn.active .bn-em{transform:scale(1.15)}
 .bn-more-panel{display:none;position:fixed;bottom:var(--bn-h);left:0;right:0;background:var(--bg);box-shadow:var(--shadow-lg);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:16px;z-index:199;flex-wrap:wrap;gap:10px;justify-content:center} /* pozadí podle motivu (4.68: ve světlém režimu nebylo tmavé) */
-.bn-more-panel.open{display:flex}
-.bn-more-item{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;min-width:70px;text-align:center}
+.bn-more-panel.open{display:block;max-height:calc(100vh - var(--bn-h) - 40px);overflow-y:auto;overscroll-behavior:contain}
+.bn-more-item{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;min-width:70px;min-height:44px;text-align:center;color:var(--text);font-family:inherit}
+/* Panel Více s kategoriemi (4.72) */
+.bnm-row{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer;text-align:left}
+.bnm-row .bn-more-em{font-size:22px}
+.bnm-row-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bnm-row-a{color:var(--text2);font-size:20px}
+.bnm-row.active,.bnm-row:hover{border-color:var(--accent)}
+.bnm-sec{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin:14px 0 8px}
+.bnm-grid{display:flex;flex-wrap:wrap;gap:10px}
+.bnm-cat{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.bnm-cat-l{flex:0 0 84px;font-size:14px;color:var(--text2);padding-top:14px}
+.bnm-cat .bnm-grid{flex:1;min-width:0}
+.bn-more-item.bnm-off{border:1px dashed var(--border2);background:none;color:var(--text2)}
+.bnm-pick{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:8px 4px}
+.bnm-pick-em{font-size:44px}
+.bnm-pick-n{font-size:18px;font-weight:700;color:var(--text)}
+.bnm-pick-d{font-size:15px;color:var(--text2);max-width:300px;margin:0;line-height:1.4}
+.bnm-pick-btns{display:flex;gap:10px;width:100%;max-width:340px;margin-top:6px}
+.bnm-pick-btns .btn-s{flex:1;min-height:48px}
+.bnm-pick-btns .btn-p{flex:2;min-height:48px;padding:0 16px;font-size:16px}
 .bn-more-item.active,.bn-more-item:hover{border-color:var(--accent);color:var(--accent)}
 .bn-more-em{font-size:24px}
 .bn-more-lbl{font-size:12px;font-family:'Crimson Pro',serif;font-weight:600}
