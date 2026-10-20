@@ -48,8 +48,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.71';
+const APP_VERSION = '4.72';
 const CHANGELOG = [
+  { v:'4.72', items:[
+    '🌱 V jednoduchém režimu ukáže Domů kartu „Co teď“: vždy jen jeden další krok a splníš ho přímo v kartě',
+    '🧭 Panel Více má kategorie Domácnost, Já a Čas a vypnutý modul v něm zapneš jedním klepnutím',
+    '✨ Prázdné moduly ukážou jednu větu, tlačítko a příklad, který založíš jedním klepnutím'
+  ], en:[
+    '🌱 In simple mode, Home shows a “What now” card: always just one next step, and you can do it right in the card',
+    '🧭 The More panel has Home, Me and Time categories, and you can turn on a module there with one tap',
+    '✨ Empty modules show one sentence, a button and an example you can create with one tap'
+  ]},
   { v:'4.71', items:[
     '📒 Poznámky se teď jmenují Deník, zápisky zůstávají, jak byly',
     '🔥 V Návycích je nový čip „Jen nevyřízené“: ukáže jen návyky, které na zvolený den ještě čekají',
