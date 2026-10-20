@@ -17852,9 +17852,8 @@ async function offerPantryUpdate(name, shopQty, sg) {
   if(!gid) await pantryMigSettle(); // Moje: nejdřív přenos lp_pantry
   const items = await pantryItemsReady(gid);
   if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
-  // Přesná shoda po normalizaci (4.75): „kokosové mléko“ nepřičte k „mléko“
-  const lname = pantryNorm(name);
-  const match = items.find(p=>p&&p.name&&pantryNorm(p.name)===lname);
+  // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“
+  const match = pantryFind(items, name);
   if(match){
     // Položka už v zásobách — přičti správné množství
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
@@ -18953,12 +18952,38 @@ function convertUnits(amount, from, to) {
 function pantryNorm(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 }
-// Shoda suroviny se zásobou: přesná po normalizaci (4.75; dřív podřetězec → odečet z jiné zásoby)
-function pantryMatch(items, ingName) {
-  const n = pantryNorm(ingName);
-  if (!n) return null;
-  return items.find(p => p && p.name && pantryNorm(p.name) === n) || null;
+// Shoda dvou normalizovaných názvů: stejné, nebo kratší je začátkem delšího a za ním mezera/číslice/závorka/čárka
+// („mleko“ ~ „mleko 1,5 %“, ne „mleko“ ~ „mlekovar“ ani „kokosove mleko“). Bez lookbehind.
+function pantryHit(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [l, sh] = a.length >= b.length ? [a, b] : [b, a];
+  return l.startsWith(sh) && /^[\s\d(,]/.test(l.charAt(sh.length));
 }
+// Klíč názvu pro zásoby: bez závorek, úvodního množství s jednotkou a množství na konci
+// („2 vejce“, „400 g mouka“, „Vejce (střední)“, „Mléko 1,5% 1 l“ → „vejce“, „mouka“, „vejce“, „mleko“)
+function pantryIngName(s) {
+  let n = pantryNorm(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const q = n.replace(/^\d+(?:[.,/]\d+)?\s*/, '');
+  if (q !== n) { n = q; const m = n.match(/^([a-z]+)\.?\s+(.+)$/); if (m && ING_UNITS[m[1]]) n = m[2]; }
+  n = n.replace(/(?:\s+\d+(?:[.,]\d+)?\s*(?:%|[a-z]{1,4}\.?)?)+$/, '');
+  return n.replace(/[\s,]+$/, '').trim();
+}
+// Zásoba k názvu (4.75): přesná shoda má přednost, jinak nejdelší shoda podle pantryHit
+function pantryFind(items, name) {
+  const n = pantryIngName(name);
+  if (!n) return null;
+  let best = null, bl = -1;
+  for (const p of items) {
+    if (!p || !p.name) continue;
+    const pn = pantryIngName(p.name);
+    if (pn === n) return p;
+    if (pantryHit(pn, n) && pn.length > bl) { best = p; bl = pn.length; }
+  }
+  return best;
+}
+// Shoda suroviny se zásobou (4.75; dřív libovolný podřetězec → odečet z jiné zásoby)
+function pantryMatch(items, ingName) { return pantryFind(items, ingName); }
 // Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
   const gid = pantryGid(), items = pantryItemsOf(gid);
