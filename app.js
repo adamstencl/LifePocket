@@ -48,8 +48,21 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.70';
+const APP_VERSION = '4.71';
 const CHANGELOG = [
+  { v:'4.71', items:[
+    '📒 Poznámky se teď jmenují Deník, zápisky zůstávají, jak byly',
+    '🔥 V Návycích je nový čip „Jen nevyřízené“: ukáže jen návyky, které na zvolený den ještě čekají',
+    '📎 Ke zprávě „Napiš nám“ můžeš přiložit až 3 snímky obrazovky',
+    '⚡ U příspěvku vidíš částku i v satoshi a u Lightning karty si ji můžeš vybrat',
+    '✍️ Týdenní report, pozdrav a zprávy Rexe píšou spisovnější češtinou'
+  ], en:[
+    '📒 Notes are now called Journal, your entries stay as they were',
+    '🔥 Habits have a new “Pending only” chip: it shows only the habits still waiting on the selected day',
+    '📎 You can attach up to 3 screenshots to a “Write to us” message',
+    '⚡ Contributions now also show the amount in satoshi, and you can pick it on the Lightning card',
+    '✍️ In Czech, the weekly report, greeting and Rex messages now use more correct language'
+  ]},
   { v:'4.70', items:[
     '🧊 Zásoby pro každou skupinu: v Zásobách přepínáš Moje a skupiny, které sdílí nákupy',
     '🛒 Odškrtnutý nákup přibude do zásob té skupiny, ze které je seznam, osobní nákup do tvých zásob',
