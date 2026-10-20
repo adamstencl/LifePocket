@@ -1430,6 +1430,7 @@ function subEntries(){
 }
 
 function renderEntryList(filter=''){
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   const list=document.getElementById('j-list');
   if(!list)return;
   renderNoteSeg(); refreshNoteChip();
@@ -2233,6 +2234,7 @@ function isHabitPending(h,ds){
   return true;
 }
 function renderHabits(){
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
   const scrollEl=document.getElementById('abody');
   const savedScroll=scrollEl?scrollEl.scrollTop:0;
@@ -3012,6 +3014,7 @@ function subEvents(){
 
 
 function renderCal(){
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   updateGroupFeedBells();
   const lbl=document.getElementById('cal-month-lbl');
   if(!lbl)return;
@@ -6626,14 +6629,220 @@ function focusWidgetHTML() {
 }
 
 
+// ── Rychlé založení (4.72): karta „Co teď“ a příklady v prázdných stavech modulů založí položku jedním klepnutím ──
+// Zámek proti dvojkliku: dokud první zápis neskončí (nejdéle 4 s, offline zápis čeká na server), další klepnutí nic nezaloží
+const _quickBusy = new Map();
+function quickOnce(key, fn) {
+  if (!CU || _quickBusy.has(key)) return false;
+  const tok = {}, rel = () => { if (_quickBusy.get(key) === tok) _quickBusy.delete(key); };
+  _quickBusy.set(key, tok);
+  const tm = setTimeout(rel, 4000);
+  let p;
+  try { p = Promise.resolve(fn()); } catch (e) { p = Promise.reject(e); }
+  p.catch(e => { console.warn('[LP] quick:', e?.code || e?.name); toast(t('common.saveFailed', {err: userErr(e)})); })
+    .finally(() => { clearTimeout(tm); rel(); });
+  return true;
+}
+// Domů po rychlém založení: snapshot z Firestore dorazí asynchronně, překreslit až po něm
+function quickRefresh() {
+  setTimeout(() => { if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); }, 350);
+}
+const quickAdd = {
+  habits(name, emoji) {
+    const hr = new Date().getHours(), group = hr < 11 ? 'morning' : hr < 17 ? 'day' : 'evening';
+    const order = habits.filter(h => h.group === group).reduce((m, h) => Math.max(m, h.order || 0), 0) + 1;
+    installUnlock('habits');
+    const w = setDoc(doc(collection(db, 'users', CU.uid, 'habits')), {name, emoji: emoji || '🎯', type: 'yesno', goal: 1, freq: {type: 'daily'},
+      group, reminderTime: null, goalId: null, order, createdAt: new Date().toISOString()});
+    toast(t('hb.added'));
+    return w;
+  },
+  shopping(raw) {
+    const {name, qty} = parseShopInput(raw);
+    if (!name) return;
+    unhideQuickShop(name);
+    const gid = shopGid(), w = addShopEntry({name, category: guessShopCategory(name), qty});
+    toast(gid ? t('shop.addedTo', {name, to: grpLabel(gid)}) : t('shop.addedPlain'));
+    return w;
+  },
+  goals(name, emoji) {
+    actDay('goals');
+    const ref = doc(collection(db, 'users', CU.uid, 'goals')), now = new Date().toISOString();
+    subs[ref.id] = [];
+    const w = setDoc(ref, {name, description: '', category: Object.keys(GOAL_CAT_KEYS)[0], deadline: '', progress: 0, emoji: emoji || '🌟',
+      color: '#f5c842', priority: 2, updatedAt: now, createdAt: now, msHit: []});
+    toast(t('goal.added'));
+    return w;
+  },
+  // Zápisek se založí s názvem a rovnou otevře (text si člověk dopíše)
+  journal(title) {
+    window.sp('journal'); window.newEntry();
+    const jt = document.getElementById('j-title'); if (jt) jt.value = title;
+    return window.saveEntry();
+  },
+  checklist(text) {
+    const list = clEditFind(activeChecklist);
+    if (!list) { window.sp('checklist'); return; }
+    const item = {id: genId(), text, done: false};
+    list.items = Array.isArray(list.items) ? list.items : [];
+    list.items.unshift(item);
+    const w = saveChecklistDoc(list);
+    gaCheck(list, 'add', text);
+    renderChecklist();
+    return w;
+  },
+  // Dnešní večeře (zobrazený plán; plán skupiny jen správce, hlídá saveMealPlanItem)
+  mealplan(val) {
+    if (window.saveMealPlanItem('d' + mealTodayIdx(), 'm2', val)) renderMealPlan();
+  },
+  // Ukázkový recept (suroviny a postup ze slovníku), pak se zobrazí ve Vaření
+  cooking() {
+    const lines = k => t(k).split('\n').map(s => s.trim()).filter(Boolean);
+    const recipe = {name: t('es.cooking.exName'), time: t('es.cooking.time'), portions: 4,
+      ingredients: lines('es.cooking.ing').map(n => ({name: n, qty: '', category: guessShopCategory(n)})), steps: lines('es.cooking.steps'), tip: ''};
+    const ref = doc(collection(db, 'users', CU.uid, 'savedRecipes'));
+    const w = setDoc(ref, {...recipe, savedAt: Date.now(), manual: true});
+    recipe.id = ref.id; lastRecipe = recipe;
+    window.sp('cooking');
+    const cw = document.getElementById('cook-welcome'); if (cw) cw.style.display = 'none';
+    renderRecipe(recipe);
+    toast(t('ck.mr.saved'));
+    return w;
+  },
+};
+// Prázdné stavy modulů: emoji, podmínka „prázdný“, hlavní tlačítko a příklad (založí jednu položku)
+const ES = {
+  habits:   {em: '🔥', empty: () => !habits.length, ex: () => quickAdd.habits(t('es.habits.exName'), '💧')},
+  shopping: {em: '🧺', empty: () => !activeShopItems().length, ex: () => quickAdd.shopping(t('es.shopping.exName'))},
+  goals:    {em: '🏆', empty: () => !goals.length, ex: () => quickAdd.goals(t('es.goals.exName'), '🏃')},
+  journal:  {em: '📒', empty: () => !entries.length, ex: () => quickAdd.journal(t('es.journal.exName'))},
+  checklist:{em: '✅', empty: () => !((clFind(activeChecklist)?.items) || []).length, ex: () => quickAdd.checklist(t('es.checklist.exName'))},
+  mealplan: {em: '🥗', empty: () => !mealPlanHasAny(currentMealPlan()), ex: () => quickAdd.mealplan(t('es.mealplan.exName'))},
+  cooking:  {em: '👨‍🍳', empty: () => !savedRecipes.length, ex: () => quickAdd.cooking()},
+};
+// Příklad z prázdného stavu nebo z karty „Co teď“: jen když je modul pořád prázdný (dvojklik, druhé zařízení)
+window.esEx = mod => {
+  const e = Object.prototype.hasOwnProperty.call(ES, mod) ? ES[mod] : null;
+  if (!e) return;
+  quickOnce('es-' + mod, () => { if (!e.empty()) return; const w = e.ex(); quickRefresh(); return w; });
+};
+
+// ── Karta „Co teď“ (4.72, jen jednoduchý režim): místo Začínáme vždy jen jeden krok, kde to jde, splnitelný přímo v kartě ──
+// Kroky = první 3 moduly v pořadí lišty, které krok mají. Splněný krok si pamatuje lp_qs_done ('ct.<modul>').
+const CT = {
+  shopping: {em: '🧺', done: () => shopItems.length > 0 || activeShopItems().length > 0, kind: () => 'inp'},
+  habits:   {em: () => habits.some(h => !h.archived) ? '✅' : '🔥', done: () => doneLogCount() > 0,
+             key: () => habits.some(h => !h.archived) ? 'check' : 'add', kind: () => habits.some(h => !h.archived) ? 'habits' : 'inp'},
+  calendar: {em: '🎂', done: () => events.length > 0, kind: () => 'btn'},
+  mealplan: {em: '🥗', done: () => mealPlanHasAny(currentMealPlan()) || actN('mealplan') > 0, kind: () => canEditMealPlan() ? 'inp' : 'btn'},
+  water:    {em: '💧', done: () => wtMl(toDS()) > 0 || actN('water') > 0, kind: () => waterCfg() ? 'water' : 'btn'},
+  goals:    {em: '🎯', done: () => goals.length > 0, kind: () => 'inp'},
+  journal:  {em: '📝', done: () => entries.length > 0, kind: () => 'btn'},
+  cooking:  {em: '👨‍🍳', done: () => savedRecipes.length > 0, kind: () => 'btn'},
+  checklist:{em: '✅', done: () => checklists.some(c => Array.isArray(c?.items) && c.items.length), kind: () => 'inp'},
+};
+let _ctThanks = false; // poděkování po 3. kroku drží do konce relace (pak karta zmizí, lp_qs_dismissed)
+function ctSteps() {
+  const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
+  return simpleModOrder().filter(id => Object.prototype.hasOwnProperty.call(CT, id)).slice(0, 3)
+    .map(id => ({id, done: done.includes('ct.' + id) || !!nudgeSafe(CT[id].done)}));
+}
+// Aktuální krok ('done' = všechny hotové, '' = karta se neukazuje)
+function ctCur() {
+  if (_ctThanks) return 'done';
+  const st = ctSteps();
+  if (!st.length) return '';
+  const cur = st.find(s => !s.done);
+  return cur ? cur.id : 'done';
+}
+const ctVal = (x, ...a) => typeof x === 'function' ? x(...a) : x;
+function coTedHTML() {
+  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const st = ctSteps();
+  if (!st.length && !_ctThanks) return '';
+  // Splněné kroky si zapamatovat (smazaná položka krok nevrátí)
+  const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
+  const add = st.filter(s => s.done && !done.includes('ct.' + s.id)).map(s => 'ct.' + s.id);
+  if (add.length) lsSave('lp_qs_done', [...done, ...add]);
+  const i = st.findIndex(s => !s.done);
+  if (_ctThanks || i < 0) {
+    _ctThanks = true;
+    lsSave('lp_qs_dismissed', true);
+    return `<div class="card ct-card ct-done" id="ct-card" data-step="done" role="region" aria-label="${tH('ct.aria')}">
+      <div class="ct-head"><span class="ct-t"><span aria-hidden="true">🎉</span> ${tH('ct.done')}</span>
+      <button type="button" class="qs-dismiss ct-x" onclick="ctClose()" aria-label="${tH('common.hide')}">×</button></div>
+      <div class="ct-sub">${tH('ct.doneSub', {av: av.name})}</div>
+    </div>`;
+  }
+  const id = st[i].id, c = CT[id], kind = c.kind(), k = 'ct.' + id + (c.key ? '.' + c.key() : ''), m = esc(id);
+  let body = '';
+  if (kind === 'inp') {
+    body = `<div class="ct-row"><input id="ct-inp" class="finp ct-inp" type="text" maxlength="120" data-a0="${m}" placeholder="${tH(k + '.ph')}" aria-label="${tH(k)}" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();ctAdd()}">`
+      + `<button type="button" class="btn-p ct-add" onclick="ctAdd()" aria-label="${tH('ct.add')}">+</button></div>`
+      + (Object.prototype.hasOwnProperty.call(ES, id) ? `<button type="button" class="lp-es-ex ct-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.' + id + '.ex')}</button>` : '');
+  } else if (kind === 'habits') {
+    const hs = habits.filter(h => h && !h.archived && h.type !== 'count').slice(0, 3);
+    body = hs.length ? `<div class="ct-hbs">${hs.map(h => `<button type="button" class="ct-hb" data-a0="${esc(h.id)}" onclick="ctHabit(this.dataset.a0)"><span class="ct-hb-c" aria-hidden="true"></span><span>${esc(h.emoji || '⭐')} ${esc(h.name)}</span></button>`).join('')}</div>`
+      : `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.open')}</button>`;
+  } else if (kind === 'water') {
+    const cups = [...waterCfg().cups].sort((a, b) => a.ml - b.ml).slice(0, 3);
+    body = `<div class="ct-hbs ct-cups">${cups.map(cu => `<button type="button" class="ct-hb" data-a0="${Number(cu.ml) || 0}" onclick="ctWater(this)" aria-label="${tH('wt.addAria', {v: fmtMl(cu.ml)})}"><span aria-hidden="true">${esc(cu.emoji)}</span> ${esc(fmtMl(cu.ml))}</button>`).join('')}</div>`;
+  } else {
+    body = `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.' + id + '.btn')}</button>`
+      + (id === 'cooking' ? `<button type="button" class="lp-es-ex ct-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.cooking.ex')}</button>` : '');
+  }
+  return `<div class="card ct-card" id="ct-card" data-step="${m}" role="region" aria-label="${tH('ct.aria')}">
+    <div class="ct-head"><span class="ct-lbl">${tH('ct.title')} · ${tH('ct.step', {n: i + 1, total: st.length})}</span>
+    <button type="button" class="qs-dismiss ct-x" onclick="dismissQS()" aria-label="${tH('common.hide')}">×</button></div>
+    <div class="ct-t"><span aria-hidden="true">${esc(ctVal(c.em))}</span> ${tH(k)}</div>
+    ${body}${habits.some(h => h && h.sample === true) ? `<button type="button" class="btn-s ct-nos" onclick="removeSamples()">${tH('qs.noSamples')}</button>` : ''}
+  </div>`;
+}
+// Po změně dat (snapshot, odškrtnutí): Domů překreslit, jen když se krok karty změnil
+function ctSync() {
+  const card = document.getElementById('ct-card');
+  if (!card || !isSimple() || card.dataset.step === 'done') return;
+  setTimeout(() => {
+    const c = document.getElementById('ct-card');
+    if (c && c.dataset.step !== ctCur() && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+  }, 0);
+}
+window.ctAdd = () => {
+  const inp = document.getElementById('ct-inp');
+  const mod = inp?.dataset.a0, val = (inp?.value || '').trim();
+  if (!inp || !mod) return;
+  if (!val) { inp.focus(); return; }
+  const fn = {shopping: v => quickAdd.shopping(v), habits: v => quickAdd.habits(v), goals: v => quickAdd.goals(v),
+    mealplan: v => quickAdd.mealplan(v), checklist: v => quickAdd.checklist(v)}[mod];
+  if (!fn) return;
+  if (quickOnce('ct-' + mod, () => { const w = fn(val); quickRefresh(); return w; })) inp.value = '';
+};
+window.ctHabit = hid => {
+  quickOnce('ct-h', () => {
+    const td = toDS();
+    if (!habits.some(h => h.id === hid) || hLogHD(hid, td)?.done) return;
+    const w = window.toggleHabitDay(hid, td); quickRefresh(); return w;
+  });
+};
+window.ctWater = btn => { quickOnce('ct-w', () => { window.wtCup(btn); quickRefresh(); }); };
+window.ctGo = mod => {
+  if (mod === 'calendar') { window.calEmptyBday(); return; }
+  if (mod === 'journal') { window.sp('journal'); window.newEntry(); return; }
+  if (mod === 'cooking') { window.sp('cooking'); window.openManualRecipe(); return; }
+  if (typeof mod === 'string' && document.getElementById('p-' + mod)) window.sp(mod);
+};
+window.ctClose = () => { _ctThanks = false; document.getElementById('ct-card')?.remove(); };
+
 // ── QUICK START ───────────────────────────────────────
 function quickStartHTML() {
+  if (isSimple() && _ctThanks) return coTedHTML();
   if (lsGet('lp_qs_dismissed')) return '';
   // Zobrazit jen pro uživatele mladší 21 dní
   if (prof.createdAt) {
     const age = (Date.now() - new Date(prof.createdAt).getTime()) / 86400000;
     if (age > 21) return '';
   }
+  if (isSimple()) return coTedHTML(); // jednoduchý režim: karta „Co teď“ (4.72)
   const mods = prof.modules || [];
   const done = lsGet('lp_qs_done', []);
 
@@ -14429,6 +14638,7 @@ async function saveChecklistDoc(list) {
 
 
 function renderChecklist() {
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   updateGroupFeedBells();
   const el = document.getElementById('checklist-content');
   if (!el) return;
@@ -15371,7 +15581,14 @@ function rDash(){
     </div>`;
   }
 
-  const dw=document.getElementById('d-widgets'); if(dw) dw.innerHTML=html;
+  const dw=document.getElementById('d-widgets');
+  if(dw){
+    // Rozepsaný text v kartě „Co teď“ přežije překreslení (snapshot během psaní)
+    const ci=document.getElementById('ct-inp'), cv=ci?{m:ci.dataset.a0,v:ci.value,f:document.activeElement===ci}:null;
+    dw.innerHTML=html;
+    const ni=cv&&(cv.v||cv.f)?document.getElementById('ct-inp'):null;
+    if(ni&&ni.dataset.a0===cv.m){ ni.value=cv.v; if(cv.f){ ni.focus({preventScroll:true}); try{ ni.setSelectionRange(cv.v.length,cv.v.length); }catch(e){} } }
+  }
 }
 window.selMood=em=>{
   mood=em;
@@ -15897,6 +16114,7 @@ function buildArchivedSection(archivedGoals) {
 }
 
 function rGoals() {
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   const c = document.getElementById('goals-list');
   if (!c) return;
   renderSharedGoals(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních cílech
@@ -16626,6 +16844,7 @@ function subShop(){
 
 // ── SHOPPING ──────────────────────────────────────────
 function renderShop(){
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   const list=document.getElementById('shop-list');
   const empty=document.getElementById('shop-empty');
   if(!list||!empty)return;
@@ -17824,6 +18043,7 @@ window.openSavedRecipe=(id)=>{
 };
 
 function renderSavedRecipes(){
+  ctSync(); // karta „Co teď“ na Domů (4.72)
   const section=document.getElementById('saved-recipes-section');
   const list=document.getElementById('saved-recipes-list');
   if(!section||!list)return;
