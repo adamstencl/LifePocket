@@ -17679,33 +17679,45 @@ function checkRecurringShop() {
   const today = new Date();
   const todayISO = toDS(today);
   const todayDay = today.getDay();
+  // Je položka dnes na řadě (podle lastAdded ze serveru, viz transakce níže)?
+  const due = it => {
+    if (!it || it.lastAdded === todayISO) return false;
+    const days = it.lastAdded ? Math.floor((today - new Date(it.lastAdded))/86400000) : 999;
+    if (it.freq === 'weekly') return todayDay === it.day;
+    if (it.freq === 'biweekly') return todayDay === it.day && days >= 14;
+    if (it.freq === 'monthly') return days >= 30;
+    return false;
+  };
+  if (navigator.onLine === false) return; // offline nic nepřidávat (cache může být zastaralá → duplicity)
+  const uid = CU.uid;
   recurringShopItems.forEach(async item => {
-    if (item.lastAdded === todayISO || _recShopBusy.has(item.id)) return;
-    let shouldAdd = false;
-    if (item.freq === 'weekly') {
-      shouldAdd = todayDay === item.day;
-    } else if (item.freq === 'biweekly') {
-      if (todayDay === item.day) {
-        const days = item.lastAdded ? Math.floor((today - new Date(item.lastAdded))/86400000) : 999;
-        shouldAdd = days >= 14;
-      }
-    } else if (item.freq === 'monthly') {
-      const days = item.lastAdded ? Math.floor((today - new Date(item.lastAdded))/86400000) : 999;
-      shouldAdd = days >= 30;
-    }
-    if (!shouldAdd) return;
+    if (!due(item) || _recShopBusy.has(item.id)) return;
     _recShopBusy.add(item.id);
     try {
+      // 4.75: lastAdded se „zamkne“ transakcí na serveru (offline selže → nic se nepřidá); zastaralá trvalá cache
+      // ani druhé zařízení tak položku nepřidají podruhé
+      const ref = doc(db,'users',uid,'recurringShop',item.id);
+      let fresh = null;
+      try {
+        fresh = await runTransaction(db, async tx => {
+          const sn = await tx.get(ref);
+          if (!sn.exists()) return null;
+          const d = sn.data();
+          if (!due(d)) return null;
+          tx.update(ref, {lastAdded: todayISO});
+          return d;
+        });
+      } catch(e) { console.warn('[LP] recurring:', e?.code || e?.name); return; }
+      item.lastAdded = todayISO;
+      if (!fresh || CU?.uid !== uid) return;
       const fid = shopGid();
       const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
       if (!alreadyIn) {
         const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
-        await addDoc(shopCol(fid),si);
+        addDoc(shopCol(fid),si).catch(e => console.warn('[LP] recurring add:', e?.code || e?.name));
         if (fid) logGroupActivity(fid,'shop','add',item.name);
         toast(t('shop.rec.autoAdded',{name:item.name})+shopToSfx(fid));
       }
-      await updateDoc(doc(db,'users',CU.uid,'recurringShop',item.id),{lastAdded:todayISO});
-      item.lastAdded = todayISO;
     } finally { _recShopBusy.delete(item.id); }
   });
 }
