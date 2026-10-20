@@ -1215,6 +1215,7 @@ export default {
 
   // ── Groups: code, leaving with a copy, restore (4.47) ──
   'grp.defName': 'Group',
+  'grp.familyName': 'Family',
   'grp.codeBad': '⚠️ Enter a valid code (e.g. ADAM-K7M2QX)',
   'grp.notFound': '❌ Group {code} not found. Check the code (watch out for B/8, S/5, Z/2, G/6) or ask for an invite link.',
   'grp.inviteGone': '❌ This invite is no longer valid, ask for a new one',
@@ -1699,6 +1700,7 @@ export default {
   'notif.f.noProf': 'Profile is not loaded yet',
   'notif.f.save': 'Saving the token failed',
   'notif.f.refresh': 'Refreshing the token failed',
+  'notif.f.register': 'Push registration failed',
   'notif.saved': '✅ Notification settings saved',
   'notif.test.sending': '📡 Sending a test via the server...',
   'notif.test.sentN': '✅ Server push sent to {n} devices! Close the app and check the notification.',

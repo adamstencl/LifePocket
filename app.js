@@ -4935,7 +4935,7 @@ async function doRegisterFcmToken() {
       catch(e) { fcmFail(t('notif.f.save'), e); }
     }
   } catch(e) {
-    fcmFail('Registrace push selhala', e);
+    fcmFail(t('notif.f.register'), e);
   }
   updateNotifTokenLine();
 }
@@ -8711,7 +8711,7 @@ window.inviteHintAction = async () => {
   if(!familyId){
     if(_ihCreating) return;
     _ihCreating=true; renderInviteHints();
-    try { await window.createFamily('Rodina'); }
+    try { await window.createFamily(t('grp.familyName')); }
     finally { _ihCreating=false; renderInviteHints(); }
     return;
   }

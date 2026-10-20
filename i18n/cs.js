@@ -1229,6 +1229,7 @@ export default {
 
   // ── Skupiny: kód, odchod s kopií, obnova (4.47) ──
   'grp.defName': 'Skupina',
+  'grp.familyName': 'Rodina',
   'grp.codeBad': '⚠️ Zadej platný kód (např. ADAM-K7M2QX)',
   'grp.notFound': '❌ Skupina {code} nenalezena. Zkontroluj kód (pozor na B/8, S/5, Z/2, G/6), nebo si nech poslat pozvánku odkazem.',
   'grp.inviteGone': '❌ Pozvánka už neplatí, požádej o novou',
@@ -1713,6 +1714,7 @@ export default {
   'notif.f.noProf': 'Profil ještě není načtený',
   'notif.f.save': 'Uložení tokenu selhalo',
   'notif.f.refresh': 'Obnovení tokenu selhalo',
+  'notif.f.register': 'Registrace push selhala',
   'notif.saved': '✅ Nastavení notifikací uloženo',
   'notif.test.sending': '📡 Odesílám test přes server...',
   'notif.test.sentN': '✅ Server push odeslán na {n} zařízení! Zavři appku a zkontroluj notifikaci.',
