@@ -951,17 +951,27 @@ function isHabitDueToday(habit, today, dow) {
   return true;
 }
 
-// Události kolekce potřebné pro cron (místo celé kolekce):
-// dnešní (date == today) + každoročně opakované (repeat == 'yes'); narozeniny zvlášť a jen když jsou potřeba.
-// Vrací dokumenty bez duplicit, seřazené podle ID (stejné pořadí jako dřív celá kolekce).
-async function loadTimedEvents(path, today) {
-  const [todaySnap, repSnap] = await Promise.all([
-    db.collection(path).where('date', '==', today).get(),
-    db.collection(path).where('repeat', '==', 'yes').get(),
-  ]);
-  const byId = new Map();
-  for (const d of [...todaySnap.docs, ...repSnap.docs]) byId.set(d.id, d);
-  return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+// Okno času událostí, které tento běh upozorní (hodinu předem): diffMin 58–62 → začátek za 58–62 min od wall.
+// Vrací {lo, hi} jako „HH:MM“ (lexikograficky = časově, klient ukládá čas s nulami, okEvTime), nebo null,
+// když okno leží celé po půlnoci (zítřejší události cron nehlásí, stejně jako dřív). 24:00 = 1440 min
+// (Date ho bere jako půlnoc dalšího dne), proto se okno ořízne až na 1440.
+const EV_LEAD_MIN = 58, EV_LEAD_MAX = 62;
+function evWindow(wall) {
+  const n = wall.getHours() * 60 + wall.getMinutes();
+  const a = n + EV_LEAD_MIN, b = Math.min(n + EV_LEAD_MAX, 1440);
+  if (a > 1440) return null;
+  const hm = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+  return {lo: hm(a), hi: hm(b)};
+}
+
+// Události kolekce potřebné pro cron (S4): jen ty s časem v okně tohoto běhu. Rozsah na jednom poli (time)
+// nepotřebuje složený index a vrátí i každoročně opakované; datum, typ a opakování se filtrují v kódu.
+// Dřív 2 dotazy (date == today, repeat == 'yes' = všechny opakované, i narozeniny) v každém běhu.
+// Vrací dokumenty seřazené podle ID (stejné pořadí jako dřív).
+async function loadTimedEvents(path, win) {
+  if (!win) return [];
+  const snap = await db.collection(path).where('time', '>=', win.lo).where('time', '<=', win.hi).get();
+  return [...snap.docs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 async function loadBirthdays(path) {
   return (await db.collection(path).where('type', '==', 'birthday').get()).docs;
@@ -1358,7 +1368,8 @@ exports.sendScheduledNotifications = onSchedule(
         const bdayRun = isTimeMatch(h, m, morningTime);
 
         // Osobní kalendář
-        const evGroups = [await loadTimedEvents(`users/${uid}/events`, today)];
+        const evWin = evWindow(wall); // null = okno po půlnoci → žádné čtení
+        const evGroups = [await loadTimedEvents(`users/${uid}/events`, evWin)];
         const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
         // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
         for (const fid of calGroupIds(prof)) {
@@ -1368,7 +1379,7 @@ exports.sendScheduledNotifications = onSchedule(
             const famSnap = await fe.doc;
             const fam = famSnap.exists ? famSnap.data() : null;
             if (fam && fam.members?.[uid] && fam.shareCal) {
-              evGroups.push(await lazy(fe, 'events|' + today, () => loadTimedEvents(`families/${fid}/events`, today)));
+              if (evWin) evGroups.push(await lazy(fe, `events|${evWin.lo}|${evWin.hi}`, () => loadTimedEvents(`families/${fid}/events`, evWin)));
               if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
             }
           } catch(e) { /* skupina nemusí existovat */ }
