@@ -1442,11 +1442,7 @@ function renderEntryList(filter=''){
   if(!filtered.length){
     list.innerHTML=f
       ? `<div style="text-align:center;color:var(--text3);font-size:14px;padding:20px;font-style:italic">${tH('nt.noResults',{q:f})}</div>`
-      : `<div style="text-align:center;padding:32px 16px">
-          <div style="font-size:40px;margin-bottom:10px">✍️</div>
-          <div style="color:var(--text2);font-size:15px;margin-bottom:14px;font-style:italic">${tH('nt.empty')}</div>
-          <button class="btn-p" style="width:auto;padding:9px 22px;font-size:14px" onclick="newEntry()">${tH('nt.emptyBtn')}</button>
-         </div>`;
+      : emptyHTML('journal');
     return;
   }
   list.innerHTML=filtered.map(e=>{
@@ -2251,7 +2247,7 @@ function renderHabits(){
   const archToggle = document.getElementById('habits-archive-toggle');
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
-    list.innerHTML=''; empty.style.display='flex';
+    list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block';
     requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
     return;
   }
@@ -3158,7 +3154,7 @@ function renderHabitMonth() {
   const empty = document.getElementById('habits-empty');
   if(!list) return;
   const activeHabits = habits.filter(h=>!h.archived);
-  if(!activeHabits.length){ list.innerHTML=''; empty.style.display='flex'; return; }
+  if(!activeHabits.length){ list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block'; return; }
   empty.style.display='none';
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -4444,9 +4440,6 @@ function rEmptyStates(){
   // Journal empty
   const je_av=document.getElementById('je-av'); if(je_av)je_av.textContent=av.emoji;
   const je_t=document.getElementById('je-title'); if(je_t)je_t.textContent=name ? t('home.jeTitleName',{name}) : t('home.jeTitle');
-  // Habits empty
-  const he_av=document.getElementById('he-av'); if(he_av)he_av.textContent=av.emoji;
-  const he_t=document.getElementById('he-title'); if(he_t)he_t.textContent=t('home.heTitle');
 }
 
 function getRexEnergy() {
@@ -6725,6 +6718,28 @@ window.esEx = mod => {
   const e = Object.prototype.hasOwnProperty.call(ES, mod) ? ES[mod] : null;
   if (!e) return;
   quickOnce('es-' + mod, () => { if (!e.empty()) return; const w = e.ex(); quickRefresh(); return w; });
+};
+
+// Jednotný prázdný stav modulu (4.72, pro všechny): jedna věta, jedno tlačítko, příklad na 1 klepnutí, volitelně odkaz navíc
+function emptyHTML(mod, more) {
+  const e = ES[mod], m = esc(mod);
+  return `<div class="lp-es" role="region" aria-label="${tH('mod.' + mod)}">
+    <div class="lp-es-em" aria-hidden="true">${e.em}</div>
+    <p class="lp-es-t">${tH('es.' + mod + '.t')}</p>
+    <button type="button" class="btn-p lp-es-btn" data-a0="${m}" onclick="esBtn(this.dataset.a0)">${tH('es.' + mod + '.btn')}</button>
+    <button type="button" class="lp-es-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.' + mod + '.ex')}</button>${more || ''}
+  </div>`;
+}
+// Hlavní tlačítko prázdného stavu: otevře formulář modulu (nic nezakládá)
+window.esBtn = mod => {
+  const fo = id => { const el = document.getElementById(id); if (el) { el.focus(); el.scrollIntoView({block: 'center', behavior: 'smooth'}); } };
+  if (mod === 'habits') { if (document.getElementById('add-habit-wrap')?.style.display === 'none') window.toggleAddHabit(); else fo('habit-name-inp'); }
+  else if (mod === 'shopping') fo('shop-inp');
+  else if (mod === 'goals') window.openGM();
+  else if (mod === 'journal') window.newEntry();
+  else if (mod === 'checklist') fo('cl-new-inp');
+  else if (mod === 'mealplan') window.openMealPicker('d' + mealTodayIdx(), 'm2');
+  else if (mod === 'cooking') window.openManualRecipe();
 };
 
 // ── Karta „Co teď“ (4.72, jen jednoduchý režim): místo Začínáme vždy jen jeden krok, kde to jde, splnitelný přímo v kartě ──
@@ -13971,13 +13986,8 @@ function renderMealPlan() {
     aiBtn.parentElement?.classList.toggle('mp-actions--one', aiBtn.hidden);
   }
 
-  const welcomeBanner = !hasAnyMeal && canEdit && !loading ? `
-    <div class="mp-empty">
-      <div class="mp-empty-em" aria-hidden="true">🗓️</div>
-      <div class="mp-empty-h">${tH('mp.emptyTitle')}</div>
-      <div class="mp-empty-t">${tH('mp.emptyText')}</div>
-      <button class="mp-empty-btn" onclick="generateMealPlanAI()">${tH('mp.emptyBtn')}</button>
-    </div>` : '';
+  const welcomeBanner = !hasAnyMeal && canEdit && !loading
+    ? `<div class="mp-empty">${emptyHTML('mealplan', `<button type="button" class="lp-es-more" onclick="generateMealPlanAI()">${tH('mp.emptyBtn')}</button>`)}</div>` : '';
 
   const todayIdx = mealTodayIdx();
   const MEAL_EMOJI = ['🌅','☀️','🌙'];
@@ -14706,7 +14716,7 @@ function renderChecklist() {
           ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="${tH('cl.down')}">↓</button>` : ''}
           ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
         </div>`;
-      }).join('') : `<div class="cl-empty">${tH('cl.empty')}</div>`}
+      }).join('') : emptyHTML('checklist')}
     </div>
   `;
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
@@ -16165,13 +16175,7 @@ function rGoals() {
 
   // Empty state
   if (!activeGoals.length && !archivedGoals.length) {
-    const av = AVS.find(a => a.id === prof.avatarId) || AVS[0];
-    c.innerHTML = '<div class="empty-st">'
-      + '<div style="font-size:52px">' + av.emoji + '</div>'
-      + '<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:10px">' + tH('goal.emptyTitle') + '</div>'
-      + '<div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:280px;line-height:1.5">' + tH('goal.emptyText') + '</div>'
-      + '<button class="btn-p" style="margin-top:16px;width:auto;padding:10px 22px" onclick="openGM()">' + tH('goal.emptyBtn') + '</button>'
-      + '</div>';
+    c.innerHTML = emptyHTML('goals');
     if (addBtn) addBtn.style.display = 'none';
     const sel = document.getElementById('habit-goal-sel');
     if (sel) sel.innerHTML = '<option value="">' + tH('goal.none') + '</option>';
@@ -16916,7 +16920,7 @@ function renderShop(){
   renderQuickShop(); // často nakupované i u prázdného seznamu
 
   if(!activeItems.length){
-    list.innerHTML='';empty.style.display='flex';
+    list.innerHTML='';empty.innerHTML=emptyHTML('shopping',`<button type="button" class="lp-es-more" onclick="openRecipePickerForShop()">${tH('shop.emptyRecipe')}</button>`);empty.style.display='block';
     document.getElementById('shop-progress-wrap').style.display='none';
     return;
   }
@@ -18096,7 +18100,7 @@ function renderSavedRecipes(){
     list.innerHTML=savedRecipes.length
       ? `<div class="cook-empty">${tH('ck.noneFor',{type:cookMealType})}
            <button class="cook-empty-btn" onclick="setCookMealType(&#39;any&#39;,document.querySelector(&#39;.cook-opt-btn[data-m=any]&#39;))">${tH('ck.showAll')}</button></div>`
-      : `<div class="cook-empty">${tH('ck.noneSaved')}</div>`;
+      : emptyHTML('cooking');
     return;
   }
   list.innerHTML=filtered.map(r=>{

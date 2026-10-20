@@ -2287,6 +2287,8 @@ html.lp-noinstall #pwa-banner,html.lp-noinstall #ios-banner{display:none!importa
 .lp-es-t{font-size:17px;color:var(--text);max-width:280px;line-height:1.4;margin:0}
 .lp-es-btn{width:auto;min-height:48px;padding:0 24px}
 .lp-es-ex{min-height:44px;padding:0 14px;background:none;border:1px dashed var(--border2);border-radius:50px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer}
+.lp-es-more{min-height:44px;padding:0 14px;background:none;border:none;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;text-decoration:underline;text-underline-offset:3px} /* odkaz navíc (AI návrh, recept do nákupu), 4.72 */
+.mp-empty .lp-es{padding:6px 0}
 /* Návyky: filtr „Jen nevyřízené“ (4.71) */
 .hb-filter{display:flex;justify-content:flex-end;margin:0 0 10px}
 .hb-filter[hidden]{display:none}
