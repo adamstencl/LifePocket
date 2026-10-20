@@ -2153,3 +2153,96 @@ exports.waterQuickAdd = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, inv
       res.status(500).json({ok: false});
     }
   });
+
+// ── Přehled pro správce aplikace (4.73) ──
+// Jen uid z config/admins.uids. Vrací souhrnná čísla, technické chyby a zprávy „Napiš nám“
+// se zkráceným uid (6 znaků); obrázky zpráv až v adminFeedback. Obsah se nikdy neloguje.
+const ADM_STATS_DAYS = 14, ADM_ERR_LIMIT = 50, ADM_FB_LIMIT = 30;
+const ADM_STAT_KEYS = ['usersTotal', 'active1d', 'active7d', 'active30d', 'newUsers1d', 'newUsers7d', 'withPushToken',
+  'familiesTotal', 'familyMembersAvg', 'aiCallsToday', 'errorLogs24h', 'pcParticipants', 'pcCheckedYesterday'];
+const ADM_FB_PATH_RE = /^users\/[A-Za-z0-9_-]{1,128}\/feedback\/[A-Za-z0-9_-]{1,64}$/;
+const admStr = (v, max) => typeof v === 'string' ? v.slice(0, max) : '';
+const admUid = ref => { const u = ref && ref.parent && ref.parent.parent; return u ? String(u.id).slice(0, 6) : ''; };
+// Chybějící index collection group = FAILED_PRECONDITION (kód 9)
+const admNoIndex = e => !!e && (e.code === 9 || e.code === 'failed-precondition' || /\bindex\b/i.test(String(e.message || '')));
+
+async function assertAppAdmin(request) {
+  const L = reqLang(request);
+  if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
+  let ok = false;
+  try {
+    const s = await db.doc('config/admins').get();
+    const u = s.exists ? (s.data() || {}).uids : null;
+    ok = Array.isArray(u) && u.includes(request.auth.uid);
+  } catch (e) { console.error('[LP] admin kontrola:', e.code || e.message); }
+  if (!ok) throw new HttpsError('permission-denied', tS(L, 'err.admOnly'));
+  return L;
+}
+
+exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances: 2, timeoutSeconds: 60}, async (request) => {
+  await assertAppAdmin(request);
+  const out = {stats: [], errors: [], errorsIndex: true, feedback: [], feedbackIndex: true, summary: {}, at: Date.now()};
+  const part = async (name, fn) => { try { await fn(); } catch (e) { console.error(`[LP] adminOverview ${name}:`, e.code || e.message); } };
+
+  await Promise.all([
+    // Statistiky: posledních 14 dní z dailyStats (jen čísla ze známých polí)
+    part('stats', async () => {
+      const s = await db.collection('config/stats_daily/days').orderBy('date', 'desc').limit(ADM_STATS_DAYS).get();
+      out.stats = s.docs.map(d => {
+        const x = d.data() || {}, r = {date: admStr(x.date, 10) || d.id.slice(0, 10)};
+        for (const k of ADM_STAT_KEYS) { const n = Number(x[k]); r[k] = x[k] === null || x[k] === undefined || !Number.isFinite(n) ? null : n; }
+        return r;
+      }).reverse();
+    }),
+    // Chyby napříč uživateli (errorLogs.ts = ISO řetězec); bez indexu prázdný seznam s příznakem
+    part('errors', async () => {
+      try {
+        const s = await db.collectionGroup('errorLogs').orderBy('ts', 'desc').limit(ADM_ERR_LIMIT).get();
+        out.errors = s.docs.map(d => {
+          const x = d.data() || {};
+          return {msg: admStr(x.msg, 300), src: admStr(x.src, 80), v: admStr(x.v, 12), ts: toMillis(x.ts), u: admUid(d.ref)};
+        });
+      } catch (e) { if (admNoIndex(e)) out.errorsIndex = false; else throw e; }
+    }),
+    // Zprávy s obrázky (users/*/feedback): bez pole images, to jde jen přes adminFeedback
+    part('feedback', async () => {
+      try {
+        const s = await db.collectionGroup('feedback').orderBy('createdAt', 'desc').limit(ADM_FB_LIMIT).select('createdAt', 'v', 'msg').get();
+        out.feedback = s.docs.map(d => {
+          const x = d.data() || {};
+          return {id: d.ref.path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(d.ref)};
+        });
+      } catch (e) { if (admNoIndex(e)) out.feedbackIndex = false; else throw e; }
+    }),
+    // Souhrn: skupiny živě (count), výzva měsíce podle Prahy
+    part('families', async () => { out.summary.families = (await db.collection('families').count().get()).data().count; }),
+    part('pc', async () => {
+      const cid = 'm-' + pragueDS(new Date()).slice(0, 7);
+      const c = await db.doc(`publicChallenges/${cid}`).get();
+      if (!c.exists) return;
+      const d = c.data() || {};
+      out.summary.pc = {title: admStr(d.title, 80), active: d.active === true,
+        n: (await c.ref.collection('participants').count().get()).data().count};
+    }),
+  ]);
+  // Počet účtů z posledního dailyStats (listDocuments je drahé, count() nevidí účty bez dokumentu users/{uid})
+  const last = out.stats[out.stats.length - 1];
+  out.summary.users = last ? last.usersTotal : null;
+  out.summary.usersDate = last ? last.date : null;
+  return out;
+});
+
+// Detail zprávy: obrázky (jen data:image/…) podle cesty z adminOverview
+exports.adminFeedback = onCall({cors: true, region: 'europe-west1', maxInstances: 2, timeoutSeconds: 30}, async (request) => {
+  const L = await assertAppAdmin(request);
+  const path = (request.data || {}).id;
+  if (typeof path !== 'string' || !ADM_FB_PATH_RE.test(path)) throw new HttpsError('invalid-argument', tS(L, 'err.admBad'));
+  let s;
+  try { s = await db.doc(path).get(); }
+  catch (e) { console.error('[LP] adminFeedback:', e.code || e.message); throw new HttpsError('unavailable', tS(L, 'err.admFail')); }
+  if (!s.exists) throw new HttpsError('not-found', tS(L, 'err.admGone'));
+  const x = s.data() || {};
+  const images = (Array.isArray(x.images) ? x.images : [])
+    .filter(u => typeof u === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length <= 300000).slice(0, 3);
+  return {id: path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(s.ref), images};
+});
