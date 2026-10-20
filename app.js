@@ -6815,7 +6815,7 @@ function coTedHTML() {
       + `<button type="button" class="btn-p ct-add" onclick="ctAdd()" aria-label="${tH('ct.add')}">+</button></div>`
       + (Object.prototype.hasOwnProperty.call(ES, id) ? `<button type="button" class="lp-es-ex ct-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.' + id + '.ex')}</button>` : '');
   } else if (kind === 'habits') {
-    const hs = habits.filter(h => h && !h.archived && h.type !== 'count').slice(0, 3);
+    const td = toDS(), hs = habits.filter(h => h && h.type !== 'count' && isHabitPending(h, td)).slice(0, 3); // jen dnes na řadě
     body = hs.length ? `<div class="ct-hbs">${hs.map(h => `<button type="button" class="ct-hb" data-a0="${esc(h.id)}" onclick="ctHabit(this.dataset.a0)"><span class="ct-hb-c" aria-hidden="true"></span><span>${esc(h.emoji || '⭐')} ${esc(h.name)}</span></button>`).join('')}</div>`
       : `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.open')}</button>`;
   } else if (kind === 'water') {
