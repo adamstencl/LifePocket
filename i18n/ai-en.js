@@ -35,7 +35,7 @@ Habit patterns: {patterns}`,
 Data for the week:
 {week}`,
   'aip.wr.nickFb': 'the user',
-  'aip.wr.day': '{date}: notes={entries} {mood}, habits={habits}',
+  'aip.wr.day': '{date}: journal={entries} {mood}, habits={habits}',
 
   // ── Weekly meal plan (JSON d0–d6 / m0–m2) ──
   'aip.mp.sys': 'Reply ONLY in JSON format, without markdown. Create a weekly meal plan. LANGUAGE RULE: Write ONLY in English. No Czech, German, Japanese or any other foreign words.',
@@ -66,7 +66,7 @@ LANGUAGE RULE: Write ONLY in English, no words from other languages. Keep names 
   // ── Chat with the companion ──
   'aip.chat.sys': `You are {name}, the personal AI companion of the user {nick} in the LifePocket app.
 You speak English, friendly and brief (max 4-5 sentences).
-You know all of the user's modules (goals, habits, notes, checklists, shopping, calendar, pantry, meal plan, recipes, health, focus, family). If something is not in the data, say so, do not make things up.
+You know all of the user's modules (goals, habits, journal, checklists, shopping, calendar, pantry, meal plan, recipes, health, focus, family). If something is not in the data, say so, do not make things up.
 The user can be in several groups: shared shopping lists, meal plans, checklists and events are labelled with the group name in the data (⭐ = main group). When asked about a specific group, answer from its data.
 The calendar in the data only reaches 90 days ahead from today; you cannot see events beyond that. If the user asks about a later date, tell them so and do not make things up.
 Answer like a real personal assistant who knows the person well.
@@ -128,7 +128,7 @@ Recommend max 10 items. Do not include what is already in the pantry in sufficie
   'aip.shopAi.empty': 'empty',
 
   // ── Note analysis (JSON foods/habits/mood) ──
-  'aip.entry.sys': `You are an assistant for analysing notes. Read the user's journal and find:
+  'aip.entry.sys': `You are an assistant for analysing journal entries. Read the user's journal entry and find:
 1. PLANNED MEALS — dishes the user PLANS to cook or eat in the future ("I want to cook", "I'll have", "I'm planning", "this week", "tomorrow" etc.). Ignore dishes they have already eaten (past tense). Max 5.
 2. COMPLETED ACTIVITIES — what the user has already done (past tense): "I did", "I went", "I drank", "I completed" etc. Max 3.
 3. NEW INTENTIONS — what they want to start doing regularly: "I want to start", "I'll do it every day", "I plan to regularly" etc. Max 3.
@@ -174,7 +174,7 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.s.vision': 'VISION',
   'aip.ctx.s.goals': 'GOALS',
   'aip.ctx.s.habits': 'HABITS (today, streak, reminder)',
-  'aip.ctx.s.notes': 'NOTES (last 5, mood for 7 days)',
+  'aip.ctx.s.notes': 'JOURNAL (last 5, mood for 7 days)',
   'aip.ctx.s.check': 'CHECKLISTS (open items)',
   'aip.ctx.s.shop': 'SHOPPING (open + recurring)',
   'aip.ctx.s.cal': 'CALENDAR (today + 90 days)',
@@ -219,7 +219,7 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.meal.m2': 'di.',
   'aip.ctx.meal.mine': 'personal ',
   'aip.ctx.meal.group': 'group {group} ',
-  'aip.ctx.meal.planned': 'Meals planned in notes: ',
+  'aip.ctx.meal.planned': 'Meals planned in the journal: ',
   'aip.ctx.rcp.saved': '{n} saved: ',
   'aip.ctx.food.none': 'nothing logged yet (goal {goal} kcal)',
   'aip.ctx.food.sum': 'Eaten {kcal} of {goal} kcal (protein {p} g, carbs {c} g, fat {f} g)',

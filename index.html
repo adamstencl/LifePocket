@@ -104,7 +104,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
     <!-- LANDING -->
     <section id="lp-landing" aria-labelledby="lp-hero-t">
       <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Jedna appka místo deseti.</h1>
-      <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i poznámky na jednom místě. A celá rodina vidí, co je potřeba.</p>
+      <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i deník na jednom místě. A celá rodina vidí, co je potřeba.</p>
       <div class="lp-invite" id="lp-invite" hidden>
         <span aria-hidden="true">🔗</span>
         <span data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
@@ -237,12 +237,12 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       </button>
       <button type="button" class="startq-opt" role="radio" aria-checked="false" data-a0="study" onclick="pickStart(this.dataset.a0)">
         <span class="startq-em" aria-hidden="true">🗓️</span>
-        <span class="startq-txt"><span class="startq-nm" data-i18n="onb.start.study">Škola a přehled o čase</span><span class="startq-ds" data-i18n="onb.start.studyDesc">Kalendář · Návyky · Poznámky</span></span>
+        <span class="startq-txt"><span class="startq-nm" data-i18n="onb.start.study">Škola a přehled o čase</span><span class="startq-ds" data-i18n="onb.start.studyDesc">Kalendář · Návyky · Deník</span></span>
         <span class="startq-chk" aria-hidden="true"></span>
       </button>
       <button type="button" class="startq-opt" role="radio" aria-checked="false" data-a0="growth" onclick="pickStart(this.dataset.a0)">
         <span class="startq-em" aria-hidden="true">🎯</span>
-        <span class="startq-txt"><span class="startq-nm" data-i18n="onb.start.growth">Cíle a osobní rozvoj</span><span class="startq-ds" data-i18n="onb.start.growthDesc">Cíle · Návyky · Poznámky</span></span>
+        <span class="startq-txt"><span class="startq-nm" data-i18n="onb.start.growth">Cíle a osobní rozvoj</span><span class="startq-ds" data-i18n="onb.start.growthDesc">Cíle · Návyky · Deník</span></span>
         <span class="startq-chk" aria-hidden="true"></span>
       </button>
       <button type="button" class="startq-opt" role="radio" aria-checked="false" data-a0="basic" onclick="pickStart(this.dataset.a0)">
@@ -567,7 +567,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
         <!-- LEFT: list -->
         <div class="journal-sidebar" id="j-sidebar">
           <div class="journal-sidebar-top">
-            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">📒</span><div class="ptitle" style="font-size:18px;margin:0" data-i18n="mod.journal">Poznámky</div></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">📒</span><div class="ptitle" style="font-size:18px;margin:0" data-i18n="mod.journal">Deník</div></div>
             <button class="btn-p" style="width:auto;padding:7px 14px;font-size:14px" onclick="newEntry()" data-i18n="nt.newBtn">+ Nový</button>
           </div>
           <div id="j-seg"></div>
@@ -583,7 +583,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
           <div class="j-empty" id="j-empty">
             <div style="font-size:52px" id="je-av">⭐</div>
             <div style="font-family:&#39;Playfair Display&#39;,serif;font-style:italic;font-size:20px;color:var(--accent);margin-top:12px" id="je-title" data-i18n="home.jeTitle">Ahoj! Co se dnes děje?</div>
-            <div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:260px;line-height:1.5" id="je-sub" data-i18n="nt.emptySub">Poznámky jsou tvoje bezpečné místo. Napiš cokoliv — myšlenku, sen, nebo jak se dnes cítíš.</div>
+            <div style="font-size:15px;color:var(--text2);margin-top:8px;max-width:260px;line-height:1.5" id="je-sub" data-i18n="nt.emptySub">Deník je tvoje bezpečné místo. Napiš cokoliv — myšlenku, sen, nebo jak se dnes cítíš.</div>
             <button class="btn-p" style="margin-top:16px;width:auto;padding:10px 24px" onclick="newEntry()" data-i18n="nt.newEntry">✍️ Nový zápisek</button>
           </div>
 
@@ -703,7 +703,7 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
       <!-- Planned meals from journal -->
       <div id="planned-meals-section" style="display:none;margin-top:20px">
         <div class="gh" style="margin-bottom:10px">
-          <div class="sec-lbl" style="margin:0" data-i18n="ck.planned">📓 Z poznámek — plánovaná jídla</div>
+          <div class="sec-lbl" style="margin:0" data-i18n="ck.planned">📓 Z deníku — plánovaná jídla</div>
           <button onclick="clearPlannedMeals()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:&#39;Crimson Pro&#39;,serif" data-i18n="ck.clearAll">Vymazat vše</button>
         </div>
         <div id="planned-meals-list"></div>

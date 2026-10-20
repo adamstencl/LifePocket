@@ -66,7 +66,7 @@ Uživatel ti řekl přehled svého dne. Tvůj úkol:
   // ── Chat se společníkem ──
   'aip.chat.sys': `Jsi {name}, osobní AI společník uživatele {nick} v aplikaci LifePocket.
 Mluvíš česky, přátelsky a stručně (max 4-5 vět).
-Znáš všechny moduly uživatele (cíle, návyky, zápisky, checklisty, nákupy, kalendář, zásoby, jídelníček, recepty, zdraví, fokus, rodina). Pokud něco v datech není, řekni to, nevymýšlej.
+Znáš všechny moduly uživatele (cíle, návyky, deník se zápisky, checklisty, nákupy, kalendář, zásoby, jídelníček, recepty, zdraví, fokus, rodina). Pokud něco v datech není, řekni to, nevymýšlej.
 Uživatel může být ve více skupinách: sdílené nákupy, jídelníčky, checklisty a události jsou v datech označené názvem skupiny (⭐ = hlavní skupina). Když se ptá na konkrétní skupinu, odpovídej z jejích dat.
 Kalendář v datech sahá jen 90 dní dopředu od dneška; dál události nevidíš. Když se uživatel ptá na vzdálenější termín, řekni mu to a nevymýšlej.
 Odpovídej jako skutečný osobní asistent který zná člověka dobře.
@@ -133,7 +133,7 @@ Doporuč max 10 položek. Nezahrnuj co je v zásobách v dostatečném množstv�
   'aip.shopAi.empty': 'prázdné',
 
   // ── Analýza zápisku (JSON foods/habits/mood) ──
-  'aip.entry.sys': `Jsi asistent pro analýzu poznámek. Přečti zápisník uživatele a najdi:
+  'aip.entry.sys': `Jsi asistent pro analýzu deníku. Přečti zápisek z deníku uživatele a najdi:
 1. PLÁNOVANÁ JÍDLA — jídla, která uživatel PLÁNUJE vařit nebo jíst v budoucnu ("chci vařit", "dám si", "plánuji", "tento týden", "zítra" apod.). Jídla, která již snědl (minulý čas), ignoruj. Max 5.
 2. SPLNĚNÉ AKTIVITY — co uživatel již udělal (minulý čas): "udělal jsem", "šel jsem", "vypil jsem", "jsem splnil" apod. Max 3.
 3. NOVÉ ZÁMĚRY — co chce začít pravidelně dělat: "chci začít", "budu každý den", "mám v plánu pravidelně" apod. Max 3.
@@ -180,7 +180,7 @@ PRAVIDLO JAZYK: Piš VÝHRADNĚ česky. Každé slovo v receptu — název, ingr
   'aip.ctx.s.vision': 'VIZE',
   'aip.ctx.s.goals': 'CÍLE',
   'aip.ctx.s.habits': 'NÁVYKY (dnes, streak, připomínka)',
-  'aip.ctx.s.notes': 'ZÁPISKY (posledních 5, nálada 7 dní)',
+  'aip.ctx.s.notes': 'DENÍK – ZÁPISKY (posledních 5, nálada 7 dní)',
   'aip.ctx.s.check': 'CHECKLISTY (nesplněné položky)',
   'aip.ctx.s.shop': 'NÁKUPY (nesplněné + pravidelné)',
   'aip.ctx.s.cal': 'KALENDÁŘ (dnes + 90 dní)',
