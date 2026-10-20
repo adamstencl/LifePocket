@@ -2261,7 +2261,7 @@ function renderHabits(){
     return;
   }
   empty.style.display='none';
-  const pendOnly=habitPendingOn();
+  const pendOnly=habitPendingOn()&&activeHabits.length>0; // bez aktivních návyků se filtr nepoužije
   const pendChip=document.getElementById('hb-pend-chip');
   if(pendChip){ pendChip.classList.toggle('on',pendOnly); pendChip.setAttribute('aria-pressed',String(pendOnly)); }
 
@@ -2287,8 +2287,8 @@ function renderHabits(){
     const pct=Math.round(doneCount/groupHabits.length*100);
     const pctCls=pct===100?'full':pct>0?'partial':'empty';
 
-    // Is group open? Default: all open
-    const isOpen=pendOnly||openGroups.has(g.id);
+    // Is group open? Default: all open (i při filtru jde skupinu sbalit)
+    const isOpen=openGroups.has(g.id);
     const shown=pendOnly?groupHabits.filter(h=>isHabitPending(h,habitDay)):groupHabits;
     if(!shown.length) return;
 
@@ -2310,7 +2310,8 @@ function renderHabits(){
     </div>`;
   });
 
-  if(pendOnly&&!html) html=`<div class="hb-pend-empty">${tH('hb.pendEmpty')}</div>`;
+  // Prázdný filtr: budoucí den ještě nenastal (ne oslava), jinak vše vyřízeno
+  if(pendOnly&&!html) html=`<div class="hb-pend-empty">${tH(habitDay>toDS()?'hb.pendFuture':'hb.pendEmpty')}</div>`;
   list.innerHTML='<div data-cta-tip="h">'+ctaListTipHTML('h')+'</div>'+html;
   // Při filtru bez přetahování (pořadí podmnožiny by přepsalo pořadí celé skupiny)
   if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));

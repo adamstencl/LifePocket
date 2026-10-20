@@ -1325,6 +1325,7 @@ export default {
   'hb.allArchived': 'All habits are archived. 📦',
   'hb.pendOnly': '⏳ Pending only',
   'hb.pendEmpty': 'All done 🎉',
+  'hb.pendFuture': 'This day hasn’t come yet',
   'hb.grp.morning': 'Morning',
   'hb.grp.day': 'Daytime',
   'hb.grp.evening': 'Evening',
