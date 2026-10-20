@@ -3851,7 +3851,7 @@ window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGr
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
 // Popisek kolekce: klíč exp.col.<název kolekce>
 const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats','pantry',
-  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
+  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','feedback','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
   if (v === null || v === undefined || typeof v !== 'object') return v;
@@ -19005,6 +19005,39 @@ window.sp = id => {
   }
 };
 
+// Přílohy zprávy (4.71): Storage se nepoužívá → zmenšené JPEG data URL v users/{uid}/feedback/{id}
+// (pravidla: jen vlastník, limit dokumentu 1 MB), Formspree dostane jen počet a cestu dokumentu
+const CF_IMG_MAX = 3, CF_IMG_LEN = 250000, CF_DOC_LEN = 900000;
+let _cfImgs = [];
+async function cfShrink(file) {
+  for (const [px, q] of [[1280, 0.7], [1280, 0.55], [1024, 0.5], [800, 0.45], [640, 0.4]]) {
+    const u = await compressImage(file, px, q);
+    if (u.length <= CF_IMG_LEN) return u;
+  }
+  return null;
+}
+function cfRenderImgs() {
+  const box = document.getElementById('cf-imgs'), btn = document.getElementById('cf-img-btn');
+  if (box) box.innerHTML = _cfImgs.map((u, i) => `<div class="cf-img"><img src="${esc(u)}" alt=""><button type="button" class="cf-img-x" data-a0="${i}" onclick="contactRemoveImg(this.dataset.a0)" aria-label="${tH('set.contact.imgDel')}">×</button></div>`).join('');
+  if (btn) btn.disabled = _cfImgs.length >= CF_IMG_MAX;
+}
+window.contactRemoveImg = i => { _cfImgs.splice(Number(i), 1); cfRenderImgs(); };
+window.contactPickImg = async inp => {
+  const files = Array.from(inp.files || []).filter(f => /^image\//.test(f.type));
+  inp.value = '';
+  if (!files.length) return;
+  if (_cfImgs.length + files.length > CF_IMG_MAX) { toast(t('set.contact.imgMax', {n: CF_IMG_MAX})); return; }
+  toast(t('nt.photoBusy'));
+  for (const f of files) {
+    let u = null;
+    try { u = await cfShrink(f); } catch (e) { u = null; }
+    if (!u) { toast(t('set.contact.imgBig')); continue; }
+    if (_cfImgs.reduce((n, x) => n + x.length, 0) + u.length > CF_DOC_LEN) { toast(t('set.contact.imgBig')); break; }
+    _cfImgs.push(u);
+  }
+  cfRenderImgs();
+};
+
 window.handleContactSubmit = async function(e) {
   e.preventDefault();
   const form = e.target;
@@ -19012,12 +19045,24 @@ window.handleContactSubmit = async function(e) {
   btn.disabled = true;
   btn.textContent = t('set.contact.sending');
   try {
+    const fd = new FormData(form);
+    if (_cfImgs.length) {
+      if (!CU) { toast(t('set.contact.imgLogin')); btn.disabled = false; btn.textContent = t('set.contact.send'); return; }
+      const ref = doc(collection(db, 'users', CU.uid, 'feedback'));
+      // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu (zpráva se neodešle)
+      await Promise.race([
+        setDoc(ref, {createdAt: serverTimestamp(), v: APP_VERSION, msg: String(fd.get('message') || '').slice(0, 2000), images: _cfImgs.slice(0, CF_IMG_MAX)}),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+      ]);
+      fd.append('attachments', _cfImgs.length + ' × img → users/' + CU.uid + '/feedback/' + ref.id);
+    }
     const res = await fetch('https://formspree.io/f/xlgpyjaa', {
       method: 'POST',
-      body: new FormData(form),
+      body: fd,
       headers: { 'Accept': 'application/json' }
     });
     if (res.ok) {
+      _cfImgs = []; cfRenderImgs();
       form.style.display = 'none';
       const successEl = document.getElementById('contact-success');
       if (successEl) successEl.style.display = 'block';

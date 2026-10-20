@@ -319,6 +319,12 @@ export default {
   'set.contact.sending': '⏳ Sending...',
   'set.contact.failRetry': '❌ Sending failed. Try again.',
   'set.contact.fail': '❌ Sending failed.',
+  'set.contact.imgAdd': '📎 Attach a screenshot',
+  'set.contact.imgHint': 'Optional, up to 3 images. We shrink them and store them with your account.',
+  'set.contact.imgDel': 'Remove image',
+  'set.contact.imgMax': '⚠️ You can attach at most {n} images',
+  'set.contact.imgBig': '⚠️ The image is too large, try another one',
+  'set.contact.imgLogin': '⚠️ Images can only be sent when signed in',
 
   // ── Home (dashboard) ──
   'dash.hello.morning': 'Good morning',
@@ -1560,6 +1566,7 @@ export default {
   'exp.col.checklists': 'checklists',
   'exp.col.chatMemory': 'AI chat',
   'exp.col.aiReports': 'AI reports',
+  'exp.col.feedback': 'messages with attachments',
   'exp.col.errorLogs': 'technical errors',
   'exp.col.game': 'points and badges',
   'exp.col.water': 'water intake',

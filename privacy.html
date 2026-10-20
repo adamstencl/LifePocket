@@ -84,6 +84,7 @@
     </ul>
     <p>AI dostává i tvoje jméno nebo přezdívku. Neposíláme jí e-mail, heslo, tokeny zařízení, pohlaví ani fotografie. Dobu uchování dat u Anthropicu určují zásady tohoto poskytovatele.</p>
     <p><strong>Nahlášení odpovědi AI</strong>: u každé odpovědi AI společníka můžeš klepnout na „⚑ Nahlásit“. Do tvého účtu (podkolekce <code>aiReports</code>) se pak uloží zvolený důvod (nevhodná, nepravdivá, urážlivá, jiné), tvoje volitelná poznámka (nejvýš 500 znaků), text nahlášené odpovědi (nejvýš 2000 znaků), čas a verze aplikace. Nahlášení slouží jen ke kontrole a zlepšování odpovědí AI a k ochraně před nevhodným obsahem. Nikam dál, ani Anthropicu, se neposílá. Smaže se spolu s účtem.</p>
+    <p><strong>Obrázky ke zprávě „Napiš nám“</strong>: ke zprávě můžeš přiložit 1 až 3 obrázky (např. snímek obrazovky). Aplikace je přímo v zařízení zmenší a uloží do tvého účtu (podkolekce <code>feedback</code>) spolu s textem zprávy, časem a verzí aplikace. Formspree obrázky nedostane, jen počet příloh a odkaz na tento záznam. Obrázky slouží jen k vyřešení tvé zprávy a smažou se spolu s účtem. Na snímku obrazovky mohou být i tvoje data z aplikace, proto přikládej jen to, co nám chceš ukázat.</p>
 
     <h2>5. Skupiny (sdílení s rodinou a dalšími lidmi)</h2>
     <p>Skupinu může kdokoli založit a pozvat do ní další lidi. Data skupiny jsou ve společném prostoru ve Firestore, do kterého mají přístup jen její členové. Kdo má kód nebo odkaz pozvánky, uvidí před připojením název skupiny a jméno toho, kdo ji založil.</p>
@@ -139,7 +140,7 @@
       <li><strong>Google</strong> (Firebase Authentication, Firestore, Cloud Functions, Cloud Messaging): přihlášení, uložení dat, serverové funkce, notifikace. Knihovny Firebase a písma (Google Fonts) se načítají ze serverů Googlu, které přitom vidí tvou IP adresu.</li>
       <li><strong>Anthropic</strong>: zpracování AI dotazů (bod 4).</li>
       <li><strong>GitHub</strong>: hosting webu (bod 8).</li>
-      <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy a doručí nám je.</li>
+      <li><strong>Formspree</strong> (Formspree, Inc., USA): když pošleš zprávu přes formulář „Napište nám“, Formspree dostane tvůj e-mail a text zprávy (u zprávy s obrázky i počet příloh a odkaz na záznam ve tvém účtu, obrázky ne) a doručí nám je.</li>
       <li><strong>Hlasové zadávání</strong>: diktování používá rozpoznávání řeči vestavěné v prohlížeči. Některé prohlížeče (např. Chrome) posílají zvuk ke zpracování na servery svého výrobce.</li>
       <li><strong>Sdílení odkazu</strong>: tlačítka „Sdílet LifePocket“ a „Poslat pozvánku“ otevřou sdílení přímo v tvém zařízení (nebo text zkopírují do schránky). Komu a čím odkaz pošleš, vybíráš ty, nám ani nikomu dalšímu se nic neposílá.</li>
       <li><strong>Podpora projektu</strong>: aplikace nezpracovává žádné platby. Česká QR platba pro dobrovolný příspěvek jen předá tvé bankovní aplikaci číslo účtu, částku a zprávu; platbu potvrzuješ a provádí ji tvoje banka, aplikace o ní nic neví. QR kód se vytváří přímo v zařízení a nic se kvůli němu nikam neposílá. QR kód BTC Lightning vede do tvé Lightning peněženky a platbu zpracuje ona podle svých podmínek. V aplikaci stažené z Google Play se podpora projektu nezobrazuje.</li>

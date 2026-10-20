@@ -320,6 +320,12 @@ export default {
   'set.contact.sending': '⏳ Odesílám...',
   'set.contact.failRetry': '❌ Chyba při odesílání. Zkus to znovu.',
   'set.contact.fail': '❌ Chyba při odesílání.',
+  'set.contact.imgAdd': '📎 Přiložit snímek obrazovky',
+  'set.contact.imgHint': 'Nepovinné, nejvýš 3 obrázky. Zmenšíme je a uložíme k tvému účtu.',
+  'set.contact.imgDel': 'Odebrat obrázek',
+  'set.contact.imgMax': '⚠️ Přiložit jde nejvýš {n} obrázky',
+  'set.contact.imgBig': '⚠️ Obrázek je příliš velký, zkus jiný',
+  'set.contact.imgLogin': '⚠️ Obrázky jde poslat jen po přihlášení',
 
   // ── Domů (dashboard) ──
   'dash.hello.morning': 'Dobré ráno',
@@ -1574,6 +1580,7 @@ export default {
   'exp.col.checklists': 'checklisty',
   'exp.col.chatMemory': 'chat s AI',
   'exp.col.aiReports': 'nahlášení AI',
+  'exp.col.feedback': 'zprávy s přílohami',
   'exp.col.errorLogs': 'technické chyby',
   'exp.col.game': 'body a odznaky',
   'exp.col.water': 'pitný režim',

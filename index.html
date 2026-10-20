@@ -1162,6 +1162,13 @@ l=(q==='en'||q==='cs')?q:(s==='en'||s==='cs')?s:(function(){var n=(navigator.lan
               <label class="cf-label" data-i18n="set.contact.msg">Zpráva</label>
               <textarea name="message" class="cf-textarea" placeholder="Váš dotaz nebo nápad..." data-i18n-attr="placeholder:set.contact.msgPh" rows="4" required></textarea>
             </div>
+            <!-- Přílohy (4.71): 1–3 zmenšené obrázky, uloží se do users/{uid}/feedback (contactPickImg) -->
+            <div class="cf-field">
+              <input type="file" id="cf-img-inp" accept="image/*" multiple hidden onchange="contactPickImg(this)">
+              <button type="button" class="btn-s cf-img-btn" id="cf-img-btn" onclick="document.getElementById('cf-img-inp').click()" data-i18n="set.contact.imgAdd">📎 Přiložit snímek obrazovky</button>
+              <div class="cf-img-hint" data-i18n="set.contact.imgHint">Nepovinné, nejvýš 3 obrázky. Zmenšíme je a uložíme k tvému účtu.</div>
+              <div class="cf-imgs" id="cf-imgs"></div>
+            </div>
             <button type="submit" class="cf-submit" data-i18n="set.contact.send">📤 Odeslat zprávu</button>
           </form>
           <div id="contact-success" class="cf-success" style="display:none" data-i18n="set.contact.sent">✅ Zpráva odeslána! Ozveme se brzy.</div>
