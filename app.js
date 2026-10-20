@@ -13576,6 +13576,14 @@ async function consumePendingOpen() {
 }
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
   const d = ev.data;
+  if(d && d.type === 'WATER_SYNCED') { // zapsal server z notifikace (4.71): at do lp_wt_seen, ať ho otevření appky nezdvojí
+    const at = Number.isSafeInteger(d.at) && d.at > 0 ? d.at : 0, ml = wtLinkMl(d.ml);
+    if(!at) return;
+    const seen = lsGet('lp_wt_seen', []), arr = Array.isArray(seen) ? seen : [];
+    if(!arr.includes(at)) lsSave('lp_wt_seen', [...arr, at].slice(-20));
+    if(ml && document.visibilityState === 'visible') whenUiFree(() => toast(t('wt.notifAdded', {v: fmtMl(ml)}), 4000), 15000);
+    return;
+  }
   if(d && d.type === 'WATER_ADD') { // tlačítko „+2 dl“ (4.63)
     const drink = wtLinkMl(d.ml);
     _pendingOpen = {open: 'water', id: null, drink, at: drink ? wtLinkAt(d.at) : 0};

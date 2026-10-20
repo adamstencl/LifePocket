@@ -609,7 +609,7 @@ function waterHabitSkip(prof, habitId, today) {
 // ── Zápis pití z notifikace bez otevření appky (4.71) ──
 // Připomínka nese jednorázový podpis wt = HMAC-SHA256(klíč, uid|at|ml); SW ho pošle do waterQuickAdd.
 // Klíč je v config/secrets.waterHmac (pravidla: config zavřený), chybí-li, vygeneruje se. Nikdy se neloguje ani neposílá ven.
-const WQ_MAX_AGE = 12 * 3600000;   // podpis platí 12 h od odeslání připomínky
+const WQ_MAX_AGE = 6 * 3600000;    // podpis platí 6 h od odeslání připomínky (jako wtLinkAt v app.js)
 const WQ_FUTURE = 5 * 60000;       // tolerance hodin serveru
 const WQ_MAX_ENTRIES = 40;         // jako WT_MAX_ENTRIES v app.js
 const WQ_SECRET_TTL = 10 * 60000;  // klíč v paměti instance
@@ -650,8 +650,9 @@ function waterGoalS(W) {
 // Platné záznamy dne (jako wtEntries v app.js)
 const waterEntriesS = (d) => (d && Array.isArray(d.entries) ? d.entries : []).filter(e => e && Number.isFinite(e.t) && Number.isFinite(e.ml));
 
-// Zápis jednoho pití (bez I/O mimo transakci). Vrací 'ok' | 'dup' | 'off' | 'limit'.
-// Den = datum času at v zóně uživatele; waterDay {d, ml, last} jen pro dnešek a se zapnutými připomínkami (jako wtProfDay).
+// Zápis jednoho pití (bez I/O mimo transakci). Vrací 'ok' | 'dup' | 'off' | 'limit' | 'stale'.
+// Den = datum času at v zóně uživatele; jen dnešní (včerejší připomínka → 'stale', appka se otevře bez zápisu).
+// waterDay {d, ml, last} jen se zapnutými připomínkami (jako wtProfDay).
 async function waterQuickWrite(uid, at, ml, now = Date.now()) {
   const pref = db.doc(`users/${uid}/profile/main`);
   return db.runTransaction(async (tx) => {
@@ -659,8 +660,9 @@ async function waterQuickWrite(uid, at, ml, now = Date.now()) {
     if (!ps.exists) return 'off';
     const prof = ps.data();
     const W = prof.water;
-    if (!W || typeof W !== 'object' || (Array.isArray(prof.modules) && !prof.modules.includes('water'))) return 'off';
+    if (!W || typeof W !== 'object' || !Array.isArray(prof.modules) || !prof.modules.includes('water')) return 'off';
     const ds = zoneNow(prof.tz, new Date(at)).today;
+    if (ds !== zoneNow(prof.tz, new Date(now)).today) return 'stale';
     const wref = db.doc(`users/${uid}/water/${ds}`);
     const ws = await tx.get(wref);
     const es = waterEntriesS(ws.exists ? ws.data() : null);
@@ -669,7 +671,7 @@ async function waterQuickWrite(uid, at, ml, now = Date.now()) {
     const e = {t: at, ml};
     tx.set(wref, {date: ds, goal: waterGoalS(W), ml: FieldValue.increment(ml), entries: FieldValue.arrayUnion(e),
       updatedAt: FieldValue.serverTimestamp()}, {merge: true});
-    if (W.remind === true && ds === zoneNow(prof.tz, new Date(now)).today) {
+    if (W.remind === true) {
       const all = [...es, e];
       tx.update(pref, {waterDay: {d: ds, ml: Math.max(0, all.reduce((s, x) => s + x.ml, 0)), last: all.reduce((m, x) => Math.max(m, x.t), 0)}});
     }
@@ -2128,7 +2130,7 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
 
 // ── Zápis pití z tlačítka v notifikaci bez otevření appky (4.71) ──
 // Volá sw.js (POST JSON {u, at, ml, wt}); bez přihlášení, oprávnění dává jen platný jednorázový podpis wt.
-// Odpověď: 200 {ok, dup?} | 400 vstup | 403 podpis | 404 modul vypnutý / účet | 405 metoda | 409 limit dne | 410 prošlé | 500
+// Odpověď: 200 {ok, dup?} | 400 vstup | 403 podpis | 404 modul vypnutý / účet | 405 metoda | 409 limit dne | 410 prošlé (> 6 h nebo jiný den) | 500
 const WQ_ORIGINS = ['https://lifepocket.app', /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/];
 exports.waterQuickAdd = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, invoker: 'public', maxInstances: 10, timeoutSeconds: 20},
   async (req, res) => {
@@ -2145,7 +2147,7 @@ exports.waterQuickAdd = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, inv
       if (!waterSigOk(await waterSecret(), u, at, ml, wt)) { res.status(403).json({ok: false}); return; }
       const r = await waterQuickWrite(u, at, ml, now);
       if (r === 'ok' || r === 'dup') res.status(200).json(r === 'dup' ? {ok: true, dup: true} : {ok: true});
-      else res.status(r === 'limit' ? 409 : 404).json({ok: false});
+      else res.status(r === 'limit' ? 409 : r === 'stale' ? 410 : 404).json({ok: false});
     } catch(e) {
       console.error('[LP] waterQuickAdd:', e.code || e.message);
       res.status(500).json({ok: false});

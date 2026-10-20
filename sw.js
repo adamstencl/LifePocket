@@ -111,7 +111,7 @@ function openInApp(msg, url) {
 }
 // Zápis pití přes funkci (4.71): POST s podpisem, pak krátké tiché potvrzení (tag water) a zpráva běžící appce
 const WQ_URL = 'https://europe-west1-lifepocket-d8f0e.cloudfunctions.net/waterQuickAdd';
-const WQ_TIMEOUT = 8000;  // pak fallback na otevření appky
+const WQ_TIMEOUT = 5000;  // pak fallback na otevření appky
 const WQ_SHOW = 4000;     // potvrzení samo zmizí
 function waterQuick(data, ml, at) {
   const ac = typeof AbortController === 'function' ? new AbortController() : null;
@@ -128,7 +128,7 @@ function waterQuick(data, ml, at) {
       data: {open: 'water', wq: at},
     }).then(() => self.clients.matchAll({type: 'window', includeUncontrolled: true}))
       .then(clients => {
-        // Appka data dostane i ze snapshotu; zpráva jen pro překreslení a dedup (lp_wt_seen)
+        // Appka data dostane ze snapshotu; zpráva uloží at do lp_wt_seen (dedup) a ukáže toast
         clients.forEach(c => c.postMessage({type: 'WATER_SYNCED', ml, at}));
         return new Promise(res => setTimeout(res, WQ_SHOW));
       })
@@ -145,12 +145,12 @@ function onNotifClick(e) {
   const data = (fcm && fcm.data) || raw;
   e.notification.close();
   if (e.action === 'drink') {
-    // Tlačítko „+2 dl“ u připomínky pití (4.67): SW nemá přihlášení → zápis udělá appka (zpráva, jinak parametry v URL).
-    // Tady jen tvar čísel, rozsah (50–1000 ml, čas max. 6 h zpět, dnešní) a jednorázovost hlídá app.js
+    // Tlačítko „+2 dl“ u připomínky pití (4.67): s podpisem zapíše server (waterQuickAdd), jinak appka (zpráva / URL).
+    // Tady jen tvar čísel; rozsah (50–1000 ml, max. 6 h zpět, dnešní den) a jednorázovost hlídá server i app.js
     const ml = /^\d{2,4}$/.test(String(data.drink)) ? Number(data.drink) : 0;
     const at = /^\d{12,14}$/.test(String(data.at)) ? Number(data.at) : 0;
     const open = () => openInApp({type: 'WATER_ADD', ml, at}, '/?open=water&drink=' + ml + '&at=' + at);
-    // 4.71: s podpisem ze serveru zapíše funkce waterQuickAdd bez otevření appky; při chybě (offline, 4xx/5xx) jako dřív
+    // 4.71: s podpisem zapíše waterQuickAdd bez otevření appky; při chybě (offline, timeout, 4xx/5xx, 410 = včerejší) otevře appku
     if (ml && at && typeof data.wt === 'string' && typeof data.u === 'string') e.waitUntil(waterQuick(data, ml, at).catch(open));
     else if (ml && at) e.waitUntil(open());
     else e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'water', id: ''}, '/?open=water'));
