@@ -14057,7 +14057,8 @@ async function consumePendingOpen() {
   _pendingOpen = null;
   _openBusy = true;
   try {
-    if(p.open === 'cal') { window.sp('calendar'); return; }
+    // Kalendář z notifikace i při vypnutém modulu: osobní události dotáhnout, ať obrazovka neukazuje prázdný kalendář
+    if(p.open === 'cal') { if(!_fireSubs['events']) subEvents(); window.sp('calendar'); return; }
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
     // Výzva měsíce (4.63): detail výzvy z notifikace (seznam se načte, pokud ještě není)
     if(p.open === 'pc') { window.sp('dashboard'); await pcLoad(!pcList.length); if(CU) window.pcOpen(p.id && PC_ID_RE.test(p.id) ? p.id : ''); return; }
@@ -15241,9 +15242,10 @@ function subModules(){
   if(on('checklist')&&!_fireSubs['checklist']) subChecklist();
   if(on('calendar')&&!_fireSubs['events']) subEvents();
   if(on('journal')&&!_fireSubs['entries']) subEntries();
-  // Nákupy plní i vaření a jídelníček (suroviny do seznamu)
-  if(any('shopping','cooking','mealplan')){ subShop(); subRecurringShop(); subShopFreq(); }
-  if(on('cooking')) subSavedRecipes();
+  // Nákupy plní i vaření, jídelníček a parťák (suroviny receptu do seznamu, kontrola duplicit)
+  if(any('shopping','cooking','mealplan','rex')){ subShop(); subRecurringShop(); subShopFreq(); }
+  // Recepty: výběr jídla a „Do nákupu“ v jídelníčku, „Přidat z receptu“ v Nákupech
+  if(any('cooking','mealplan','shopping')) subSavedRecipes();
   if(any('cooking','mealplan')&&_pmLoadedUid!==CU.uid){ _pmLoadedUid=CU.uid; loadPlannedMeals(); }
   if(any('cooking','mealplan')) subFoodLogs();
   if(any('cooking','shopping','mealplan')) initPantry();
