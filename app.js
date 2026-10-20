@@ -7219,7 +7219,7 @@ function gameKick(){
   if(!game){ if(_goalsOk&&_habitsSnapOk) gameLoad(); return; }
   gameQueue();
 }
-// Načtení (1 čtení při přihlášení); chybí v → dopočet z historie (400 dní) bez oslav
+// Načtení (1 čtení při přihlášení); chybí v → dopočet z historie (400 dní, starší logy se dotáhnou) bez oslav
 function gameLoad(){
   if(!CU||game||_gameLoadP||Date.now()-_gameFailAt<60000) return _gameLoadP;
   const uid=CU.uid;
@@ -7227,17 +7227,22 @@ function gameLoad(){
     try{
       const snap=await getDoc(doc(db,'users',uid,'game','main'));
       if(CU?.uid!==uid||game) return;
-      const raw=snap.exists()?snap.data():null;
+      const raw=snap.exists()?snap.data():null, fc=snap.metadata.fromCache;
       if(!raw||!raw.v){
+        // 4.75: dopočet a založení jen podle serveru (prázdná/stará cache ≠ účet bez bodů); offline zkusit později
+        if(fc){ _gameFailAt=Date.now(); return; }
+        // Dopočet z 400 dní historie: starší záznamy (mimo okno listeneru) nejdřív dotáhnout
+        try{ await loadOldHabitLogs(); }catch(e){ console.warn('[LP] game backfill logs:',e?.code||e?.name); }
+        if(CU?.uid!==uid||game) return;
         game=gameBackfill(raw);
         setDoc(gameRef(),gameDocData(game),{merge:true}).catch(gameWriteErr);
       } else {
         game=gameNormalize(raw);
-        // Zhuštění: dny starší než okno logů se už nepřepočítávají → do base
+        // Zhuštění: dny starší než okno logů se už nepřepočítávají → do base (jen podle dat ze serveru)
         const patch={};
-        for(const [k,v] of Object.entries(game.days)) if(_hlCutoff&&k<_hlCutoff){ game.base+=Number(v)||0; delete game.days[k]; patch['days.'+k]=deleteField(); }
+        if(!fc) for(const [k,v] of Object.entries(game.days)) if(_hlCutoff&&k<_hlCutoff){ game.base+=Number(v)||0; delete game.days[k]; patch['days.'+k]=deleteField(); }
         if(Object.keys(patch).length) patch.base=game.base;
-        if(gameTotal()!==Number(raw.xp)){ patch.xp=gameTotal(); }
+        if(!fc&&gameTotal()!==Number(raw.xp)){ patch.xp=gameTotal(); }
         game.xp=gameTotal();
         if(Object.keys(patch).length) gameWrite(patch);
       }
@@ -7250,12 +7255,13 @@ function gameLoad(){
   })();
   return _gameLoadP;
 }
-// Dopočet z historie: dny z logů (400 dní), mezníky cílů podle aktuálního pokroku (potichu), lvlSeen = výsledná úroveň
+// Dopočet z historie: dny z logů (400 dní, i mimo okno listeneru), mezníky cílů podle aktuálního pokroku (potichu), lvlSeen = výsledná úroveň
 function gameBackfill(prev){
   const g=gameNormalize(prev);
   g.days={};
   const today=toDS(), dates=new Set();
-  for(const l of habitLogs) if(l&&l.done&&typeof l.date==='string'&&l.date>=_hlCutoff&&l.date<=today) dates.add(l.date);
+  const from=addDays(today,-400); // 400 dní nezávisle na okně listeneru (starší záznamy dotáhl gameLoad)
+  for(const l of habitLogs) if(l&&l.done&&typeof l.date==='string'&&l.date>=from&&l.date<=today) dates.add(l.date);
   for(const ds of dates){ const v=dayXP(ds); if(v) g.days[ds]=v; }
   for(const gl of goals){
     if(!gl||!gl.id) continue;
