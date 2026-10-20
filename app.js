@@ -1246,6 +1246,7 @@ async function startSession(u){
   catch(e){ if(CU?.uid===u.uid){ userErr(e,'načtení profilu'); showLoadError(true); } return; }
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
+  _profCacheUid=s.metadata.fromCache?u.uid:''; // profil z cache (offline start) → po připojení znovu ze serveru
   if(s.exists()){prof=s.data();
     if(!s.metadata.fromCache) _nudgeSyncAt=Date.now(); // čerstvý profil: stav nabídek je aktuální (nudgeSync)
     if(await syncProfileLang(u.uid)) return; // jazyk profilu se liší od zařízení → reload
@@ -1356,7 +1357,24 @@ function showLoadError(on){
 }
 window.retryLoad=()=>{ if(CU) startSession(CU); else location.reload(); };
 // Po návratu signálu zkus načíst automaticky (jen když visí hláška o chybě)
-window.addEventListener('online',()=>{ if(CU&&document.getElementById('load-err')?.style.display==='flex') startSession(CU); });
+window.addEventListener('online',()=>{
+  if(CU&&document.getElementById('load-err')?.style.display==='flex'){ startSession(CU); return; }
+  if(CU&&_profCacheUid===CU.uid) refreshProfileFromServer(CU.uid);
+});
+// Offline start (4.75): profil byl z cache → po připojení načíst ze serveru (moduly, skupiny z jiného zařízení)
+let _profCacheUid='', _profRefreshing=false;
+async function refreshProfileFromServer(uid){
+  if(_profRefreshing) return;
+  _profRefreshing=true;
+  try{
+    const s=await getDoc(doc(db,'users',uid,'profile','main'));
+    if(CU?.uid!==uid||s.metadata.fromCache||!s.exists()) return;
+    _profCacheUid='';
+    prof=s.data(); selMods=new Set(prof.modules||[]);
+    subModules(); buildNav(); rDash();
+  }catch(e){ console.warn('[LP] profile refresh:',e?.code||e?.name); }
+  finally{ _profRefreshing=false; }
+}
 
 onAuthStateChanged(auth,async u=>{
   if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
@@ -1386,7 +1404,7 @@ onAuthStateChanged(auth,async u=>{
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; shopItemsLoaded=false; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     // Profil a výběry patří odhlášenému účtu (4.75): další přihlášení nesmí vidět jeho moduly, parťáka ani zámky
     prof={}; selMods=new Set(); selG=''; selAv=''; tmpAv=''; mood=''; customReminders=[];
-    _onbBusy=false; _tzUid=''; _profLoading=null; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
+    _onbBusy=false; _tzUid=''; _profLoading=null; _profCacheUid=''; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
     clearUserSessionState();
     ss(_accDeleted?'s-deleted':'s-login');
   }
@@ -6011,7 +6029,7 @@ function subWater(){
     snap.forEach(d=>{ const x=d.data(); if(x&&typeof x.date==='string') m[x.date]=x; });
     waterDays=m; _wtReady=true;
     // Zápisy z jiného nebo dříve offline zařízení: potvrzený stav dne se liší od waterDay → srovnat (jen při rozdílu, bez smyčky)
-    if(!snap.metadata.hasPendingWrites&&wtProfDayStale(toDS())) wtProfDay(toDS());
+    if(!snap.metadata.hasPendingWrites&&!snap.metadata.fromCache&&wtProfDayStale(toDS())) wtProfDay(toDS()); // stará cache nesmí přepsat profil
     wtMigrate();
     renderWaterAll();
     wtHabitSync();
