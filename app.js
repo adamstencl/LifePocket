@@ -3163,8 +3163,9 @@ function renderHabitMonth() {
   const empty = document.getElementById('habits-empty');
   if(!list) return;
   const activeHabits = habits.filter(h=>!h.archived);
-  if(!activeHabits.length){ list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block'; return; }
+  if(!activeHabits.length && !habits.length){ list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block'; return; }
   empty.style.display='none';
+  if(!activeHabits.length){ list.innerHTML=`<div style="color:var(--text3);font-size:14px;padding:20px;text-align:center">${tH('hb.allArchived')}</div>`; return; } // jako denní pohled
 
   const today = new Date(); today.setHours(0,0,0,0);
   const days = 30;
@@ -6716,7 +6717,7 @@ const quickAdd = {
 };
 // Prázdné stavy modulů: emoji, podmínka „prázdný“, hlavní tlačítko a příklad (založí jednu položku)
 const ES = {
-  habits:   {em: '🔥', empty: () => !habits.length, ex: () => quickAdd.habits(t('es.habits.exName'), '💧')},
+  habits:   {em: '🔥', empty: () => !habits.some(h => h && !h.archived), ex: () => quickAdd.habits(t('es.habits.exName'), '💧')},
   shopping: {em: '🧺', wait: () => !shopListReady(), waitMsg: () => shopWaitToast(), empty: () => shopListReady() && !activeShopItems().length, ex: () => quickAdd.shopping(t('es.shopping.exName'))},
   goals:    {em: '🏆', empty: () => !goals.length, ex: () => quickAdd.goals(t('es.goals.exName'), '🏃')},
   journal:  {em: '📒', empty: () => !entries.length, ex: () => quickAdd.journal(t('es.journal.exName'))},
