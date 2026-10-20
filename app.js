@@ -1380,6 +1380,7 @@ onAuthStateChanged(auth,async u=>{
   if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
   else{
     if(CU) clearLangLocal(); // odhlášení (i z jiného místa): smazat jen údaje účtu, jazyk zařízení zůstává
+    if(CU&&!_accDeleting&&!_accDeleted){ try{ localStorage.setItem('lp_fs_clear','1'); }catch(e){} } // odhlášení i z jiného tabu: smazat trvalou cache
     CU=null;
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
@@ -1406,6 +1407,7 @@ onAuthStateChanged(auth,async u=>{
     prof={}; selMods=new Set(); selG=''; selAv=''; tmpAv=''; mood=''; customReminders=[];
     _onbBusy=false; _tzUid=''; _profLoading=null; _profCacheUid=''; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
     clearUserSessionState();
+    if(!_accDeleted&&!_fsClearP&&retryFsClear()) return; // nedokončené mazání cache z dřívějška (4.75)
     ss(_accDeleted?'s-deleted':'s-login');
   }
 });
@@ -3997,10 +3999,26 @@ function resetLoginBtn(){
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
 window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();await clearFsCache();location.reload();};
-// Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování)
-async function clearFsCache(){
-  try{ await Promise.race([terminate(db).then(()=>clearIndexedDbPersistence(db)),new Promise(r=>setTimeout(r,2500))]); }
-  catch(e){ console.warn('[LP] cache Firestore (odhlaseni):',e?.code||e?.name); }
+// Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování).
+// Příznak lp_fs_clear zůstane, dokud mazání neprojde → další start bez přihlášení to zkusí znovu (viz onAuthStateChanged).
+// Po terminate je db nepoužitelná: volající vždy končí přechodem na jinou stránku / reloadem. Nejvýš 2,5 s.
+let _fsClearP=null;
+function clearFsCache(){
+  if(_fsClearP) return _fsClearP;
+  try{ localStorage.setItem('lp_fs_clear','1'); }catch(e){}
+  const p=terminate(db).then(()=>clearIndexedDbPersistence(db)).then(()=>{ try{ localStorage.removeItem('lp_fs_clear'); }catch(e){} });
+  _fsClearP=Promise.race([p,new Promise(r=>setTimeout(r,2500))])
+    .catch(e=>console.warn('[LP] cache Firestore (odhlaseni):',e?.code||e?.name));
+  return _fsClearP;
+}
+// Start bez přihlášení s nedokončeným mazáním: jednou za relaci tabu zkusit znovu a načíst stránku
+function retryFsClear(){
+  try{
+    if(localStorage.getItem('lp_fs_clear')!=='1'||sessionStorage.getItem('lp_fs_retry')) return false;
+    sessionStorage.setItem('lp_fs_retry','1');
+  }catch(e){ return false; }
+  clearFsCache().then(()=>location.reload());
+  return true;
 }
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
@@ -4313,7 +4331,7 @@ async function finishAccountDeleted() {
   // Lokální data aplikace (lp_*); lp_twa_seen zůstává – je to vlastnost instalace, ne účtu
   try {
     const del = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('lp_') && k !== 'lp_twa_seen') del.push(k); }
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('lp_') && k !== 'lp_twa_seen' && k !== 'lp_fs_clear') del.push(k); }
     del.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   } catch (e) {}
   document.getElementById('m-delacc')?.remove();
@@ -4321,7 +4339,8 @@ async function finishAccountDeleted() {
   _accDeleting = false;
   ss('s-deleted');
 }
-window.goHomeAfterDelete = () => { location.replace('/'); };
+// Nejdřív dokončit mazání trvalé cache (nejvýš 2,5 s), pak úvod
+window.goHomeAfterDelete = () => { (_fsClearP || Promise.resolve()).then(() => location.replace('/')); };
 
 // ── Nahlášení odpovědi AI (Google Play: obsah generovaný AI) ──
 const AI_REPORT_REASONS = ['nevhodne', 'nepravdive', 'urazlive', 'jine'].map(v => [v, t('air.r.' + v)]);
