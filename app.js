@@ -1883,7 +1883,7 @@ async function loadHabitHistory(hid){
   const uid=CU.uid;
   const snap=await getDocs(query(collection(db,'users',uid,'habitLogs'),where('habitId','==',hid)));
   if(CU?.uid!==uid) return false;
-  _hlOldHabits.add(hid);
+  if(!snap.metadata.fromCache) _hlOldHabits.add(hid); // z cache (offline) nemusí být úplné → příště znovu
   return hlMergeOld(snap.docs.filter(d=>!(d.data().date>=_hlCutoff)))>0;
 }
 // Všechny starší záznamy (jen při listování návyků před okno listeneru)
@@ -1892,7 +1892,7 @@ function loadOldHabitLogs(){
   if(_hlOldLoading) return _hlOldLoading;
   const uid=CU.uid;
   const p=getDocs(query(collection(db,'users',uid,'habitLogs'),where('date','<',_hlCutoff)))
-    .then(snap=>{ if(CU?.uid!==uid) return false; _hlOldAll=true; return hlMergeOld(snap.docs)>0; })
+    .then(snap=>{ if(CU?.uid!==uid) return false; if(!snap.metadata.fromCache) _hlOldAll=true; return hlMergeOld(snap.docs)>0; })
     .finally(()=>{ if(_hlOldLoading===p) _hlOldLoading=null; }); // reset (odhlášení) mezitím mohl založit nové
   _hlOldLoading=p;
   return p;
@@ -1905,7 +1905,10 @@ function hlNeedHistory(hid){
   if(Date.now()-(_hlHistFail.get(hid)||0)<60000) return;
   _hlHistWant.add(hid);
   setTimeout(()=>{
-    loadHabitHistory(hid).then(added=>{ if(added){ shieldCacheReset(); renderHabits(); gameQueue(); } })
+    loadHabitHistory(hid).then(added=>{
+      if(!_hlOldHabits.has(hid)) _hlHistFail.set(hid,Date.now()); // jen z cache (offline): znovu nejdřív za minutu, bez smyčky
+      if(added){ shieldCacheReset(); renderHabits(); gameQueue(); }
+    })
       .catch(e=>{ _hlHistFail.set(hid,Date.now()); console.warn('[LP] habit history:',e?.code||e?.name); })
       .finally(()=>_hlHistWant.delete(hid));
   },0);
