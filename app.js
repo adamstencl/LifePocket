@@ -10632,7 +10632,9 @@ function restoreLinkHtml() {
 async function toggleFamilyShopItem(fid, id, done) {
   if(!fid) return;
   const name = shopGrpItems(fid).find(i => i.id === id)?.name || '';
-  await setDoc(doc(db,'families',fid,'shopItems',id), {done:!done, doneBy:CU.uid}, {merge:true});
+  // updateDoc (4.75): položku mezitím smazanou jiným členem nevzkřísí (setDoc merge zakládal prázdné „duchy“)
+  try { await updateDoc(doc(db,'families',fid,'shopItems',id), {done:!done, doneBy:CU.uid}); }
+  catch(e) { if(e?.code === 'not-found') return false; throw e; }
   // Odškrtnutí → „koupeno“; zpětné zrušení vyjme položku z čekajícího záznamu (omyl se nehlásí)
   if(!done) logGroupActivity(fid, 'shop', 'done', name);
   else unlogGroupActivity(fid, 'shop', 'done', name);
@@ -17775,7 +17777,7 @@ window.toggleShopItem=async(id,wasDone)=>{
   if(fid) {
     const item = shopGrpItems(fid).find(i=>i.id===id);
     const name = item?.name; const shopQty = item?.qty||'';
-    await toggleFamilyShopItem(fid,id,wasDone);
+    if(await toggleFamilyShopItem(fid,id,wasDone) === false) return; // položka už neexistuje
     if(item) bumpShopFreq(item, wasDone?-1:1, fid); // často nakupované (skupina)
     // Koupené přibude do zásob téže skupiny (4.70)
     if(!wasDone && name) offerPantryUpdate(name, shopQty, fid);
@@ -17784,7 +17786,9 @@ window.toggleShopItem=async(id,wasDone)=>{
   const item=shopItems.find(i=>i.id===id);
   if(!item)return;
   const name = item.name; const shopQty = item.qty||'';
-  await setDoc(doc(db,'users',CU.uid,'shopItems',id),{...item,done:!wasDone});
+  // updateDoc (4.75): položka smazaná na jiném zařízení se celou kopií z paměti znovu nezaloží
+  try { await updateDoc(doc(db,'users',CU.uid,'shopItems',id),{done:!wasDone}); }
+  catch(e) { if(e?.code === 'not-found') return; throw e; }
   bumpShopFreq(item, wasDone?-1:1, null); // často nakupované (osobní)
   if(!wasDone) offerPantryUpdate(name, shopQty, null); // osobní nákup → Moje (nebo hlavní skupina, viz pantryForShop)
 };
