@@ -3928,7 +3928,7 @@ window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGr
 // Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování)
 async function clearFsCache(){
   try{ await Promise.race([terminate(db).then(()=>clearIndexedDbPersistence(db)),new Promise(r=>setTimeout(r,2500))]); }
-  catch(e){ console.warn('[LP] cache Firestore (odhlášení):',e?.code||e?.name); }
+  catch(e){ console.warn('[LP] cache Firestore (odhlaseni):',e?.code||e?.name); }
 }
 
 // ── ÚČET: export dat (JSON) a smazání účtu ─────────────────────────────
