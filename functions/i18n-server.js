@@ -52,6 +52,7 @@ const cs = {
   'wt.n.r4.t': '💧 Jak jsi na tom s pitím?',
   'wt.n.r4.b': 'Dnes zatím {ml} z {goal}.',
   'wt.n.act': '+{v}', // tlačítko v notifikaci (4.67): zapíše šálek
+  'wt.n.ok': '💧 +{v} zapsáno', // potvrzení zápisu z tlačítka bez otevření appky (4.71)
 
   // ── Upozornění ze skupin ──
   'gn.groupDef': 'Skupina',
@@ -219,6 +220,7 @@ const en = {
   'wt.n.r4.t': '💧 How’s your water going?',
   'wt.n.r4.b': 'So far today: {ml} of {goal}.',
   'wt.n.act': '+{v}',
+  'wt.n.ok': '💧 +{v} logged',
 
   'gn.groupDef': 'Group',
   'gn.someone': 'Someone',

@@ -109,6 +109,34 @@ function openInApp(msg, url) {
     return self.clients.openWindow(url);
   });
 }
+// Zápis pití přes funkci (4.71): POST s podpisem, pak krátké tiché potvrzení (tag water) a zpráva běžící appce
+const WQ_URL = 'https://europe-west1-lifepocket-d8f0e.cloudfunctions.net/waterQuickAdd';
+const WQ_TIMEOUT = 8000;  // pak fallback na otevření appky
+const WQ_SHOW = 4000;     // potvrzení samo zmizí
+function waterQuick(data, ml, at) {
+  const ac = typeof AbortController === 'function' ? new AbortController() : null;
+  const tm = ac ? setTimeout(() => ac.abort(), WQ_TIMEOUT) : 0;
+  return fetch(WQ_URL, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store', credentials: 'omit',
+    body: JSON.stringify({u: data.u, at, ml, wt: data.wt}), signal: ac ? ac.signal : undefined,
+  }).then(r => {
+    clearTimeout(tm);
+    if (!r.ok) throw new Error('wq ' + r.status);
+    const title = typeof data.wtok === 'string' && data.wtok ? data.wtok.slice(0, 80) : '💧 +' + ml + ' ml';
+    return self.registration.showNotification(title, {
+      tag: 'water', silent: true, renotify: false, icon: '/icon-192.png', badge: '/icon-192.png',
+      data: {open: 'water', wq: at},
+    }).then(() => self.clients.matchAll({type: 'window', includeUncontrolled: true}))
+      .then(clients => {
+        // Appka data dostane i ze snapshotu; zpráva jen pro překreslení a dedup (lp_wt_seen)
+        clients.forEach(c => c.postMessage({type: 'WATER_SYNCED', ml, at}));
+        return new Promise(res => setTimeout(res, WQ_SHOW));
+      })
+      .then(() => self.registration.getNotifications({tag: 'water'}))
+      .then(ns => ns.forEach(n => { if (n.data && n.data.wq === at) n.close(); })) // novější připomínku nechat
+      .catch(() => {}); // zápis proběhl → potvrzení je jen doplněk, žádný fallback
+  }, err => { clearTimeout(tm); throw err; });
+}
 function onNotifClick(e) {
   const raw = e.notification.data || {};
   // Notifikace zobrazená Firebase SDK: data serveru jsou v FCM_MSG.data; SDK handler se nespustí
@@ -121,7 +149,10 @@ function onNotifClick(e) {
     // Tady jen tvar čísel, rozsah (50–1000 ml, čas max. 6 h zpět, dnešní) a jednorázovost hlídá app.js
     const ml = /^\d{2,4}$/.test(String(data.drink)) ? Number(data.drink) : 0;
     const at = /^\d{12,14}$/.test(String(data.at)) ? Number(data.at) : 0;
-    if (ml && at) e.waitUntil(openInApp({type: 'WATER_ADD', ml, at}, '/?open=water&drink=' + ml + '&at=' + at));
+    const open = () => openInApp({type: 'WATER_ADD', ml, at}, '/?open=water&drink=' + ml + '&at=' + at);
+    // 4.71: s podpisem ze serveru zapíše funkce waterQuickAdd bez otevření appky; při chybě (offline, 4xx/5xx) jako dřív
+    if (ml && at && typeof data.wt === 'string' && typeof data.u === 'string') e.waitUntil(waterQuick(data, ml, at).catch(open));
+    else if (ml && at) e.waitUntil(open());
     else e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'water', id: ''}, '/?open=water'));
   } else if (e.action === 'done') {
     // Datum z notifikace (den, pro který připomínka platí); jinak lokální dnešek (ne UTC).

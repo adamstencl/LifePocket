@@ -1,5 +1,5 @@
 const {onSchedule} = require('firebase-functions/v2/scheduler');
-const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue, FieldPath, Timestamp} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
@@ -604,6 +604,77 @@ function waterHabitSkip(prof, habitId, today) {
   const WD = prof.waterDay;
   const goal = numIn(W.goal, 500, 6000, WATER_DEF.goal);
   return !!WD && typeof WD === 'object' && WD.d === today && numIn(WD.ml, 0, 20000, 0) >= goal;
+}
+
+// ── Zápis pití z notifikace bez otevření appky (4.71) ──
+// Připomínka nese jednorázový podpis wt = HMAC-SHA256(klíč, uid|at|ml); SW ho pošle do waterQuickAdd.
+// Klíč je v config/secrets.waterHmac (pravidla: config zavřený), chybí-li, vygeneruje se. Nikdy se neloguje ani neposílá ven.
+const WQ_MAX_AGE = 12 * 3600000;   // podpis platí 12 h od odeslání připomínky
+const WQ_FUTURE = 5 * 60000;       // tolerance hodin serveru
+const WQ_MAX_ENTRIES = 40;         // jako WT_MAX_ENTRIES v app.js
+const WQ_SECRET_TTL = 10 * 60000;  // klíč v paměti instance
+const WQ_SIG_RE = /^[A-Za-z0-9_-]{43}$/; // 32 B v base64url bez paddingu
+let _wqKey = null, _wqKeyAt = 0;
+const wqKeyOk = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{43}$/.test(v);
+async function waterSecret() {
+  if (_wqKey && Date.now() - _wqKeyAt < WQ_SECRET_TTL) return _wqKey;
+  const ref = db.doc('config/secrets');
+  const snap = await ref.get();
+  let v = snap.exists ? snap.get('waterHmac') : null;
+  if (!wqKeyOk(v)) {
+    // Transakce: dva souběžné běhy nevytvoří dva různé klíče
+    v = await db.runTransaction(async (tx) => {
+      const s2 = await tx.get(ref);
+      const cur = s2.exists ? s2.get('waterHmac') : null;
+      if (wqKeyOk(cur)) return cur;
+      const gen = require('crypto').randomBytes(32).toString('base64url');
+      tx.set(ref, {waterHmac: gen}, {merge: true});
+      return gen;
+    });
+  }
+  _wqKey = Buffer.from(v, 'base64url');
+  _wqKeyAt = Date.now();
+  return _wqKey;
+}
+const waterSig = (key, uid, at, ml) => require('crypto').createHmac('sha256', key).update(`${uid}|${at}|${ml}`, 'utf8').digest('base64url');
+function waterSigOk(key, uid, at, ml, wt) {
+  if (typeof wt !== 'string' || !WQ_SIG_RE.test(wt)) return false;
+  const a = Buffer.from(wt, 'base64url'), b = Buffer.from(waterSig(key, uid, at, ml), 'base64url');
+  return a.length === 32 && b.length === 32 && require('crypto').timingSafeEqual(a, b);
+}
+// Cíl dne stejně jako wtNormCfg v app.js (násobek 50, 500–6000, jinak 2000)
+function waterGoalS(W) {
+  const g = Math.round(Number(W && W.goal) / 50) * 50;
+  return Number.isFinite(g) && g > 0 ? Math.min(6000, Math.max(500, g)) : WATER_DEF.goal;
+}
+// Platné záznamy dne (jako wtEntries v app.js)
+const waterEntriesS = (d) => (d && Array.isArray(d.entries) ? d.entries : []).filter(e => e && Number.isFinite(e.t) && Number.isFinite(e.ml));
+
+// Zápis jednoho pití (bez I/O mimo transakci). Vrací 'ok' | 'dup' | 'off' | 'limit'.
+// Den = datum času at v zóně uživatele; waterDay {d, ml, last} jen pro dnešek a se zapnutými připomínkami (jako wtProfDay).
+async function waterQuickWrite(uid, at, ml, now = Date.now()) {
+  const pref = db.doc(`users/${uid}/profile/main`);
+  return db.runTransaction(async (tx) => {
+    const ps = await tx.get(pref);
+    if (!ps.exists) return 'off';
+    const prof = ps.data();
+    const W = prof.water;
+    if (!W || typeof W !== 'object' || (Array.isArray(prof.modules) && !prof.modules.includes('water'))) return 'off';
+    const ds = zoneNow(prof.tz, new Date(at)).today;
+    const wref = db.doc(`users/${uid}/water/${ds}`);
+    const ws = await tx.get(wref);
+    const es = waterEntriesS(ws.exists ? ws.data() : null);
+    if (es.some(e => e.t === at)) return 'dup'; // jednorázovost: at je klíč záznamu
+    if (es.length >= WQ_MAX_ENTRIES) return 'limit';
+    const e = {t: at, ml};
+    tx.set(wref, {date: ds, goal: waterGoalS(W), ml: FieldValue.increment(ml), entries: FieldValue.arrayUnion(e),
+      updatedAt: FieldValue.serverTimestamp()}, {merge: true});
+    if (W.remind === true && ds === zoneNow(prof.tz, new Date(now)).today) {
+      const all = [...es, e];
+      tx.update(pref, {waterDay: {d: ds, ml: Math.max(0, all.reduce((s, x) => s + x.ml, 0)), last: all.reduce((m, x) => Math.max(m, x.t), 0)}});
+    }
+    return 'ok';
+  });
 }
 
 // Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
@@ -1260,9 +1331,16 @@ exports.sendScheduledNotifications = onSchedule(
               // Tlačítko „+2 dl“ (4.67): at = jedinečný čas odeslání, klient podle něj zápis nezdvojí (lp_wt_seen)
               const opt = {data: {open: 'water', date: today}, sticky: false};
               if (v.drink) {
+                const at = Date.now();
                 opt.data.drink = v.drink;
-                opt.data.at = Date.now();
+                opt.data.at = at;
                 opt.actions = [{action: 'drink', title: tS(L, 'wt.n.act', {v: fmtMlS(L, v.drink)})}];
+                // 4.71: podpis pro zápis bez otevření appky (SW → waterQuickAdd); bez klíče SW otevře appku jako dřív
+                try {
+                  opt.data.wt = waterSig(await waterSecret(), uid, at, v.drink);
+                  opt.data.u = uid;
+                  opt.data.wtok = tS(L, 'wt.n.ok', {v: fmtMlS(L, v.drink)});
+                } catch(e) { console.error('[LP] water klíč:', e.message); }
               }
               await push(tS(L, `wt.n.${wr.key}.t`, tv), tS(L, `wt.n.${wr.key}.b`, tv), 'water', opt);
             }
@@ -2047,3 +2125,29 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSecond
     throw new HttpsError('unavailable', tS(L, 'err.resFail'));
   }
 });
+
+// ── Zápis pití z tlačítka v notifikaci bez otevření appky (4.71) ──
+// Volá sw.js (POST JSON {u, at, ml, wt}); bez přihlášení, oprávnění dává jen platný jednorázový podpis wt.
+// Odpověď: 200 {ok, dup?} | 400 vstup | 403 podpis | 404 modul vypnutý / účet | 405 metoda | 409 limit dne | 410 prošlé | 500
+const WQ_ORIGINS = ['https://lifepocket.app', /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/];
+exports.waterQuickAdd = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, invoker: 'public', maxInstances: 10, timeoutSeconds: 20},
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ok: false}); return; }
+    const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const {u, at, ml, wt} = b;
+    if (typeof u !== 'string' || !UID_RE.test(u) || !Number.isSafeInteger(at) || at <= 0
+      || !Number.isSafeInteger(ml) || ml < 50 || ml > 1000 || ml % 50 !== 0 || typeof wt !== 'string' || !WQ_SIG_RE.test(wt)) {
+      res.status(400).json({ok: false}); return;
+    }
+    try {
+      const now = Date.now();
+      if (at > now + WQ_FUTURE || now - at > WQ_MAX_AGE) { res.status(410).json({ok: false}); return; }
+      if (!waterSigOk(await waterSecret(), u, at, ml, wt)) { res.status(403).json({ok: false}); return; }
+      const r = await waterQuickWrite(u, at, ml, now);
+      if (r === 'ok' || r === 'dup') res.status(200).json(r === 'dup' ? {ok: true, dup: true} : {ok: true});
+      else res.status(r === 'limit' ? 409 : 404).json({ok: false});
+    } catch(e) {
+      console.error('[LP] waterQuickAdd:', e.code || e.message);
+      res.status(500).json({ok: false});
+    }
+  });
