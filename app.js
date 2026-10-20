@@ -1537,6 +1537,13 @@ window.closeEntry=()=>{
   renderEntryList(document.getElementById('j-search')?.value||'');
 };
 
+// Před novým zápiskem z prázdného stavu / karty Co teď: rozepsaný neuložený zápisek tiše uložit (jako closeEntry)
+function journalFlush(){
+  const title=document.getElementById('j-title')?.value.trim()||'';
+  const text=document.getElementById('j-text')?.value.trim()||'';
+  if(entryDirty&&(curEntryId||title||text)) window.saveEntry({auto:true});
+}
+
 // Tlačítko ← Zpět: přes historii (popstate zavře zápisek), jinak rovnou
 window.journalBack=()=>{ if(history.state?.id==='j-entry') history.back(); else window.closeEntry(); };
 
@@ -6681,7 +6688,7 @@ const quickAdd = {
   },
   // Zápisek se založí s názvem a rovnou otevře (text si člověk dopíše)
   journal(title) {
-    window.sp('journal'); window.newEntry();
+    journalFlush(); window.sp('journal'); window.newEntry();
     const jt = document.getElementById('j-title'); if (jt) jt.value = title;
     return window.saveEntry();
   },
@@ -6752,7 +6759,7 @@ window.esBtn = mod => {
   if (mod === 'habits') { if (document.getElementById('add-habit-wrap')?.style.display === 'none') window.toggleAddHabit(); else fo('habit-name-inp'); }
   else if (mod === 'shopping') fo('shop-inp');
   else if (mod === 'goals') window.openGM();
-  else if (mod === 'journal') window.newEntry();
+  else if (mod === 'journal') { journalFlush(); window.newEntry(); }
   else if (mod === 'checklist') fo('cl-new-inp');
   else if (mod === 'mealplan') window.openMealPicker('d' + mealTodayIdx(), 'm2');
   else if (mod === 'cooking') window.openManualRecipe();
@@ -6864,7 +6871,7 @@ window.ctHabit = hid => {
 window.ctWater = btn => { quickOnce('ct-w', () => { window.wtCup(btn); quickRefresh(); }); };
 window.ctGo = mod => {
   if (mod === 'calendar') { window.calEmptyBday(); return; }
-  if (mod === 'journal') { window.sp('journal'); window.newEntry(); return; }
+  if (mod === 'journal') { journalFlush(); window.sp('journal'); window.newEntry(); return; }
   if (mod === 'cooking') { window.sp('cooking'); window.openManualRecipe(); return; }
   if (typeof mod === 'string' && document.getElementById('p-' + mod)) window.sp(mod);
 };
