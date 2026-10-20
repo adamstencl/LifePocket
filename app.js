@@ -1883,7 +1883,7 @@ function hlNeedHistory(hid){
   _hlHistWant.add(hid);
   setTimeout(()=>{
     loadHabitHistory(hid).then(added=>{ if(added){ shieldCacheReset(); renderHabits(); gameQueue(); } })
-      .catch(e=>{ _hlHistFail.set(hid,Date.now()); console.warn('[LP] historie návyku:',e?.code||e?.name); })
+      .catch(e=>{ _hlHistFail.set(hid,Date.now()); console.warn('[LP] habit history:',e?.code||e?.name); })
       .finally(()=>_hlHistWant.delete(hid));
   },0);
 }
