@@ -2819,7 +2819,15 @@ window.toggleFreqDay=(d,btn)=>{
   btn.classList.toggle('sel',selFreqDays.has(d));
 };
 
+// Pojistka proti dvojímu uložení (4.75): příznak + vypnuté tlačítko; zápis bez čekání na server (offline by visel)
+let _habitSaving=false;
 window.saveHabit=async()=>{
+  if(_habitSaving||!CU) return;
+  const sb=document.querySelector('#add-habit-wrap .btn-p[onclick="saveHabit()"]');
+  _habitSaving=true; if(sb) sb.disabled=true;
+  try{ await saveHabitImpl(); } finally{ _habitSaving=false; if(sb) sb.disabled=false; }
+};
+async function saveHabitImpl(){
   const name=document.getElementById('habit-name-inp').value.trim();
   if(!name){toast(t('hb.nameReq'));return;}
   if(selFreqType==='days'&&selFreqDays.size===0){toast(t('hb.dayReq'));return;}
@@ -2832,7 +2840,8 @@ window.saveHabit=async()=>{
   const maxOrder = habits.filter(hb=>hb.group===selHabitGroup).reduce((m,hb)=>Math.max(m,hb.order||0),0);
   const h={name,emoji:selHabitEmoji,type:selHabitType,goal,freq,group:selHabitGroup,reminderTime,goalId:selGoalId||null,order:maxOrder+1,createdAt:new Date().toISOString()};
   installUnlock('habits');
-  const hRef=await addDoc(collection(db,'users',CU.uid,'habits'),h);
+  const hRef=doc(collection(db,'users',CU.uid,'habits'));
+  setDoc(hRef,h).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'habit')})));
   const hni=document.getElementById('habit-name-inp'); if(hni) hni.value='';
   const hgi=document.getElementById('habit-goal-inp'); if(hgi) hgi.value='10';
   const hnt=document.getElementById('habit-notif-time'); if(hnt) hnt.value='';
@@ -2850,7 +2859,7 @@ window.saveHabit=async()=>{
   btn.textContent=t('hb.add');
   toast(t('hb.added'));
   ctaAskShare('h',hRef.id); // nabídka sdílení (4.49)
-};
+}
 
 window.directInput=async(hid,date,curVal,goal)=>{
   // Inline modal místo prompt() — funguje na všech zařízeních
@@ -17736,16 +17745,24 @@ window.toggleRecDay = function() {
   if (wrap) wrap.style.display = freq==='monthly' ? 'none' : '';
 };
 
+let _recSaving = false; // pojistka proti dvojímu uložení (4.75)
 window.saveRecurringItem = async function() {
+  if (_recSaving || !CU) return;
   const name = document.getElementById('rec-name')?.value.trim();
   if (!name) { toast(t('common.nameReq')); return; }
+  _recSaving = true;
+  const sb = document.querySelector('#recurring-modal .btn-p[onclick="saveRecurringItem()"]'); if (sb) sb.disabled = true;
+  try {
   const qty = document.getElementById('rec-qty')?.value.trim()||'';
   const category = document.getElementById('rec-cat')?.value||'Ostatní';
   const freq = document.getElementById('rec-freq')?.value||'weekly';
   const day = parseInt(document.getElementById('rec-day')?.value??1);
-  await addDoc(collection(db,'users',CU.uid,'recurringShop'),{name,qty,category,freq,day,lastAdded:null,createdAt:new Date().toISOString()});
+  // Bez čekání na server: offline by okno zůstalo otevřené a další klepnutí by založilo kopii
+  addDoc(collection(db,'users',CU.uid,'recurringShop'),{name,qty,category,freq,day,lastAdded:null,createdAt:new Date().toISOString()})
+    .catch(e => toast(t('common.saveFailed',{err:userErr(e,'recurring')})));
   document.getElementById('recurring-modal')?.remove();
   toast(t('shop.rec.added',{name}));
+  } finally { _recSaving = false; if (sb) sb.disabled = false; }
 };
 
 window.toggleShopItem=async(id,wasDone)=>{
