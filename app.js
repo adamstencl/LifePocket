@@ -66,8 +66,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.74';
+const APP_VERSION = '4.75';
 const CHANGELOG = [
+  { v:'4.75', items:[
+    '📶 Spolehlivější start bez připojení: appka ukáže tvoje data z telefonu, a když se načítání zasekne, nabídne „Načíst znovu“',
+    '⚡ Rychlejší start s menší spotřebou dat: appka načítá jen zapnuté moduly a starší historii návyků až když ji potřebuješ',
+    '🔑 Když se v aplikaci z plochy nedokončí přihlášení přes Google, appka poradí přihlášení e-mailem',
+    '🔧 Opravy: návyk ani pravidelný nákup se dvojím klepnutím neuloží dvakrát, odškrtnutí smazané položky ji nevrátí do seznamu a zásoby přičítají jen ke stejné položce'
+  ], en:[
+    '📶 More reliable start without a connection: the app shows your data from the phone, and if loading gets stuck, it offers “Reload”',
+    '⚡ Faster start using less data: the app loads only the modules you have on, and older habit history only when you need it',
+    '🔑 If Google sign-in doesn’t finish in the app on your home screen, the app suggests signing in with e-mail',
+    '🔧 Fixes: a double tap no longer saves a habit or a recurring purchase twice, ticking off a deleted item doesn’t bring it back, and the pantry adds only to the same item'
+  ]},
   { v:'4.74', items:[
     '⚡ Rychlejší start aplikace: úvodní stránka se ukáže hned a appka se načítá rychleji'
   ], en:[
@@ -4277,6 +4288,7 @@ async function finishAccountDeleted() {
   // Push token tohoto zařízení zneplatnit (profil s tokeny už smazal server)
   try { if (messaging && fcmState === 'ok') await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
   try { await signOut(auth); } catch (e) {}
+  clearFsCache(); // kopie dat v trvalé cache zařízení (4.75); stránka pak jde jen na úvod (reload)
   // Lokální data aplikace (lp_*); lp_twa_seen zůstává – je to vlastnost instalace, ne účtu
   try {
     const del = [];
