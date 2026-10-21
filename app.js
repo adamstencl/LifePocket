@@ -1465,19 +1465,33 @@ async function refreshProfileFromServer(uid){
     _profCacheUid='';
     prof=s.data();
     if(await syncProfileLang(uid)) return; // jazyk z jiného zařízení → reload
+    if(CU?.uid!==uid) return; // během čekání odhlášení / jiný účet (4.78)
     selMods=new Set(prof.modules||[]);
     subModules(); buildNav(); rDash();
-    syncGroupsFromProfile();
+    syncGroupsFromProfile(!s.metadata.hasPendingWrites);
   }catch(e){ console.warn('[LP] profile refresh:',e?.code||e?.name); }
   finally{ _profRefreshing=false; }
 }
-// Skupiny přidané na jiném zařízení (profil z cache je neznal) → přihlásit jako initApp; běžící listenery se přeskočí
-function syncGroupsFromProfile(){
-  const ex=Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[];
-  if(!familyId&&prof.familyId){ familyId=prof.familyId; subscribeFamily(); renderFamilySettings(); return; } // přihlásí i vedlejší
-  const add=ex.filter(g=>g&&g!==familyId&&!extraGroupIds.includes(g));
+// Skupiny změněné na jiném zařízení (profil z cache je neznal) → přihlásit jako initApp; běžící listenery se přeskočí.
+// 4.78: i změna hlavní skupiny (applyMainSwitchLocal) a odchod/odebrání (jako snapshot isRemovedFromGroup);
+// odebírá se jen podle profilu bez čekajících zápisů (fresh), ať se nepřebije čerstvá lokální změna
+function syncGroupsFromProfile(fresh){
+  if(_setMainBusy||(familyId&&_leavingGids.has(familyId))) return; // probíhá vlastní přepnutí / odchod
+  const ex=(Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[]).filter(okFamilyCode);
+  const pf=okFamilyCode(prof.familyId)?prof.familyId:null;
+  if(!familyId&&pf){ familyId=pf; subscribeFamily(); initPantry(); renderFamilySettings(); return; } // přihlásí i vedlejší
+  if(fresh&&familyId&&pf!==familyId){
+    if(pf){ applyMainSwitchLocal(pf,{extraGroupIds:ex}); } // hlavní je jiná skupina (stará případně mezi vedlejšími)
+    else { resetFamilyLocal(); initPantry(); renderAfterFamilyChange(); } // hlavní skupinu opustil / byl odebrán
+  }
+  if(fresh){
+    const gone=extraGroupIds.filter(g=>!ex.includes(g)&&g!==familyId&&!_leavingGids.has(g));
+    for(const gid of gone) forgetExtraGroupLocal(gid); // profil už je bez nich, jen uklidit paměť a listenery
+    if(gone.length) renderAfterFamilyChange();
+  }
+  const add=ex.filter(g=>g!==familyId&&!extraGroupIds.includes(g));
   if(!add.length) return;
-  extraGroupIds=[...extraGroupIds,...add];
+  extraGroupIds=[...extraGroupIds,...add]; prof.extraGroupIds=extraGroupIds;
   for(const gid of add) subscribeExtraGroup(gid);
   renderFamilySettings();
 }
