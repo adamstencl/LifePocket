@@ -91,8 +91,6 @@ export default {
   'auth.verifyDone': '✅ E-mail je ověřený, díky!',
   'auth.logoutConfirm': 'Odhlásit se?',
   'auth.err.invalidCredential': 'Špatný e-mail nebo heslo',
-  'auth.err.userNotFound': 'Účet neexistuje',
-  'auth.err.wrongPassword': 'Špatné heslo',
   'auth.err.invalidEmail': 'Neplatný e-mail',
   'auth.err.emailInUse': 'E-mail je už registrovaný',
   'auth.err.weakPassword': 'Heslo je příliš slabé',

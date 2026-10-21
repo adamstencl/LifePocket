@@ -90,8 +90,6 @@ export default {
   'auth.verifyDone': '✅ Your email is verified, thanks!',
   'auth.logoutConfirm': 'Log out?',
   'auth.err.invalidCredential': 'Wrong email or password',
-  'auth.err.userNotFound': 'No account with this email',
-  'auth.err.wrongPassword': 'Wrong password',
   'auth.err.invalidEmail': 'Invalid email',
   'auth.err.emailInUse': 'This email is already registered',
   'auth.err.weakPassword': 'Password is too weak',
