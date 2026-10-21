@@ -1636,6 +1636,7 @@ function subEntries(){
       if(eOk&&!snap.docChanges().length){ if(srv&&!_entriesSrvOk){_entriesSrvOk=true;shOrphanSweep();} return; }
       eOk=true;
       entries=snap.docs.map(d=>({id:d.id,...d.data()})); renderEntryList();
+      if(game&&!game.badges?.writer&&entries.length>=10) gameQueue(); // odznak Pisatel i ze záznamů načtených po zapnutí Deníku (4.78)
       if(srv&&!_entriesSrvOk){_entriesSrvOk=true;setTimeout(shOrphanSweep,0);}
     }
   );
@@ -7686,6 +7687,8 @@ const BADGES=[
   {id:'pc_1',em:'🎖️',f:c=>({cur:Math.min(1,c.pcN),max:1})},
   {id:'pc_3',em:'🏅',f:c=>({cur:c.pcN,max:3})},
   {id:'pc_12',em:'👑',f:c=>({cur:c.pcN,max:12})},
+  // Pisatel: záznamy Deníku (entries) jsou načtené jen se zapnutým modulem; vypnutý Deník = cur 0, ale získaný
+  // odznak drží game.badges (badgeState) a nezmizí. Po zapnutí se vyhodnotí z načtených dat (subEntries → gameQueue).
   {id:'writer',em:'📒',f:c=>({cur:c.notes,max:10})},
   {id:'lvl_10',em:'🍃',f:c=>({cur:c.lvl,max:10})},
   {id:'lvl_25',em:'🌲',f:c=>({cur:c.lvl,max:25})},
