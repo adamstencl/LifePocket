@@ -15,8 +15,9 @@ const fb=initializeApp(FC),auth=getAuth(fb),gp=new GoogleAuthProvider();
 let db;
 try{ db=initializeFirestore(fb,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
 catch(e){ console.warn('[LP] cache Firestore:',e?.code||e?.name); db=getFirestore(fb); }
-// E-maily Auth (ověření, reset hesla) a okno Google v jazyce appky; čeština beze změny (výchozí šablony projektu)
-if(LANG!=='cs') auth.languageCode=LANG;
+// E-maily Auth (ověření, reset hesla) a okno Google v jazyce appky, i čeština (jinak šablona projektu/prohlížeče)
+// Změna jazyka za běhu vždy znovu načte stránku (reloadWithLang, reloadForProfileLang), nastaví se tu znovu
+auth.languageCode=LANG;
 // Push: messaging se vytvoří jen když to prohlížeč podporuje; důvod nepodpory se ukáže v nastavení notifikací
 let messaging=null,msgUnsupportedReason='',fcmSdk=null; // fcmSdk: modul firebase-messaging (getToken, deleteToken)
 const msgReady=(async()=>{
