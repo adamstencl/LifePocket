@@ -19173,7 +19173,20 @@ function pantryFind(items, name) {
   return best;
 }
 // Shoda suroviny se zásobou (4.75; dřív libovolný podřetězec → odečet z jiné zásoby)
-function pantryMatch(items, ingName) { return pantryFind(items, ingName); }
+// Odečet po vaření (má potvrzovací okno): i obráceně – surovina „mléko“ najde zásobu „Mléko polotučné“
+function pantryMatch(items, ingName) {
+  const hit = pantryFind(items, ingName);
+  if (hit) return hit;
+  const n = pantryIngName(ingName);
+  if (!n) return null;
+  let best = null, bl = Infinity;
+  for (const p of items) {
+    if (!p || !p.name) continue;
+    const pn = pantryIngName(p.name);
+    if (pantryHit(n, pn) && pn.length < bl) { best = p; bl = pn.length; }
+  }
+  return best;
+}
 // Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
   const gid = pantryGid(), items = pantryItemsOf(gid);
