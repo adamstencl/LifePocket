@@ -19210,14 +19210,50 @@ function pantryHit(pn, n) {
   if (pn === n) return true;
   return n.length > pn.length && n.startsWith(pn) && /^[\s\d(,]/.test(n.charAt(pn.length));
 }
-// Klíč názvu pro zásoby: bez závorek, úvodního množství s jednotkou a množství na konci
-// („2 vejce“, „400 g mouka“, „Vejce (střední)“, „Mléko 1,5% 1 l“ → „vejce“, „mouka“, „vejce“, „mleko“)
+// Skloňované tvary běžných surovin → jeden tvar (4.78, jen pro porovnání; žádný obecný stemming).
+// Jen jednoznačné tvary, které neznamenají nic jiného („200 g mouky“ ~ zásoba „Mouka“).
+const PANTRY_FORMS = (() => {
+  const m = Object.create(null);
+  const add = (base, forms) => forms.split(' ').forEach(w => { m[w] = base; });
+  add('mouka', 'mouky mouku moukou');
+  add('vejce', 'vajec vejci vejcich vajicka vajicko vajicek');
+  add('rajcata', 'rajcat rajce rajcete rajcaty rajcatek rajcatka');
+  add('cibule', 'cibuli cibulemi');
+  add('mleko', 'mleka mlekem');
+  add('maslo', 'masla maslem');
+  add('cukr', 'cukru cukrem');
+  add('sul', 'soli');
+  add('ryze', 'ryzi');
+  add('brambory', 'brambor bramboru bramborami');
+  add('mrkev', 'mrkve mrkvi');
+  add('cesnek', 'cesneku cesnekem');
+  add('smetana', 'smetany smetanu smetanou');
+  add('tvaroh', 'tvarohu');
+  add('jogurt', 'jogurtu jogurty');
+  add('testoviny', 'testovin');
+  add('jablka', 'jablko jablek');
+  add('paprika', 'papriky papriku');
+  add('okurka', 'okurky okurku');
+  add('citron', 'citronu citrony');
+  return m;
+})();
+// Klíč názvu pro zásoby: bez závorek, množství s jednotkou na začátku i na konci
+// („2 vejce“, „400 g mouka“, „Vejce (střední)“, „Mléko 1 l“ → „vejce“, „mouka“, „vejce“, „mleko“).
+// Procenta patří k názvu (4.78): na začátku i na konci stejně → „1,5% mléko“, „Mléko 1,5 %“ = „mleko 1,5%“
 function pantryIngName(s) {
   let n = pantryNorm(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
   const q = n.replace(/^\d+(?:[.,/]\d+)?(?![\d.,/]|\s*%)\s*/, ''); // „100% kakao“: číslo s % patří k názvu
   if (q !== n) { n = q; const m = n.match(/^([a-z]+)\.?\s+(.+)$/); if (m && ING_UNITS[m[1]]) n = m[2]; }
-  n = n.replace(/(?:\s+\d+(?:[.,]\d+)?\s*(?:%|[a-z]{1,4}\.?)?)+$/, '');
-  return n.replace(/[\s,]+$/, '').trim();
+  let pct = '';
+  const lp = n.match(/^(\d+(?:[.,]\d+)?)\s*%\s*(.+)$/);
+  if (lp) { pct = lp[1]; n = lp[2]; }
+  // Konec: množství („1 l“, „2 ks“, „500“) pryč, procenta si zapamatovat
+  for (let m; (m = n.match(/\s+(\d+(?:[.,]\d+)?)\s*(%|[a-z]{1,4}\.?)?$/)); ) {
+    if (m[2] === '%' && !pct) pct = m[1];
+    n = n.slice(0, m.index);
+  }
+  n = n.replace(/[\s,]+$/, '').trim().split(' ').map(w => PANTRY_FORMS[w] || w).join(' ');
+  return n && pct ? n + ' ' + pct.replace('.', ',') + '%' : n;
 }
 // Zásoba k názvu (4.75): přesná shoda má přednost, jinak nejdelší shoda podle pantryHit
 function pantryFind(items, name) {
