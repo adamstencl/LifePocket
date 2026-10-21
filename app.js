@@ -4100,7 +4100,8 @@ window.doLogin=async()=>{
   clearLoginOk(); e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> '+tH('auth.signingIn');
   try{
     // Appka z plochy / Google Play (4.75): okno Google se často neotevře nebo nevrátí → po 60 s nebo chybě okna nabídnout e-mail
-    const sa=IS_TWA||isStandaloneApp();
+    // 4.78: limit 60 s jen na mobilu, desktopová PWA okno otevře spolehlivě (uživatel může psát heslo déle)
+    const sa=IS_TWA||(isStandaloneApp()&&getPlatform()!=='desktop');
     let tm=0;
     try{ await (sa?Promise.race([signInWithPopup(auth,gp),new Promise((_,rj)=>{tm=setTimeout(()=>rj({code:'lp/popup-timeout'}),60000);})]):signInWithPopup(auth,gp)); }
     finally{ clearTimeout(tm); }
