@@ -7274,6 +7274,7 @@ function gameLoad(){
         // Dopočet z 400 dní historie: starší záznamy (mimo okno listeneru) nejdřív dotáhnout
         try{ await loadOldHabitLogs(); }catch(e){ console.warn('[LP] game backfill logs:',e?.code||e?.name); }
         if(CU?.uid!==uid||game) return;
+        if(!_hlOldAll){ _gameFailAt=Date.now(); return; } // neúplná historie (chyba / jen cache) → nezakládat, zkusit později
         game=gameBackfill(raw);
         setDoc(gameRef(),gameDocData(game),{merge:true}).catch(gameWriteErr);
       } else {
