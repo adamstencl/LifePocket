@@ -1495,26 +1495,31 @@ async function syncGroupsFromProfile(fresh){
   const uid=CU?.uid;
   const ex=(Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[]).filter(okFamilyCode);
   const pf=okFamilyCode(prof.familyId)?prof.familyId:null;
-  if(!familyId&&pf){ familyId=pf; subscribeFamily(); initPantry(); renderFamilySettings(); return; } // přihlásí i vedlejší
-  if(fresh){
-    const oldMain=familyId&&pf!==familyId?familyId:null;
-    const gone=extraGroupIds.filter(g=>!ex.includes(g)&&g!==familyId&&g!==pf&&!_leavingGids.has(g));
-    if(oldMain||gone.length){
-      // Zmizelá skupina, která na serveru neexistuje = změna kódu → nechat na checkGroupGone (ani nic nepřidávat)
-      const ok=await Promise.all([oldMain,...gone].filter(Boolean).map(groupExistsSrv));
-      if(CU?.uid!==uid||busyGroups()||ok.some(x=>x!==true)) return;
-      if(oldMain&&familyId===oldMain){
-        if(pf){ applyMainSwitchLocal(pf,{extraGroupIds:ex}); } // hlavní je jiná skupina (stará případně mezi vedlejšími)
-        else { // hlavní skupinu opustil / byl odebrán (jako leaveFamilyNow)
-          shopViewForget(oldMain); mealViewForget(oldMain); pantryViewForget(oldMain);
-          resetFamilyLocal(); initPantry(); renderAfterFamilyChange();
-        }
-      }
-      const gone2=gone.filter(g=>extraGroupIds.includes(g)&&g!==familyId);
-      for(const gid of gone2) forgetExtraGroupLocal(gid); // profil už je bez nich, jen uklidit paměť a listenery
-      if(gone2.length) renderAfterFamilyChange();
-    }
+  // Co z lokálního stavu zmizelo – spočítat z původních extraGroupIds (applyMainSwitchLocal / subscribeFamily je přepíší)
+  const oldMain=fresh&&familyId&&pf!==familyId?familyId:null;
+  const gone=fresh?extraGroupIds.filter(g=>!ex.includes(g)&&g!==familyId&&g!==pf&&!_leavingGids.has(g)):[];
+  if(oldMain||gone.length){
+    // Zmizelá skupina, která na serveru neexistuje = změna kódu → nechat na checkGroupGone (ani nic nepřidávat)
+    const ok=await Promise.all([oldMain,...gone].filter(Boolean).map(groupExistsSrv));
+    if(CU?.uid!==uid||busyGroups()||ok.some(x=>x!==true)) return;
+    if(oldMain&&familyId!==oldMain) return; // mezitím se přepnulo jinak (snapshot)
   }
+  for(const gid of gone) forgetExtraGroupLocal(gid); // profil už je bez nich, jen uklidit paměť a listenery
+  if(!familyId&&pf){
+    // subscribeFamily bere vedlejší z prof.extraGroupIds → nechat i lokální, které se neodebíraly (jinak by listener osiřel)
+    if(extraGroupIds.includes(pf)) forgetExtraGroupLocal(pf);
+    prof.extraGroupIds=[...new Set([...ex,...extraGroupIds])].filter(g=>g!==pf);
+    familyId=pf; subscribeFamily(); initPantry(); // přihlásí i vedlejší
+    if(gone.length) renderAfterFamilyChange(); else renderFamilySettings();
+    return;
+  }
+  if(oldMain){
+    if(pf){ applyMainSwitchLocal(pf,{extraGroupIds:ex}); } // hlavní je jiná skupina (stará případně mezi vedlejšími)
+    else { // hlavní skupinu opustil / byl odebrán (jako leaveFamilyNow)
+      shopViewForget(oldMain); mealViewForget(oldMain); pantryViewForget(oldMain);
+      resetFamilyLocal(); initPantry(); renderAfterFamilyChange();
+    }
+  } else if(gone.length) renderAfterFamilyChange();
   const add=ex.filter(g=>g!==familyId&&!extraGroupIds.includes(g));
   if(!add.length) return;
   extraGroupIds=[...extraGroupIds,...add]; prof.extraGroupIds=extraGroupIds;
