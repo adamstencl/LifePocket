@@ -67,8 +67,15 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.75';
+const APP_VERSION = '4.76';
 const CHANGELOG = [
+  { v:'4.76', items:[
+    '📧 E-maily k ověření a obnově hesla chodí česky, ověřovací e-mail jde poslat znovu (na Domů nebo v Nastavení → Účet a data)',
+    '🔑 Po žádosti o nové heslo appka připomene, ať mrkneš i do spamu'
+  ], en:[
+    '📧 Verification and password reset emails now come in your language, and you can send the verification email again (on Home or in Settings → Account & data)',
+    '🔑 After asking for a new password, the app reminds you to check your spam folder too'
+  ]},
   { v:'4.75', items:[
     '📶 Spolehlivější start bez připojení: appka ukáže tvoje data z telefonu, a když se načítání zasekne, nabídne „Načíst znovu“',
     '⚡ Rychlejší start s menší spotřebou dat: appka načítá jen zapnuté moduly a starší historii návyků až když ji potřebuješ',
