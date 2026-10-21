@@ -1127,6 +1127,7 @@ export default {
   'shop.favRemoved': 'Removed from favourites',
   'shop.favAdded': '⭐ Added to favourites',
   'shop.rec.autoAdded': '🔄 Added automatically: {name}',
+  'shop.rec.addFail': '⚠️ Could not add {name} to the shopping list – please add it manually.',
   'shop.rec.weekly': 'weekly',
   'shop.rec.biweekly': '2× a month',
   'shop.rec.monthly': 'monthly',

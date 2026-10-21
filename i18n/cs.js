@@ -1141,6 +1141,7 @@ export default {
   'shop.favRemoved': 'Odebráno z oblíbených',
   'shop.favAdded': '⭐ Přidáno k oblíbeným',
   'shop.rec.autoAdded': '🔄 Automaticky přidáno: {name}',
+  'shop.rec.addFail': '⚠️ Položku {name} se nepodařilo přidat do nákupu – přidej ji ručně.',
   'shop.rec.weekly': 'týdně',
   'shop.rec.biweekly': '2× měs.',
   'shop.rec.monthly': 'měsíčně',

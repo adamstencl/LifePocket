@@ -17852,7 +17852,7 @@ function checkRecurringShop() {
     if (it.freq === 'monthly') return days >= 30;
     return false;
   };
-  if (navigator.onLine === false) return; // offline nic nepřidávat (cache může být zastaralá → duplicity)
+  if (navigator.onLine === false) { _recShopWait = true; return; } // offline nic nepřidávat (zastaralá cache → duplicity), znovu po online
   const uid = CU.uid;
   recurringShopItems.forEach(async item => {
     if (!due(item) || _recShopBusy.has(item.id)) return;
@@ -17871,20 +17871,24 @@ function checkRecurringShop() {
           tx.update(ref, {lastAdded: todayISO});
           return d;
         });
-      } catch(e) { console.warn('[LP] recurring:', e?.code || e?.name); return; }
+      } catch(e) { console.warn('[LP] recurring:', e?.code || e?.name); if (e?.code === 'unavailable') _recShopWait = true; return; }
       item.lastAdded = todayISO;
       if (!fresh || CU?.uid !== uid) return;
       const fid = shopGid();
       const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
       if (!alreadyIn) {
         const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
-        addDoc(shopCol(fid),si).catch(e => console.warn('[LP] recurring add:', e?.code || e?.name));
+        // lastAdded už je zapsané → při chybě dát vědět, jinak by položka do příště chyběla
+        addDoc(shopCol(fid),si).catch(e => { console.warn('[LP] recurring add:', e?.code || e?.name); if (CU?.uid === uid) toast(t('shop.rec.addFail',{name:item.name})); });
         if (fid) logGroupActivity(fid,'shop','add',item.name);
         toast(t('shop.rec.autoAdded',{name:item.name})+shopToSfx(fid));
       }
     } finally { _recShopBusy.delete(item.id); }
   });
 }
+
+// Po návratu sítě (spojení Firestore naběhne až za chvíli) dohnat odložené pravidelné nákupy
+window.addEventListener('online', () => { if (_recShopWait && CU) setTimeout(() => { if (_recShopWait && CU) checkRecurringShop(); }, 3000); });
 
 function renderRecurringShop() {
   const chips = document.getElementById('recurring-shop-chips');
