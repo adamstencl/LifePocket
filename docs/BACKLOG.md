@@ -8,3 +8,10 @@
 
 ## Z 4.77
 - Jen parťák bez nákupů: pravidelné nákupy zmizí z kontextu AI (záměr).
+
+## Z 4.78
+- 29. 2.: server připomíná v nepřestupném roce 28. 2., ale kalendář (`getEventsForDate`) a ranní souhrn ji ten den neukáží; narozeniny 29. 2. se na serveru v nepřestupném roce nepřipomenou.
+- Lokální záloha `checkEventReminders` (bez push tokenu) a `notifAskSoon` berou jen `type==='event'`, neřeší půlnoc ani změnu času.
+- `evWindow` s neplatnou zónou bez `normTz` hodí TypeError (dnes se tak nevolá).
+- Víc vypršelých dotazů zásob naráz → víc toastů za sebou, vidět je jen poslední.
+- `syncGroupsFromProfile`: skupina smazaná mimo změnu kódu („duch“) blokuje přidání nových skupin do restartu; `_profRefreshing` se uvolní dřív než doběhne sync.

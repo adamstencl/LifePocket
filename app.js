@@ -70,9 +70,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.78';
 const CHANGELOG = [
   { v:'4.78', items:[
+    '🔔 Připomínky událostí chodí spolehlivěji: i na události po půlnoci, u vlastních typů událostí a správně při změně letního a zimního času',
     '🧊 Zásoby: dotaz „Přičíst?“ u podobné položky už neblokuje nakupování, víc položek se seřadí pod sebe. Appka líp pozná „200 g mouky“ jako Mouku a nesplete si „Mléko 1,5 %“ s „Mléko 3,5 %“',
     '🔧 Drobné opravy: změna nebo odchod ze skupiny na jiném zařízení se projeví i tady, pravidelný nákup se po výpadku spojení zkusí přidat znovu, odznak Pisatel se vyhodnotí i po zapnutí Deníku'
   ], en:[
+    '🔔 Event reminders are more reliable: also for events after midnight, for custom event types and correctly around daylight saving changes',
     '🧊 Pantry: the “Add?” question for a similar item no longer blocks your shopping, several items stack up. The app now recognises “Mléko 1.5 %” and “Mléko 3.5 %” as different items',
     '🔧 Small fixes: changing or leaving a group on another device now shows up here too, a recurring purchase is retried after a connection drop, and the Writer badge is checked after turning the Journal on'
   ]},
