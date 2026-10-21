@@ -291,7 +291,7 @@ function zoneNow(tz, date = new Date()) {
   const zone = normTz(tz);
   const p = {};
   for (const x of tzFormatter(zone).formatToParts(date)) p[x.type] = x.value;
-  // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
+  // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout porovnání časů (isTimeMatch)
   const wall = new Date(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, 0, 0);
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const tmrw = new Date(wall);
