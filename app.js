@@ -1600,6 +1600,8 @@ function clearUserSessionState(){
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
+  // Lišty zásob a opakování pravidelných nákupů patří odhlášenému účtu (4.78)
+  try{ _pantryAsk.clear(); document.getElementById('pantry-notes')?.remove(); clearTimeout(_recRetry.tm); _recRetry.uid=''; _recRetry.n=0; _recRetry.tm=0; }catch(e){}
   // Dynamická okna skupin (4.51): zavřít bez návratu fokusu a vynulovat jejich stav
   try{
     ['m-group','m-newgrp','m-grpedit','m-setmain','m-leavegrp','m-rotcode'].forEach(id=>{const el=document.getElementById(id);if(el)Element.prototype.remove.call(el);});
@@ -18099,9 +18101,10 @@ window.toggleShopItem=async(id,wasDone)=>{
 // nenačtené (offline, bez přístupu) se nemění, ať nevznikne duplicita
 async function offerPantryUpdate(name, shopQty, sg) {
   if(!name || !CU) return;
-  const gid = pantryForShop(sg);
+  const uid = CU.uid, gid = pantryForShop(sg);
   if(!gid) await pantryMigSettle(); // Moje: nejdřív přenos lp_pantry
   const items = await pantryItemsReady(gid);
+  if(CU?.uid !== uid) return; // mezitím odhlášen
   if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
   // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“.
   // 4.77: přičíst bez ptaní jen při přesné shodě (pantryIngName), jinak se zeptat („Mléko kondenzované“ → Mléko?)
@@ -18140,7 +18143,8 @@ function pantryNote(html, ms, onExpire) {
   let box = document.getElementById('pantry-notes');
   if(!box) {
     box = document.createElement('div'); box.id = 'pantry-notes';
-    box.style.cssText = 'position:fixed;bottom:90px;left:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+    // Nad toast() (bottom 80px, až 2 řádky) – lišty ho nepřekryjí
+    box.style.cssText = 'position:fixed;bottom:144px;left:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px;pointer-events:none';
     document.body.appendChild(box);
   }
   while(box.childElementCount >= 4) pantryNoteDrop(box.firstElementChild, true);
@@ -18166,7 +18170,7 @@ window.pantryNoteClose = el => pantryNoteDrop(el?.closest('.pantry-note'), false
 const _pantryAsk = new Map();
 function pantryAskMatch(name, shopQty, gid, match) {
   const key = genId();
-  _pantryAsk.set(key, {name, shopQty, gid, matchId: match.id});
+  _pantryAsk.set(key, {uid: CU.uid, name, shopQty, gid, matchId: match.id});
   pantryNote(`<span style="flex:1;font-size:13px;color:var(--text2)">${tH('pantry.matchAsk', {name: cutName(name, 40), item: cutName(match.name, 40)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,true,this)" style="${PN_BTN}">${tH('pantry.matchAdd')}</button><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,false,this)" style="${PN_BTN};color:var(--text2)">${tH('pantry.matchNew')}</button>`,
     12000, () => pantryAskDo(key, false));
 }
@@ -18175,8 +18179,9 @@ window.pantryAskDo = async (key, add, el) => {
   if(!a) return;
   _pantryAsk.delete(key);
   if(el) pantryNoteClose(el);
-  if(!CU) return;
+  if(CU?.uid !== a.uid) return; // lišta z jiného (odhlášeného) účtu
   const items = await pantryItemsReady(a.gid);
+  if(CU?.uid !== a.uid) return;
   if(!items) { toast(t('pantry.notAdded', {name: cutName(a.name, 40)}), 5000); return; }
   const match = add ? items.find(i => i.id === a.matchId) : null; // zásoba mezitím mohla zmizet → nová
   if(match) pantryAddToItem(match, a.shopQty, a.gid);
