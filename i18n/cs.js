@@ -79,7 +79,7 @@ export default {
   'auth.fillBoth': 'Vyplň email a heslo',
   'auth.passShort': 'Heslo musí mít alespoň 6 znaků',
   'auth.resetNeedEmail': 'Zadej email pro reset hesla',
-  'auth.resetSent': '✅ Email pro reset hesla odeslán!',
+  'auth.resetSent': '📧 Pokud účet s tímto e-mailem existuje, poslali jsme na něj odkaz k obnově hesla. Mrkni i do spamu.',
   'auth.verifyNote': '📧 Ověř svůj e-mail, odkaz najdeš ve schránce (mrkni i do spamu).',
   'auth.verifyResend': 'Poslat znovu',
   'auth.verifySet': 'E-mail {email} zatím není ověřený.',

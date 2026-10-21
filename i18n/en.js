@@ -78,7 +78,7 @@ export default {
   'auth.fillBoth': 'Enter your email and password',
   'auth.passShort': 'Password must be at least 6 characters',
   'auth.resetNeedEmail': 'Enter your email to reset your password',
-  'auth.resetSent': '✅ Password reset email sent!',
+  'auth.resetSent': '📧 If an account with this email exists, we\'ve sent it a password reset link. Check spam too.',
   'auth.verifyNote': '📧 Verify your email, the link is in your inbox (check spam too).',
   'auth.verifyResend': 'Send again',
   'auth.verifySet': 'Email {email} is not verified yet.',

@@ -4038,7 +4038,7 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('moverlay')
 
 window.doLogin=async()=>{
   const b=document.getElementById('login-btn'),e=document.getElementById('login-err');
-  e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> '+tH('auth.signingIn');
+  clearLoginOk(); e.classList.remove('show');b.disabled=true;b.innerHTML='<div class="spin"></div> '+tH('auth.signingIn');
   try{
     // Appka z plochy / Google Play (4.75): okno Google se často neotevře nebo nevrátí → po 60 s nebo chybě okna nabídnout e-mail
     const sa=IS_TWA||isStandaloneApp();
@@ -4450,7 +4450,7 @@ window.doEmailLogin=async()=>{
   const pass=document.getElementById('pass-inp').value;
   const e=document.getElementById('login-err');
   const b=document.getElementById('email-login-btn');
-  e.classList.remove('show');
+  clearLoginOk(); e.classList.remove('show');
   if(!email||!pass){e.textContent=t('auth.fillBoth');e.classList.add('show');return;}
   b.disabled=true;b.textContent=t('auth.signingIn');
   try{
@@ -4468,7 +4468,7 @@ window.doEmailRegister=async()=>{
   const pass=document.getElementById('pass-inp').value;
   const e=document.getElementById('login-err');
   const b=document.getElementById('email-login-btn');
-  e.classList.remove('show');
+  clearLoginOk(); e.classList.remove('show');
   if(!email||!pass){e.textContent=t('auth.fillBoth');e.classList.add('show');return;}
   if(pass.length<6){e.textContent=t('auth.passShort');e.classList.add('show');return;}
   b.disabled=true;b.textContent=t('auth.registering');
@@ -4483,18 +4483,38 @@ window.doEmailRegister=async()=>{
   }
 };
 
+// Obnova hesla (4.76): stejná neutrální hláška při úspěchu i neexistujícím účtu (neprozradí, kdo má účet),
+// drží se 12 s nebo do dalšího psaní; tlačítko zamčené 30 s
+let _resetOkT=0,_resetLockT=0;
+function clearLoginOk(){
+  clearTimeout(_resetOkT); _resetOkT=0;
+  const e=document.getElementById('login-err');
+  if(e?.classList.contains('ok')) e.classList.remove('show','ok');
+}
+['email-inp','pass-inp'].forEach(id=>document.getElementById(id)?.addEventListener('input',clearLoginOk));
 window.doPasswordReset=async()=>{
   const email=document.getElementById('email-inp').value.trim();
   const e=document.getElementById('login-err');
+  const b=document.getElementById('login-forgot');
+  if(_resetLockT) return;
+  clearLoginOk(); e.classList.remove('show');
   if(!email){e.textContent=t('auth.resetNeedEmail');e.classList.add('show');return;}
+  const unlock=()=>{ clearTimeout(_resetLockT); _resetLockT=0; if(b) b.disabled=false; };
+  _resetLockT=setTimeout(unlock,30000); if(b) b.disabled=true;
+  const ok=()=>{
+    e.textContent=t('auth.resetSent'); e.classList.add('show','ok');
+    _resetOkT=setTimeout(clearLoginOk,12000);
+  };
   try{
     await sendPasswordResetEmail(auth,email);
-    e.textContent=t('auth.resetSent');
-    e.style.color='var(--green)';
-    e.classList.add('show');
-    setTimeout(()=>{e.classList.remove('show');e.style.color='';},4000);
+    ok();
   }catch(ex){
-    e.textContent=userErr(ex,'login');e.classList.add('show');
+    if(ex?.code==='auth/user-not-found') ok();
+    else{
+      if(ex?.code!=='auth/too-many-requests') unlock(); // překlep nebo výpadek sítě: hned znovu
+      e.textContent=ex?.code==='auth/invalid-email'?t('auth.err.invalidEmail'):userErr(ex,'login');
+      e.classList.add('show');
+    }
   }
 };
 

@@ -80,6 +80,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .google-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.45)}.google-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
 .err{background:rgba(255,100,100,.1);border:1px solid rgba(255,100,100,.3);border-radius:10px;padding:10px 14px;font-size:14px;color:#ff8080;margin-top:14px;display:none}
 .err.show{display:block}
+.err.ok{background:rgba(80,200,120,.1);border-color:rgba(80,200,120,.3);color:var(--green)}
 .privacy{text-align:center;font-size:12px;color:var(--text3);margin-top:16px;display:flex;align-items:center;justify-content:center;gap:4px}
 
 /* Text na plné barvě akcentu (tangerine potřebuje bílou kvůli kontrastu) */
@@ -109,6 +110,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .lp-back{background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;min-height:44px;padding:0 8px 0 0;cursor:pointer;margin:6px 0 2px}
 .lp-auth-links{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px}
 .lp-link{background:none;border:none;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;min-height:44px;padding:0 4px;cursor:pointer}
+.lp-link:disabled{opacity:.5;cursor:default}
 .lp-card :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #auth-mode-lbl:focus{outline:none} /* fokus jen pro čtečku po přepnutí panelu */
 #s-login .card{width:440px}
