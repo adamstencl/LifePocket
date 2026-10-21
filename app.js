@@ -4489,7 +4489,8 @@ window.doEmailLogin=async()=>{
     await signInWithEmailAndPassword(auth,email,pass);
   }catch(ex){
     b.disabled=false;b.textContent=t('auth.login');
-    const msgs={'auth/invalid-credential':'auth.err.invalidCredential','auth/user-not-found':'auth.err.userNotFound','auth/wrong-password':'auth.err.wrongPassword','auth/invalid-email':'auth.err.invalidEmail'};
+    // 4.77: neexistující účet i špatné heslo stejnou hláškou (neprozradí, kdo má účet)
+    const msgs={'auth/invalid-credential':'auth.err.invalidCredential','auth/user-not-found':'auth.err.invalidCredential','auth/wrong-password':'auth.err.invalidCredential','auth/invalid-email':'auth.err.invalidEmail'};
     e.textContent=msgs[ex.code]?t(msgs[ex.code]):userErr(ex,'login');
     e.classList.add('show');
   }
