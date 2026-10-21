@@ -1433,17 +1433,38 @@ window.addEventListener('online',()=>{
 });
 // Offline start (4.75): profil byl z cache → po připojení načíst ze serveru (moduly, skupiny z jiného zařízení)
 let _profCacheUid='', _profRefreshing=false;
+// Událost online přijde dřív než spojení Firestore → až 3 pokusy po 3 s, dokud profil chodí z cache (4.77)
 async function refreshProfileFromServer(uid){
   if(_profRefreshing) return;
   _profRefreshing=true;
   try{
-    const s=await getDoc(doc(db,'users',uid,'profile','main'));
-    if(CU?.uid!==uid||s.metadata.fromCache||!s.exists()) return;
+    let s=null;
+    for(let i=0;i<3;i++){
+      if(i) await new Promise(r=>setTimeout(r,3000));
+      if(CU?.uid!==uid||_profCacheUid!==uid) return;
+      try{ s=await getDoc(doc(db,'users',uid,'profile','main')); }
+      catch(e){ s=null; console.warn('[LP] profile refresh:',e?.code||e?.name); continue; }
+      if(!s.metadata.fromCache) break;
+    }
+    if(!s||CU?.uid!==uid||s.metadata.fromCache||!s.exists()) return;
     _profCacheUid='';
-    prof=s.data(); selMods=new Set(prof.modules||[]);
+    prof=s.data();
+    if(await syncProfileLang(uid)) return; // jazyk z jiného zařízení → reload
+    selMods=new Set(prof.modules||[]);
     subModules(); buildNav(); rDash();
+    syncGroupsFromProfile();
   }catch(e){ console.warn('[LP] profile refresh:',e?.code||e?.name); }
   finally{ _profRefreshing=false; }
+}
+// Skupiny přidané na jiném zařízení (profil z cache je neznal) → přihlásit jako initApp; běžící listenery se přeskočí
+function syncGroupsFromProfile(){
+  const ex=Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[];
+  if(!familyId&&prof.familyId){ familyId=prof.familyId; subscribeFamily(); renderFamilySettings(); return; } // přihlásí i vedlejší
+  const add=ex.filter(g=>g&&g!==familyId&&!extraGroupIds.includes(g));
+  if(!add.length) return;
+  extraGroupIds=[...extraGroupIds,...add];
+  for(const gid of add) subscribeExtraGroup(gid);
+  renderFamilySettings();
 }
 
 onAuthStateChanged(auth,async u=>{
