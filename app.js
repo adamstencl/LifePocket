@@ -1472,6 +1472,7 @@ onAuthStateChanged(auth,async u=>{
   else{
     if(CU) clearLangLocal(); // odhlášení (i z jiného místa): smazat jen údaje účtu, jazyk zařízení zůstává
     if(CU&&!_accDeleting&&!_accDeleted){ try{ localStorage.setItem('lp_fs_clear','1'); }catch(e){} } // odhlášení i z jiného tabu: smazat trvalou cache
+    const wasIn=!!CU; // false = start bez přihlášeného uživatele
     CU=null;
     resetVerify(); // upozornění na neověřený e-mail patří účtu
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
@@ -1499,7 +1500,7 @@ onAuthStateChanged(auth,async u=>{
     prof={}; selMods=new Set(); selG=''; selAv=''; tmpAv=''; mood=''; customReminders=[];
     _onbBusy=false; _tzUid=''; _profLoading=null; _profCacheUid=''; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
     clearUserSessionState();
-    if(!_accDeleted&&!_fsClearP&&retryFsClear()) return; // nedokončené mazání cache z dřívějška (4.75)
+    if(!_accDeleted&&!_accDeleting&&!_fsClearP&&retryFsClear(!wasIn)) return; // nedokončené mazání cache z dřívějška (4.75)
     ss(_accDeleted?'s-deleted':'s-login');
   }
 });
@@ -4103,11 +4104,12 @@ function clearFsCache(){
     .catch(e=>console.warn('[LP] cache Firestore (odhlaseni):',e?.code||e?.name));
   return _fsClearP;
 }
-// Start bez přihlášení s nedokončeným mazáním: jednou za relaci tabu zkusit znovu a načíst stránku
-function retryFsClear(){
+// Nedokončené mazání cache: zkusit znovu a načíst stránku. Jednou za relaci tabu jen při startu bez přihlášení
+// (4.77: běžné odhlášení příznak lp_fs_retry nespotřebuje, jinak by další start už nic nezkusil)
+function retryFsClear(startup){
   try{
-    if(localStorage.getItem('lp_fs_clear')!=='1'||sessionStorage.getItem('lp_fs_retry')) return false;
-    sessionStorage.setItem('lp_fs_retry','1');
+    if(localStorage.getItem('lp_fs_clear')!=='1') return false;
+    if(startup){ if(sessionStorage.getItem('lp_fs_retry')) return false; sessionStorage.setItem('lp_fs_retry','1'); }
   }catch(e){ return false; }
   clearFsCache().then(()=>location.reload());
   return true;
