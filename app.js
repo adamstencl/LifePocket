@@ -18041,37 +18041,83 @@ async function offerPantryUpdate(name, shopQty, sg) {
   if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
   // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“.
   // 4.77: přičíst bez ptaní jen při přesné shodě (pantryIngName), jinak se zeptat („Mléko kondenzované“ → Mléko?)
-  let match = pantryFind(items, name);
-  if(match && pantryIngName(match.name) !== pantryIngName(name)
-    && !confirm(t('pantry.matchConfirm', {name: cutName(name, 40), item: cutName(match.name, 40)}))) match = null;
-  if(match){
-    // Položka už v zásobách — přičti správné množství
-    const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
-    if(!(ingAmt > 0)) return; // nulové množství nic nepřičítá
-    const pantryUnit = (match.unit||'ks').toLowerCase();
-    let delta = ingAmt;
-    if(ingUnit !== pantryUnit){
-      const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
-      delta = converted !== null ? converted : 1;
-    }
-    const newQty = Math.round(((Number(match.qty)||0) + delta) * 1000) / 1000;
-    changePantryQty(match.id, delta, gid || '');
-    toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}) + pantrySfx(gid));
-  } else {
-    // Nová položka — auto-přidej bez modálu
-    const {amount, unit} = parseIngQty(shopQty||'1 ks');
-    const newItem = { name: cutName(name, 60), qty: amount, unit, minQty: null, updatedAt: Date.now() };
-    const newId = genId();
-    try { await setDoc(pantryDoc(gid, newId), newItem); }
-    catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
-    // Toast s "Upravit" tlačítkem (tw: jméno t by zastínilo překlad t() v celém bloku → TDZ v catch výše)
-    const tw = document.createElement('div');
-    tw.style.cssText='position:fixed;bottom:90px;left:12px;right:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;z-index:800;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-    tw.innerHTML=`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});this.closest('div').remove()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${tH('common.edit')}</button><button onclick="this.closest('div').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`;
-    document.body.appendChild(tw);
-    setTimeout(()=>tw.remove(), 6000);
-  }
+  // 4.78: dotaz jako lišta s tlačítky místo confirm() – víc nákupů za sebou se seřadí pod sebe a neblokuje
+  const match = pantryFind(items, name);
+  if(match && pantryIngName(match.name) !== pantryIngName(name)) { pantryAskMatch(name, shopQty, gid, match); return; }
+  if(match) pantryAddToItem(match, shopQty, gid);
+  else await pantryAddNew(name, shopQty, gid);
 }
+// Přičtení nákupu k existující zásobě (správné množství a jednotka)
+function pantryAddToItem(match, shopQty, gid) {
+  const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
+  if(!(ingAmt > 0)) return; // nulové množství nic nepřičítá
+  const pantryUnit = (match.unit||'ks').toLowerCase();
+  let delta = ingAmt;
+  if(ingUnit !== pantryUnit){
+    const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
+    delta = converted !== null ? converted : 1;
+  }
+  const newQty = Math.round(((Number(match.qty)||0) + delta) * 1000) / 1000;
+  changePantryQty(match.id, delta, gid || '');
+  toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}) + pantrySfx(gid));
+}
+// Nová zásoba z nákupu + lišta s „Upravit“
+async function pantryAddNew(name, shopQty, gid) {
+  const {amount, unit} = parseIngQty(shopQty||'1 ks');
+  const newItem = { name: cutName(name, 60), qty: amount, unit, minQty: null, updatedAt: Date.now() };
+  const newId = genId();
+  try { await setDoc(pantryDoc(gid, newId), newItem); }
+  catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
+  pantryNote(`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});pantryNoteClose(this)" style="${PN_BTN}">${tH('common.edit')}</button><button onclick="pantryNoteClose(this)" aria-label="${tH('common.close')}" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`, 6000);
+}
+// Lišty zásob (4.78): společný sloupec dole, víc oznámení se řadí pod sebe, nejvýš 4
+const PN_BTN = 'background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700;white-space:nowrap';
+function pantryNote(html, ms, onExpire) {
+  let box = document.getElementById('pantry-notes');
+  if(!box) {
+    box = document.createElement('div'); box.id = 'pantry-notes';
+    box.style.cssText = 'position:fixed;bottom:90px;left:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+    document.body.appendChild(box);
+  }
+  while(box.childElementCount >= 4) pantryNoteDrop(box.firstElementChild, true);
+  const r = document.createElement('div');
+  r.className = 'pantry-note';
+  r.style.cssText = 'pointer-events:auto;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+  r.innerHTML = html;
+  r._exp = onExpire || null;
+  r._tm = setTimeout(() => pantryNoteDrop(r, true), ms);
+  box.appendChild(r);
+  return r;
+}
+// expired = vypršela / vytlačila ji novější → výchozí akce (onExpire)
+function pantryNoteDrop(r, expired) {
+  if(!r || !r.isConnected) return;
+  clearTimeout(r._tm);
+  const box = r.parentElement; r.remove();
+  if(box && !box.childElementCount) box.remove();
+  if(expired && r._exp) r._exp();
+}
+window.pantryNoteClose = el => pantryNoteDrop(el?.closest('.pantry-note'), false);
+// Nejasná shoda: lišta „Přičíst / Jako nová“; bez volby (12 s) = nová zásoba jako dřív „Zrušit“ u confirm()
+const _pantryAsk = new Map();
+function pantryAskMatch(name, shopQty, gid, match) {
+  const key = genId();
+  _pantryAsk.set(key, {name, shopQty, gid, matchId: match.id});
+  pantryNote(`<span style="flex:1;font-size:13px;color:var(--text2)">${tH('pantry.matchAsk', {name: cutName(name, 40), item: cutName(match.name, 40)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,true,this)" style="${PN_BTN}">${tH('pantry.matchAdd')}</button><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,false,this)" style="${PN_BTN};color:var(--text2)">${tH('pantry.matchNew')}</button>`,
+    12000, () => pantryAskDo(key, false));
+}
+window.pantryAskDo = async (key, add, el) => {
+  const a = _pantryAsk.get(key);
+  if(!a) return;
+  _pantryAsk.delete(key);
+  if(el) pantryNoteClose(el);
+  if(!CU) return;
+  const items = await pantryItemsReady(a.gid);
+  if(!items) { toast(t('pantry.notAdded', {name: cutName(a.name, 40)}), 5000); return; }
+  const match = add ? items.find(i => i.id === a.matchId) : null; // zásoba mezitím mohla zmizet → nová
+  if(match) pantryAddToItem(match, a.shopQty, a.gid);
+  else await pantryAddNew(a.name, a.shopQty, a.gid);
+};
 
 window.editShopQty = (id, currentQty, el) => {
   const inp = document.createElement('input');

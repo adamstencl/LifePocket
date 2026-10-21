@@ -1220,7 +1220,9 @@ export default {
   'pantry.loadErr': '⚠️ Couldn’t load the pantry. Try again in a moment.',
   'pantry.offline': '📡 You’re offline and the pantry isn’t on this device yet. It will load once you’re connected.',
   'pantry.notAdded': '🧊 Couldn’t add {name} to the pantry (it didn’t load). Add it manually.',
-  'pantry.matchConfirm': 'Add “{name}” to the pantry item “{item}”?\n\nCancel = add it as a new item.',
+  'pantry.matchAsk': 'Add “{name}” to the pantry item “{item}”?',
+  'pantry.matchAdd': 'Add',
+  'pantry.matchNew': 'As new',
   'pantry.saveErr': '❌ Couldn’t save the pantry, try again',
   'pantry.migrated': { one: '🧊 {n} pantry item from this device is now saved in your account', other: '🧊 {n} pantry items from this device are now saved in your account' },
 

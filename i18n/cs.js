@@ -1234,7 +1234,9 @@ export default {
   'pantry.loadErr': '⚠️ Zásoby se nepodařilo načíst. Zkus to znovu za chvíli.',
   'pantry.offline': '📡 Jsi offline a zásoby v zařízení zatím nejsou. Načtou se po připojení.',
   'pantry.notAdded': '🧊 {name} se nepodařilo přidat do zásob (nenačetly se). Přidej ho ručně.',
-  'pantry.matchConfirm': 'Přičíst „{name}“ k zásobě „{item}“?\n\nZrušit = přidat jako novou zásobu.',
+  'pantry.matchAsk': 'Přičíst „{name}“ k zásobě „{item}“?',
+  'pantry.matchAdd': 'Přičíst',
+  'pantry.matchNew': 'Jako nová',
   'pantry.saveErr': '❌ Zásoby se nepodařilo uložit, zkus to znovu',
   'pantry.migrated': { one: '🧊 {n} zásoba z tohoto zařízení je teď uložená v tvém účtu', few: '🧊 {n} zásoby z tohoto zařízení jsou teď uložené v tvém účtu', other: '🧊 {n} zásob z tohoto zařízení je teď uloženo v tvém účtu' },
 
