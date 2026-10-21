@@ -389,6 +389,8 @@ else show();
         <div class="dgreet" id="d-greet">Ahoj!</div>
         <div class="d-date-lbl" id="d-date-lbl"></div>
       </div>
+      <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi) -->
+      <div class="verify-note" id="verify-note" role="status" hidden></div>
       <!-- Avatar banner -->
       <div class="avbanner" onclick="sp(&#39;avatar&#39;)">
         <div class="avbig" id="d-avem">⭐</div>
@@ -1248,6 +1250,8 @@ else show();
         <div class="setsec-d" data-i18n="set.account.desc">Stáhni si všechna svoje data do souboru, nebo účet trvale smaž.</div>
         <!-- ID účtu (4.63, vykresluje renderPcSettings) -->
         <div id="set-uid"></div>
+        <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi) -->
+        <div id="set-verify" hidden></div>
         <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()" style="margin-top:10px" data-i18n="set.account.export">📥 Stáhnout moje data</button>
         <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
         <button type="button" class="acc-del-link" onclick="openDeleteAccount()" data-i18n="set.account.delete">🗑️ Smazat účet</button>

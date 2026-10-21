@@ -2247,6 +2247,15 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .acc-uid-l{flex:none}
 .acc-uid-v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text3)}
 .acc-uid-b{flex:none;min-width:44px;min-height:44px}
+/* Neověřený e-mail (4.76) */
+.verify-note{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;background:var(--card2);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:10px 12px;margin-bottom:16px;font-size:14px;color:var(--text2)}
+.verify-note[hidden],#set-verify[hidden]{display:none}
+.verify-note-t{flex:1 1 180px;min-width:0}
+.verify-b{padding:8px 14px;font-size:14px;min-height:44px}
+.verify-b:disabled{opacity:.5;cursor:default}
+.verify-note-x{flex:none;background:none;border:none;color:var(--text3);font-size:16px;min-width:44px;min-height:44px;cursor:pointer}
+.acc-verify{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-top:10px;font-size:14px;color:var(--text2)}
+.acc-verify-t{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
 .pcadm-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:6px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:12px;background:var(--card2);color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box}
 .pcadm-nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .pcadm-acts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}

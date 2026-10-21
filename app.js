@@ -1255,11 +1255,73 @@ async function startSession(u){
     selMods=new Set(prof.modules||[]);initApp();
     touchLastSeen(u.uid);
     _tzUid=u.uid; syncProfileTz(u.uid);
-    if(u.providerData[0]?.providerId==='password'&&!u.emailVerified){
-      setTimeout(()=>whenUiFree(()=>toast(t('auth.verifyEmail'),5000)),1000);
-    }
+    // Neověřený e-mail: nejdřív čerstvý stav z Auth (ověřeno jinde), pak upozornění na Domů a v Nastavení
+    if(needsVerify()) refreshVerify(true);
   }else ss('s-step1');
 }
+// ── Ověření e-mailu (4.76): upozornění neblokuje, odeslání znovu nejvýš 1× za 60 s ──
+// Stav se obnovuje přes CU.reload() při návratu do appky, nejvýš 1× za minutu
+let _verifySentAt=0,_verifyReloadAt=0,_verifyHidden=false,_verifyTimer=0;
+const VERIFY_GAP=60000;
+function needsVerify(){
+  return !!(CU&&!CU.emailVerified&&CU.providerData?.some(p=>p.providerId==='password'));
+}
+function resetVerify(){
+  _verifySentAt=0; _verifyReloadAt=0; _verifyHidden=false; clearTimeout(_verifyTimer); _verifyTimer=0;
+  renderVerifyUi();
+}
+function renderVerifyUi(){
+  const on=needsVerify();
+  const wait=Math.max(0,_verifySentAt+VERIFY_GAP-Date.now());
+  const dis=wait>0?' disabled':'';
+  const n=document.getElementById('verify-note');
+  if(n){
+    n.hidden=!on||_verifyHidden;
+    n.innerHTML=on?`<span class="verify-note-t">${tH('auth.verifyNote')}</span>
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()"${dis}>${tH('auth.verifyResend')}</button>
+      <button type="button" class="verify-note-x" aria-label="${tH('common.close')}" onclick="hideVerifyNote()">✕</button>`:'';
+  }
+  const s=document.getElementById('set-verify');
+  if(s){
+    s.hidden=!on;
+    s.innerHTML=on?`<div class="acc-verify"><span class="acc-verify-t">${tH('auth.verifySet',{email:CU.email||''})}</span>
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()"${dis}>${tH('auth.verifyResendSet')}</button></div>`:'';
+  }
+  // Po uplynutí 60 s znovu povolit tlačítka
+  clearTimeout(_verifyTimer); _verifyTimer=0;
+  if(on&&wait>0) _verifyTimer=setTimeout(renderVerifyUi,wait+50);
+}
+window.hideVerifyNote=()=>{ _verifyHidden=true; renderVerifyUi(); };
+window.resendVerify=async()=>{
+  const u=CU;
+  if(!needsVerify()){ renderVerifyUi(); return; }
+  const left=Math.ceil((_verifySentAt+VERIFY_GAP-Date.now())/1000);
+  if(left>0){ toast(t('auth.verifyWait',{s:left}),3000); return; }
+  _verifySentAt=Date.now(); renderVerifyUi(); // zámek i během odesílání
+  try{
+    await sendEmailVerification(u);
+    if(CU===u) toast(t('auth.verifySent'),6000);
+  }catch(e){
+    if(e?.code==='auth/too-many-requests') toast(t('err.tooManyRequests'),5000); // zámek 60 s zůstává
+    else { _verifySentAt=0; toast(userErr(e,'verify'),5000); }
+  }
+  if(CU===u) renderVerifyUi();
+};
+async function refreshVerify(force){
+  if(!needsVerify()) return renderVerifyUi();
+  if(!force&&Date.now()-_verifyReloadAt<VERIFY_GAP) return;
+  _verifyReloadAt=Date.now();
+  const u=CU;
+  if(navigator.onLine!==false){
+    try{ await u.reload(); }catch(e){ console.warn('[LP] auth reload:',e?.code||e?.name); }
+  }
+  if(CU!==u) return;
+  const was=!!document.getElementById('verify-note')?.innerHTML;
+  renderVerifyUi();
+  if(was&&!needsVerify()) toast(t('auth.verifyDone'),4000);
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&prof) refreshVerify(); });
+window.addEventListener('focus',()=>{ if(prof) refreshVerify(); });
 // Datum v pražském čase (YYYY-MM-DD), bez Intl jen lokální den
 function pragueDS(d=new Date()){
   try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague'}).format(d); }catch(e){ return toDS(d); }
@@ -1383,6 +1445,7 @@ onAuthStateChanged(auth,async u=>{
     if(CU) clearLangLocal(); // odhlášení (i z jiného místa): smazat jen údaje účtu, jazyk zařízení zůstává
     if(CU&&!_accDeleting&&!_accDeleted){ try{ localStorage.setItem('lp_fs_clear','1'); }catch(e){} } // odhlášení i z jiného tabu: smazat trvalou cache
     CU=null;
+    resetVerify(); // upozornění na neověřený e-mail patří účtu
     fcmState='idle'; fcmLastError=''; // stav push registrace patří přihlášenému účtu
     // Unsubscribe všechny Firebase listenery
     destroyAllFireSubs();
