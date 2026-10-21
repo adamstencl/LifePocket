@@ -82,6 +82,8 @@ export default {
   'auth.resetSent': '📧 Pokud účet s tímto e-mailem existuje, poslali jsme na něj odkaz k obnově hesla. Mrkni i do spamu.',
   'auth.verifyNote': '📧 Ověř svůj e-mail, odkaz najdeš ve schránce (mrkni i do spamu).',
   'auth.verifyResend': 'Poslat znovu',
+  'auth.verifyNoteUnsent': '📧 Ověř svůj e-mail: pošli si ověřovací e-mail.',
+  'auth.verifySend': 'Poslat',
   'auth.verifySet': 'E-mail {email} zatím není ověřený.',
   'auth.verifyResendSet': '📧 Poslat ověřovací e-mail znovu',
   'auth.verifySent': '📧 Ověřovací e-mail je na cestě. Mrkni i do spamu.',

@@ -81,6 +81,8 @@ export default {
   'auth.resetSent': '📧 If an account with this email exists, we\'ve sent it a password reset link. Check spam too.',
   'auth.verifyNote': '📧 Verify your email, the link is in your inbox (check spam too).',
   'auth.verifyResend': 'Send again',
+  'auth.verifyNoteUnsent': '📧 Verify your email: send yourself a verification email.',
+  'auth.verifySend': 'Send',
   'auth.verifySet': 'Email {email} is not verified yet.',
   'auth.verifyResendSet': '📧 Send the verification email again',
   'auth.verifySent': '📧 Verification email is on its way. Check spam too.',

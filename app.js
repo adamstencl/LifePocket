@@ -1271,12 +1271,13 @@ async function startSession(u){
 // ── Ověření e-mailu (4.76): upozornění neblokuje, odeslání znovu nejvýš 1× za 60 s ──
 // Stav se obnovuje přes CU.reload() při návratu do appky, nejvýš 1× za minutu
 let _verifySentAt=0,_verifyReloadAt=0,_verifyHidden=false,_verifyTimer=0;
+let _verifyUnsent=false; // odeslání při registraci selhalo → upozornění nesmí tvrdit, že odkaz je ve schránce (4.77)
 const VERIFY_GAP=60000;
 function needsVerify(){
   return !!(CU&&!CU.emailVerified&&CU.providerData?.some(p=>p.providerId==='password'));
 }
 function resetVerify(){
-  _verifySentAt=0; _verifyReloadAt=0; _verifyHidden=false; clearTimeout(_verifyTimer); _verifyTimer=0;
+  _verifySentAt=0; _verifyReloadAt=0; _verifyHidden=false; _verifyUnsent=false; clearTimeout(_verifyTimer); _verifyTimer=0;
   renderVerifyUi();
 }
 // Obsah se překreslí jen při změně (data-k), jinak se mění jen disabled tlačítek (4.77: role=status čtečka neopakuje)
@@ -1286,10 +1287,10 @@ function renderVerifyUi(){
   const n=document.getElementById('verify-note');
   if(n){
     n.hidden=!on||_verifyHidden;
-    const k=on?'1':'';
+    const k=on?(_verifyUnsent?'u':'1'):'';
     if(n.dataset.k!==k){ n.dataset.k=k;
-      n.innerHTML=on?`<span class="verify-note-t">${tH('auth.verifyNote')}</span>
-      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('auth.verifyResend')}</button>
+      n.innerHTML=on?`<span class="verify-note-t">${tH(_verifyUnsent?'auth.verifyNoteUnsent':'auth.verifyNote')}</span>
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySend':'auth.verifyResend')}</button>
       <button type="button" class="verify-note-x" aria-label="${tH('common.close')}" onclick="hideVerifyNote()">✕</button>`:''; }
   }
   const s=document.getElementById('set-verify');
@@ -1314,8 +1315,9 @@ window.resendVerify=async()=>{
   _verifySentAt=Date.now(); renderVerifyUi(); // zámek i během odesílání
   try{
     await sendEmailVerification(u);
-    if(CU===u) toast(t('auth.verifySent'),6000);
+    if(CU===u){ _verifyUnsent=false; toast(t('auth.verifySent'),6000); }
   }catch(e){
+    if(CU!==u) return; // mezitím odhlášen: stav i hláška patří jinému účtu
     if(e?.code==='auth/too-many-requests') toast(t('err.tooManyRequests'),5000); // zámek 60 s zůstává
     else { _verifySentAt=0; toast(userErr(e,'verify'),5000); }
   }
@@ -4514,8 +4516,9 @@ window.doEmailRegister=async()=>{
   try{
     const cred=await createUserWithEmailAndPassword(auth,email,pass);
     // Účet už existuje a uživatel je přihlášený: chyba ověřovacího e-mailu registraci neruší (poslat znovu je v appce)
-    try{ await sendEmailVerification(cred.user); _verifySentAt=Date.now(); renderVerifyUi(); }
-    catch(ve){ console.warn('[LP] verify e-mail:',ve?.code||ve?.name); }
+    // Stav ověření jen dokud je přihlášený tento účet (4.77)
+    try{ await sendEmailVerification(cred.user); if(CU?.uid===cred.user.uid){ _verifySentAt=Date.now(); renderVerifyUi(); } }
+    catch(ve){ console.warn('[LP] verify e-mail:',ve?.code||ve?.name); if(CU?.uid===cred.user.uid){ _verifyUnsent=true; renderVerifyUi(); } }
   }catch(ex){
     b.disabled=false;b.textContent=t('auth.createAccount');
     const msgs={'auth/email-already-in-use':'auth.err.emailInUse','auth/invalid-email':'auth.err.invalidEmail','auth/weak-password':'auth.err.weakPassword'};
