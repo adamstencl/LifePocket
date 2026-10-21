@@ -291,7 +291,7 @@ function zoneNow(tz, date = new Date()) {
   const zone = normTz(tz);
   const p = {};
   for (const x of tzFormatter(zone).formatToParts(date)) p[x.type] = x.value;
-  // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout výpočet diffMin u událostí
+  // Bez sekund: kolísavé zpoždění startu cronu nesmí posunout porovnání časů (isTimeMatch)
   const wall = new Date(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, 0, 0);
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const tmrw = new Date(wall);
@@ -951,27 +951,94 @@ function isHabitDueToday(habit, today, dow) {
   return true;
 }
 
-// Okno času událostí, které tento běh upozorní (hodinu předem): diffMin 58–62 → začátek za 58–62 min od wall.
-// Vrací {lo, hi} jako „HH:MM“ (lexikograficky = časově, klient ukládá čas s nulami, okEvTime), nebo null,
-// když okno leží celé po půlnoci (zítřejší události cron nehlásí, stejně jako dřív). 24:00 = 1440 min
-// (Date ho bere jako půlnoc dalšího dne), proto se okno ořízne až na 1440.
+// Upozornění na události s časem hodinu předem (S4). Počítá se z absolutních okamžiků, ne z minut dne:
+// začátek události (datum + čas v zóně uživatele → okamžik) musí ležet EV_LEAD_MIN až EV_LEAD_MAX minut
+// (včetně) po začátku minuty běhu. Běh každých 5 min → každá minuta začátku spadne do okna právě jednou,
+// i přes půlnoc a změnu času (na podzim se 02:xx opakuje, okamžik ale nastane jen jednou).
 const EV_LEAD_MIN = 58, EV_LEAD_MAX = 62;
-function evWindow(wall) {
-  const n = wall.getHours() * 60 + wall.getMinutes();
-  const a = n + EV_LEAD_MIN, b = Math.min(n + EV_LEAD_MAX, 1440);
-  if (a > 1440) return null;
-  const hm = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
-  return {lo: hm(a), hi: hm(b)};
+const MIN_MS = 60000, HOUR_MS = 3600000;
+const EV_GAP_LOOKBACK = 3 * HOUR_MS; // jarní mezera bývá 1 h; posun platný před ní se hledá 3 h zpět
+
+const hmStr = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+const ymdUTC = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+// Čas události „HH:MM“ → minuty dne; 24:00 = 1440 (půlnoc dalšího dne, Date ho tak bral i dřív). Jiný formát = null.
+function evTimeMin(s) {
+  const r = typeof s === 'string' && /^(\d\d):([0-5]\d)$/.exec(s);
+  if (!r) return null;
+  const x = +r[1] * 60 + +r[2];
+  return x <= 1440 ? x : null;
+}
+
+// Posun zóny v okamžiku t (ms): nástěnný čas − UTC, na celé minuty
+function tzOffset(tz, t) {
+  const p = {};
+  for (const x of tzFormatter(tz).formatToParts(new Date(t))) p[x.type] = x.value;
+  return Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute) - Math.floor(t / MIN_MS) * MIN_MS;
+}
+
+// Okamžik (ms) nástěnného času: datum „YYYY-MM-DD“ + min minut dne v zóně tz (bez knihoven, jen Intl).
+// Čas, který nastane dvakrát (podzim), = první výskyt; neexistující čas (jaro) = posun o délku mezery
+// dopředu (02:30 → 03:30), stejně jako Date v JS. Předpoklad: nejvýš jedna změna času během ±6 h.
+function wallToInstant(tz, date, min) {
+  const [y, mo, d] = date.split('-').map(Number);
+  const g = Date.UTC(y, mo - 1, d, 0, min); // nástěnný čas zapsaný jako UTC (1440 → půlnoc dalšího dne)
+  const t0 = g - tzOffset(tz, g); // přibližný okamžik (chyba nejvýš o rozdíl posunů)
+  const oA = tzOffset(tz, t0 - 6 * HOUR_MS), oB = tzOffset(tz, t0 + 6 * HOUR_MS);
+  const ok = [g - oA, g - oB].filter(t => tzOffset(tz, t) === g - t);
+  return ok.length ? Math.min(...ok) : g - oA;
+}
+
+// Je událost (její první den) v den „date“? Každoroční: shoda měsíce a dne, 29. 2. v nepřestupném roce = 28. 2.
+// Vícedenní události (dateEnd) se záměrně připomínají jen první den (začátek), ne každý den trvání.
+function evOnDate(ev, date) {
+  if (ev.repeat !== 'yes') return ev.date === date;
+  const md = ev.date.slice(5), dmd = date.slice(5);
+  if (md === dmd) return true;
+  const y = +date.slice(0, 4);
+  return md === '02-29' && dmd === '02-28' && !(y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0));
+}
+
+// Okno běhu pro zónu tz: A, B = okamžiky (ms); slots = čas „HH:MM“ → data (v zóně uživatele), kdy ten nástěnný
+// čas leží v okně; ranges = intervaly „HH:MM“ pro dotazy na pole time (lexikograficky = časově, klient ukládá
+// čas s nulami, okEvTime). Přes půlnoc vzniknou dva intervaly (konec dneška a začátek zítřka), jinak jeden.
+// U změny času se rozsah počítá z okamžiků, takže se posune sám (žádné plošné rozšíření o ±60 min).
+function evWindow(tz, nowMs) {
+  const base = Math.floor(nowMs / MIN_MS) * MIN_MS; // bez sekund: zpoždění startu cronu okno neposune
+  const A = base + EV_LEAD_MIN * MIN_MS, B = base + EV_LEAD_MAX * MIN_MS;
+  // Kandidátní posuny: v okně (A, B) a před případnou jarní mezerou (čas v mezeře se počítá posunem před ní)
+  const offs = new Set([tzOffset(tz, A - EV_GAP_LOOKBACK), tzOffset(tz, A), tzOffset(tz, B)]);
+  const slots = new Map();
+  const add = (hm, date) => { let s = slots.get(hm); if (!s) slots.set(hm, s = new Set()); s.add(date); };
+  for (const o of offs) {
+    for (let t = A; t <= B; t += MIN_MS) {
+      const w = new Date(t + o);
+      const date = ymdUTC(w), min = w.getUTCHours() * 60 + w.getUTCMinutes();
+      const at = wallToInstant(tz, date, min);
+      if (at < A || at > B) continue; // nástěnný čas patří jinému okamžiku (např. druhý výskyt 02:xx na podzim)
+      add(hmStr(min), date);
+      if (min === 0) add('24:00', ymdUTC(new Date(t + o - 86400000))); // 24:00 předchozího dne = tatáž půlnoc
+    }
+  }
+  const mins = [...slots.keys()].map(evTimeMin).sort((a, b) => a - b);
+  const ranges = [];
+  for (const x of mins) {
+    const r = ranges[ranges.length - 1];
+    if (r && x === r[1] + 1) r[1] = x; else ranges.push([x, x]);
+  }
+  const rs = ranges.map(([a, b]) => ({lo: hmStr(a), hi: hmStr(b)}));
+  return {A, B, slots, ranges: rs, key: rs.map(r => `${r.lo}-${r.hi}`).join(',')};
 }
 
 // Události kolekce potřebné pro cron (S4): jen ty s časem v okně tohoto běhu. Rozsah na jednom poli (time)
 // nepotřebuje složený index a vrátí i každoročně opakované; datum, typ a opakování se filtrují v kódu.
-// Dřív 2 dotazy (date == today, repeat == 'yes' = všechny opakované, i narozeniny) v každém běhu.
-// Vrací dokumenty seřazené podle ID (stejné pořadí jako dřív).
+// Jeden dotaz na interval okna (obvykle 1, kolem půlnoci 2). Vrací dokumenty seřazené podle ID, bez duplicit.
 async function loadTimedEvents(path, win) {
-  if (!win) return [];
-  const snap = await db.collection(path).where('time', '>=', win.lo).where('time', '<=', win.hi).get();
-  return [...snap.docs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const byId = new Map();
+  for (const r of win.ranges) {
+    const snap = await db.collection(path).where('time', '>=', r.lo).where('time', '<=', r.hi).get();
+    for (const d of snap.docs) byId.set(d.id, d);
+  }
+  return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 async function loadBirthdays(path) {
   return (await db.collection(path).where('type', '==', 'birthday').get()).docs;
@@ -1078,6 +1145,13 @@ exports.sendScheduledNotifications = onSchedule(
 
     // Skupiny: dokument a události čteme jednou za běh pro všechny členy (cache slibů podle familyId)
     const famCache = new Map();
+    // Okno upozornění na události: jednou za běh pro každou zónu (počet zón je malý, normTz je ověřená)
+    const evWinCache = new Map();
+    const evWinFor = (tz) => {
+      let w = evWinCache.get(tz);
+      if (!w) { w = evWindow(tz, runDate.getTime()); evWinCache.set(tz, w); }
+      return w;
+    };
     const famEntry = (fid) => {
       let e = famCache.get(fid);
       if (!e) {
@@ -1255,7 +1329,7 @@ exports.sendScheduledNotifications = onSchedule(
         const ns = prof.notifSettings || {};
         // Čas, dnešní datum a den v týdnu v zóně uživatele (bez platné tz = Europe/Prague)
         const zn = zoneNow(prof.tz, runDate);
-        const {wall, h, m, today, dow, tmrwMD} = zn;
+        const {h, m, today, dow, tmrwMD} = zn;
         const todayMD = today.slice(5);
         // Jazyk a rod příjemce (texty ze slovníku i18n-server.js)
         const L = normLang(prof.lang);
@@ -1368,7 +1442,7 @@ exports.sendScheduledNotifications = onSchedule(
         const bdayRun = isTimeMatch(h, m, morningTime);
 
         // Osobní kalendář
-        const evWin = evWindow(wall); // null = okno po půlnoci → žádné čtení
+        const evWin = evWinFor(zn.tz); // intervaly časů (přes půlnoc dva) → obvykle 1 dotaz na kolekci
         const evGroups = [await loadTimedEvents(`users/${uid}/events`, evWin)];
         const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
         // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
@@ -1379,7 +1453,7 @@ exports.sendScheduledNotifications = onSchedule(
             const famSnap = await fe.doc;
             const fam = famSnap.exists ? famSnap.data() : null;
             if (fam && fam.members?.[uid] && fam.shareCal) {
-              if (evWin) evGroups.push(await lazy(fe, `events|${evWin.lo}|${evWin.hi}`, () => loadTimedEvents(`families/${fid}/events`, evWin)));
+              if (evWin.ranges.length) evGroups.push(await lazy(fe, `events|${evWin.key}`, () => loadTimedEvents(`families/${fid}/events`, evWin)));
               if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
             }
           } catch(e) { /* skupina nemusí existovat */ }
@@ -1399,18 +1473,19 @@ exports.sendScheduledNotifications = onSchedule(
           }
         }
 
-        // Události s časem — hodinu předem
+        // Události s časem — hodinu předem. Typy s časem shodně s klientem (app.js evHasTime): všechny kromě
+        // narozenin, tedy i vlastní typy (customEvTypes). Datum = den začátku v zóně uživatele (i zítřek
+        // u událostí krátce po půlnoci); slots obsahují jen časy, jejichž okamžik leží v okně tohoto běhu.
         for (const evDoc of evGroups.flat()) {
           const ev = evDoc.data();
-          if (!ev.date || ev.type !== 'event' || !ev.time) continue;
-          const evDate = ev.repeat === 'yes' ? today.slice(0,5) + ev.date.slice(5) : ev.date;
-          if (evDate !== today) continue;
-          const evTime = new Date(`${today}T${ev.time}:00`);
-          const diffMin = Math.round((evTime - wall) / 60000);
-          // Okno 5 minut = jeden běh cronu → upozornění jen jednou
-          if (diffMin >= 58 && diffMin < 63) {
-            try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${today}`, {data: {open: 'cal'}}); }
+          if (typeof ev.date !== 'string' || ev.type === 'birthday' || typeof ev.time !== 'string') continue;
+          const dates = evWin.slots.get(ev.time);
+          if (!dates) continue;
+          for (const evDay of dates) {
+            if (!evOnDate(ev, evDay)) continue;
+            try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${evDay}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] event push:`, e.message); }
+            break; // jedna událost = nejvýš jedno upozornění v běhu
           }
         }
       } catch(userErr) {
