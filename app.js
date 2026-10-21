@@ -1301,10 +1301,10 @@ function renderVerifyUi(){
   const s=document.getElementById('set-verify');
   if(s){
     s.hidden=!on;
-    const k=on?String(CU.email||''):'';
+    const k=on?(_verifyUnsent?'u:':'1:')+String(CU.email||''):''; // 4.78: neodesláno → „Poslat“, ne „znovu“
     if(s.dataset.k!==k){ s.dataset.k=k;
       s.innerHTML=on?`<div class="acc-verify"><span class="acc-verify-t">${tH('auth.verifySet',{email:CU.email||''})}</span>
-      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('auth.verifyResendSet')}</button></div>`:''; }
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySendSet':'auth.verifyResendSet')}</button></div>`:''; }
   }
   document.querySelectorAll('#verify-note .verify-b,#set-verify .verify-b').forEach(b=>{ b.disabled=wait>0; });
   // Po uplynutí 60 s znovu povolit tlačítka

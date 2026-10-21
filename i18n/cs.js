@@ -85,6 +85,7 @@ export default {
   'auth.verifyNoteUnsent': '📧 Ověř svůj e-mail: pošli si ověřovací e-mail.',
   'auth.verifySend': 'Poslat',
   'auth.verifySet': 'E-mail {email} zatím není ověřený.',
+  'auth.verifySendSet': '📧 Poslat ověřovací e-mail',
   'auth.verifyResendSet': '📧 Poslat ověřovací e-mail znovu',
   'auth.verifySent': '📧 Ověřovací e-mail je na cestě. Mrkni i do spamu.',
   'auth.verifyWait': 'Další e-mail můžeš poslat za {s} s.',

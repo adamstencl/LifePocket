@@ -84,6 +84,7 @@ export default {
   'auth.verifyNoteUnsent': '📧 Verify your email: send yourself a verification email.',
   'auth.verifySend': 'Send',
   'auth.verifySet': 'Email {email} is not verified yet.',
+  'auth.verifySendSet': '📧 Send the verification email',
   'auth.verifyResendSet': '📧 Send the verification email again',
   'auth.verifySent': '📧 Verification email is on its way. Check spam too.',
   'auth.verifyWait': 'You can send another email in {s} s.',
