@@ -20,3 +20,11 @@
 - Každoroční 29. 2. se v nepřestupném roce nepřipomene; vícedenní události jen první den.
 - Čtení roste s historií událostí s časem; varianta bez čtení: klient zapisuje nejbližší připomínky do profilu.
 - `evWindow`: `a>=1440` → null; sjednotit konstanty okna s podmínkou v cyklu.
+
+## Z 4.76 (e-mailové přihlášení)
+- `doEmailLogin`: `auth/user-not-found` prozrazuje existenci účtu → sjednotit na `auth.err.invalidCredential`.
+- `#verify-note` (role=status) se celé překresluje → čtečka oznamuje znovu; měnit jen `disabled`.
+- `refreshVerify` offline nastaví `_verifyReloadAt` → po návratu sítě až za 60 s; přidat posluchač `online`.
+- Po selhaném odeslání při registraci upozornění tvrdí „odkaz najdeš ve schránce“.
+- `resendVerify`: chybový toast i po odhlášení (chybí `CU===u`); `_verifySentAt` po odhlášení při registraci.
+- Sjednotit „email“ → „e-mail“ ve starších klíčích (`auth.fillBoth`, `auth.err.invalidEmail`, `auth.resetNeedEmail`).
