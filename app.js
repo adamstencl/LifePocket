@@ -1320,8 +1320,8 @@ async function refreshVerify(force){
   renderVerifyUi();
   if(was&&!needsVerify()) toast(t('auth.verifyDone'),4000);
 }
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&prof) refreshVerify(); });
-window.addEventListener('focus',()=>{ if(prof) refreshVerify(); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&CU) refreshVerify(); });
+window.addEventListener('focus',()=>{ if(CU) refreshVerify(); });
 // Datum v pražském čase (YYYY-MM-DD), bez Intl jen lokální den
 function pragueDS(d=new Date()){
   try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague'}).format(d); }catch(e){ return toDS(d); }
@@ -4473,8 +4473,10 @@ window.doEmailRegister=async()=>{
   if(pass.length<6){e.textContent=t('auth.passShort');e.classList.add('show');return;}
   b.disabled=true;b.textContent=t('auth.registering');
   try{
-    await createUserWithEmailAndPassword(auth,email,pass);
-    await sendEmailVerification(auth.currentUser);
+    const cred=await createUserWithEmailAndPassword(auth,email,pass);
+    // Účet už existuje a uživatel je přihlášený: chyba ověřovacího e-mailu registraci neruší (poslat znovu je v appce)
+    try{ await sendEmailVerification(cred.user); _verifySentAt=Date.now(); renderVerifyUi(); }
+    catch(ve){ console.warn('[LP] verify e-mail:',ve?.code||ve?.name); }
   }catch(ex){
     b.disabled=false;b.textContent=t('auth.createAccount');
     const msgs={'auth/email-already-in-use':'auth.err.emailInUse','auth/invalid-email':'auth.err.invalidEmail','auth/weak-password':'auth.err.weakPassword'};
@@ -4664,6 +4666,7 @@ window.finishOnboard=async()=>{
     }catch(e){console.warn('[LP] ukázkové návyky:',e?.code||e?.name);}
   }
   initApp();
+  if(needsVerify()) refreshVerify(true); // nový účet e-mailem: upozornění s možností poslat znovu
   return true;
   }catch(e){
     // Zámek se uvolní jen při chybě; po úspěchu už je appka spuštěná
