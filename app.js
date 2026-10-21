@@ -1324,9 +1324,9 @@ window.resendVerify=async()=>{
 async function refreshVerify(force){
   if(!needsVerify()) return renderVerifyUi();
   if(!force&&Date.now()-_verifyReloadAt<VERIFY_GAP) return;
-  _verifyReloadAt=Date.now();
   const u=CU;
-  if(navigator.onLine!==false){
+  if(navigator.onLine!==false){ // offline: bez zámku 60 s, po návratu sítě hned znovu (posluchač online)
+    _verifyReloadAt=Date.now();
     try{ await u.reload(); }catch(e){ console.warn('[LP] auth reload:',e?.code||e?.name); }
   }
   if(CU!==u) return;
@@ -1336,6 +1336,7 @@ async function refreshVerify(force){
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&CU) refreshVerify(); });
 window.addEventListener('focus',()=>{ if(CU) refreshVerify(); });
+window.addEventListener('online',()=>{ if(CU&&needsVerify()) refreshVerify(); });
 // Datum v pražském čase (YYYY-MM-DD), bez Intl jen lokální den
 function pragueDS(d=new Date()){
   try{ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague'}).format(d); }catch(e){ return toDS(d); }
