@@ -1118,11 +1118,13 @@ let entries=[];
 // ── Firebase subscription helper ──────────────────────────
 // Eliminuje opakující se vzor: if(unsub) unsub(); unsub = onSnapshot(...)
 const _fireSubs = {};
-function createFireSub(key, ref, opts, callback) {
+// onErr (volitelné, 4.77): po zalogování chyby listeneru, např. úklid stavu „načítá se“
+function createFireSub(key, ref, opts, callback, onErr) {
   if (!CU) return;
-  if (typeof opts === 'function') { callback = opts; opts = null; }
+  if (typeof opts === 'function') { onErr = callback; callback = opts; opts = null; }
   if (_fireSubs[key]) { _fireSubs[key](); delete _fireSubs[key]; }
-  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback, snapErr(key)) : onSnapshot(ref, callback, snapErr(key));
+  const se = snapErr(key), err = onErr ? e => { se(e); onErr(e); } : se;
+  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback, err) : onSnapshot(ref, callback, err);
 }
 // Chyba listeneru (4.75): jen varování a technický záznam (bez dat), appka běží dál s posledními daty
 function snapErr(tag) {
@@ -17339,8 +17341,11 @@ function subShop(){
       shopItemsLoaded=true;
       if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na osobní seznam
       renderShop();
-    }
+    },
+    // Chyba (4.77): listener skončil → uvolnit klíč, ať nabídky nečekají na seznam a subModules ho může přihlásit znovu
+    () => { if(_fireSubs['shop'] === un) delete _fireSubs['shop']; }
   );
+  const un = _fireSubs['shop'];
 }
 
 // ── SHOPPING ──────────────────────────────────────────
