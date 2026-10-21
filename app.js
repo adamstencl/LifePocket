@@ -1475,26 +1475,45 @@ async function refreshProfileFromServer(uid){
     if(CU?.uid!==uid) return; // během čekání odhlášení / jiný účet (4.78)
     selMods=new Set(prof.modules||[]);
     subModules(); buildNav(); rDash();
-    syncGroupsFromProfile(!s.metadata.hasPendingWrites);
+    syncGroupsFromProfile(!s.metadata.hasPendingWrites).catch(e=>console.warn('[LP] skupiny z profilu:',e?.code||e?.name));
   }catch(e){ console.warn('[LP] profile refresh:',e?.code||e?.name); }
   finally{ _profRefreshing=false; }
 }
 // Skupiny změněné na jiném zařízení (profil z cache je neznal) → přihlásit jako initApp; běžící listenery se přeskočí.
 // 4.78: i změna hlavní skupiny (applyMainSwitchLocal) a odchod/odebrání (jako snapshot isRemovedFromGroup);
-// odebírá se jen podle profilu bez čekajících zápisů (fresh), ať se nepřebije čerstvá lokální změna
-function syncGroupsFromProfile(fresh){
-  if(_setMainBusy||(familyId&&_leavingGids.has(familyId))) return; // probíhá vlastní přepnutí / odchod
+// odebírá se jen podle profilu bez čekajících zápisů (fresh), ať se nepřebije čerstvá lokální změna.
+// Změna kódu skupiny (stará skupina na serveru neexistuje) se tu neřeší: přepne ji checkGroupGone → switchGroupLocal
+// (přemapuje sharedGid, vybrané seznamy a „přečteno“)
+const busyGroups=()=>_setMainBusy||_restoreBusy||_rotatingGids.size>0||(familyId&&_leavingGids.has(familyId));
+// Skupina na serveru existuje? null = nevíme (offline, chyba, jen cache)
+async function groupExistsSrv(gid){
+  try{ const s=await getDoc(doc(db,'families',gid)); return s.metadata.fromCache?null:s.exists(); }
+  catch(e){ console.warn('[LP] kontrola skupiny:',e?.code||e?.name); return null; }
+}
+async function syncGroupsFromProfile(fresh){
+  if(busyGroups()) return; // probíhá vlastní přepnutí / odchod / obnova / změna kódu
+  const uid=CU?.uid;
   const ex=(Array.isArray(prof.extraGroupIds)?prof.extraGroupIds:[]).filter(okFamilyCode);
   const pf=okFamilyCode(prof.familyId)?prof.familyId:null;
   if(!familyId&&pf){ familyId=pf; subscribeFamily(); initPantry(); renderFamilySettings(); return; } // přihlásí i vedlejší
-  if(fresh&&familyId&&pf!==familyId){
-    if(pf){ applyMainSwitchLocal(pf,{extraGroupIds:ex}); } // hlavní je jiná skupina (stará případně mezi vedlejšími)
-    else { resetFamilyLocal(); initPantry(); renderAfterFamilyChange(); } // hlavní skupinu opustil / byl odebrán
-  }
   if(fresh){
-    const gone=extraGroupIds.filter(g=>!ex.includes(g)&&g!==familyId&&!_leavingGids.has(g));
-    for(const gid of gone) forgetExtraGroupLocal(gid); // profil už je bez nich, jen uklidit paměť a listenery
-    if(gone.length) renderAfterFamilyChange();
+    const oldMain=familyId&&pf!==familyId?familyId:null;
+    const gone=extraGroupIds.filter(g=>!ex.includes(g)&&g!==familyId&&g!==pf&&!_leavingGids.has(g));
+    if(oldMain||gone.length){
+      // Zmizelá skupina, která na serveru neexistuje = změna kódu → nechat na checkGroupGone (ani nic nepřidávat)
+      const ok=await Promise.all([oldMain,...gone].filter(Boolean).map(groupExistsSrv));
+      if(CU?.uid!==uid||busyGroups()||ok.some(x=>x!==true)) return;
+      if(oldMain&&familyId===oldMain){
+        if(pf){ applyMainSwitchLocal(pf,{extraGroupIds:ex}); } // hlavní je jiná skupina (stará případně mezi vedlejšími)
+        else { // hlavní skupinu opustil / byl odebrán (jako leaveFamilyNow)
+          shopViewForget(oldMain); mealViewForget(oldMain); pantryViewForget(oldMain);
+          resetFamilyLocal(); initPantry(); renderAfterFamilyChange();
+        }
+      }
+      const gone2=gone.filter(g=>extraGroupIds.includes(g)&&g!==familyId);
+      for(const gid of gone2) forgetExtraGroupLocal(gid); // profil už je bez nich, jen uklidit paměť a listenery
+      if(gone2.length) renderAfterFamilyChange();
+    }
   }
   const add=ex.filter(g=>g!==familyId&&!extraGroupIds.includes(g));
   if(!add.length) return;
