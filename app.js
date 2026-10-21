@@ -1279,23 +1279,28 @@ function resetVerify(){
   _verifySentAt=0; _verifyReloadAt=0; _verifyHidden=false; clearTimeout(_verifyTimer); _verifyTimer=0;
   renderVerifyUi();
 }
+// Obsah se překreslí jen při změně (data-k), jinak se mění jen disabled tlačítek (4.77: role=status čtečka neopakuje)
 function renderVerifyUi(){
   const on=needsVerify();
   const wait=Math.max(0,_verifySentAt+VERIFY_GAP-Date.now());
-  const dis=wait>0?' disabled':'';
   const n=document.getElementById('verify-note');
   if(n){
     n.hidden=!on||_verifyHidden;
-    n.innerHTML=on?`<span class="verify-note-t">${tH('auth.verifyNote')}</span>
-      <button type="button" class="btn-s verify-b" onclick="resendVerify()"${dis}>${tH('auth.verifyResend')}</button>
-      <button type="button" class="verify-note-x" aria-label="${tH('common.close')}" onclick="hideVerifyNote()">✕</button>`:'';
+    const k=on?'1':'';
+    if(n.dataset.k!==k){ n.dataset.k=k;
+      n.innerHTML=on?`<span class="verify-note-t">${tH('auth.verifyNote')}</span>
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('auth.verifyResend')}</button>
+      <button type="button" class="verify-note-x" aria-label="${tH('common.close')}" onclick="hideVerifyNote()">✕</button>`:''; }
   }
   const s=document.getElementById('set-verify');
   if(s){
     s.hidden=!on;
-    s.innerHTML=on?`<div class="acc-verify"><span class="acc-verify-t">${tH('auth.verifySet',{email:CU.email||''})}</span>
-      <button type="button" class="btn-s verify-b" onclick="resendVerify()"${dis}>${tH('auth.verifyResendSet')}</button></div>`:'';
+    const k=on?String(CU.email||''):'';
+    if(s.dataset.k!==k){ s.dataset.k=k;
+      s.innerHTML=on?`<div class="acc-verify"><span class="acc-verify-t">${tH('auth.verifySet',{email:CU.email||''})}</span>
+      <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('auth.verifyResendSet')}</button></div>`:''; }
   }
+  document.querySelectorAll('#verify-note .verify-b,#set-verify .verify-b').forEach(b=>{ b.disabled=wait>0; });
   // Po uplynutí 60 s znovu povolit tlačítka
   clearTimeout(_verifyTimer); _verifyTimer=0;
   if(on&&wait>0) _verifyTimer=setTimeout(renderVerifyUi,wait+50);
