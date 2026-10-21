@@ -18114,7 +18114,7 @@ async function offerPantryUpdate(name, shopQty, sg) {
   // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“.
   // 4.77: přičíst bez ptaní jen při přesné shodě (pantryIngName), jinak se zeptat („Mléko kondenzované“ → Mléko?)
   // 4.78: dotaz jako lišta s tlačítky místo confirm() – víc nákupů za sebou se seřadí pod sebe a neblokuje
-  const match = pantryFind(items, name);
+  const match = pantryFind(items, name) || pantryFindPct(items, name);
   if(match && pantryIngName(match.name) !== pantryIngName(name)) { pantryAskMatch(name, shopQty, gid, match); return; }
   if(match) pantryAddToItem(match, shopQty, gid);
   else await pantryAddNew(name, shopQty, gid);
@@ -18133,14 +18133,15 @@ function pantryAddToItem(match, shopQty, gid) {
   changePantryQty(match.id, delta, gid || '');
   toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}) + pantrySfx(gid));
 }
-// Nová zásoba z nákupu + lišta s „Upravit“
-async function pantryAddNew(name, shopQty, gid) {
+// Nová zásoba z nákupu + lišta s „Upravit“ (quiet: jen toast – dotaz vypršel / vytlačila ho novější lišta, žádná kaskáda)
+async function pantryAddNew(name, shopQty, gid, quiet) {
   const {amount, unit} = parseIngQty(shopQty||'1 ks');
   const newItem = { name: cutName(name, 60), qty: amount, unit, minQty: null, updatedAt: Date.now() };
   const newId = genId();
   try { await setDoc(pantryDoc(gid, newId), newItem); }
   catch(e) { console.warn('Pantry save failed:', e?.code || e?.name); toast(t('pantry.saveErr')); return; }
-  pantryNote(`<span style="font-size:18px">✅</span><span style="flex:1;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});pantryNoteClose(this)" style="${PN_BTN}">${tH('common.edit')}</button><button onclick="pantryNoteClose(this)" aria-label="${tH('common.close')}" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`, 6000);
+  if(quiet) { toast('✅ ' + cutName(name, 40) + ' ' + t('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)}) + pantrySfx(gid), 3000); return; }
+  pantryNote(`<span style="font-size:18px">✅</span><span style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--text2)"><b>${esc(name)}</b> ${tH('shop.toPantry',{qty:Number(amount)||0,unit:unitLabel(unit)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(name)}" data-a1="${esc(unit)}" data-a2="${esc(newId)}" data-a3="${esc(gid || '')}" data-a4="${Number(amount)||0}" onclick="openPantryAdd({id:this.dataset.a2,gid:this.dataset.a3,name:this.dataset.a0,qty:Number(this.dataset.a4),unit:this.dataset.a1});pantryNoteClose(this)" style="${PN_BTN}">${tH('common.edit')}</button><button onclick="pantryNoteClose(this)" aria-label="${tH('common.close')}" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">×</button>`, 6000);
 }
 // Lišty zásob (4.78): společný sloupec dole, víc oznámení se řadí pod sebe, nejvýš 4
 const PN_BTN = 'background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700;white-space:nowrap';
@@ -18148,11 +18149,16 @@ function pantryNote(html, ms, onExpire) {
   let box = document.getElementById('pantry-notes');
   if(!box) {
     box = document.createElement('div'); box.id = 'pantry-notes';
+    box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite');
     // Nad toast() (bottom 80px, až 2 řádky) – lišty ho nepřekryjí
     box.style.cssText = 'position:fixed;bottom:144px;left:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px;pointer-events:none';
     document.body.appendChild(box);
   }
-  while(box.childElementCount >= 4) pantryNoteDrop(box.firstElementChild, true);
+  // Plno: vytlačit nejdřív nejstarší oznámení ✅ (bez onExpire), dotazy až když jiné nejsou
+  while(box.childElementCount >= 4) {
+    const kids = [...box.children];
+    pantryNoteDrop(kids.find(c => !c._exp) || kids[0], true);
+  }
   const r = document.createElement('div');
   r.className = 'pantry-note';
   r.style.cssText = 'pointer-events:auto;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
@@ -18171,15 +18177,15 @@ function pantryNoteDrop(r, expired) {
   if(expired && r._exp) r._exp();
 }
 window.pantryNoteClose = el => pantryNoteDrop(el?.closest('.pantry-note'), false);
-// Nejasná shoda: lišta „Přičíst / Jako nová“; bez volby (12 s) = nová zásoba jako dřív „Zrušit“ u confirm()
+// Nejasná shoda: lišta „Přičíst / Jako nová“; bez volby (12 s, vytlačení) = nová zásoba jako dřív „Zrušit“ u confirm(), jen s toastem
 const _pantryAsk = new Map();
 function pantryAskMatch(name, shopQty, gid, match) {
   const key = genId();
   _pantryAsk.set(key, {uid: CU.uid, name, shopQty, gid, matchId: match.id});
-  pantryNote(`<span style="flex:1;font-size:13px;color:var(--text2)">${tH('pantry.matchAsk', {name: cutName(name, 40), item: cutName(match.name, 40)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,true,this)" style="${PN_BTN}">${tH('pantry.matchAdd')}</button><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,false,this)" style="${PN_BTN};color:var(--text2)">${tH('pantry.matchNew')}</button>`,
-    12000, () => pantryAskDo(key, false));
+  pantryNote(`<span style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--text2)">${tH('pantry.matchAsk', {name: cutName(name, 40), item: cutName(match.name, 40)})}${esc(pantrySfx(gid))}</span><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,true,this)" style="${PN_BTN}">${tH('pantry.matchAdd')}</button><button data-a0="${esc(key)}" onclick="pantryAskDo(this.dataset.a0,false,this)" style="${PN_BTN};color:var(--text2)">${tH('pantry.matchNew')}</button>`,
+    12000, () => pantryAskDo(key, false, null, true));
 }
-window.pantryAskDo = async (key, add, el) => {
+window.pantryAskDo = async (key, add, el, quiet) => {
   const a = _pantryAsk.get(key);
   if(!a) return;
   _pantryAsk.delete(key);
@@ -18190,7 +18196,7 @@ window.pantryAskDo = async (key, add, el) => {
   if(!items) { toast(t('pantry.notAdded', {name: cutName(a.name, 40)}), 5000); return; }
   const match = add ? items.find(i => i.id === a.matchId) : null; // zásoba mezitím mohla zmizet → nová
   if(match) pantryAddToItem(match, a.shopQty, a.gid);
-  else await pantryAddNew(a.name, a.shopQty, a.gid);
+  else await pantryAddNew(a.name, a.shopQty, a.gid, quiet);
 };
 
 window.editShopQty = (id, currentQty, el) => {
@@ -19314,6 +19320,12 @@ function pantryIngName(s) {
   }
   n = n.replace(/[\s,]+$/, '').trim().split(' ').map(w => PANTRY_FORMS[w] || w).join(' ');
   return n && pct ? n + ' ' + pct.replace('.', ',') + '%' : n;
+}
+// Nákup bez procent („Mléko“) a zásoba se stejným názvem s procenty („Mléko 1,5 %“) → jen pro dotaz, ne tiché přičtení
+function pantryFindPct(items, name) {
+  const n = pantryIngName(name);
+  if (!n || /%$/.test(n)) return null;
+  return items.find(p => p && p.name && pantryIngName(p.name).replace(/ \d+(?:,\d+)?%$/, '') === n) || null;
 }
 // Zásoba k názvu (4.75): přesná shoda má přednost, jinak nejdelší shoda podle pantryHit
 function pantryFind(items, name) {
