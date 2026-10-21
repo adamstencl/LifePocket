@@ -17910,7 +17910,8 @@ function checkRecurringShop() {
           tx.update(ref, {lastAdded: todayISO});
           return d;
         });
-      } catch(e) { console.warn('[LP] recurring:', e?.code || e?.name); if (e?.code === 'unavailable') _recShopWait = true; return; }
+      } catch(e) { console.warn('[LP] recurring:', e?.code || e?.name); if (e?.code === 'unavailable') { _recShopWait = true; recShopRetry(uid); } return; }
+      _recRetry.n = 0; // spojení funguje → další výpadek zase smí zkusit znovu
       item.lastAdded = todayISO;
       if (!fresh || CU?.uid !== uid) return;
       const fid = shopGid();
@@ -17926,6 +17927,15 @@ function checkRecurringShop() {
   });
 }
 
+// 4.78: „unavailable“ při zapnutém připojení (Firestore ještě nenaběhl) → jeden opakovaný pokus za 30 s, nejvýš 3×
+// za přihlášení; jinak by se čekalo na další renderShop / online (účet bez skupin nemá snapshot skupiny, který by to dohnal)
+const _recRetry = {uid: '', n: 0, tm: 0};
+function recShopRetry(uid) {
+  if (_recRetry.uid !== uid) { _recRetry.uid = uid; _recRetry.n = 0; }
+  if (_recRetry.tm || _recRetry.n >= 3) return;
+  _recRetry.n++;
+  _recRetry.tm = setTimeout(() => { _recRetry.tm = 0; if (_recShopWait && CU?.uid === uid) checkRecurringShop(); }, 30000);
+}
 // Po návratu sítě (spojení Firestore naběhne až za chvíli) dohnat odložené pravidelné nákupy
 window.addEventListener('online', () => { if (_recShopWait && CU) setTimeout(() => { if (_recShopWait && CU) checkRecurringShop(); }, 3000); });
 
