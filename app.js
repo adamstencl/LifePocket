@@ -17072,7 +17072,7 @@ async function chatDataReady(){
 }
 
 // CHAT SEND
-window.askC=t=>{document.getElementById('c-inp').value=t;send();};
+window.askC=t=>{if(_chatSending)return;document.getElementById('c-inp').value=t;send();};
 window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
 window.ar=el=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,130)+'px';};
 // Jen jeden dotaz naráz (4.75): Enter, mikrofon a návrhy otázek nesmí poslat druhý dřív, než dorazí odpověď
