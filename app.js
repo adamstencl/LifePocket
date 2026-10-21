@@ -4561,7 +4561,7 @@ window.finishOnboard=async()=>{
   // Offline (4.75): na potvrzení serveru čekat nejvýš 4 s, zápis se pak dokončí z fronty; chyba do 4 s jde do catch
   const pw=setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
   const pr=await Promise.race([pw.then(()=>'ok'),new Promise(r=>setTimeout(()=>r('wait'),4000))]);
-  if(pr==='wait') pw.catch(e=>console.warn('[LP] profile (onboarding):',e?.code||e?.name));
+  if(pr==='wait'){ pw.catch(e=>console.warn('[LP] profile (onboarding):',e?.code||e?.name)); setTimeout(()=>toast(t('onb.savePending'),5000),1200); }
   clearLangSync();
   lsSave('lp_seen_version',APP_VERSION); // nový účet: bez okna „Co je nového“
   // Ukázkové návyky ze šablony (jen když je uživatel nechal zaškrtnuté); chyba nesmí zastavit start

@@ -150,6 +150,7 @@ export default {
   'changelog.ok': 'Super, díky! 👍',
 
   // ── Onboarding ──
+  'onb.savePending': '📶 Nastavení se uloží, jakmile budeš online',
   'onb.s1.title': 'Jak ti máme říkat?',
   'onb.s1.sub': 'Tvůj společník tě bude zdravit jménem.',
   'onb.s1.gender': 'Oslovení (nepovinné):',

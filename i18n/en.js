@@ -149,6 +149,7 @@ export default {
   'changelog.ok': 'Great, thanks! 👍',
 
   // ── Onboarding ──
+  'onb.savePending': '📶 Your settings will be saved as soon as you’re online',
   'onb.s1.title': 'What should we call you?',
   'onb.s1.sub': 'Your companion will greet you by name.',
   'onb.s1.gender': 'You are (optional):',
