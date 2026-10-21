@@ -15399,7 +15399,8 @@ function subModules(){
   if(on('calendar')&&!_fireSubs['events']) subEvents();
   if(on('journal')&&!_fireSubs['entries']) subEntries();
   // Nákupy plní i vaření, jídelníček a parťák (suroviny receptu do seznamu, kontrola duplicit)
-  if(any('shopping','cooking','mealplan','rex')){ subShop(); subRecurringShop(); subShopFreq(); }
+  if(any('shopping','cooking','mealplan','rex')){ subShop(); subShopFreq(); }
+  if(recShopOn()) subRecurringShop(); // pravidelné nákupy jen s Nákupy / vařením (4.77: ne kvůli parťákovi)
   // Recepty: výběr jídla a „Do nákupu“ v jídelníčku, „Přidat z receptu“ v Nákupech
   if(any('cooking','mealplan','shopping')) subSavedRecipes();
   if(any('cooking','mealplan')&&_pmLoadedUid!==CU.uid){ _pmLoadedUid=CU.uid; loadPlannedMeals(); }
@@ -17836,8 +17837,10 @@ function recShopReady() {
   if(!g && !shopItemsLoaded) return false; // osobní seznam ještě nedorazil (kontrola duplicit)
   return true;
 }
+// Pravidelné nákupy běží jen s Nákupy, vařením nebo jídelníčkem (samotný parťák nestačí)
+const recShopOn = () => ['shopping','cooking','mealplan'].some(hasMod);
 function checkRecurringShop() {
-  if (!recurringShopItems.length || !CU) return;
+  if (!recurringShopItems.length || !CU || !recShopOn()) return;
   if (!recShopReady()) { _recShopWait = true; return; }
   _recShopWait = false;
   const today = new Date();
