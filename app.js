@@ -18017,8 +18017,11 @@ async function offerPantryUpdate(name, shopQty, sg) {
   if(!gid) await pantryMigSettle(); // Moje: nejdřív přenos lp_pantry
   const items = await pantryItemsReady(gid);
   if(!items) { toast(t('pantry.notAdded', {name: cutName(name, 40)}), 5000); return; }
-  // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“
-  const match = pantryFind(items, name);
+  // Shoda po normalizaci (4.75, pantryFind): „kokosové mléko“ nepřičte k „mléko“.
+  // 4.77: přičíst bez ptaní jen při přesné shodě (pantryIngName), jinak se zeptat („Mléko kondenzované“ → Mléko?)
+  let match = pantryFind(items, name);
+  if(match && pantryIngName(match.name) !== pantryIngName(name)
+    && !confirm(t('pantry.matchConfirm', {name: cutName(name, 40), item: cutName(match.name, 40)}))) match = null;
   if(match){
     // Položka už v zásobách — přičti správné množství
     const {amount: ingAmt, unit: ingUnit} = parseIngQty(shopQty||'1');
@@ -19117,19 +19120,19 @@ function convertUnits(amount, from, to) {
 function pantryNorm(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 }
-// Shoda dvou normalizovaných názvů: stejné, nebo kratší je začátkem delšího a za ním mezera/číslice/závorka/čárka
-// („mleko“ ~ „mleko 1,5 %“, ne „mleko“ ~ „mlekovar“ ani „kokosove mleko“). Bez lookbehind.
-function pantryHit(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const [l, sh] = a.length >= b.length ? [a, b] : [b, a];
-  return l.startsWith(sh) && /^[\s\d(,]/.test(l.charAt(sh.length));
+// Shoda zásoby (pn) se surovinou / nákupem (n), normalizované: stejné, nebo název zásoby je začátkem delší suroviny
+// a za ním mezera/číslice/závorka/čárka („mleko“ ~ „mleko 1,5 %“, ne „mleko“ ~ „mlekovar“ ani „kokosove mleko“).
+// 4.77: jen tímto směrem – zásoba „mleko kondenzovane“ nesedí na surovinu „mleko“. Bez lookbehind.
+function pantryHit(pn, n) {
+  if (!pn || !n) return false;
+  if (pn === n) return true;
+  return n.length > pn.length && n.startsWith(pn) && /^[\s\d(,]/.test(n.charAt(pn.length));
 }
 // Klíč názvu pro zásoby: bez závorek, úvodního množství s jednotkou a množství na konci
 // („2 vejce“, „400 g mouka“, „Vejce (střední)“, „Mléko 1,5% 1 l“ → „vejce“, „mouka“, „vejce“, „mleko“)
 function pantryIngName(s) {
   let n = pantryNorm(s).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
-  const q = n.replace(/^\d+(?:[.,/]\d+)?\s*/, '');
+  const q = n.replace(/^\d+(?:[.,/]\d+)?(?![\d.,/]|\s*%)\s*/, ''); // „100% kakao“: číslo s % patří k názvu
   if (q !== n) { n = q; const m = n.match(/^([a-z]+)\.?\s+(.+)$/); if (m && ING_UNITS[m[1]]) n = m[2]; }
   n = n.replace(/(?:\s+\d+(?:[.,]\d+)?\s*(?:%|[a-z]{1,4}\.?)?)+$/, '');
   return n.replace(/[\s,]+$/, '').trim();
