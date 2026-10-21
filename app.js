@@ -12679,6 +12679,14 @@ async function pcCheckAdmin() {
   }
   renderPcSettings();
 }
+// 4.78: změna správců se projeví hned – při otevření správy nebo odmítnutém volání zahodit lp_adm a ověřit znovu
+function admRecheck() {
+  if(!CU) return;
+  try { localStorage.removeItem('lp_adm'); } catch(e) {}
+  _pcAdminChecked = '';
+  pcCheckAdmin();
+}
+const admDenied = e => { if(/permission-denied$/.test(String(e?.code || ''))) admRecheck(); };
 // Nastavení: ID účtu (všichni, jen vlastní uid) a vstup do správy výzev (jen admin)
 function renderPcSettings() {
   const u = document.getElementById('set-uid');
@@ -12711,6 +12719,7 @@ window.admOvOpen = () => {
   if(ov && !ov.classList.contains('open')) { om('m-admov'); focusOverlay(ov); }
   admOvRender();
   if(!_admOv.data) admOvLoad();
+  admRecheck();
 };
 window.admOvLoad = async () => {
   const A = _admOv, uid = CU?.uid;
@@ -12719,7 +12728,7 @@ window.admOvLoad = async () => {
   try {
     const r = await adminOverviewFn({lang: LANG});
     if(_admOv === A && CU?.uid === uid) A.data = r.data || null;
-  } catch(e) { console.warn('[LP] prehled', e?.code); if(_admOv === A) toast(t('adm.ov.err')); }
+  } catch(e) { console.warn('[LP] prehled', e?.code); admDenied(e); if(_admOv === A) toast(t('adm.ov.err')); }
   if(_admOv === A) { A.busy = false; admOvRender(); }
 };
 window.admOvTab = tab => {
@@ -12734,7 +12743,7 @@ window.admOvFb = async i => {
   try {
     const r = await adminFeedbackFn({id: f.id, lang: LANG});
     if(_admOv === A && A.fb?.id === f.id) A.fb.d = r.data || f;
-  } catch(e) { console.warn('[LP] prehled zprava', e?.code); if(_admOv === A) toast(t('adm.ov.fbErr')); }
+  } catch(e) { console.warn('[LP] prehled zprava', e?.code); admDenied(e); if(_admOv === A) toast(t('adm.ov.fbErr')); }
   if(_admOv === A && A.fb?.id === f.id) { A.fb.busy = false; admOvRender(); }
 };
 window.admOvBack = () => { if(_admOv) { _admOv.fb = null; admOvRender(); } };
@@ -12806,13 +12815,14 @@ function admOvRender() {
 
 let _pcAdm = null;   // {list:[{id, data, c}], counts:{}, view, cid, parts, last, more, q, busy}
 const pcAdmEl = () => document.getElementById('pcadm-body');
-function pcAdmErr(e) { console.warn('[LP] sprava vyzev', e?.code || e?.name); toast(t('pc.adm.err')); }
+function pcAdmErr(e) { console.warn('[LP] sprava vyzev', e?.code || e?.name); admDenied(e); toast(t('pc.adm.err')); }
 window.pcAdmOpen = async () => {
   if(!CU || !_isAppAdmin) return;
   _pcAdm = {list: [], counts: {}, view: 'list', cid: '', parts: [], last: null, more: false, q: '', busy: true};
   pcAdmRender();
   const ov = document.getElementById('m-pcadmin');
   if(ov && !ov.classList.contains('open')) { om('m-pcadmin'); focusOverlay(ov); }
+  admRecheck();
   await pcAdmLoad();
 };
 async function pcAdmLoad() {
