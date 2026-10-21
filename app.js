@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.76';
+const APP_VERSION = '4.77';
 const CHANGELOG = [
+  { v:'4.77', items:[
+    '🔧 Drobná vylepšení spolehlivosti nákupů, zásob a přihlášení: pravidelný nákup se po návratu signálu doplní sám a u podobné položky se appka zeptá, jestli ji přičíst do zásob'
+  ], en:[
+    '🔧 Small reliability improvements to shopping, the pantry and sign-in: a recurring purchase is added once you are back online, and for a similar item the app asks before adding it to the pantry'
+  ]},
   { v:'4.76', items:[
     '📧 E-maily k ověření a obnově hesla chodí česky, ověřovací e-mail jde poslat znovu (na Domů nebo v Nastavení → Účet a data)',
     '🔑 Po žádosti o nové heslo appka připomene, ať mrkneš i do spamu'
