@@ -1655,6 +1655,23 @@ function clearUserSessionState(){
 function ss(id){if(id!=='s-loading')window.__lpBooted=true; // hlídač startu v index.html (4.75)
 document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('app').classList.remove('active');const el=document.getElementById(id);if(el){if(id==='app')el.classList.add('active');else el.classList.add('active');}installGate();}
 function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+
+// ── Nová verze appky (4.84) ──
+// Při návratu do appky (nejvýš 1× za 30 min) se zeptat na nový SW; po jeho převzetí nabídnout načtení (bez automatického reloadu)
+if('serviceWorker' in navigator){
+  let _swCheckAt=Date.now(), _swHadCtrl=!!navigator.serviceWorker.controller, _swNoted=false;
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState!=='visible'||Date.now()-_swCheckAt<30*60000) return;
+    _swCheckAt=Date.now();
+    navigator.serviceWorker.getRegistration().then(r=>r?.update()).catch(()=>{});
+  });
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!_swHadCtrl){ _swHadCtrl=true; return; } // první instalace SW, ne nová verze
+    if(_swNoted) return;
+    _swNoted=true;
+    pantryNote(`<span style="flex:1;min-width:0;font-size:13px;color:var(--text2)">${tH('app.newVer')}</span><button onclick="location.reload()" style="${PN_BTN}">${tH('app.newVerBtn')}</button>`, 24*3600000);
+  });
+}
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
 function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií

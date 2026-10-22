@@ -1187,6 +1187,8 @@ export default {
   'shop.delDone': '🗑 Smazáno: {name}',
   'shop.restored': '↩️ Vráceno: {name}',
   'common.undo': 'Vrátit',
+  'app.newVer': '✨ Je tu nová verze LifePocket.',
+  'app.newVerBtn': 'Načíst novou verzi',
   'ck.cooked': '✅ Uvařeno – odečíst ze zásob',
   'shop.noneDone': 'Žádné splněné položky',
   'shop.title': 'Nákupy',

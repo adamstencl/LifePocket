@@ -1173,6 +1173,8 @@ export default {
   'shop.delDone': '🗑 Deleted: {name}',
   'shop.restored': '↩️ Restored: {name}',
   'common.undo': 'Undo',
+  'app.newVer': '✨ A new version of LifePocket is ready.',
+  'app.newVerBtn': 'Load new version',
   'ck.cooked': '✅ Cooked – deduct from pantry',
   'shop.noneDone': 'No ticked items',
   'shop.title': 'Shopping',
