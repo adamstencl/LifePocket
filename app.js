@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.79';
+const APP_VERSION = '4.80';
 const CHANGELOG = [
+  { v:'4.80', items:[
+    '🔔 Připomínka návyku nepřijde, když už máš den označený, i jako „Nesplněno“ nebo „Přeskočit“'
+  ], en:[
+    '🔔 A habit reminder no longer arrives once the day is marked, including “Not done” or “Skip”'
+  ]},
   { v:'4.79', items:[
     '🗺️ Průvodce z Nastavení teď projde všechny zapnuté moduly, nově i Pitný režim a Checklist'
   ], en:[
@@ -2048,6 +2053,8 @@ function hlIndex(){
 function hLog(id){ hlIndex(); const a=_hlIdx.get(id); return a?a[0]:undefined; }
 // Splněno podle id (jako some(l=>l.id===…&&l.done)); .done se čte živě z objektů
 function hDone(hid,ds){ hlIndex(); const a=_hlIdx.get(hid+'_'+ds); return !!a&&a.some(l=>l.done); }
+// Den už označený (splněno / nesplněno / přeskočeno) → připomínka se neposílá (4.80)
+function hMarked(hid,ds){ hlIndex(); const a=_hlIdx.get(hid+'_'+ds); return !!a&&a.some(l=>l.done||l.failed||l.skipped); }
 // Záznam podle polí habitId a date (místa, která hledala podle polí, ne podle id)
 function hLogHD(hid,ds){ hlIndex(); const a=_hlIdxHD.get(hid+'|'+ds); return a?a[0]:undefined; }
 // Splněno podle polí habitId a date (jako some(... && l.done)); .done se čte živě z objektů
@@ -5776,9 +5783,8 @@ function checkPerHabitReminders() {
     const sentKey = `lp_hrnotif_${h.id}_${today}`;
     if (localStorage.getItem(sentKey)) return; // už odesláno dnes
 
-    // Zkontroluj jestli návyk ještě není splněn
-    const isDone = hDone(h.id,today);
-    if (isDone) return; // už splněno, neotravovat
+    // Už označený den (splněno, nesplněno i přeskočeno) → neotravovat
+    if (hMarked(h.id,today)) return;
 
     // Odešli notifikaci
     localStorage.setItem(sentKey, '1');

@@ -1392,7 +1392,8 @@ exports.sendScheduledNotifications = onSchedule(
             // ID logu = ID dokumentu návyku (pole habit.id v datech není)
             const logId = `${habitDoc.id}_${today}`;
             const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
-            if (logSnap.exists && logSnap.data().done) continue;
+            // Den už označený (splněno, nesplněno i přeskočeno) → nepřipomínat (4.80)
+            if (logSnap.exists) { const ld = logSnap.data() || {}; if (ld.done || ld.failed || ld.skipped) continue; }
             try {
               await push(
                 `${habit.emoji || '🔔'} ${habit.name}`,
