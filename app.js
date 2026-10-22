@@ -3037,6 +3037,14 @@ window.toggleFreqDay=(d,btn)=>{
 
 // Pojistka proti dvojímu uložení (4.75): příznak + vypnuté tlačítko; zápis bez čekání na server (offline by visel)
 let _habitSaving=false;
+// Obecná pojistka pro další formuláře (4.81): klíč = formulář, sel = tlačítko k vypnutí
+const _saving={};
+async function guardSave(key,sel,fn){
+  if(_saving[key]||!CU) return;
+  const b=sel?document.querySelector(sel):null;
+  _saving[key]=true; if(b) b.disabled=true;
+  try{ await fn(); } finally{ _saving[key]=false; if(b) b.disabled=false; }
+}
 window.saveHabit=async()=>{
   if(_habitSaving||!CU) return;
   const sb=document.querySelector('#add-habit-wrap .btn-p[onclick="saveHabit()"]');
@@ -3878,8 +3886,9 @@ window.confirmCustomEvType=async()=>{
   const key='c_'+Date.now().toString(36);
   const customEvTypes=[...(prof.customEvTypes||[]),{key,emoji,label}];
   prof.customEvTypes=customEvTypes;
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
+  // Formulář pryč hned (dvojí ťuk už nic nepřidá), zápis bez čekání
   document.getElementById('ev-ctype-form')?.remove();
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'calendar')})));
   renderEvTypeButtons();
   toast(t('cal.catAdded',{name:label}));
 };
@@ -3904,7 +3913,8 @@ window.selEvType=(t,btn)=>{
   if(er) er.style.display=evHasEnd(t)?'block':'none';
 };
 
-window.saveEvent=async()=>{
+window.saveEvent=()=>guardSave('ev','#m-event .btn-p[onclick="saveEvent()"]',saveEventImpl);
+async function saveEventImpl(){
   const name=document.getElementById('ev-name-inp').value.trim();
   const date=document.getElementById('ev-date-inp').value;
   const repeat=document.getElementById('ev-repeat-inp').value;
@@ -3925,14 +3935,14 @@ window.saveEvent=async()=>{
     const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
     if(time) evUpdate.time = time;
     if(dateEnd) evUpdate.dateEnd = dateEnd;
-    try {
-      if(editGroupId) {
-        await setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate);
-        logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
-      } else {
-        await setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate);
-      }
-    } catch(e) { toast('⚠️ '+userErr(e,'událost')); return; }
+    // Zápis bez čekání (offline by visel), chyba jen toastem
+    const evErr = e => toast('⚠️ '+userErr(e,'událost'));
+    if(editGroupId) {
+      setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate).catch(evErr);
+      logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
+    } else {
+      setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate).catch(evErr);
+    }
     editingEventId = null; editingEventGid = null;
     toast(t('cal.edited'));
   } else {
@@ -3940,18 +3950,17 @@ window.saveEvent=async()=>{
     if(gid) {
       // Skupina mezitím kalendář vypnula nebo jsem z ní odešel → neuložit potichu jinam
       if(!groupModShared(gid, 'cal')) { toast(t('cal.grpGone')); updateEvShareUI(false); return; }
-      try { await addDoc(collection(db,'families',gid,'events'),ev); }
-      catch(e) { toast('⚠️ '+userErr(e,'calendar')); return; }
+      setDoc(doc(collection(db,'families',gid,'events')),ev).catch(e=>toast('⚠️ '+userErr(e,'calendar')));
       logGroupActivity(gid, 'cal', 'add', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
       toast(t('cal.addedTo', {to: grpLabel(gid)}));
     } else {
-      await addDoc(collection(db,'users',CU.uid,'events'),ev);
+      setDoc(doc(collection(db,'users',CU.uid,'events')),ev).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'calendar')})));
       toast(t('cal.added'));
     }
   }
   cm('m-event');
   if((selEvType_val==='event'&&time)||selEvType_val==='birthday') notifAskSoon('event'); // událost s připomínkou
-};
+}
 
 window.delEvent=async(id)=>{
   if(!CU||!confirm(t('cal.delQ')))return;
@@ -16401,7 +16410,8 @@ window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=
 window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
 window.sGP=(p,btn)=>{gPriority=p;document.querySelectorAll('#g-prio-row .gprio-btn').forEach(x=>x.classList.remove('sel'));const t=btn||document.querySelector(`#g-prio-row [data-p="${p}"]`);if(t)t.classList.add('sel');};
 
-window.saveG=async()=>{
+window.saveG=()=>guardSave('g','#m-goal .btn-p[onclick="saveG()"]',saveGImpl);
+async function saveGImpl(){
   const nm=document.getElementById('g-name').value.trim();
   if(!nm){toast(t('common.nameReq'));return;}
   actDay('goals'); // aktivní den (jednoduchý režim, 4.69)
@@ -16419,24 +16429,26 @@ window.saveG=async()=>{
   } else if(goalMetric(prevG)||prevG?.mlog||prevG?.shareVals!==undefined){ d.metric=deleteField(); d.mlog=deleteField(); d.shareVals=deleteField(); }
   let gid=editGId;
   const isNewG=!editGId;
+  const gErr=e=>toast(t('common.saveFailed',{err:userErr(e,'goal')}));
   if(editGId){
-    await updateDoc(doc(db,'users',CU.uid,'goals',editGId),d);
+    updateDoc(doc(db,'users',CU.uid,'goals',editGId),d).catch(gErr);
     if(prevG){ const prevP=prevG.progress; if(gMode==='val') prevG.metric=d.metric; else { delete prevG.metric; delete prevG.mlog; delete prevG.shareVals; } prevG.progress=d.progress; goalProgressChanged(prevG,d.progress,false,prevP); }
     toast(t('goal.edited'));
   } else {
     d.createdAt=new Date().toISOString();
     d.msHit=GOAL_MS.filter(m=>d.progress>=m); // nový cíl: dosažené mezníky potichu, bez oslavy a bez XP
-    const r=await addDoc(collection(db,'users',CU.uid,'goals'),d);
+    const r=doc(collection(db,'users',CU.uid,'goals'));
+    setDoc(r,d).catch(gErr);
     subs[r.id]=[];
     gid=r.id;
     toast(t('goal.added'));
   }
   syncShared('g',gid); // název, ikona, termín ve sdíleném zrcadle
-  // Sync deadline → kalendář
-  if(deadline) await syncGoalToCalendar(`goal-${gid}`, `🏆 ${nm}`, deadline);
+  // Sync deadline → kalendář (bez čekání, chybu řeší funkce sama)
+  if(deadline) syncGoalToCalendar(`goal-${gid}`, `🏆 ${nm}`, deadline);
   cm('m-goal');
   if(isNewG) ctaAskShare('g',gid); // nabídka sdílení (4.49)
-};
+}
 
 window.delG=async id=>{
   if(!CU||!confirm(t('goal.delQ')))return;
@@ -16474,25 +16486,29 @@ window.openSubGM=(gid,sid=null)=>{
   om('m-subgoal');
 };
 
-window.saveSubG=async()=>{
+window.saveSubG=()=>guardSave('sg','#m-subgoal .btn-p[onclick="saveSubG()"]',saveSubGImpl);
+async function saveSubGImpl(){
   const nm=document.getElementById('sg-name').value.trim();
   if(!nm){toast(t('goal.sub.nameReq'));return;}
   const desc=document.getElementById('sg-desc').value.trim();
   const deadline=document.getElementById('sg-dl').value;
   const gid=editSGGoalId;
   let sid=editSGId;
+  const sgErr=e=>toast(t('common.saveFailed',{err:userErr(e,'goal')}));
   if(sid){
     // Editace
     const sg=subs[gid]?.find(s=>s.id===sid)||{};
     const updated={...sg,name:nm,description:desc,deadline,updatedAt:new Date().toISOString()};
-    await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updated);
+    const {id:_omit,...updDoc}=updated; void _omit; // ID není pole dokumentu
+    setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updDoc).catch(sgErr);
     const idx=subs[gid]?.findIndex(s=>s.id===sid);
     if(idx>=0) subs[gid][idx]=updated;
     toast(t('goal.sub.edited'));
   } else {
     // Nový
     const d={name:nm,description:desc,deadline,done:false,tasks:[],createdAt:new Date().toISOString()};
-    const r=await addDoc(collection(db,'users',CU.uid,'goals',gid,'subgoals'),d);
+    const r=doc(collection(db,'users',CU.uid,'goals',gid,'subgoals'));
+    setDoc(r,d).catch(sgErr);
     if(!subs[gid])subs[gid]=[];
     sid=r.id;
     subs[gid].push({id:sid,...d});
@@ -16500,10 +16516,10 @@ window.saveSubG=async()=>{
   }
   // Sync deadline → kalendář
   syncShared('g',gid); // počet podcílů ve sdíleném zrcadle
-  if(deadline) await syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
+  if(deadline) syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
   cm('m-subgoal');
   rGoals();
-};
+}
 
 window.togSubDone=async(gid,sid)=>{
   if(!CU)return;
