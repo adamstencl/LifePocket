@@ -6275,7 +6275,8 @@ function wtMl(ds){
   const d=wtDay(ds); if(!d) return 0;
   return Math.max(0,Array.isArray(d.entries)?wtEntries(ds).reduce((s,e)=>s+e.ml,0):(Number(d.ml)||0));
 }
-function wtGoalOf(ds){ const g=Number(wtDay(ds)?.goal); return g>=500&&g<=6000?g:(waterCfg()?.goal||2000); }
+// Dnešek: cíl z nastavení (změna cíle platí hned); minulé dny: cíl uložený u dne
+function wtGoalOf(ds){ if(ds===toDS()) return waterCfg()?.goal||2000; const g=Number(wtDay(ds)?.goal); return g>=500&&g<=6000?g:(waterCfg()?.goal||2000); }
 function waterToday(){ const ds=toDS(); return {ds,ml:wtMl(ds),goal:waterCfg()?.goal||2000}; }
 function wtCupEm(ml,cfg=waterCfg()){ return (cfg?.cups||[]).find(c=>c.ml===ml)?.emoji||'💧'; }
 // n nejčastějších šálků za 14 dní (shoda podle ml), jinak nejmenší; výsledek seřazený podle velikosti
