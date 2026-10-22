@@ -4864,7 +4864,7 @@ window.gS2=()=>{
   else if(_onbCustom) window.pickTpl(selTpl,true);
   else window.pickStart(selStart);
   onbS2View();
-  ss('s-step2'); preStepPush();
+  ss('s-step2'); history.pushState({type:'pre',s:'s-step2'},''); // Zpět → krok 1 (4.84)
 };
 // Přepne krok 2 mezi otázkou a mřížkou modulů (titulek, podtitulek, poznámka k pozvánce)
 function onbS2View(){
@@ -4900,9 +4900,10 @@ window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{
   if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return;}
   if(!_selAvTouched) selAv=(selTpl&&AV_REC[selTpl])||'rex';
-  rAvGrid('av-grid',false);ss('s-step3'); preStepPush();
+  rAvGrid('av-grid',false);ss('s-step3'); history.pushState({type:'pre',s:'s-step3'},''); // Zpět → krok 2
 };
 // Systémové Zpět v onboardingu a přihlášení (4.84): každý krok vpřed = záznam {type:'pre'}, Zpět = o krok zpět
+// Panel přihlášení: jen jeden záznam (opakované otevření ho nezdvojí); kroky onboardingu mají každý svůj
 function preStepPush(){ if(history.state?.type!=='pre') history.pushState({type:'pre'},''); }
 function preStepBack(){
   if(document.getElementById('s-step3')?.classList.contains('active')){ ss('s-step2'); return true; }
@@ -9784,16 +9785,17 @@ function capturePendingJoin() {
 capturePendingJoin();
 
 // ── Landing / přihlášení (#s-login) ──
-function showAuthPanel(mode){
+// push=false: automatické otevření při startu (známý uživatel, appka z plochy) bez záznamu historie
+function showAuthPanel(mode, push=true){
   const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
   if(!l||!a) return;
   l.hidden=true; a.hidden=false;
   window.toggleLoginMode(mode==='register'?'register':'login');
   window.scrollTo(0,0);
   document.getElementById('auth-mode-lbl')?.focus({preventScroll:true}); // čtečka ohlásí režim
-  preStepPush(); // systémové Zpět vrátí na úvod (4.84)
+  if(push) preStepPush(); // jen po kliknutí: systémové Zpět vrátí na úvod (4.84)
 }
-window.showAuthPanel=showAuthPanel;
+window.showAuthPanel=m=>showAuthPanel(m);
 window.showLanding=()=>{ if(history.state?.type==='pre') history.back(); else lpShowLanding(); };
 function lpShowLanding(){
   const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
@@ -9808,8 +9810,8 @@ function initLoginScreen(){
   let back=null; try{ back=sessionStorage.getItem('lp_auth_panel'); sessionStorage.removeItem('lp_auth_panel'); }catch(e){}
   const early=window.__lpAuthMode; // panel otevřený před načtením appky (rychlý start v index.html)
   if(back==='login'||back==='register') showAuthPanel(back);
-  else if(early==='login'||early==='register') window.toggleLoginMode(early); // bez posunu a fokusu, uživatel už píše
-  else if(known || isStandaloneApp()) showAuthPanel('login');
+  else if(early==='login'||early==='register'){ window.toggleLoginMode(early); preStepPush(); } // bez posunu a fokusu, uživatel už píše; otevřel ho klik
+  else if(known || isStandaloneApp()) showAuthPanel('login', false);
   window.__lpAuthMode=null;
   const hasInv=!!readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
