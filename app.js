@@ -1245,7 +1245,9 @@ function logClientError(msg, src, stack) {
 }
 // Česká věta pro uživatele podle kódu/obsahu chyby; technický detail jen do konzole a zapisovače chyb
 // e může být Error, chyba Firebase (e.code) nebo událost SpeechRecognition (e.error)
-const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie'];
+// Kontexty volání AI (ctx bez diakritiky, viz aiErrCtx): chat, týdenní report, recepty, kalorie, jídelníček, nálada
+const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie', 'jidelnicek', 'jidlo z planu', 'nalada'];
+const aiErrCtx = ctx => AI_ERR_CTX.includes(String(ctx).normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 function userErr(e, ctx = '') {
   const full = String(e?.code || '');
   const code = full.replace(/^[a-z-]+\//, '');
@@ -1276,9 +1278,10 @@ function userErr(e, ctx = '') {
   else if (code === 'unauthenticated') txt = t('err.unauthenticated');
   else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = t('err.aiBadReply'); expected = false; }
   // „AI není dostupná“ jen u AI funkcí (4.84); jinde srozumitelná hláška serveru, nebo obecná chyba
-  else if (/\bAI\b|Claude/.test(msg) || (AI_ERR_CTX.includes(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
+  else if (/\bAI\b|Claude/.test(msg) || (aiErrCtx(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
     { txt = t('err.aiUnavailable'); expected = false; }
-  else if (full.startsWith('functions/') && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
+  // 'internal' nikdy: může nést surový text z API (revize 4.84)
+  else if (full.startsWith('functions/') && code !== 'internal' && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
     { txt = msg; expected = false; }
   else { txt = t('err.generic'); expected = false; }
   try {
