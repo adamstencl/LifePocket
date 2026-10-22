@@ -1090,7 +1090,7 @@ export default {
   'ln.morningHabits': { one: 'You have {n} habit today.', other: 'You have {n} habits today.' },
   'ln.evePart': { one: 'You’ve done {done} of {total} habits. {n} to go — there’s still time!', other: 'You’ve done {done} of {total} habits. {n} to go — there’s still time!' },
   'ln.eveAll': { one: '🏆 Perfect day! You completed your habit!', other: '🏆 Perfect day! You completed all {n} habits!' },
-  'inact.title': { one: '{n} day without activity', other: '{n} days off 😴' },
+  'inact.title': { one: '{n} day without activity', other: '{n} days without activity' },
   'inact.rex': { one: 'Hi there! A {n}-day break. Back to work today?', other: 'Hi there! A {n}-day break. Back to work today?' },
   'inact.sage': { one: '{n} day of silence. We noticed. How are you?', other: '{n} days of silence. We noticed. How are you?' },
   'inact.ash': { one: 'I’m back! {n} day off. What happened?', other: 'I’m back! {n} days off. What happened?' },
