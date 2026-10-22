@@ -2367,3 +2367,14 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 
 /* 4.85: toast a reakce parťáka nad spodní lištou (i s výřezem iPhonu) */
 @media(max-width:640px){.toast,.av-reaction{bottom:calc(var(--bn-h) + 12px)}}
+
+/* Zadat hodnotu u počítaného návyku (4.85): barvy z motivu */
+.di-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;padding-top:max(20px,env(safe-area-inset-top));overflow-y:auto}
+[data-theme="sunshine"] .di-ov,[data-theme="tangerine"] .di-ov{background:rgba(0,0,0,.4)}
+.di-card{max-width:320px;text-align:center;border-color:var(--accent)}
+.di-title{color:var(--accent);margin-bottom:6px}
+.di-goal{font-size:14px;color:var(--text2);margin-bottom:16px}
+.di-inp{border:2px solid var(--accent);font-family:'Playfair Display',serif;font-size:28px!important;text-align:center;padding:12px}
+.di-card .macts{margin-top:16px;margin-bottom:8px}
+.di-card .macts .btn-s,.di-card .macts .btn-p{flex:1}
+.di-clear{width:100%;min-height:40px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px}

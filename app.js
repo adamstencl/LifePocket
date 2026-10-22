@@ -3220,20 +3220,19 @@ window.directInput=async(hid,date,curVal,goal)=>{
 
   const modal = document.createElement('div');
   modal.id = 'direct-input-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  // Barvy z motivu (4.85): vrstva .di-ov + karta .modal; ne .moverlay, ať ji nezavírá cm() / Zpět mimo vlastní logiku
+  modal.className = 'di-ov';
+  modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','di-title');
   modal.innerHTML = `
-    <div style="background:#1a1a20;border:1px solid #f5c842;border-radius:16px;padding:24px;width:100%;max-width:320px;text-align:center">
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#f5c842;margin-bottom:6px">${tH('hb.di.title')}</div>
-      <div style="font-size:14px;color:#a0a0b0;margin-bottom:16px">${tH('hb.di.goal',{goal})}</div>
-      <input id="di-inp" type="number" min="0" max="9999" value="${curVal||0}"
-        style="width:100%;background:#222228;border:2px solid #f5c842;border-radius:10px;padding:12px;color:#fff;font-family:'Playfair Display',serif;font-size:28px;text-align:center;outline:none;margin-bottom:16px">
-      <div style="display:flex;gap:10px;margin-bottom:8px">
-        <button onclick="document.getElementById('direct-input-modal').remove()"
-          style="flex:1;background:none;border:1px solid #2a2a35;border-radius:10px;padding:11px;color:#a0a0b0;font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer">${tH('common.cancel')}</button>
-        <button id="di-ok"
-          style="flex:1;background:#f5c842;border:none;border-radius:10px;padding:11px;color:#1a1a1a;font-family:'Crimson Pro',serif;font-size:16px;font-weight:700;cursor:pointer">${tH('common.save')}</button>
+    <div class="modal di-card">
+      <div class="mtitle di-title" id="di-title">${tH('hb.di.title')}</div>
+      <div class="di-goal">${tH('hb.di.goal',{goal})}</div>
+      <input id="di-inp" class="finp di-inp" type="number" inputmode="numeric" min="0" max="9999" value="${curVal||0}">
+      <div class="macts">
+        <button type="button" class="btn-s" onclick="document.getElementById('direct-input-modal').remove()">${tH('common.cancel')}</button>
+        <button type="button" class="btn-p" id="di-ok">${tH('common.save')}</button>
       </div>
-      ${curVal!==null&&curVal!==undefined?`<button id="di-clear" style="width:100%;background:none;border:none;color:#6a6a88;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px">${tH('hb.di.clear')}</button>`:''}
+      ${curVal!==null&&curVal!==undefined?`<button type="button" id="di-clear" class="di-clear">${tH('hb.di.clear')}</button>`:''}
     </div>`;
   document.body.appendChild(modal);
 
