@@ -2703,6 +2703,7 @@ function renderHabits(){
   // Při filtru bez přetahování (pořadí podmnožiny by přepsalo pořadí celé skupiny)
   if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
   requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+  wtLinkScan(); // nabídka propojení s pitným režimem (4.85)
 }
 
 // ── HABIT DETAIL ──────────────────────────────────────
@@ -3216,6 +3217,7 @@ async function saveHabitImpl(){
   btn.textContent=t('hb.add');
   toast(t('hb.added'));
   ctaAskShare('h',hRef.id); // nabídka sdílení (4.49)
+  wtLinkOffer({...h,id:hRef.id}); // nabídka propojení s pitným režimem (4.85), počká na sdílení
 }
 
 window.directInput=async(hid,date,curVal,goal)=>{
@@ -6633,6 +6635,55 @@ function wtHabitUnlink(oldId,newId){
   _wtHbBusy.add(id);
   delHabitLog(id).then(()=>{ _wtHbBusy.delete(id); renderHabits(); rAvPage(); gameKick(); },
     e=>{ _wtHbBusy.delete(id); console.warn('[LP] water habit:',e?.code||e?.name); });
+}
+// ── Nabídka propojit návyk s pitným režimem (4.85) ──
+// Pitný režim zapnutý, žádný propojený návyk a ano/ne návyk s „vod/pít/water/drink“ v názvu → jednorázová lišta.
+// Každý návyk jen jednou (lp_wtlink_<id> v zařízení), nikdy přes průvodce ani otevřené okno (whenUiFree).
+const WT_LINK_RE=/(^|[^a-z])(vod|pit|napit|water|drink)/;
+const wtLinkName=n=>WT_LINK_RE.test(String(n||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase());
+const wtLinkSeen=hid=>{ try{ return !!localStorage.getItem('lp_wtlink_'+hid); }catch(e){ return true; } }; // bez úložiště raději nenabízet
+const wtLinkMark=hid=>{ try{ localStorage.setItem('lp_wtlink_'+hid,'1'); }catch(e){} };
+const wtLinkFits=h=>!!h&&WT_HB_RE.test(h.id||'')&&wtHabitOk(h)&&wtLinkName(h.name)&&!wtLinkSeen(h.id);
+let _wtLinkQ=false, _wtLinkScanned=false, _wtLinkT=null;
+function wtLinkOffer(h,tries=0){
+  if(_wtLinkQ||!CU||!waterCfg()||wtHabit()||!wtLinkFits(h)) return;
+  _wtLinkQ=true;
+  whenUiFree(()=>{
+    _wtLinkQ=false;
+    if(!waterCfg()||wtHabit()||!wtLinkFits(h)) return;
+    if(document.querySelector('.cta-ask')){ if(tries<20) setTimeout(()=>wtLinkOffer(h,tries+1),3000); return; } // nejdřív doběhne nabídka sdílení
+    wtLinkMark(h.id);
+    const el=document.createElement('div');
+    el.id='wt-link-ask'; el.className='cta-ask wtl-ask'; el.setAttribute('role','status');
+    el.innerHTML=`<span class="cta-ask-t">💧 ${tH('wt.linkAsk',{name:h.name})}</span>
+      <button type="button" class="cta-ask-b" data-a0="${esc(h.id)}" onclick="wtLinkYes(this.dataset.a0)">${tH('wt.linkYes')}</button>
+      <button type="button" class="wtl-no" onclick="wtLinkClose()">${tH('wt.linkNo')}</button>`;
+    document.body.appendChild(el);
+    clearTimeout(_wtLinkT); _wtLinkT=setTimeout(window.wtLinkClose,20000);
+  },120000,()=>{ _wtLinkQ=false; });
+}
+window.wtLinkClose=()=>{ clearTimeout(_wtLinkT); _wtLinkT=null; document.getElementById('wt-link-ask')?.remove(); };
+// Stejné uložení jako v nastavení pitného režimu (saveWaterSettings), mění se jen habitId
+window.wtLinkYes=hid=>{
+  window.wtLinkClose();
+  const h=habits.find(x=>x.id===hid);
+  if(!CU||!waterOn()||!WT_HB_RE.test(hid)||!wtHabitOk(h)) return;
+  const cfg=wtNormCfg({...(prof.water||{}),habitId:hid}), oldHb=prof.water?.habitId||null;
+  prof.water=cfg;
+  wtHabitUnlink(oldHb,cfg.habitId);
+  setDoc(doc(db,'users',CU.uid,'profile','main'),{water:cfg},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'water')})));
+  toast(t('wt.linkDone',{name:h.name}));
+  renderWaterAll();
+  wtHabitSync(); gameKick();
+  renderHabits();
+};
+// Už existující návyky: jednou za načtení, až přijdou ze serveru
+function wtLinkScan(){
+  if(!_habitsSnapOk||_wtLinkScanned||!CU||!waterCfg()) return; // _habitsSnapOk první: snapshot přijde až po načtení modulu
+  _wtLinkScanned=true;
+  if(wtHabit()) return;
+  const h=habits.find(wtLinkFits);
+  if(h) wtLinkOffer(h);
 }
 // Body za splněný cíl (dayXP): jen bez splněného propojeného návyku (ten má body za návyk), den přepočítává gameSync
 function wtDayXP(ds){

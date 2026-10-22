@@ -2382,3 +2382,10 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 /* 4.85: otevřená klávesnice (iOS) – okno jde odscrollovat nad ni (--keyboard-offset nastavuje app.js) */
 .moverlay{padding-bottom:calc(16px + var(--keyboard-offset,0px))}
 @media(max-width:380px){.moverlay{padding-bottom:calc(8px + var(--keyboard-offset,0px))}}
+
+/* Nabídka propojit návyk s pitným režimem (4.85): stejná lišta jako nabídka sdílení */
+.wtl-ask{flex-wrap:wrap;justify-content:flex-end;padding:8px 8px 8px 16px}
+.wtl-ask .cta-ask-t{flex:1 1 180px}
+.wtl-no{flex:none;min-height:40px;padding:6px 12px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
+.wtl-no:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:640px){.wtl-ask{bottom:calc(var(--bn-h) + 12px)}}
