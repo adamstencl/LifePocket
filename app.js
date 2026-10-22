@@ -1688,17 +1688,20 @@ function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=
 // ── Nová verze appky (4.84) ──
 // Při návratu do appky (nejvýš 1× za 30 min) se zeptat na nový SW; po jeho převzetí nabídnout načtení (bez automatického reloadu)
 if('serviceWorker' in navigator){
-  let _swCheckAt=Date.now(), _swHadCtrl=!!navigator.serviceWorker.controller, _swNoted=false;
+  // Jen novinka nalezená naší kontrolou, nebo u stránky otevřené déle než 2 min. Po deployi se SW vymění hned při
+  // startu (kontrola prohlížeče při navigaci) – tam už stránka novou verzi načetla ze sítě, lišta by lhala (revize 4.84)
+  let _swCheckAt=Date.now(), _swOwnAt=0, _swHadCtrl=!!navigator.serviceWorker.controller, _swNoted=false;
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible'||Date.now()-_swCheckAt<30*60000) return;
     _swCheckAt=Date.now();
-    navigator.serviceWorker.getRegistration().then(r=>r?.update()).catch(()=>{});
+    navigator.serviceWorker.getRegistration().then(r=>{ if(!r) return; _swOwnAt=Date.now(); return r.update(); }).catch(()=>{});
   });
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!_swHadCtrl){ _swHadCtrl=true; return; } // první instalace SW, ne nová verze
-    if(_swNoted) return;
+    const own=_swOwnAt&&Date.now()-_swOwnAt<5*60000;
+    if(_swNoted||!(own||performance.now()>120000)) return;
     _swNoted=true;
-    pantryNote(`<span style="flex:1;min-width:0;font-size:13px;color:var(--text2)">${tH('app.newVer')}</span><button onclick="location.reload()" style="${PN_BTN}">${tH('app.newVerBtn')}</button>`, 24*3600000);
+    pantryNote(`<span style="flex:1;min-width:0;font-size:13px;color:var(--text2)">${tH('app.newVer')}</span><button onclick="location.reload()" style="${PN_BTN}">${tH('app.newVerBtn')}</button><button onclick="pantryNoteClose(this)" aria-label="${tH('common.close')}" style="${PN_BTN};color:var(--text2)">×</button>`, 30000);
   });
 }
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
