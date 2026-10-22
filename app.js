@@ -2534,6 +2534,7 @@ function isHabitPending(h,ds){
 function renderHabits(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
+  if(habitViewMonth){ renderHabitMonth(); return; } // měsíční pohled: snapshot ho nesmí přepsat denním
   const scrollEl=document.getElementById('abody');
   const savedScroll=scrollEl?scrollEl.scrollTop:0;
   const lbl=document.getElementById('habit-day-lbl');
