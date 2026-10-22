@@ -70,9 +70,11 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '4.81';
 const CHANGELOG = [
   { v:'4.81', items:[
-    '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky'
+    '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky',
+    '🔔 Ranní a večerní souhrn návyků přijde jen tomu, kdo Návyky používá a má na ten den nějaký návyk'
   ], en:[
-    '🔧 Fixes for habits, calendar, goals, journal and water: nothing gets duplicated on a double tap or offline, habits switch to the new day after midnight, today’s event shows “Today”, deleting a goal also removes its subgoals and calendar deadlines, and the journal saves photo changes'
+    '🔧 Fixes for habits, calendar, goals, journal and water: nothing gets duplicated on a double tap or offline, habits switch to the new day after midnight, today’s event shows “Today”, deleting a goal also removes its subgoals and calendar deadlines, and the journal saves photo changes',
+    '🔔 The morning and evening habit summary only arrives if you use Habits and have a habit due that day'
   ]},
   { v:'4.80', items:[
     '🔔 Připomínka návyku nepřijde, když už máš den označený, i jako „Nesplněno“ nebo „Přeskočit“'
@@ -1753,8 +1755,12 @@ window.handleEntryPhotoInput = async function(input) {
   const file = input.files[0];
   if (!file) return;
   toast(t('nt.photoBusy'));
+  const sess = _jSess;
   try {
-    curEntryPhoto = await compressImage(file);
+    const ph = await compressImage(file);
+    // Editor mezitím zavřený (Zpět během komprese) → fotku zahodit, jinak by autosave založil duplicitní zápisek (4.81)
+    if (sess !== _jSess || document.getElementById('j-edit-area')?.style.display === 'none') { input.value = ''; return; }
+    curEntryPhoto = ph;
     window.markDirty();
     const p = document.getElementById('j-photo-preview');
     if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
@@ -1781,7 +1787,9 @@ function setJournalOpen(on){
 function journalEntryOpen(){ return !!document.getElementById('p-journal')?.classList.contains('j-open'); }
 
 // Zpět na seznam (tlačítko ← Zpět na mobilu nebo systémové Zpět). Neuložené změny tiše uloží.
+let _jSess = 0; // počítadlo zavření editoru (fotka z komprese nesmí přejít do jiného zápisku)
 window.closeEntry=()=>{
+  _jSess++;
   const title=document.getElementById('j-title')?.value.trim()||'';
   const text=document.getElementById('j-text')?.value.trim()||'';
   if(jRecOn) stopJournalMic();
@@ -1917,7 +1925,7 @@ window.markDirty=()=>{ entryDirty=true; };
 
 // Auto-save every 30s when dirty
 // 4.81: i nový neuložený zápisek (stejná podmínka jako journalFlush)
-setInterval(()=>{ if(entryDirty) journalFlush(); },30000);
+setInterval(()=>{ if(entryDirty&&document.getElementById('j-edit-area')?.style.display!=='none') journalFlush(); },30000);
 
 // ── JOURNAL VOICE ──────────────────────────────────────
 const jIsMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
