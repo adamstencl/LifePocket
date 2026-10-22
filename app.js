@@ -17149,17 +17149,25 @@ window.simpleUnlockAll=()=>{
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
 }
-window.togModSet=async(id,on)=>{
-  const ms=new Set(prof.modules||[]);
+// Optimisticky (4.84): lišta a Domů hned (i offline), zápis na pozadí; při chybě původní moduly zpět
+window.togModSet=(id,on)=>{
+  if(!CU||!prof) return;
+  const prev=[...(prof.modules||[])];
+  const ms=new Set(prev);
   on?ms.add(id):ms.delete(id);
   prof.modules=[...ms];
-  try{
-    await updateDoc(doc(db,'users',CU.uid,'profile','main'),{modules:prof.modules});
-    if(on) subModules(); // listenery zapnutého modulu
-    buildNav();rDash();rSetMods();
-    const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
-    toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
-  }catch(e){toast(t('common.saveFailed',{err:userErr(e,'moduly')}));}
+  if(on) subModules(); // listenery zapnutého modulu
+  buildNav();rDash();rSetMods();
+  const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
+  toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
+  const uid=CU.uid;
+  updateDoc(doc(db,'users',uid,'profile','main'),{modules:prof.modules}).catch(e=>{
+    if(CU?.uid!==uid||!prof) return;
+    prof.modules=prev;
+    if(on&&document.getElementById('p-'+id)?.classList.contains('active')) window.sp('dashboard');
+    subModules(); buildNav();rDash();rSetMods();
+    toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
+  });
 };
 window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast(t('set.nameEmpty'));return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast(t('set.nameSaved'));};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
