@@ -59,22 +59,22 @@ window.__lpLang=l; // rychlý start landingu (skript za #s-login)
 <body>
 
 <!-- PWA Install Banner -->
-<div id="pwa-banner" style="display:none;position:fixed;bottom:76px;left:12px;right:12px;background:linear-gradient(135deg,#1a1a20,#222228);border:1px solid rgba(245,200,66,.35);border-radius:16px;padding:14px 16px;z-index:999;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);">
+<div id="pwa-banner" style="display:none;position:fixed;bottom:76px;left:12px;right:12px;background:var(--card);border:1px solid var(--accent);border-radius:16px;padding:14px 16px;z-index:999;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);">
   <span style="font-size:28px">✨</span>
   <div style="flex:1">
     <div style="font-family:&#39;Playfair Display&#39;,serif;font-size:15px;color:var(--accent);font-weight:700" data-i18n="install.title">Nainstaluj LifePocket</div>
     <div style="font-size:13px;color:var(--text2);margin-top:2px" data-i18n="install.desc">Přidej na plochu jako appku — funguje i offline</div>
   </div>
-  <button onclick="installPWA()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:10px;padding:8px 16px;font-family:&#39;Crimson Pro&#39;,serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap" data-i18n="install.btn">📲 Instalovat</button>
-  <button onclick="dismissInstall()" data-i18n-attr="aria-label:common.close" aria-label="Zavřít" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:4px;line-height:1">×</button>
+  <button onclick="installPWA()" style="background:var(--accent);color:var(--on-accent);border:none;border-radius:10px;padding:8px 16px;min-height:44px;font-family:&#39;Crimson Pro&#39;,serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap" data-i18n="install.btn">📲 Instalovat</button>
+  <button onclick="dismissInstall()" data-i18n-attr="aria-label:common.close" aria-label="Zavřít" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:4px;line-height:1;min-width:44px;min-height:44px">×</button>
 </div>
 
 <!-- iOS Install Instructions -->
-<div id="ios-banner" style="display:none;position:fixed;bottom:76px;left:12px;right:12px;background:linear-gradient(135deg,#1a1a20,#222228);border:1px solid rgba(245,200,66,.35);border-radius:16px;padding:14px 16px;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.5);">
+<div id="ios-banner" style="display:none;position:fixed;bottom:76px;left:12px;right:12px;background:var(--card);border:1px solid var(--accent);border-radius:16px;padding:14px 16px;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.5);">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <span style="font-size:24px">✨</span>
     <div style="font-family:&#39;Playfair Display&#39;,serif;font-size:15px;color:var(--accent);font-weight:700" data-i18n="ios.title">Nainstaluj LifePocket na iPhone</div>
-    <button onclick="dismissIosBanner()" data-i18n-attr="aria-label:common.close" aria-label="Zavřít" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;margin-left:auto">×</button>
+    <button onclick="dismissIosBanner()" data-i18n-attr="aria-label:common.close" aria-label="Zavřít" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;margin-left:auto;min-width:44px;min-height:44px">×</button>
   </div>
   <div style="font-size:14px;color:var(--text2);line-height:1.7">
     1. <span data-i18n="ios.s1a">Klepni na</span> <b style="color:var(--accent)" data-i18n="ios.s1b">⬆️ Sdílet</b> <span data-i18n="ios.s1c">v Safari</span><br>
