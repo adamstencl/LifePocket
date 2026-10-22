@@ -2378,3 +2378,7 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .di-card .macts{margin-top:16px;margin-bottom:8px}
 .di-card .macts .btn-s,.di-card .macts .btn-p{flex:1}
 .di-clear{width:100%;min-height:40px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px}
+
+/* 4.85: otevřená klávesnice (iOS) – okno jde odscrollovat nad ni (--keyboard-offset nastavuje app.js) */
+.moverlay{padding-bottom:calc(16px + var(--keyboard-offset,0px))}
+@media(max-width:380px){.moverlay{padding-bottom:calc(8px + var(--keyboard-offset,0px))}}

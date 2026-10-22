@@ -20845,8 +20845,8 @@ window.restartTour = () => {
 // Keyboard offset — posun modálů nahoru při otevření klávesnice na mobilu
 if(window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
-    const offset = window.innerHeight - window.visualViewport.height;
-    document.documentElement.style.setProperty('--keyboard-offset', offset + 'px');
+    const offset = Math.max(0, Math.round(window.innerHeight - window.visualViewport.height));
+    document.documentElement.style.setProperty('--keyboard-offset', offset + 'px'); // použito v .moverlay (padding-bottom)
   });
 }
 //z
