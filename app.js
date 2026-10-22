@@ -16700,7 +16700,7 @@ function buildGoalCard(g, openSet, doneToday) {
   if (linked.length) {
     const rows = linked.map(hb => {
       const done = doneToday.has(hb.id);
-      return '<div class="gh-habit-row"><span>' + (hb.emoji||'🎯') + '</span>'
+      return '<div class="gh-habit-row"><span>' + esc(hb.emoji||'🎯') + '</span>'
         + '<span class="gh-habit-nm">' + esc(hb.name) + '</span>'
         + '<span class="gh-habit-st' + (done?' done':'') + '">' + (done?'✓':'○') + '</span></div>';
     }).join('');
@@ -16765,7 +16765,7 @@ function buildGoalCard(g, openSet, doneToday) {
     + '<div class="ghdr" data-a0="' + esc(g.id) + '" onclick="togSubs(this.dataset.a0)">'
     +   '<div class="ghdr-r1">'
     +     '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
-    +     '<div class="gem">' + (g.emoji||'🌟') + '</div>'
+    +     '<div class="gem">' + esc(g.emoji||'🌟') + '</div>'
     +     '<div class="gnm">' + esc(g.name) + '<span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
     +     '<div class="gacts" onclick="event.stopPropagation()">'
     +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="openGM(this.dataset.a0)">✏️</button>'
@@ -16793,7 +16793,7 @@ function buildArchivedSection(archivedGoals) {
     '<div class="gcard" style="opacity:.7">'
     + '<div class="ghdr-r1" style="padding:14px 16px">'
     +   '<div class="gdot" style="background:' + (g.color||'#f5c842') + '"></div>'
-    +   '<div class="gem">' + (g.emoji||'🌟') + '</div>'
+    +   '<div class="gem">' + esc(g.emoji||'🌟') + '</div>'
     +   '<div class="gnm"><span style="text-decoration:line-through">' + esc(g.name) + '</span><span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
     +   '<div class="gacts"><button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="unarchiveGoal(this.dataset.a0)">↩ ' + tH('hd.restore') + '</button></div>'
     + '</div>'
