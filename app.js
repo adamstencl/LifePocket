@@ -3969,6 +3969,8 @@ window.selEvType=(t,btn)=>{
   if(tr) tr.style.display=evHasTime(t)?'block':'none';
   const er=document.getElementById('ev-end-date-row');
   if(er) er.style.display=evHasEnd(t)?'block':'none';
+  // Nové narozeniny: předvolit opakování každý rok
+  if(t==='birthday'&&!editingEventId){ const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='yes'; }
 };
 
 window.saveEvent=()=>guardSave('ev','#m-event .btn-p[onclick="saveEvent()"]',saveEventImpl);
