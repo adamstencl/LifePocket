@@ -1622,7 +1622,10 @@ cleanDatedLocalKeys();
 function claimLocalDataOwner(uid){
   try{
     const owner=localStorage.getItem('lp_owner_uid');
-    if(owner&&owner!==uid){ LOCAL_PERSONAL_KEYS.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}}); cleanDatedLocalKeys(0); }
+    if(owner&&owner!==uid){
+      LOCAL_PERSONAL_KEYS.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}}); cleanDatedLocalKeys(0);
+      localStorage.setItem('lp_fcm_reset','1'); // sdílené zařízení (4.84): push token předchozího účtu zahodit před novým
+    }
     if(owner!==uid) localStorage.setItem('lp_owner_uid',uid);
   }catch(e){}
 }
@@ -5307,6 +5310,12 @@ async function doRegisterFcmToken() {
 
     const swReg = await navigator.serviceWorker.ready;
     let token;
+    // Jiný účet na tomto zařízení (4.84): starý token by dál dostával notifikace předchozího účtu
+    let fcmReset = false; try { fcmReset = localStorage.getItem('lp_fcm_reset') === '1'; } catch(e) {}
+    if (fcmReset) {
+      try { await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 5000))]); } catch(e) {}
+      try { localStorage.removeItem('lp_fcm_reset'); } catch(e) {}
+    }
     try {
       token = await fcmSdk.getToken(messaging, {
         vapidKey: VAPID_KEY,
