@@ -4002,17 +4002,23 @@ async function saveEventImpl(){
     // Cíl úpravy = skupina zachycená při otevření; nesdílí-li už kalendář, neukládat (žádná osobní kopie se stejným ID)
     const editGroupId = editingEventGid;
     if(editGroupId && !groupModShared(editGroupId, 'cal')) { toast(t('cal.editGone')); return; }
-    const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
-    if(time) evUpdate.time = time;
-    if(dateEnd) evUpdate.dateEnd = dateEnd;
+    // merge (4.81): autor, createdAt a fromGoal zůstávají; prázdný čas / konec se smaže
+    const orig = editGroupId
+      ? getAllFamilyEvents().find(e => e.id === editingEventId && (e.groupId || familyId) === editGroupId)
+      : events.find(e => e.id === editingEventId);
+    const evUpdate = {name, date, type:selEvType_val, repeat};
+    if(!orig?.addedBy) evUpdate.addedBy = CU.uid;
+    evUpdate.time = time || deleteField();
+    evUpdate.dateEnd = dateEnd || deleteField();
     if(tMeta) Object.assign(evUpdate, tMeta);
+    else if(!String(selEvType_val).startsWith('c_')) { evUpdate.typeLabel = deleteField(); evUpdate.typeEmoji = deleteField(); } // cizí vlastní typ: ponechat
     // Zápis bez čekání (offline by visel), chyba jen toastem
     const evErr = e => toast('⚠️ '+userErr(e,'událost'));
     if(editGroupId) {
-      setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate).catch(evErr);
+      setDoc(doc(db,'families',editGroupId,'events',editingEventId), evUpdate, {merge:true}).catch(evErr);
       logGroupActivity(editGroupId, 'cal', 'edit', gaTitle(name, fmtDate(date,'dm')), 1, {ref: date});
     } else {
-      setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate).catch(evErr);
+      setDoc(doc(db,'users',CU.uid,'events',editingEventId), evUpdate, {merge:true}).catch(evErr);
     }
     editingEventId = null; editingEventGid = null;
     toast(t('cal.edited'));
