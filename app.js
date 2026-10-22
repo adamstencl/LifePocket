@@ -1830,7 +1830,7 @@ window.handleEntryPhotoInput = async function(input) {
     const p = document.getElementById('j-photo-preview');
     if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
       <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
-      <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
+      <button onclick="removeEntryPhoto()" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
     </div>`;
     toast(t('nt.photoReady'));
   } catch(e) { toast(t('nt.photoFail')); }
@@ -1907,7 +1907,7 @@ window.openEntry=(id)=>{
   if (p) p.innerHTML = curEntryPhoto
     ? `<div style="position:relative;display:inline-block;margin-top:8px">
         <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
-        <button onclick="removeEntryPhoto()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
+        <button onclick="removeEntryPhoto()" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:22px;text-align:center">×</button>
       </div>`
     : '';
   document.getElementById('j-empty')?.style && (document.getElementById('j-empty').style.display='none');
@@ -2531,12 +2531,12 @@ function buildHabitCard(h){
     const pct=Math.min(Math.round(val/goal*100),100);
     controlHtml=`
       <div class="habit-counter">
-        <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
         <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
           <div class="cnt-val cnt-clickable">${val}</div>
           <div class="cnt-goal">/ ${goal} ✎</div>
         </div>
-        <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
+        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
       </div>
       <div class="habit-progress" style="margin-top:8px">
         <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
@@ -2559,8 +2559,8 @@ function buildHabitCard(h){
   return `<div class="habit-card${cardDone?' done':''}" data-drag-id="${esc(h.id)}">
     <div class="habit-card-top">
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
-        <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
-        <button data-a0="${esc(h.id)}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
+        <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.upName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
+        <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.downName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
       </div>
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="${tH('hb.historyTitle')}">
@@ -2576,12 +2576,12 @@ function buildHabitCard(h){
         ? `<span style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
         : h.type==='count'
           ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
               <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
                 <div class="cnt-val cnt-clickable">${val}</div>
                 <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
               </div>
-              <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
+              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
             </div>`
           : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
@@ -3403,7 +3403,7 @@ function renderArchivedHabits() {
         <div style="font-size:12px;color:var(--text3)">${tH(lookupOr({morning:'hb.grp.morning',day:'hb.grp.day',evening:'hb.grp.evening'},h.group||'day','hb.grp.day'))} · ${esc(habitFreqLabel(h.freq))}</div>
       </div>
       <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="${tH('hd.restore')}" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ ${tH('hd.restore')}</button>
-      <button data-a0="${esc(h.id)}" onclick="deleteArchivedHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
+      <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.delName',{name:h.name})}" onclick="deleteArchivedHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
     </div>`).join('');
 }
 // Smazání z archivu je nevratné → potvrdit
@@ -3571,7 +3571,7 @@ function renderEvList(){
         :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
-      +'<button class="ev-del" data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
+      +'<button class="ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
       +'</div>';
   }).join('');
 }
@@ -3895,8 +3895,8 @@ function showDayEventsModal(ds, dayEvs) {
       +'<div style="font-weight:600;color:var(--text1)">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type,ev))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
       +'</div>'
-      +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
-      +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
+      +'<button data-a0="'+esc(JSON.stringify(ev))+'" aria-label="'+tH('a11y.editName',{name:ev.name})+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
+      +'<button data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
       +'</div>';
   }).join('');
   const modal = document.createElement('div');
@@ -15429,7 +15429,7 @@ document.addEventListener('paste', async function(e) {
         const preview = document.getElementById('cl-new-photo-preview');
         if (preview) {
           preview.style.display = 'block';
-          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
         }
         document.getElementById('cl-new-inp')?.focus();
       } catch(err) { toast(t('cl.imgFail')); }
@@ -15606,12 +15606,12 @@ function renderChecklist() {
             ` : `
               <span class="cl-item-text" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)">${esc(item.text)}</span>
             `}
-            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
+            ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.photoDel')}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
           ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="${tH('cl.addPhoto')}">📷</button>` : ''}
           ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="${tH('cl.up')}">↑</button>` : ''}
           ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="${tH('cl.down')}">↓</button>` : ''}
-          ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
+          ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.delName',{name:item.text})}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
         </div>`;
       }).join('') : emptyHTML('checklist')}
     </div>
@@ -15648,7 +15648,7 @@ window.handleClNewPhotoInput = async function(input) {
     const preview = document.getElementById('cl-new-photo-preview');
     if (preview) {
       preview.style.display = 'block';
-      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
     }
   } catch(e) { toast(t('nt.photoFail')); }
   input.value = '';
@@ -17014,7 +17014,7 @@ function buildGoalCard(g, openSet, doneToday) {
         '<div class="task-item">'
         + '<div class="task-chk' + (t.done?' done':'') + '" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" data-a2="' + esc(t.id) + '" onclick="togTask(this.dataset.a0,this.dataset.a1,this.dataset.a2)">' + (t.done?'✓':'') + '</div>'
         + '<div class="task-nm' + (t.done?' done':'') + '">' + esc(t.name) + '</div>'
-        + '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" data-a2="' + esc(t.id) + '" onclick="delTask(this.dataset.a0,this.dataset.a1,this.dataset.a2)">×</button>'
+        + '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" data-a2="' + esc(t.id) + '" aria-label="' + tH('a11y.delName',{name:t.name}) + '" onclick="delTask(this.dataset.a0,this.dataset.a1,this.dataset.a2)">×</button>'
         + '</div>'
       ).join('');
       const dlTag = s.deadline ? '<span class="sg-dl-tag">📅 ' + fd(s.deadline) + '</span>' : '';
@@ -17027,8 +17027,8 @@ function buildGoalCard(g, openSet, doneToday) {
         +     '<div class="sg-meta-row">' + dlTag + '</div>'
         +   '</div>'
         +   '<div class="sg-acts">'
-        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="openSubGM(this.dataset.a0,this.dataset.a1)">✏️</button>'
-        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" onclick="delSubG(this.dataset.a0,this.dataset.a1)">🗑️</button>'
+        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" aria-label="' + tH('a11y.editName',{name:s.name}) + '" onclick="openSubGM(this.dataset.a0,this.dataset.a1)">✏️</button>'
+        +     '<button class="btn-xs2" data-a0="' + esc(g.id) + '" data-a1="' + esc(s.id) + '" aria-label="' + tH('a11y.delName',{name:s.name}) + '" onclick="delSubG(this.dataset.a0,this.dataset.a1)">🗑️</button>'
         +   '</div>'
         + '</div>'
         + (taskRows ? '<div class="tasks-list">' + taskRows + '</div>' : '')
@@ -17065,8 +17065,8 @@ function buildGoalCard(g, openSet, doneToday) {
     +     '<div class="gem">' + esc(g.emoji||'🌟') + '</div>'
     +     '<div class="gnm">' + esc(g.name) + '<span data-g-shb="' + esc(g.id) + '">' + shBadgeHTML('g', g.id) + '</span></div>'
     +     '<div class="gacts" onclick="event.stopPropagation()">'
-    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="openGM(this.dataset.a0)">✏️</button>'
-    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" onclick="delG(this.dataset.a0)">🗑️</button>'
+    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" aria-label="' + tH('a11y.editName',{name:g.name}) + '" onclick="openGM(this.dataset.a0)">✏️</button>'
+    +       '<button class="btn-xs" data-a0="' + esc(g.id) + '" aria-label="' + tH('a11y.delName',{name:g.name}) + '" onclick="delG(this.dataset.a0)">🗑️</button>'
     +     '</div>'
     +   '</div>'
     +   (goalMetric(g) ? goalMetricHTML(g) : '<div class="ghdr-r2">'
@@ -18000,8 +18000,8 @@ function renderShop(){
           <button type="button" class="shop-item-qty${i.qty?'':' empty'}" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" aria-label="${i.qty?tH('shop.qtyAria',{name:i.name,qty:i.qty}):tH('shop.qtyAddAria',{name:i.name})}">${i.qty?esc(i.qty):tH('shop.qtyAdd')}</button>
           <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="${tH('shop.catEdit')}" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${esc(i.fromRecipe)}</span>`:''}
-          <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="${tH('shop.favAdd')}">${isFavShopItem(i.name)?'⭐':'☆'}</button>
-          <button class="shop-item-del" data-a0="${esc(i.id)}" onclick="delShopItem(this.dataset.a0)">×</button>
+          <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="${tH('shop.favAdd')}" aria-label="${tH('shop.favAdd')}" aria-pressed="${isFavShopItem(i.name)}">${isFavShopItem(i.name)?'⭐':'☆'}</button>
+          <button class="shop-item-del" data-a0="${esc(i.id)}" aria-label="${tH('a11y.delName',{name:i.name})}" onclick="delShopItem(this.dataset.a0)">×</button>
         </div>`).join('')}
     </div>`;
   }).join('');
@@ -18527,7 +18527,7 @@ function renderRecurringShop() {
     return `<div class="recurring-chip">
       <button data-a0="${esc(item.id)}" onclick="addFromRecurring(this.dataset.a0)" class="recurring-chip-name">${esc(item.name)}</button>
       <span class="recurring-chip-info">${esc(lookupOr(FREQ,item.freq,''))}${dayLbl}</span>
-      <button data-a0="${esc(item.id)}" onclick="delRecurringShopItem(this.dataset.a0)" class="recurring-chip-del">×</button>
+      <button data-a0="${esc(item.id)}" aria-label="${tH('a11y.delName',{name:item.name})}" onclick="delRecurringShopItem(this.dataset.a0)" class="recurring-chip-del">×</button>
     </div>`;
   }).join('');
 }
@@ -19126,9 +19126,9 @@ function renderRecipe(r, scaledPortions){
       <span>⏱ ${esc(r.time)}</span>
       <span>🍽 ${esc(mealTypeLabel(r.mealType||r.difficulty)||'?')}</span>
       <span style="display:flex;align-items:center;gap:6px">🍽
-        <button onclick="changePortions(-1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">−</button>
+        <button onclick="changePortions(-1)" aria-label="${tH('a11y.portionsLess')}" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">−</button>
         <span id="portions-display" style="font-weight:700;min-width:20px;text-align:center">${portions}</span>
-        <button onclick="changePortions(1)" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">+</button>
+        <button onclick="changePortions(1)" aria-label="${tH('a11y.portionsMore')}" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text);font-size:14px;line-height:1">+</button>
         <span style="color:var(--text3)">${tH('ck.portionsWord')}</span>
       </span>
     </div>
@@ -19594,10 +19594,10 @@ function buildPantryHtml(gid) {
             ${isLow ? `<span class="pantry-low-badge">${tH('pantry.lowBadge')}</span>` : ''}
           </div>
           <div class="pantry-item-qty">
-            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" onclick="changePantryQty(this.dataset.a0, -1, this.dataset.a1)">−</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.lessName',{name:item.name})}" onclick="changePantryQty(this.dataset.a0, -1, this.dataset.a1)">−</button>
             <span class="pantry-qty-val">${pantryQty(item)} ${esc(item.unit ? unitLabel(item.unit) : '')}</span>
-            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" onclick="changePantryQty(this.dataset.a0, 1, this.dataset.a1)">+</button>
-            <button class="pantry-item-del" data-a0="${esc(item.id)}" data-a1="${g}" onclick="deletePantryItem(this.dataset.a0, this.dataset.a1)">🗑</button>
+            <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.moreName',{name:item.name})}" onclick="changePantryQty(this.dataset.a0, 1, this.dataset.a1)">+</button>
+            <button class="pantry-item-del" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.delName',{name:item.name})}" onclick="deletePantryItem(this.dataset.a0, this.dataset.a1)">🗑</button>
           </div>
         </div>`;
       }).join('')}

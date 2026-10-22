@@ -367,11 +367,11 @@ else show();
 <!-- APP -->
 <div id="app">
   <header class="hdr">
-    <div class="hlogo" onclick="sp(&#39;dashboard&#39;)">✨ LifePocket</div>
+    <div class="hlogo" role="button" tabindex="0" data-i18n-attr="aria-label:nav.home" aria-label="Domů" onclick="sp(&#39;dashboard&#39;)">✨ LifePocket</div>
     <nav class="hnav" id="hnav"></nav>
     <div class="hright">
       <button id="theme-toggle-btn" onclick="toggleTheme()" title="Přepnout téma" data-i18n-attr="title:hdr.theme;aria-label:hdr.theme" aria-label="Přepnout téma" style="background:var(--card2);border:1px solid var(--border);border-radius:50px;width:36px;height:36px;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0">🌙</button>
-      <div class="upill" id="upill" onclick="sp(&#39;settings&#39;)"></div>
+      <div class="upill" id="upill" role="button" tabindex="0" data-i18n-attr="aria-label:nav.settings" aria-label="Nastavení" onclick="sp(&#39;settings&#39;)"></div>
       <button class="lbtn" onclick="doLogout()" data-i18n="hdr.logout">Odhlásit</button>
     </div>
   </header>
@@ -393,7 +393,7 @@ else show();
       <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi) -->
       <div class="verify-note" id="verify-note" role="status" hidden></div>
       <!-- Avatar banner -->
-      <div class="avbanner" onclick="sp(&#39;avatar&#39;)">
+      <div class="avbanner" role="button" tabindex="0" onclick="sp(&#39;avatar&#39;)">
         <div class="avbig" id="d-avem">⭐</div>
         <div style="flex:1">
           <div class="avsnm" id="d-avnm"></div>
@@ -416,9 +416,9 @@ else show();
         <!-- Day navigation -->
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <div class="habit-day-nav">
-          <button class="cal-nav-btn" onclick="habitPrevDay()">‹</button>
+          <button class="cal-nav-btn" data-i18n-attr="aria-label:a11y.prevDay" aria-label="Předchozí den" onclick="habitPrevDay()">‹</button>
           <div class="habit-day-lbl" id="habit-day-lbl">Dnes</div>
-          <button class="cal-nav-btn" onclick="habitNextDay()">›</button>
+          <button class="cal-nav-btn" data-i18n-attr="aria-label:a11y.nextDay" aria-label="Další den" onclick="habitNextDay()">›</button>
           </div>
           <button id="habit-month-btn" onclick="toggleHabitMonth()" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:13px;color:var(--text2);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="hb.f.month">📊 Měsíc</button>
         </div>
@@ -452,7 +452,7 @@ else show();
           </div>
           <div class="fg">
             <label class="flbl">Emoji</label>
-            <div class="habit-emoji-row" id="habit-emoji-row">
+            <div class="habit-emoji-row" id="habit-emoji-row" role="group" data-i18n-attr="aria-label:a11y.habitEmoji" aria-label="Ikona návyku">
               <button class="emoji-pick-btn sel" data-e="🏃" onclick="setHabitEmoji(&#39;🏃&#39;,this)">🏃</button>
               <button class="emoji-pick-btn" data-e="💧" onclick="setHabitEmoji(&#39;💧&#39;,this)">💧</button>
               <button class="emoji-pick-btn" data-e="📚" onclick="setHabitEmoji(&#39;📚&#39;,this)">📚</button>
@@ -602,9 +602,9 @@ else show();
         <div class="cal-left">
           <!-- Month nav -->
           <div class="cal-nav-row">
-            <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+            <button class="cal-nav-btn" data-i18n-attr="aria-label:a11y.prevMonth" aria-label="Předchozí měsíc" onclick="calPrev()">‹</button>
             <div class="cal-month-lbl" id="cal-month-lbl">Březen 2025</div>
-            <button class="cal-nav-btn" onclick="calNext()">›</button>
+            <button class="cal-nav-btn" data-i18n-attr="aria-label:a11y.nextMonth" aria-label="Další měsíc" onclick="calNext()">›</button>
           </div>
           <button id="cal-migrate-btn" onclick="migrateCalEvents()" style="display:none;width:100%;margin-bottom:8px;background:rgba(245,200,66,.12);border:1px solid var(--accent);color:var(--accent);border-radius:10px;padding:8px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer"></button>
           <!-- Calendar grid -->
@@ -669,12 +669,12 @@ else show();
               <div id="j-share" class="j-share"></div>
               <div class="j-mood-row">
                 <span style="font-size:12px;color:var(--text3)" data-i18n="nt.moodLbl">Nálada:</span>
-                <button class="j-mood-btn" data-m="😄" onclick="setEntryMood(&#39;😄&#39;,this)">😄</button>
-                <button class="j-mood-btn" data-m="🙂" onclick="setEntryMood(&#39;🙂&#39;,this)">🙂</button>
-                <button class="j-mood-btn" data-m="😐" onclick="setEntryMood(&#39;😐&#39;,this)">😐</button>
-                <button class="j-mood-btn" data-m="😔" onclick="setEntryMood(&#39;😔&#39;,this)">😔</button>
-                <button class="j-mood-btn" data-m="😤" onclick="setEntryMood(&#39;😤&#39;,this)">😤</button>
-                <button class="j-mood-btn" data-m="😴" onclick="setEntryMood(&#39;😴&#39;,this)">😴</button>
+                <button class="j-mood-btn" data-m="😄" data-i18n-attr="aria-label:a11y.mood.great" aria-label="Nálada: skvělá" onclick="setEntryMood(&#39;😄&#39;,this)">😄</button>
+                <button class="j-mood-btn" data-m="🙂" data-i18n-attr="aria-label:a11y.mood.good" aria-label="Nálada: dobrá" onclick="setEntryMood(&#39;🙂&#39;,this)">🙂</button>
+                <button class="j-mood-btn" data-m="😐" data-i18n-attr="aria-label:a11y.mood.ok" aria-label="Nálada: normální" onclick="setEntryMood(&#39;😐&#39;,this)">😐</button>
+                <button class="j-mood-btn" data-m="😔" data-i18n-attr="aria-label:a11y.mood.sad" aria-label="Nálada: smutná" onclick="setEntryMood(&#39;😔&#39;,this)">😔</button>
+                <button class="j-mood-btn" data-m="😤" data-i18n-attr="aria-label:a11y.mood.angry" aria-label="Nálada: naštvaná" onclick="setEntryMood(&#39;😤&#39;,this)">😤</button>
+                <button class="j-mood-btn" data-m="😴" data-i18n-attr="aria-label:a11y.mood.sleepy" aria-label="Nálada: ospalá" onclick="setEntryMood(&#39;😴&#39;,this)">😴</button>
                 <button id="auto-mood-btn" onclick="autoDetectMood()" title="Rex navrhne náladu podle textu" data-i18n-attr="title:nt.autoMoodTitle" style="background:none;border:1px dashed rgba(245,200,66,.35);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text3);cursor:pointer;transition:all .2s;margin-left:4px;font-family:&#39;Crimson Pro&#39;,serif">
                   ✨ Auto
                 </button>
@@ -957,7 +957,7 @@ else show();
             <textarea class="cta" id="c-inp" placeholder="Napiš zprávu nebo klepni na 🎤…" data-i18n-attr="placeholder:chat.inpPh" rows="1" onkeydown="ck(event)" oninput="ar(this)"></textarea>
             <button class="btn-mic" id="mic-btn" onclick="togMic()" title="Hlasový vstup" data-i18n-attr="title:chat.micTitle">🎤</button>
           </div>
-          <button class="btn-send" id="send-btn" onclick="send()">➤</button>
+          <button class="btn-send" id="send-btn" data-i18n-attr="aria-label:a11y.send" aria-label="Odeslat" onclick="send()">➤</button>
         </div>
       </div>
     </div>
