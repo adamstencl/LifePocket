@@ -16089,10 +16089,11 @@ function rDash(){
   }
 
   // ── WIDGET: CÍLE ──
-  if(mods.includes('goals')&&goals.length){
-    const avgProgress=Math.round(goals.reduce((s,g)=>s+(g.progress||0),0)/goals.length);
-    const doneGoals=goals.filter(g=>g.progress>=100).length;
-    const goalRows=goals.slice(0,3).map(g=>`
+  const actG=goals.filter(g=>!g.archivedGoal); // archivované cíle na Domů ne (4.81)
+  if(mods.includes('goals')&&actG.length){
+    const avgProgress=Math.round(actG.reduce((s,g)=>s+(g.progress||0),0)/actG.length);
+    const doneGoals=actG.filter(g=>g.progress>=100).length;
+    const goalRows=actG.slice(0,3).map(g=>`
       <div class="dw-goal-row">
         <div class="dw-goal-top">
           <span style="font-size:14px;color:var(--text)">${esc(g.emoji||'🌟')} ${esc(g.name)}</span>
