@@ -19764,12 +19764,8 @@ function showHabitDetectBanner(completed, newHabits) {
 // Zaznamenat splněný návyk (existující nebo nový)
 // Pojistka (4.81): banner pryč hned, ID předem, zápis bez čekání (offline by visel, dvojí ťuk = duplicita)
 const hfeErr = e => toast(t('common.saveFailed',{err:userErr(e,'habit')}));
-let _hfeBusy = false;
-window.logHabitFromEntry = async (dataEnc) => {
-  if (_hfeBusy || !CU) return;
-  _hfeBusy = true;
-  try { logHabitFromEntryImpl(dataEnc); } finally { _hfeBusy = false; }
-};
+// Vše synchronně: druhé ťuknutí už banner nenajde
+window.logHabitFromEntry = (dataEnc) => { if (CU) logHabitFromEntryImpl(dataEnc); };
 function logHabitFromEntryImpl(dataEnc) {
   const {item, existingHabitId} = JSON.parse(dataEnc);
   const today = toDS();
@@ -19807,11 +19803,7 @@ function logHabitFromEntryImpl(dataEnc) {
 }
 
 // Vytvořit nový návyk ze záměru
-window.createHabitFromEntry = async (dataEnc) => {
-  if (_hfeBusy || !CU) return;
-  _hfeBusy = true;
-  try { createHabitFromEntryImpl(dataEnc); } finally { _hfeBusy = false; }
-};
+window.createHabitFromEntry = (dataEnc) => { if (CU) createHabitFromEntryImpl(dataEnc); };
 function createHabitFromEntryImpl(dataEnc) {
   const h = JSON.parse(dataEnc);
   const newH = {
