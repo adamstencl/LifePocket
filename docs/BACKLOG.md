@@ -39,3 +39,12 @@
 - Vlastní AI jídelníček přes `updateDoc` – bez `profile/main` skončí not-found.
 - Kategorie: Brambory, Rajčata, Jablka, Vejce, Pepř → Ostatní; Zubní pasta → Trvanlivé; suroviny z receptu bez kategorie nepoužijí `guessShopCategory`.
 - Měsíční pravidelná položka se přidá hned při založení (i před 4.83).
+
+## Z 4.84
+- `doRegisterFcmToken`: trvale selhávající `deleteToken` → nový účet nikdy nedostane push; počítat pokusy (`lp_fcm_reset_n`), po 3 příznak zahodit; vlastní hláška.
+- Po 8s timeoutu běží řetězec getToken→deleteToken dál; souběh s ruční registrací může smazat čerstvý token.
+- Onboarding krok 1: jedno Zpět „naprázdno“ (zbylý záznam panelu).
+- `togModSet`: dvě rychlá přepnutí, první selže → rollback zahodí i druhé.
+- Prohlídka během otevřeného modalu: Zpět vrátí krok prohlídky, modal zůstane.
+- sw.js `no-cache`: offline obrázky mimo OFFLINE_URLS → 503.
+- `IN_APP_BROWSER`: TikTok a appky bez značky v UA se nerozpoznají.
