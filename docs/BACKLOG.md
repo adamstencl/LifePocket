@@ -15,3 +15,17 @@
 - `evWindow` s neplatnou zónou bez `normTz` hodí TypeError (dnes se tak nevolá).
 - Víc vypršelých dotazů zásob naráz → víc toastů za sebou, vidět je jen poslední.
 - `syncGroupsFromProfile`: skupina smazaná mimo změnu kódu („duch“) blokuje přidání nových skupin do restartu; `_profRefreshing` se uvolní dřív než doběhne sync.
+
+## Z 4.81
+- `hlRevert`: dva rychlé zápisy stejného záznamu, první selže → vrátí zastaralou zálohu.
+- `saveSubGImpl`: při chybě zápisu zůstane podcíl „duch“ v `subs[gid]`.
+- Widget Návyky na Domů: řádky ukazují i týdenní / dnes neaktivní návyky, počítadlo je nezahrnuje (jen týdenní → „0/0“).
+- `habitDayRoll` po půlnoci nepřekreslí Domů (`rDash`).
+- Měsíční pohled: `return` přeskočí `habits-archive-toggle` a `hb-pend-chip`.
+- `getEvIcon`: `typeEmoji` cizího člena zkrátit i při čtení.
+- `delG`: podcíle mazat až po úspěšném smazání cíle.
+- Voda: změna cíle nepřepíše `goal` v dnešním dokumentu → po půlnoci se včerejšek hodnotí podle starého cíle.
+- Narozeniny → zpět na Událost nechá opakování „ano“.
+- Šipka › u dne návyků aktivní i na dnešku; budoucí buňky mají `cursor:pointer`.
+- Týdenní návyky: série a procenta po dnech (potřebuje návrh).
+- Server: `habit.nag` nekontroluje modul Návyky; en „all 2 habits“.

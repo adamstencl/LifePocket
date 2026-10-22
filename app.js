@@ -67,9 +67,9 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.82';
+const APP_VERSION = '4.83';
 const CHANGELOG = [
-  { v:'4.82', items:[
+  { v:'4.83', items:[
     '🛒 Spolehlivější sdílené nákupy, zásoby a checklist ve skupině: souběžné úpravy z více telefonů se už nepřepisují',
     '📶 Hromadné akce (recept do nákupu, smazání koupeného, docházející zásoby) fungují i bez signálu pro všechny položky',
     '✅ Nové tlačítko „Uvařeno – odečíst ze zásob“ u receptu; smazanou položku nákupu jde hned vrátit'
@@ -78,10 +78,17 @@ const CHANGELOG = [
     '📶 Bulk actions (recipe to shopping, clearing bought items, low pantry items) now work offline for every item',
     '✅ New “Cooked – deduct from pantry” button on recipes; a deleted shopping item can be restored right away'
   ]},
-  { v:'4.81', items:[
-    '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky'
+  { v:'4.82', items:[
+    '🔔 Odpolední připomínka nesplněných návyků vynechá návyky označené jako „Nesplněno“ nebo „Přeskočit“'
   ], en:[
-    '🔧 Fixes for habits, calendar, goals, journal and water: nothing gets duplicated on a double tap or offline, habits switch to the new day after midnight, today’s event shows “Today”, deleting a goal also removes its subgoals and calendar deadlines, and the journal saves photo changes'
+    '🔔 The afternoon reminder of unfinished habits skips habits marked “Not done” or “Skip”'
+  ]},
+  { v:'4.81', items:[
+    '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky',
+    '🔔 Ranní a večerní souhrn návyků přijde jen tomu, kdo Návyky používá a má na ten den nějaký návyk'
+  ], en:[
+    '🔧 Fixes for habits, calendar, goals, journal and water: nothing gets duplicated on a double tap or offline, habits switch to the new day after midnight, today’s event shows “Today”, deleting a goal also removes its subgoals and calendar deadlines, and the journal saves photo changes',
+    '🔔 The morning and evening habit summary only arrives if you use Habits and have a habit due that day'
   ]},
   { v:'4.80', items:[
     '🔔 Připomínka návyku nepřijde, když už máš den označený, i jako „Nesplněno“ nebo „Přeskočit“'
@@ -1632,7 +1639,7 @@ function clearUserSessionState(){
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
   // Lišty zásob a opakování pravidelných nákupů patří odhlášenému účtu (4.78)
-  // Recepty a vazby nákup → zásoby patří odhlášenému účtu (4.82)
+  // Recepty a vazby nákup → zásoby patří odhlášenému účtu (4.83)
   try{ lastRecipe=null; _rexRecipes.clear(); _shopPantry.clear(); _shopAskLive.clear(); _shopUndo.clear(); }catch(e){}
   try{ _pantryAsk.clear(); document.getElementById('pantry-notes')?.remove(); clearTimeout(_recRetry.tm); _recRetry.uid=''; _recRetry.n=0; _recRetry.tm=0; }catch(e){}
   // Dynamická okna skupin (4.51): zavřít bez návratu fokusu a vynulovat jejich stav
@@ -1764,8 +1771,12 @@ window.handleEntryPhotoInput = async function(input) {
   const file = input.files[0];
   if (!file) return;
   toast(t('nt.photoBusy'));
+  const sess = _jSess;
   try {
-    curEntryPhoto = await compressImage(file);
+    const ph = await compressImage(file);
+    // Editor mezitím zavřený (Zpět během komprese) → fotku zahodit, jinak by autosave založil duplicitní zápisek (4.81)
+    if (sess !== _jSess || document.getElementById('j-edit-area')?.style.display === 'none') { input.value = ''; return; }
+    curEntryPhoto = ph;
     window.markDirty();
     const p = document.getElementById('j-photo-preview');
     if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
@@ -1792,7 +1803,9 @@ function setJournalOpen(on){
 function journalEntryOpen(){ return !!document.getElementById('p-journal')?.classList.contains('j-open'); }
 
 // Zpět na seznam (tlačítko ← Zpět na mobilu nebo systémové Zpět). Neuložené změny tiše uloží.
+let _jSess = 0; // počítadlo zavření editoru (fotka z komprese nesmí přejít do jiného zápisku)
 window.closeEntry=()=>{
+  _jSess++;
   const title=document.getElementById('j-title')?.value.trim()||'';
   const text=document.getElementById('j-text')?.value.trim()||'';
   if(jRecOn) stopJournalMic();
@@ -1928,7 +1941,7 @@ window.markDirty=()=>{ entryDirty=true; };
 
 // Auto-save every 30s when dirty
 // 4.81: i nový neuložený zápisek (stejná podmínka jako journalFlush)
-setInterval(()=>{ if(entryDirty) journalFlush(); },30000);
+setInterval(()=>{ if(entryDirty&&document.getElementById('j-edit-area')?.style.display!=='none') journalFlush(); },30000);
 
 // ── JOURNAL VOICE ──────────────────────────────────────
 const jIsMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -5962,7 +5975,7 @@ function checkAndRemindHabits() {
       }
       if (weekDone >= (freq.times||3)) return false; // cíl splněn
     }
-    return !hDone(h.id,today);
+    return !hMarked(h.id,today); // i „Nesplněno“ a „Přeskočit“ den uzavírá (4.82)
   });
   if (undone.length === 0) return;
   const lastRemind = localStorage.getItem('lp_last_remind');
@@ -9019,7 +9032,7 @@ window.joinFamily = async (codeArg) => {
     toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null;
   }
 };
-// Odmítnutý zápis při připojení (4.82): mezitím se skupina mohla zaplnit → čerstvý dokument, ≥ 8 členů = plná
+// Odmítnutý zápis při připojení (4.83): mezitím se skupina mohla zaplnit → čerstvý dokument, ≥ 8 členů = plná
 async function joinGroupFull(e, code) {
   if(e?.code !== 'permission-denied' || !code) return false;
   try {
@@ -14706,7 +14719,7 @@ window.generateMealPlanAI = async () => {
     ], 800);
     if (!raw) throw new Error('AI unavailable');
     const text = raw.replace(/```json|```/g,'').trim();
-    // 4.82: jen d0–d6 / m0–m2 jako text do 200 znaků; bez jediného jídla = chyba (nic se nepřepíše)
+    // 4.83: jen d0–d6 / m0–m2 jako text do 200 znaků; bez jediného jídla = chyba (nic se nepřepíše)
     const plan = mealPlanNorm(JSON.parse(text));
     if(!plan) throw new SyntaxError('JSON meal plan');
     // Uložit
@@ -15002,7 +15015,7 @@ window.mealplanToShopping = async () => {
     );
     if(recipe && recipe.ingredients?.length && !foundRecipes.find(r=>r.id===recipe.id)) {
       foundRecipes.push(recipe);
-      // Bez duplicit proti nekoupeným i proti surovinám z předchozích receptů (4.82)
+      // Bez duplicit proti nekoupeným i proti surovinám z předchozích receptů (4.83)
       toAdd.push(...shopRecipeEntries(recipe.ingredients, [...shopActive, ...toAdd], recipe.name).out);
     }
   }
@@ -15147,7 +15160,7 @@ window.openAddToMealplan = () => {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
-  // Zvýraznit předvybraný den a jídlo (4.82)
+  // Zvýraznit předvybraný den a jídlo (4.83)
   const bd = modal.querySelector(`[data-day="${_mealplanSelDay}"]`), bm = modal.querySelector(`[data-meal="${_mealplanSelMeal}"]`);
   if(bd) window.selectMealplanDay(_mealplanSelDay, bd);
   if(bm) window.selectMealplanMeal(_mealplanSelMeal, bm);
@@ -15182,7 +15195,7 @@ window.confirmAddToMealplan = async () => {
   if(!lastRecipe) return;
   const canShare = mealGroups().length > 0;
   const target = canShare && mealGroups().includes(_mealplanTarget) ? _mealplanTarget : '';
-  // Obsazené místo: zeptat se, než se přepíše (4.82)
+  // Obsazené místo: zeptat se, než se přepíše (4.83)
   const prev = String(mealPlanOf(target)?.['d'+_mealplanSelDay]?.['m'+_mealplanSelMeal] || '').trim();
   if(prev && prev !== String(lastRecipe.name || '').trim() && !confirm(t('mp.slotTaken', {name: prev}))) return;
   if(!saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name, target)) return;
@@ -15288,7 +15301,7 @@ async function saveChecklistDoc(list) {
     await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
   }
 }
-// 4.82: úprava položek. fn(items) upraví/vrátí pole položek (podle item.id, bez závislosti na indexech).
+// 4.83: úprava položek. fn(items) upraví/vrátí pole položek (podle item.id, bez závislosti na indexech).
 // Osobní seznam se uloží celý; seznam skupiny transakcí nad čerstvými daty ze serveru, aby souběžné
 // zápisy dvou zařízení neztratily položky. Offline: přidání přes arrayUnion (addItem), jinak chyba.
 const CL_MAX_LEN = 900000; // rezerva pod limitem dokumentu Firestore (1 MiB)
@@ -17567,7 +17580,7 @@ window.rexRecipe=async(food,btnEl)=>{
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
     const recipe=normRecipe(JSON.parse(raw));
     if(!recipe) throw new SyntaxError('JSON recept');
-    // Recept z chatu má vlastní klíč (4.82): nepřepisuje recept otevřený ve Vaření
+    // Recept z chatu má vlastní klíč (4.83): nepřepisuje recept otevřený ve Vaření
     const rkey=genId();
     _rexRecipes.set(rkey,recipe);
     if(_rexRecipes.size>20) _rexRecipes.delete(_rexRecipes.keys().next().value);
@@ -17615,7 +17628,7 @@ window.confirmRecipeToShop=(key,btnEl)=>{
 // ── COOKING & SHOPPING ────────────────────────────────
 let cookPortions=2, cookType='any', cookMealType='any';
 let lastRecipe=null; // recept zobrazený ve Vaření (recepty z chatu mají _rexRecipes)
-// Recept od AI do jednotného tvaru (4.82): suroviny vždy {name, qty}, kroky jako text, bez „undefined“
+// Recept od AI do jednotného tvaru (4.83): suroviny vždy {name, qty}, kroky jako text, bez „undefined“
 function normRecipe(r){
   if(!r||typeof r!=='object'||Array.isArray(r)) return null;
   const str=(v,max)=>(typeof v==='string'||typeof v==='number')?cutName(String(v),max):'';
@@ -17642,7 +17655,7 @@ function recipeScale(r){
   const base=Number(r?.portions)||4, cur=Number(window._currentPortions)||base;
   return cur/base;
 }
-// Autor položky ve sdíleném seznamu (4.82: u všech zápisů do skupiny)
+// Autor položky ve sdíleném seznamu (4.83: u všech zápisů do skupiny)
 function shopBy(fid){ return fid?{addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||''}:{}; }
 // Seznam skupiny musí být načtený (kontrola duplicit); osobní seznam se nečeká
 function shopTargetReady(fid){
@@ -17651,7 +17664,7 @@ function shopTargetReady(fid){
   if(e&&e.err&&grpSubBlocked(e)){ toast(t('ck.shopGrpErr'),5000); return false; }
   subscribeGroupShop(fid); toast(t('mp.shopLoading')); return false;
 }
-// 4.82: hromadné přidání jednou dávkou bez await → offline se zapíšou všechny položky (dřív jen první).
+// 4.83: hromadné přidání jednou dávkou bez await → offline se zapíšou všechny položky (dřív jen první).
 // Vrací promise, která se splní po zápisu (chyba = toast).
 function shopBatchAdd(fid, list){
   const col=shopCol(fid), ws=[];
@@ -17814,10 +17827,10 @@ function guessShopCategory(name){
     ['Mléčné výrobky', ['mléko','máslo','smetana','jogurt','tvaroh','sýr','niva','eidam','gouda','hermelín','brie','cottage','ricotta','mozzarella','parmazán','kefír','podmáslí','šlehačka','crème','quark','bryndza']],
     ['Pečivo', ['chleba','chléb','rohlík','houska','bageta','tortilla','pita','croissant','koláč','buchta','závin','muffin','toastový','baguette','chlebíček','knäckebrot','pumpernikl']],
     ['Trvanlivé', ['mouka','cukr','sůl','olej','ocet','rýže','těstoviny','pasta','nudle','špagety','kuskus','bulgur','kroupy','čočka','hrách','cizrna','konzerva','kompot','džem','med','sirup','koření','paprika mletá','kmín','skořice','vanilka','prášek do pečiva','soda','škrob','droždí','kakao','čokoláda','káva','čaj','ovesné vločky','müsli','corn flakes','cereálie','kečup','hořčice','majonéza','tatarka','sojová','worchester','tabasco','balzamiko','suš','trvanlivé',
-      // Víceslovné výrazy (4.82) v jednom řetězci: nejdelší shoda je přednější než „paprika“ / „mléko“
+      // Víceslovné výrazy (4.83) v jednom řetězci: nejdelší shoda je přednější než „paprika“ / „mléko“
       ...'mletá paprika|uzená paprika|sladká paprika mletá|kokosové mléko|kokosový olej|kokosová smetana|kokosové mléko v plechovce|mandlové mléko|ovesné mléko|sójové mléko|rýžové mléko|arašídové máslo|kakaové máslo|mléčná čokoláda|sušené mléko|kondenzované mléko|rajčatový protlak|protlak|loupaná rajčata|krájená rajčata|kukuřice v plechovce|fazole v plechovce|kuřecí vývar|hovězí vývar|zeleninový vývar|bujón|strouhanka|kokosová moučka|kokosové chipsy'.split('|')]],
   ];
-  // 4.82: nejdelší shoda napříč kategoriemi (víceslovné výrazy vyhrají: „paprika mletá“, „kokosové mléko“)
+  // 4.83: nejdelší shoda napříč kategoriemi (víceslovné výrazy vyhrají: „paprika mletá“, „kokosové mléko“)
   let best=SHOP_CATS[SHOP_CATS.length-1], bl=0; // Ostatní
   for(const [cat,kw] of rules){
     for(const k of kw) if(k.length>bl && n.includes(k)){ best=cat; bl=k.length; }
@@ -17945,7 +17958,7 @@ window.onShopInpKey=()=>{
   const hpg=pantryForShop(shopGid()), hItems=pantryItemsOf(hpg).filter(p=>p&&p.name);
   if(!pantryReady(hpg)){ if(hpg) subscribeGroupPantry(hpg); else subPantryMine(); }
   if(hint&&hItems.length){
-    const match=pantryFind(hItems, name); // shoda po normalizaci (4.82), ne libovolný podřetězec
+    const match=pantryFind(hItems, name); // shoda po normalizaci (4.83), ne libovolný podřetězec
     if(match){ hint.textContent=t('shop.inPantry',{qty:Number(match.qty)>0?Number(match.qty):0,unit:unitLabel(match.unit)}); hint.style.display=''; }
     else hint.style.display='none';
   }
@@ -18238,7 +18251,7 @@ function checkRecurringShop() {
   const today = new Date();
   const todayISO = toDS(today);
   const todayDay = today.getDay();
-  // Je položka na řadě (podle lastAdded ze serveru, viz transakce níže)? 4.82: zmeškaný den se dožene –
+  // Je položka na řadě (podle lastAdded ze serveru, viz transakce níže)? 4.83: zmeškaný den se dožene –
   // stačí, že poslední výskyt dne v týdnu (do dneška) je po lastAdded; data v lokálním čase
   const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const due = it => {
@@ -18405,7 +18418,7 @@ window.toggleShopItem=async(id,wasDone)=>{
     const name = item?.name; const shopQty = item?.qty||'';
     if(await toggleFamilyShopItem(fid,id,wasDone) === false) return; // položka už neexistuje
     if(item) bumpShopFreq(item, wasDone?-1:1, fid); // často nakupované (skupina)
-    // Koupené přibude do zásob téže skupiny (4.70); vrácení odškrtnutí ho ze zásob vezme zpět (4.82)
+    // Koupené přibude do zásob téže skupiny (4.70); vrácení odškrtnutí ho ze zásob vezme zpět (4.83)
     if(!wasDone && name) { _shopAskLive.add(id); offerPantryUpdate(name, shopQty, fid, id); }
     else if(wasDone) { _shopAskLive.delete(id); shopPantryUndo(id); }
     return;
@@ -18455,7 +18468,7 @@ async function pantryAddToItem(match, shopQty, gid, shopId) {
   const newQty = Math.round((pantryQty(match) + d) * 1000) / 1000;
   toast(t('shop.pantryQty',{name:match.name,qty:newQty,unit:unitLabel(match.unit)}) + pantrySfx(gid));
 }
-// 4.82: co odškrtnutí nákupu přidalo do zásob (jen v této relaci); vrácení odškrtnutí to vezme zpět.
+// 4.83: co odškrtnutí nákupu přidalo do zásob (jen v této relaci); vrácení odškrtnutí to vezme zpět.
 // shopId → {uid, gid, pantryId, delta, created}
 const _shopPantry = new Map();
 function shopPantryRemember(shopId, gid, pantryId, delta, created) {
@@ -18581,7 +18594,7 @@ window.editShopQty = (id, currentQty, el) => {
   });
 };
 
-// Smazání „×“ hned, ~5 s jde vrátit (4.82): stejná data pod stejným ID
+// Smazání „×“ hned, ~5 s jde vrátit (4.83): stejná data pod stejným ID
 const _shopUndo = new Map();
 window.delShopItem=async(id)=>{
   if(!CU) return;
@@ -18679,7 +18692,7 @@ window.addRecipeToShop = function(recipeId, el) {
   if(!shopTargetReady(shopFid)) return;
   el.style.borderColor = 'var(--green)';
   el.style.pointerEvents = 'none';
-  // Jen proti nekoupeným položkám (koupené se smí přidat znovu); jedna dávka bez čekání na server (4.82)
+  // Jen proti nekoupeným položkám (koupené se smí přidat znovu); jedna dávka bez čekání na server (4.83)
   const {out} = shopRecipeEntries(recipe.ingredients, activeShopItems(), recipe.name);
   const added = out.length, firstAdded = out[0]?.name || '';
   shopBatchAdd(shopFid, out);
@@ -18692,7 +18705,7 @@ window.clearDoneItems=()=>{
   const fid = shopGid();
   const done=activeShopItems().filter(i=>i.done);
   if(!done.length){toast(t('shop.noneDone'));return;}
-  // Jedna dávka bez await (4.82): offline se smažou všechny, ne jen první
+  // Jedna dávka bez await (4.83): offline se smažou všechny, ne jen první
   toast(tN('shop.deletedN', done.length));
   for(let k=0;k<done.length;k+=400){
     const b=writeBatch(db);
@@ -18754,7 +18767,7 @@ window.askRecipe=async()=>{
     const recipe=normRecipe(JSON.parse(raw));
     if(!recipe) throw new SyntaxError('JSON recept');
     lastRecipe=recipe;
-    renderRecipe(recipe); // odečet ze zásob až tlačítkem „Uvařeno“ (4.82)
+    renderRecipe(recipe); // odečet ze zásob až tlačítkem „Uvařeno“ (4.83)
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
     toast('❌ '+userErr(e,'recept'));
@@ -18843,7 +18856,7 @@ function normalizeIngQty(amount, unit) {
   return `${a} ${unit}`;
 }
 
-let _mrSaving = false; // pojistka proti dvojímu uložení (4.82)
+let _mrSaving = false; // pojistka proti dvojímu uložení (4.83)
 window.saveManualRecipe = function() {
   if (_mrSaving || !CU) return;
   const name = document.getElementById('mr-name')?.value.trim();
@@ -18935,7 +18948,7 @@ function renderRecipe(r, scaledPortions){
   refreshRecipeChip();
 }
 
-// „Uvařeno – odečíst ze zásob“ (4.82): suroviny v aktuálním počtu porcí
+// „Uvařeno – odečíst ze zásob“ (4.83): suroviny v aktuálním počtu porcí
 window.cookedDeduct = () => {
   if(!lastRecipe) { toast(t('ck.genFirst')); return; }
   const gid = pantryGid();
@@ -19012,7 +19025,7 @@ window.sendToShopping=async(target)=>{
   let haveit=0;
   const isHave=i=>!!document.getElementById(`cing-${i}`)?.classList.contains('done'); // mám doma — přeskočit
   lastRecipe.ingredients.forEach((ing,i)=>{ if(isHave(i)) haveit++; });
-  // Množství v zobrazeném počtu porcí (4.82); jedna dávka bez čekání na server
+  // Množství v zobrazeném počtu porcí (4.83); jedna dávka bez čekání na server
   const {out, skipped}=shopRecipeEntries(lastRecipe.ingredients, listItems, lastRecipe.name, recipeScale(lastRecipe), isHave);
   const added=out.length, firstAdded=out[0]?.name||'';
   shopBatchAdd(gid, out);
@@ -19472,7 +19485,7 @@ window.savePantryItem = async function(existingId, gidArg) {
 
 // Množství zásoby k zobrazení a výpočtům (záporné ze souběžných odečtů = 0)
 function pantryQty(item) { return Math.max(0, Number(item?.qty) || 0); }
-// 4.82: skutečná změna o delta – pod nulu ne, záporná uložená hodnota se při přidání nejdřív srovná na 0
+// 4.83: skutečná změna o delta – pod nulu ne, záporná uložená hodnota se při přidání nejdřív srovná na 0
 function pantryDelta(item, delta) {
   let d = Math.round((Number(delta) || 0) * 1000) / 1000;
   const raw = Number(item?.qty) || 0;
@@ -19484,7 +19497,7 @@ function pantryWriteErr(e) {
   console.warn('Pantry save failed:', e?.code || e?.name);
   toast(t(e?.code === 'not-found' ? 'pantry.gone' : 'pantry.saveErr'));
 }
-// 4.82: increment místo absolutní hodnoty (souběžné zápisy se sečtou); snapshot se nemění, překreslí ho
+// 4.83: increment místo absolutní hodnoty (souběžné zápisy se sečtou); snapshot se nemění, překreslí ho
 // lokální zápis. Smazaná zásoba se znovu nezaloží (updateDoc → not-found). Vrací skutečnou změnu (0 = nic).
 window.changePantryQty = async function(id, delta, gidArg) {
   const gid = pantryTarget(gidArg);
@@ -19523,7 +19536,7 @@ window.pantryToShop = function(gidArg) {
   if (!low.length) { toast(t('pantry.noneLow')); return; }
   const fid = shopForPantry(gid);
   if (!shopTargetReady(fid)) return;
-  // Název bez jednotky; co už je mezi nekoupenými (podle shopKey), se přeskočí (4.82)
+  // Název bez jednotky; co už je mezi nekoupenými (podle shopKey), se přeskočí (4.83)
   const have = shopItemsOf(fid), seen = new Set();
   const out = [];
   for (const item of low) {
@@ -19553,7 +19566,7 @@ window.aiShopSuggest = async function() {
     ], 600);
     if(typeof raw !== 'string' || !raw.trim()) throw new Error('AI unavailable');
     const data = JSON.parse(raw.trim().replace(/```json/g,'').replace(/```/g,'').trim());
-    // Jen položky s názvem (text), krátké řetězce (4.82)
+    // Jen položky s názvem (text), krátké řetězce (4.83)
     data.items = (Array.isArray(data?.items) ? data.items : [])
       .filter(i => i && typeof i.name === 'string' && i.name.trim())
       .map(i => ({name: cutName(i.name, 60), qty: cutName(typeof i.qty === 'string' || typeof i.qty === 'number' ? String(i.qty) : '', 30)}));
@@ -19589,7 +19602,7 @@ window.aiShopAddAll = function(items) {
   if(!CU || _aiShopBusy) return false;
   const fid = shopGid(), shared = !!fid; // zobrazený seznam (4.50)
   if(!shopTargetReady(fid)) return false;
-  // Jen položky s názvem; co už je mezi nekoupenými (shopKey), se přeskočí; jedna dávka bez await (4.82)
+  // Jen položky s názvem; co už je mezi nekoupenými (shopKey), se přeskočí; jedna dávka bez await (4.83)
   const have = activeShopItems(), seen = new Set(), out = [];
   for(const i of (Array.isArray(items) ? items : [])){
     if(!i || typeof i.name !== 'string' || !i.name.trim()) continue;
