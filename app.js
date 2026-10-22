@@ -1223,6 +1223,7 @@ function logClientError(msg, src, stack) {
 }
 // Česká věta pro uživatele podle kódu/obsahu chyby; technický detail jen do konzole a zapisovače chyb
 // e může být Error, chyba Firebase (e.code) nebo událost SpeechRecognition (e.error)
+const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie', 'nahlášení AI'];
 function userErr(e, ctx = '') {
   const full = String(e?.code || '');
   const code = full.replace(/^[a-z-]+\//, '');
@@ -1252,8 +1253,11 @@ function userErr(e, ctx = '') {
   else if (code === 'permission-denied') txt = t('err.permission');
   else if (code === 'unauthenticated') txt = t('err.unauthenticated');
   else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = t('err.aiBadReply'); expected = false; }
-  else if (/\bAI\b|Claude/.test(msg) || (full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
+  // „AI není dostupná“ jen u AI funkcí (4.84); jinde srozumitelná hláška serveru, nebo obecná chyba
+  else if (/\bAI\b|Claude/.test(msg) || (AI_ERR_CTX.includes(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
     { txt = t('err.aiUnavailable'); expected = false; }
+  else if (full.startsWith('functions/') && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
+    { txt = msg; expected = false; }
   else { txt = t('err.generic'); expected = false; }
   try {
     console.warn('[LP] chyba' + (ctx ? ' (' + ctx + ')' : '') + ':', full || sp || e?.name || '', msg);
