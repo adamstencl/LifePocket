@@ -1742,6 +1742,7 @@ window.removeEntryPhoto = () => {
   curEntryPhoto = null;
   const p = document.getElementById('j-photo-preview');
   if (p) p.innerHTML = '';
+  window.markDirty(); // jinak se odebrání fotky neuloží
 };
 window.handleEntryPhotoInput = async function(input) {
   const file = input.files[0];
@@ -1749,6 +1750,7 @@ window.handleEntryPhotoInput = async function(input) {
   toast(t('nt.photoBusy'));
   try {
     curEntryPhoto = await compressImage(file);
+    window.markDirty();
     const p = document.getElementById('j-photo-preview');
     if (p) p.innerHTML = `<div style="position:relative;display:inline-block;margin-top:8px">
       <img src="${esc(safeImgSrc(curEntryPhoto))}" style="max-width:100%;max-height:200px;border-radius:10px;display:block">
