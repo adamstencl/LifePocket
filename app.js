@@ -3571,12 +3571,10 @@ window.moveHabit = async function(id, dir) {
   const idx = groupHabits.findIndex(x=>x.id===id);
   const swapIdx = idx+dir;
   if(swapIdx<0||swapIdx>=groupHabits.length) return;
-  const other = groupHabits[swapIdx];
-  const orderA = h.order??idx, orderB = other.order??swapIdx;
-  await Promise.all([
-    updateDoc(doc(db,'users',CU.uid,'habits',id),{order:orderB}),
-    updateDoc(doc(db,'users',CU.uid,'habits',other.id),{order:orderA}),
-  ]);
+  // Přečíslovat celou skupinu (4.81): při stejném order by prohození nic nezměnilo
+  const ids = groupHabits.map(x=>x.id);
+  [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
+  saveHabitOrder(ids);
 };
 
 // ── Přesouvání řádků dlouhým stiskem (návyky, checklist) ──────────────
