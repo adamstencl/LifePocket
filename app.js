@@ -2935,6 +2935,7 @@ window.habitPrevDay=()=>{
   if(_hlCutoff&&habitDay<_hlCutoff) loadOldHabitLogs().then(added=>{ if(added) renderHabits(); }).catch(e=>console.warn('[LP] starší návyky:',e?.code||e?.name));
 };
 window.habitNextDay=()=>{
+  if(habitDay>=toDS()) return; // dál než dnešek ne (budoucnost nejde odškrtnout)
   const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()+1);
   habitDay=toDS(d); renderHabits();
 };
@@ -2954,6 +2955,7 @@ function habitDayRoll(){
 
 window.toggleHabit=async(hid,date,currentState)=>{
   if(!CU)return;
+  if(date>toDS()) return; // budoucnost ne
   const logId=hid+'_'+date;
   if(currentState==='done'){
     await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
@@ -2972,6 +2974,7 @@ window.toggleHabit=async(hid,date,currentState)=>{
 
 window.adjustHabit=async(hid,date,delta,goal)=>{
   if(!CU)return;
+  if(date>toDS()) return;
   const logId=hid+'_'+date;
   const ex=habitLogs.find(l=>l.id===logId);
   const cur=Number(ex?.value)||0; // záznam štítu nemá value → jinak NaN
@@ -3019,6 +3022,7 @@ window.toggleHabitGroup=(groupId)=>{
 };
 
 window.toggleHabitDay=async(hid,date)=>{
+  if(date>toDS()) return;
   if(!CU)return;
   const logId=hid+'_'+date;
   const existing=habitLogs.find(l=>l.id===logId);
@@ -3131,6 +3135,7 @@ async function saveHabitImpl(){
 }
 
 window.directInput=async(hid,date,curVal,goal)=>{
+  if(date>toDS()) return;
   // Inline modal místo prompt() — funguje na všech zařízeních
   const existing = document.getElementById('direct-input-modal');
   if(existing) existing.remove();
