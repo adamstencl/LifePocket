@@ -2543,7 +2543,7 @@ function buildHabitCard(h){
         <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
       </div>`;
   } else {
-    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
+    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
   }
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
@@ -2584,7 +2584,7 @@ function buildHabitCard(h){
               <button class="cnt-btn" data-a0="${esc(h.id)}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
             </div>`
           : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
+              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
               ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</button>`:''}
             </div>`
       }
@@ -4257,6 +4257,12 @@ document.addEventListener('keydown', e => {
   // Esc zavře výběr času, ať je fokus kdekoli (capture – před ostatními Esc handlery)
   if (e.key === 'Escape' && timePickerOpen()) { e.preventDefault(); e.stopPropagation(); closeTimePicker(); }
 }, true);
+// Klikací div s role="button" (bez vlastního onkeydown) jde ovládat i klávesnicí Enter/mezerník (4.85)
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role="button"]:not(button):not(a):not(input):not([onkeydown])')) {
+    e.preventDefault(); e.target.click();
+  }
+});
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('input[data-time-picker]')) {
     e.preventDefault(); openTimePicker(e.target);
@@ -17989,7 +17995,7 @@ function renderShop(){
       <div class="shop-cat-label">${esc(catLabel(cat))}</div>
       ${items.map(i=>`
         <div class="shop-item ${i.done?'done':''}">
-          <div class="shop-check ${i.done?'done':''}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
+          <div class="shop-check ${i.done?'done':''}" role="button" tabindex="0" aria-pressed="${!!i.done}" aria-label="${tH('shop.checkAria',{name:i.name})}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${esc(i.name)}</span>
           <button type="button" class="shop-item-qty${i.qty?'':' empty'}" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" aria-label="${i.qty?tH('shop.qtyAria',{name:i.name,qty:i.qty}):tH('shop.qtyAddAria',{name:i.name})}">${i.qty?esc(i.qty):tH('shop.qtyAdd')}</button>
           <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="${tH('shop.catEdit')}" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
