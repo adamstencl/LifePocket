@@ -1245,7 +1245,9 @@ function logClientError(msg, src, stack) {
 }
 // Česká věta pro uživatele podle kódu/obsahu chyby; technický detail jen do konzole a zapisovače chyb
 // e může být Error, chyba Firebase (e.code) nebo událost SpeechRecognition (e.error)
-const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie'];
+// Kontexty volání AI (ctx bez diakritiky, viz aiErrCtx): chat, týdenní report, recepty, kalorie, jídelníček, nálada
+const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie', 'jidelnicek', 'jidlo z planu', 'nalada'];
+const aiErrCtx = ctx => AI_ERR_CTX.includes(String(ctx).normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 function userErr(e, ctx = '') {
   const full = String(e?.code || '');
   const code = full.replace(/^[a-z-]+\//, '');
@@ -1276,9 +1278,10 @@ function userErr(e, ctx = '') {
   else if (code === 'unauthenticated') txt = t('err.unauthenticated');
   else if (e?.name === 'SyntaxError' || /JSON/.test(msg)) { txt = t('err.aiBadReply'); expected = false; }
   // „AI není dostupná“ jen u AI funkcí (4.84); jinde srozumitelná hláška serveru, nebo obecná chyba
-  else if (/\bAI\b|Claude/.test(msg) || (AI_ERR_CTX.includes(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
+  else if (/\bAI\b|Claude/.test(msg) || (aiErrCtx(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
     { txt = t('err.aiUnavailable'); expected = false; }
-  else if (full.startsWith('functions/') && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
+  // 'internal' nikdy: může nést surový text z API (revize 4.84)
+  else if (full.startsWith('functions/') && code !== 'internal' && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
     { txt = msg; expected = false; }
   else { txt = t('err.generic'); expected = false; }
   try {
@@ -1688,17 +1691,20 @@ function toast(m,d=2500){const t=document.getElementById('toast');t.textContent=
 // ── Nová verze appky (4.84) ──
 // Při návratu do appky (nejvýš 1× za 30 min) se zeptat na nový SW; po jeho převzetí nabídnout načtení (bez automatického reloadu)
 if('serviceWorker' in navigator){
-  let _swCheckAt=Date.now(), _swHadCtrl=!!navigator.serviceWorker.controller, _swNoted=false;
+  // Jen novinka nalezená naší kontrolou, nebo u stránky otevřené déle než 2 min. Po deployi se SW vymění hned při
+  // startu (kontrola prohlížeče při navigaci) – tam už stránka novou verzi načetla ze sítě, lišta by lhala (revize 4.84)
+  let _swCheckAt=Date.now(), _swOwnAt=0, _swHadCtrl=!!navigator.serviceWorker.controller, _swNoted=false;
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible'||Date.now()-_swCheckAt<30*60000) return;
     _swCheckAt=Date.now();
-    navigator.serviceWorker.getRegistration().then(r=>r?.update()).catch(()=>{});
+    navigator.serviceWorker.getRegistration().then(r=>{ if(!r) return; _swOwnAt=Date.now(); return r.update(); }).catch(()=>{});
   });
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!_swHadCtrl){ _swHadCtrl=true; return; } // první instalace SW, ne nová verze
-    if(_swNoted) return;
+    const own=_swOwnAt&&Date.now()-_swOwnAt<5*60000;
+    if(_swNoted||!(own||performance.now()>120000)) return;
     _swNoted=true;
-    pantryNote(`<span style="flex:1;min-width:0;font-size:13px;color:var(--text2)">${tH('app.newVer')}</span><button onclick="location.reload()" style="${PN_BTN}">${tH('app.newVerBtn')}</button>`, 24*3600000);
+    pantryNote(`<span style="flex:1;min-width:0;font-size:13px;color:var(--text2)">${tH('app.newVer')}</span><button onclick="location.reload()" style="${PN_BTN}">${tH('app.newVerBtn')}</button><button onclick="pantryNoteClose(this)" aria-label="${tH('common.close')}" style="${PN_BTN};color:var(--text2)">×</button>`, 30000);
   });
 }
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
@@ -4863,7 +4869,7 @@ window.gS2=()=>{
   else if(_onbCustom) window.pickTpl(selTpl,true);
   else window.pickStart(selStart);
   onbS2View();
-  ss('s-step2'); preStepPush();
+  ss('s-step2'); history.pushState({type:'pre',s:'s-step2'},''); // Zpět → krok 1 (4.84)
 };
 // Přepne krok 2 mezi otázkou a mřížkou modulů (titulek, podtitulek, poznámka k pozvánce)
 function onbS2View(){
@@ -4899,9 +4905,10 @@ window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{
   if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return;}
   if(!_selAvTouched) selAv=(selTpl&&AV_REC[selTpl])||'rex';
-  rAvGrid('av-grid',false);ss('s-step3'); preStepPush();
+  rAvGrid('av-grid',false);ss('s-step3'); history.pushState({type:'pre',s:'s-step3'},''); // Zpět → krok 2
 };
 // Systémové Zpět v onboardingu a přihlášení (4.84): každý krok vpřed = záznam {type:'pre'}, Zpět = o krok zpět
+// Panel přihlášení: jen jeden záznam (opakované otevření ho nezdvojí); kroky onboardingu mají každý svůj
 function preStepPush(){ if(history.state?.type!=='pre') history.pushState({type:'pre'},''); }
 function preStepBack(){
   if(document.getElementById('s-step3')?.classList.contains('active')){ ss('s-step2'); return true; }
@@ -5382,7 +5389,16 @@ async function doRegisterFcmToken() {
     // Jiný účet na tomto zařízení (4.84): starý token by dál dostával notifikace předchozího účtu
     let fcmReset = false; try { fcmReset = localStorage.getItem('lp_fcm_reset') === '1'; } catch(e) {}
     if (fcmReset) {
-      try { await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 5000))]); } catch(e) {}
+      // Příznak smazat jen po úspěchu; při chybě nebo timeoutu token nebrat (patří předchozímu účtu), zkusí se při dalším startu
+      // getToken nejdřív předá SDK registraci SW (bez ní by deleteToken hledal firebase-messaging-sw.js); starý token se neukládá
+      let ok = false;
+      try {
+        ok = await Promise.race([
+          fcmSdk.getToken(messaging, {vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg}).then(() => fcmSdk.deleteToken(messaging)).then(() => true),
+          new Promise(r => setTimeout(() => r(false), 8000))
+        ]);
+      } catch(e) { ok = false; }
+      if (!ok) { fcmFail(t('notif.f.getToken')); updateNotifTokenLine(); return; }
       try { localStorage.removeItem('lp_fcm_reset'); } catch(e) {}
     }
     try {
@@ -5469,7 +5485,13 @@ function updateInstallBtn() {
 }
 window.installAppSet = async () => {
   if (canInstallPrompt() && typeof window.installPWA === 'function') { await window.installPWA(); updateInstallBtn(); return; }
-  if (getPlatform() === 'ios') { const bn = document.getElementById('ios-banner'); if (bn) bn.style.display = 'block'; }
+  if (getPlatform() === 'ios') {
+    // Banner skrývá html.lp-noinstall (style.css) → odemknout instalaci jako po první akci (bez započtení aktivního dne)
+    try { localStorage.setItem('lp_inst_ok', '1'); } catch (e) {}
+    installGate();
+    document.documentElement.classList.remove('lp-noinstall');
+    const bn = document.getElementById('ios-banner'); if (bn) bn.style.display = 'block';
+  }
 };
 window.addEventListener('beforeinstallprompt', () => setTimeout(updateInstallBtn, 0)); // po uložení výzvy v pwa.js
 window.addEventListener('appinstalled', () => setTimeout(updateInstallBtn, 0));
@@ -9783,16 +9805,17 @@ function capturePendingJoin() {
 capturePendingJoin();
 
 // ── Landing / přihlášení (#s-login) ──
-function showAuthPanel(mode){
+// push=false: automatické otevření při startu (známý uživatel, appka z plochy) bez záznamu historie
+function showAuthPanel(mode, push=true){
   const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
   if(!l||!a) return;
   l.hidden=true; a.hidden=false;
   window.toggleLoginMode(mode==='register'?'register':'login');
   window.scrollTo(0,0);
   document.getElementById('auth-mode-lbl')?.focus({preventScroll:true}); // čtečka ohlásí režim
-  preStepPush(); // systémové Zpět vrátí na úvod (4.84)
+  if(push) preStepPush(); // jen po kliknutí: systémové Zpět vrátí na úvod (4.84)
 }
-window.showAuthPanel=showAuthPanel;
+window.showAuthPanel=m=>showAuthPanel(m);
 window.showLanding=()=>{ if(history.state?.type==='pre') history.back(); else lpShowLanding(); };
 function lpShowLanding(){
   const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
@@ -9807,8 +9830,8 @@ function initLoginScreen(){
   let back=null; try{ back=sessionStorage.getItem('lp_auth_panel'); sessionStorage.removeItem('lp_auth_panel'); }catch(e){}
   const early=window.__lpAuthMode; // panel otevřený před načtením appky (rychlý start v index.html)
   if(back==='login'||back==='register') showAuthPanel(back);
-  else if(early==='login'||early==='register') window.toggleLoginMode(early); // bez posunu a fokusu, uživatel už píše
-  else if(known || isStandaloneApp()) showAuthPanel('login');
+  else if(early==='login'||early==='register'){ window.toggleLoginMode(early); preStepPush(); } // bez posunu a fokusu, uživatel už píše; otevřel ho klik
+  else if(known || isStandaloneApp()) showAuthPanel('login', false);
   window.__lpAuthMode=null;
   const hasInv=!!readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
@@ -9816,7 +9839,8 @@ function initLoginScreen(){
   initInAppBrowser();
 }
 // Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
-const IN_APP_BROWSER=/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
+// Ne v oficiální appce z Google Play (TWA): její záložní WebView má v UA také „; wv)“
+const IN_APP_BROWSER=!IS_TWA&&/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
 function inAppLink(){
   const inv=readPendingJoin();
   return location.origin+'/'+(inv?'?join='+encodeURIComponent(inv.code):'');
@@ -17246,8 +17270,12 @@ window.saveNick=()=>{
   if(!CU||!prof) return;
   const v=cutName(document.getElementById('set-nick').value,40);
   if(!v){toast(t('set.nameEmpty'));return;}
+  const prev=prof.nickname, uid=CU.uid;
   prof.nickname=v;
-  setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  setDoc(doc(db,'users',uid,'profile','main'),{nickname:v},{merge:true}).catch(e=>{
+    if(CU?.uid===uid&&prof&&prof.nickname===v){ prof.nickname=prev; rDash(); initSet(); } // zápis selhal → původní přezdívka
+    toast(t('common.saveFailed',{err:userErr(e,'profil')}));
+  });
   rDash();initSet();toast(t('set.nameSaved'));
 };
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
