@@ -1623,6 +1623,8 @@ function clearUserSessionState(){
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
   // Lišty zásob a opakování pravidelných nákupů patří odhlášenému účtu (4.78)
+  // Recepty a vazby nákup → zásoby patří odhlášenému účtu (4.82)
+  try{ lastRecipe=null; _rexRecipes.clear(); _shopPantry.clear(); _shopAskLive.clear(); _shopUndo.clear(); }catch(e){}
   try{ _pantryAsk.clear(); document.getElementById('pantry-notes')?.remove(); clearTimeout(_recRetry.tm); _recRetry.uid=''; _recRetry.n=0; _recRetry.tm=0; }catch(e){}
   // Dynamická okna skupin (4.51): zavřít bez návratu fokusu a vynulovat jejich stav
   try{
@@ -17525,8 +17527,12 @@ window.rexRecipe=async(food,btnEl)=>{
     if(!rawRecipe)throw new Error('AI unavailable');
     let raw=aiFixCs(rawRecipe,{recipe:true}).trim();
     raw=raw.replace(/\`{3}json/g,'').replace(/\`{3}/g,'').trim();
-    const recipe=JSON.parse(raw);
-    lastRecipe=recipe;
+    const recipe=normRecipe(JSON.parse(raw));
+    if(!recipe) throw new SyntaxError('JSON recept');
+    // Recept z chatu má vlastní klíč (4.82): nepřepisuje recept otevřený ve Vaření
+    const rkey=genId();
+    _rexRecipes.set(rkey,recipe);
+    if(_rexRecipes.size>20) _rexRecipes.delete(_rexRecipes.keys().next().value);
     // Nahraď loading za kartu receptu v chatu
     loading.innerHTML=`<div class="mlbl">${tH('ck.suggested')}</div>
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:4px;font-weight:700">${esc(recipe.name)}</div>
@@ -17540,7 +17546,7 @@ window.rexRecipe=async(food,btnEl)=>{
     const confirm=document.createElement('div');
     confirm.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px 0;';
     confirm.innerHTML=`
-      <button onclick="confirmRecipeToShop(this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">${tH('ck.useToShop')}</button>
+      <button data-a0="${esc(rkey)}" onclick="confirmRecipeToShop(this.dataset.a0,this.parentElement)" style="background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.4);border-radius:10px;padding:10px 18px;color:var(--green);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;font-weight:600">${tH('ck.useToShop')}</button>
       <button data-a0="${esc(food)}" onclick="rexRecipe(this.dataset.a0,this.parentElement)" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">${tH('ck.another')}</button>`;
     c.appendChild(confirm);scrollChat();
   }catch(e){
@@ -17548,27 +17554,17 @@ window.rexRecipe=async(food,btnEl)=>{
   }
 };
 
-window.confirmRecipeToShop=async(btnEl)=>{
-  if(!lastRecipe){toast(t('mp.needRecipe'));return;}
-  btnEl?.remove();
-  let added=0, firstAdded='';
+// Recepty z chatu (klíč → recept), nejvýš 20 posledních; vymaže se při odhlášení
+const _rexRecipes=new Map();
+window.confirmRecipeToShop=(key,btnEl)=>{
+  const recipe=_rexRecipes.get(key);
+  if(!recipe||!CU){toast(t('mp.needRecipe'));return;}
   const shopFid = shopGid(), isShared = !!shopFid; // zobrazený seznam (4.50)
-  const activeItems = activeShopItems();
-  for(const ing of lastRecipe.ingredients){
-    const iname=cutName(ing?.name,80);
-    if(!iname) continue;
-    const exists=activeItems.some(i=>String(i.name||'').toLowerCase()===iname.toLowerCase());
-    if(!exists){
-      await addDoc(shopCol(shopFid),{
-        name:iname, qty:cutName(String(ing.qty||''),30),
-        category:shopCatOf(ing.category),
-        done:false, fromRecipe:lastRecipe.name,
-        createdAt:new Date().toISOString()
-      });
-      if(!added) firstAdded=iname;
-      added++;
-    }
-  }
+  if(!shopListReady(shopFid)) return; // bez načteného seznamu skupiny by vznikly duplicity
+  btnEl?.remove();
+  const {out}=shopRecipeEntries(recipe.ingredients, activeShopItems(), recipe.name);
+  const added=out.length, firstAdded=out[0]?.name||'';
+  shopBatchAdd(shopFid, out);
   if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
@@ -17580,7 +17576,72 @@ window.confirmRecipeToShop=async(btnEl)=>{
 
 // ── COOKING & SHOPPING ────────────────────────────────
 let cookPortions=2, cookType='any', cookMealType='any';
-let lastRecipe=null; // posledni vygenerovany recept
+let lastRecipe=null; // recept zobrazený ve Vaření (recepty z chatu mají _rexRecipes)
+// Recept od AI do jednotného tvaru (4.82): suroviny vždy {name, qty}, kroky jako text, bez „undefined“
+function normRecipe(r){
+  if(!r||typeof r!=='object'||Array.isArray(r)) return null;
+  const str=(v,max)=>(typeof v==='string'||typeof v==='number')?cutName(String(v),max):'';
+  const ingredients=(Array.isArray(r.ingredients)?r.ingredients:[]).map(i=>typeof i==='string'?{name:i}:i)
+    .filter(i=>i&&typeof i==='object'&&str(i.name,80))
+    .map(i=>({...i, name:str(i.name,80), qty:str(i.qty,30)}));
+  const steps=(Array.isArray(r.steps)?r.steps:[]).map(s=>str(s,1000)).filter(Boolean);
+  const portions=Math.min(50,Math.max(1,Math.round(Number(r.portions))||4));
+  return {...r, name:str(r.name,80)||'?', time:str(r.time,40)||'?', portions, ingredients, steps, tip:str(r.tip,500)};
+}
+// Škálování množství podle porcí („200 g“ × 1,5 → „300 g“); bez čísla na začátku beze změny
+function scaleQty(qty, scale, prec=10){
+  if(qty==null||qty==='') return qty;
+  const s=String(qty);
+  if(scale===1||!Number.isFinite(scale)||!(scale>0)) return s;
+  const m=s.match(/^([\d.,]+)(.*)/);
+  if(!m) return s;
+  const num=parseFloat(m[1].replace(',','.'));
+  if(!Number.isFinite(num)) return s;
+  return (Math.round(num*scale*prec)/prec)+m[2];
+}
+// Násobek porcí receptu zobrazeného ve Vaření
+function recipeScale(r){
+  const base=Number(r?.portions)||4, cur=Number(window._currentPortions)||base;
+  return cur/base;
+}
+// Autor položky ve sdíleném seznamu (4.82: u všech zápisů do skupiny)
+function shopBy(fid){ return fid?{addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||''}:{}; }
+// Seznam skupiny musí být načtený (kontrola duplicit); osobní seznam se nečeká
+function shopListReady(fid){
+  if(!fid||shopGrp[fid]?.loaded) return true;
+  const e=shopGrp[fid];
+  if(e&&e.err&&grpSubBlocked(e)){ toast(t('ck.shopGrpErr'),5000); return false; }
+  subscribeGroupShop(fid); toast(t('mp.shopLoading')); return false;
+}
+// 4.82: hromadné přidání jednou dávkou bez await → offline se zapíšou všechny položky (dřív jen první).
+// Vrací promise, která se splní po zápisu (chyba = toast).
+function shopBatchAdd(fid, list){
+  const col=shopCol(fid), ws=[];
+  for(let i=0;i<list.length;i+=400){
+    const b=writeBatch(db);
+    list.slice(i,i+400).forEach(d=>b.set(doc(col),{...d,...shopBy(fid)}));
+    ws.push(b.commit().catch(e=>toast(t('common.saveFailed',{err:userErr(e)}))));
+  }
+  return Promise.all(ws);
+}
+// Je položka už mezi nekoupenými (podle shopKey)
+function shopHasOpen(items, name){ const k=shopKey(name); return !!k&&items.some(i=>i&&!i.done&&shopKey(i.name)===k); }
+// Suroviny receptu → položky nákupu: bez duplicit mezi nekoupenými i v receptu; scale = násobek porcí, skip(idx) = vynechat
+function shopRecipeEntries(ings, listItems, recipeName, scale=1, skip=null){
+  const seen=new Set((listItems||[]).filter(i=>i&&!i.done).map(i=>shopKey(i.name)));
+  const out=[]; let skipped=0;
+  (Array.isArray(ings)?ings:[]).forEach((raw,idx)=>{
+    if(skip&&skip(idx)) return;
+    const ing=typeof raw==='string'?{name:raw}:(raw||{});
+    const name=typeof ing.name==='string'?cutName(ing.name,80):'', k=shopKey(name);
+    if(!name||!k) return;
+    if(seen.has(k)){ skipped++; return; }
+    seen.add(k);
+    out.push({name, qty:cutName(String(scaleQty(ing.qty,scale)||''),30), category:shopCatOf(ing.category),
+      done:false, fromRecipe:cutName(recipeName,80), createdAt:new Date().toISOString()});
+  });
+  return {out, skipped};
+}
 
 let shopItems=[];
 let shopItemsLoaded=false; // osobní seznam přišel ze snapshotu (pravidelné nákupy až potom)
@@ -17872,7 +17933,8 @@ window.moveShopToFamily=async(btn,gid)=>{
       const batch=writeBatch(db);
       for(const it of items.slice(i,i+200)){
         batch.set(doc(collection(db,'families',fid,'shopItems')),{
-          name:it.name, category:it.category||'Ostatní', done:false, qty:it.qty||'',
+          name:it.name, category:it.category||'Ostatní', done:!!it.done, qty:it.qty||'',
+          ...(it.fromRecipe?{fromRecipe:cutName(it.fromRecipe,80)}:{}),
           addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||'',
           createdAt:new Date().toISOString()
         });
@@ -17913,7 +17975,8 @@ async function addShopEntry({name, category, qty}){
 
 window.addShopItem=async()=>{
   const inp=document.getElementById('shop-inp');
-  const {name, qty}=parseShopInput(inp.value);
+  const rawInp=inp.value;
+  const {name, qty}=parseShopInput(rawInp);
   if(!name)return;
   const selCat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
   const cat=selCat==='Ostatní'?guessShopCategory(name):selCat;
@@ -17922,7 +17985,12 @@ window.addShopItem=async()=>{
   const ph2=document.getElementById('shop-pantry-hint'); if(ph2)ph2.style.display='none';
   unhideQuickShop(name); // ručně přidaná skrytá položka se vrátí mezi často nakupované
   const gid=shopGid();
-  await addShopEntry({name, category:cat, qty});
+  try{ await addShopEntry({name, category:cat, qty}); }
+  catch(e){
+    toast(t('common.saveFailed',{err:userErr(e)}));
+    if(!inp.value) inp.value=rawInp; // text se vrátí do pole, ať nemusí psát znovu
+    return;
+  }
   toast(gid?t('shop.addedTo',{name,to:grpLabel(gid)}):t('shop.addedPlain'));
 };
 
@@ -18163,7 +18231,7 @@ function checkRecurringShop() {
       const fid = shopGid();
       const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
       if (!alreadyIn) {
-        const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString()};
+        const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString(), ...shopBy(fid)};
         // lastAdded už je zapsané → při chybě dát vědět, jinak by položka do příště chyběla
         addDoc(shopCol(fid),si).catch(e => { console.warn('[LP] recurring add:', e?.code || e?.name); if (CU?.uid === uid) toast(t('shop.rec.addFail',{name:item.name})); });
         if (fid) logGroupActivity(fid,'shop','add',item.name);
@@ -18205,8 +18273,8 @@ window.addFromRecurring = async (id) => {
   if (!item) return;
   const fid = shopGid();
   if (activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done)) { toast(t('shop.already',{name:item.name})); return; }
-  const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, addedAt:new Date().toISOString()};
-  await addDoc(shopCol(fid),si);
+  const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, addedAt:new Date().toISOString(), ...shopBy(fid)};
+  addDoc(shopCol(fid),si).catch(e => toast(t('common.saveFailed',{err:userErr(e)})));
   if (fid) logGroupActivity(fid,'shop','add',item.name);
   toast(fid ? t('shop.addedTo',{name:item.name,to:grpLabel(fid)}) : t('shop.added',{name:item.name}));
 };
@@ -18463,12 +18531,33 @@ window.editShopQty = (id, currentQty, el) => {
   });
 };
 
+// Smazání „×“ hned, ~5 s jde vrátit (4.82): stejná data pod stejným ID
+const _shopUndo = new Map();
 window.delShopItem=async(id)=>{
+  if(!CU) return;
   const fid = shopGid();
-  if(fid) {
-    await deleteFamilyShopItem(fid, id); return;
+  const it = shopItemsOf(fid).find(i => i.id === id);
+  if(it) {
+    const key = genId(), data = {...it}; delete data.id;
+    _shopUndo.set(key, {uid: CU.uid, fid, id, data});
+    setTimeout(() => _shopUndo.delete(key), 8000);
+    pantryNote(`<span style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--text2)">${tH('shop.delDone', {name: cutName(it.name, 40)})}</span><button data-a0="${esc(key)}" onclick="shopUndoDel(this.dataset.a0,this)" style="${PN_BTN}">${tH('common.undo')}</button>`, 5000);
   }
-  await deleteDoc(doc(db,'users',CU.uid,'shopItems',id));
+  try {
+    if(fid) await deleteFamilyShopItem(fid, id);
+    else await deleteDoc(doc(db,'users',CU.uid,'shopItems',id));
+  } catch(e) { toast(t('common.saveFailed',{err:userErr(e)})); }
+};
+window.shopUndoDel = (key, el) => {
+  const u = _shopUndo.get(key);
+  if(el) pantryNoteClose(el);
+  if(!u) return;
+  _shopUndo.delete(key);
+  if(CU?.uid !== u.uid) return;
+  if(u.fid && !shopGroups().includes(u.fid)) return; // skupina už nákupy nesdílí
+  setDoc(doc(shopCol(u.fid), u.id), u.data).catch(e => toast(t('common.saveFailed',{err:userErr(e)})));
+  if(u.fid) unlogGroupActivity(u.fid, 'shop', 'del', u.data.name || '');
+  toast(t('shop.restored', {name: cutName(u.data.name, 40)}));
 };
 
 window.shareShoppingList=()=>{
@@ -18532,44 +18621,35 @@ window.openRecipePickerForShop = function() {
   m.addEventListener('click', e => { if(e.target === m) m.remove(); });
 };
 
-window.addRecipeToShop = async function(recipeId, el) {
+window.addRecipeToShop = function(recipeId, el) {
   const recipe = savedRecipes.find(r => r.id === recipeId);
   if(!recipe) return;
   if(!recipe.ingredients?.length) { toast(t('shop.noIngr')); return; }
+  const shopFid = shopGid(), isSharedShop = !!shopFid; // zobrazený seznam (4.50)
+  if(!shopListReady(shopFid)) return;
   el.style.borderColor = 'var(--green)';
   el.style.pointerEvents = 'none';
-  const shopFid = shopGid(), isSharedShop = !!shopFid; // zobrazený seznam (4.50)
-  const shopActive = activeShopItems();
-  const ref = shopCol(shopFid);
-  let added = 0, firstAdded = '';
-  for(const ing of recipe.ingredients) {
-    const key = ing.name.toLowerCase();
-    if(shopActive.some(i => i.name.toLowerCase() === key)) continue;
-    await addDoc(ref, {
-      name: ing.name, qty: ing.qty||'',
-      category: shopCatOf(ing.category),
-      done: false, fromRecipe: recipe.name,
-      createdAt: new Date().toISOString()
-    });
-    if(!added) firstAdded = ing.name;
-    added++;
-  }
+  // Jen proti nekoupeným položkám (koupené se smí přidat znovu); jedna dávka bez čekání na server (4.82)
+  const {out} = shopRecipeEntries(recipe.ingredients, activeShopItems(), recipe.name);
+  const added = out.length, firstAdded = out[0]?.name || '';
+  shopBatchAdd(shopFid, out);
   if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? tNH('shop.ingrAdded', added) : tH('shop.allInShop')}</div></div>`;
   toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) + shopToSfx(shopFid) : t('shop.allInShopToast'));
 };
 
-window.clearDoneItems=async()=>{
+window.clearDoneItems=()=>{
   const fid = shopGid();
   const done=activeShopItems().filter(i=>i.done);
   if(!done.length){toast(t('shop.noneDone'));return;}
-  if(fid) {
-    for(const i of done) await deleteDoc(doc(db,'families',fid,'shopItems',i.id));
-    logGroupActivity(fid, 'shop', 'clear', '', done.length);
-  } else {
-    for(const i of done) await deleteDoc(doc(db,'users',CU.uid,'shopItems',i.id));
-  }
+  // Jedna dávka bez await (4.82): offline se smažou všechny, ne jen první
   toast(tN('shop.deletedN', done.length));
+  for(let k=0;k<done.length;k+=400){
+    const b=writeBatch(db);
+    done.slice(k,k+400).forEach(i=>b.delete(doc(shopCol(fid),i.id)));
+    b.commit().catch(e=>toast(t('common.saveFailed',{err:userErr(e)})));
+  }
+  if(fid) logGroupActivity(fid, 'shop', 'clear', '', done.length);
 };
 
 // ── COOKING ───────────────────────────────────────────
@@ -18621,10 +18701,10 @@ window.askRecipe=async()=>{
     const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food:query,n:cookPortions})}],1500);
     if(!rawR)throw new Error('AI unavailable');
     let raw=aiFixCs(rawR,{recipe:true}).trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
-    const recipe=JSON.parse(raw);
+    const recipe=normRecipe(JSON.parse(raw));
+    if(!recipe) throw new SyntaxError('JSON recept');
     lastRecipe=recipe;
-    renderRecipe(recipe);
-    if(activePantryItems().length) offerPantryDeduct(recipe.ingredients);
+    renderRecipe(recipe); // odečet ze zásob až tlačítkem „Uvařeno“ (4.82)
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
     toast('❌ '+userErr(e,'recept'));
@@ -18764,16 +18844,6 @@ function renderRecipe(r, scaledPortions){
   const saveBtn=document.getElementById('btn-save-recipe');
   if(saveBtn){saveBtn.textContent=t('ck.saveBtn');saveBtn.style.background='';saveBtn.style.color='';saveBtn.style.borderColor='';}
 
-  // Funkce pro škálování množství (jednoduché číslo × scale)
-  const scaleQty = (qty) => {
-    if(!qty) return qty;
-    const match = qty.match(/^([\d.,]+)(.*)/);
-    if(!match) return qty;
-    const num = parseFloat(match[1].replace(',','.'));
-    const unit = match[2];
-    const scaled = Math.round(num * scale * 10) / 10;
-    return scaled + unit;
-  };
 
   const titleEl = document.getElementById('cook-recipe-title');
   if(titleEl) titleEl.textContent = r.name;
@@ -18789,26 +18859,39 @@ function renderRecipe(r, scaledPortions){
       </span>
     </div>
     <div class="cook-section" style="display:flex;align-items:center;justify-content:space-between">${tH('ck.ingr')} <span style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif;font-style:italic;font-weight:400">${tH('ck.qtyHint')}</span></div>
-    ${r.ingredients.map((ing,i)=>`
+    ${(Array.isArray(r.ingredients)?r.ingredients:[]).map((raw,i)=>{const ing=typeof raw==='string'?{name:raw}:(raw||{});return `
       <div class="cook-ingredient" id="cing-row-${i}">
         <div class="cook-ing-check" id="cing-${i}" onclick="toggleIng(${i})"></div>
-        <span id="ing-name-${i}">${esc(ing.name)}</span>
-        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="${tH('ck.editTitle')}" onclick="editRecipeQty(${i},this)">${esc(scale===1?ing.qty:scaleQty(ing.qty))}</span>
+        <span id="ing-name-${i}">${esc(ing.name??'')}</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer" title="${tH('ck.editTitle')}" onclick="editRecipeQty(${i},this)">${esc(scaleQty(ing.qty??'',scale)??'')}</span>
         <span id="cing-badge-${i}" style="display:none;font-size:11px;background:rgba(76,217,100,.15);color:var(--green);border-radius:6px;padding:2px 7px;border:1px solid rgba(76,217,100,.3)">${tH('ck.haveHome')}</span>
-      </div>`).join('')}
+      </div>`;}).join('')}
     <div class="cook-section">${tH('ck.steps')}</div>
-    ${r.steps.map((s,i)=>`
+    ${(Array.isArray(r.steps)?r.steps:[]).map((s,i)=>`
       <div class="cook-step">
         <span class="cook-step-num">${i+1}.</span>
         <span>${esc(s)}</span>
       </div>`).join('')}
     ${r.tip?`<div style="margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)">💡 ${esc(r.tip)}</div>`:''}
+    <button type="button" class="btn-s" style="width:100%;margin-top:14px" onclick="cookedDeduct()">${tH('ck.cooked')}</button>
   `;
   // Ulož aktuální porce pro škálování
   window._currentPortions = portions;
   refreshRecipeChip();
 }
 
+// „Uvařeno – odečíst ze zásob“ (4.82): suroviny v aktuálním počtu porcí
+window.cookedDeduct = () => {
+  if(!lastRecipe) { toast(t('ck.genFirst')); return; }
+  const gid = pantryGid();
+  if(!pantryReady(gid)) { if(gid) subscribeGroupPantry(gid); else subPantryMine(); toast(t('pantry.loading')); return; }
+  const scale = recipeScale(lastRecipe);
+  const ings = (Array.isArray(lastRecipe.ingredients) ? lastRecipe.ingredients : [])
+    .map(i => typeof i === 'string' ? {name: i, qty: ''} : i)
+    .filter(i => i && typeof i.name === 'string')
+    .map(i => ({name: i.name, qty: String(scaleQty(i.qty ?? '', scale) ?? '')}));
+  if(!offerPantryDeduct(ings)) toast(t('pantry.noneFound'));
+};
 window.changePortions = (delta) => {
   if(!lastRecipe) return;
   const current = window._currentPortions || lastRecipe.portions || 4;
@@ -18825,9 +18908,13 @@ window.editRecipeQty = (idx, el) => {
   inp.style.cssText = 'width:70px;background:var(--card2);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;font-size:13px;color:var(--text);font-family:"Crimson Pro",serif;outline:none;text-align:right';
   el.replaceWith(inp);
   inp.focus(); inp.select();
+  const rec = lastRecipe, scale = recipeScale(rec);
   inp.addEventListener('blur', () => {
     const newQty = inp.value.trim();
-    if(lastRecipe.ingredients[idx]) lastRecipe.ingredients[idx].qty = newQty;
+    // Zobrazené množství je v aktuálních porcích, recept ukládá množství pro základní porce
+    const ing = rec.ingredients[idx];
+    if(ing && typeof ing === 'object') ing.qty = scale === 1 ? newQty : String(scaleQty(newQty, 1/scale, 1000) ?? '');
+    else if(typeof ing === 'string') rec.ingredients[idx] = {name: ing, qty: scale === 1 ? newQty : String(scaleQty(newQty, 1/scale, 1000) ?? '')};
     const span = document.createElement('span');
     span.style.cssText = 'color:var(--text3);margin-left:auto;font-size:14px;cursor:pointer';
     span.title = t('ck.editTitle');
@@ -18867,31 +18954,13 @@ window.sendToShopping=async(target)=>{
   _sendShopBusy=true;
   try{
   const listItems=shopItemsOf(gid);
-  let added=0, skipped=0, haveit=0, firstAdded='';
-  lastRecipe.ingredients.forEach((ing,i)=>{
-    const checkedEl=document.getElementById(`cing-${i}`);
-    if(checkedEl&&checkedEl.classList.contains('done')){ haveit++; } // mám doma — přeskočit
-  });
-  for(let i=0;i<lastRecipe.ingredients.length;i++){
-    const raw=lastRecipe.ingredients[i];
-    const ing=typeof raw==='string'?{name:raw}:(raw||{}); // starší recepty: surovina jako text
-    if(!ing.name) continue;
-    const checkedEl=document.getElementById(`cing-${i}`);
-    if(checkedEl&&checkedEl.classList.contains('done')) continue; // mám doma
-    const exists=listItems.some(s=>String(s.name||'').toLowerCase()===String(ing.name).toLowerCase());
-    if(!exists){
-      await addDoc(shopCol(gid),{
-        name:String(ing.name), qty:ing.qty||'',
-        category:shopCatOf(ing.category),
-        done:false,
-        fromRecipe:lastRecipe.name,
-        ...(gid?{addedBy:CU.uid, addedByName:prof?.prezdivka||prof?.nickname||''}:{}),
-        createdAt:new Date().toISOString()
-      });
-      if(!added) firstAdded=String(ing.name);
-      added++;
-    } else { skipped++; }
-  }
+  let haveit=0;
+  const isHave=i=>!!document.getElementById(`cing-${i}`)?.classList.contains('done'); // mám doma — přeskočit
+  lastRecipe.ingredients.forEach((ing,i)=>{ if(isHave(i)) haveit++; });
+  // Množství v zobrazeném počtu porcí (4.82); jedna dávka bez čekání na server
+  const {out, skipped}=shopRecipeEntries(lastRecipe.ingredients, listItems, lastRecipe.name, recipeScale(lastRecipe), isHave);
+  const added=out.length, firstAdded=out[0]?.name||'';
+  shopBatchAdd(gid, out);
   if(gid&&added) logGroupActivity(gid,'shop','add',firstAdded,added);
   const parts=[];
   if(added>0) parts.push(t('ck.sAdded',{n:added}));
@@ -19385,24 +19454,34 @@ window.deletePantryItem = async function(id, gidArg) {
   } catch(e) { console.warn('Pantry delete failed:', e?.code || e?.name); toast(t('pantry.saveErr')); }
 };
 
+// Tlačítko hromadného přidání zablokované, dokud zápis neproběhne (nejdéle 2 s – offline se nečeká)
+function shopBusyUntil(w, btn, release) {
+  if (btn) btn.disabled = true;
+  Promise.race([w, new Promise(r => setTimeout(r, 2000))]).finally(() => { release(); if (btn && btn.isConnected) btn.disabled = false; });
+}
 // Docházející zásoby → nákupní seznam stejné skupiny (sdílí-li nákupy), jinak Moje (4.70)
-window.pantryToShop = async function(gidArg) {
+let _pantryShopBusy = false;
+window.pantryToShop = function(gidArg) {
   const gid = pantryTarget(gidArg);
-  if (gid === undefined || !CU) return;
-  const low = pantryItemsOf(gid).filter(i => i && i.name && i.minQty && i.qty <= i.minQty);
+  if (gid === undefined || !CU || _pantryShopBusy) return;
+  const low = pantryItemsOf(gid).filter(i => i && typeof i.name === 'string' && i.name.trim() && i.minQty && i.qty <= i.minQty);
   if (!low.length) { toast(t('pantry.noneLow')); return; }
-  try {
-    let added = 0;
-    const fid = shopForPantry(gid);
-    for (const item of low) {
-      const shopItem = { name: item.unit ? `${item.name} (${item.unit})` : item.name, qty: '', category: guessShopCategory(item.name), done: false, createdAt: new Date().toISOString() };
-      if (fid) shopItem.addedBy = CU.uid;
-      await addDoc(shopCol(fid), shopItem);
-      added++;
-    }
-    if (fid && added > 0) logGroupActivity(fid, 'shop', 'add', low[0].name, added);
-    toast(tN('shop.addedN', added) + shopToSfx(fid));
-  } catch(e) { toast(t('pantry.toShopErr')); }
+  const fid = shopForPantry(gid);
+  if (!shopListReady(fid)) return;
+  // Název bez jednotky; co už je mezi nekoupenými (podle shopKey), se přeskočí (4.82)
+  const have = shopItemsOf(fid), seen = new Set();
+  const out = [];
+  for (const item of low) {
+    const name = cutName(item.name, 60), k = shopKey(name);
+    if (!k || seen.has(k) || shopHasOpen(have, name)) continue;
+    seen.add(k);
+    out.push({ name, qty: '', category: guessShopCategory(name), done: false, createdAt: new Date().toISOString() });
+  }
+  if (!out.length) { toast(t('shop.allAlready')); return; }
+  _pantryShopBusy = true;
+  toast(tN('shop.addedN', out.length) + shopToSfx(fid));
+  shopBusyUntil(shopBatchAdd(fid, out), document.querySelector('.btn-cook-suggest[onclick^="pantryToShop"]'), () => { _pantryShopBusy = false; });
+  if (fid) logGroupActivity(fid, 'shop', 'add', out[0].name, out.length);
 };
 
 window.aiShopSuggest = async function() {
@@ -19417,8 +19496,13 @@ window.aiShopSuggest = async function() {
       {role:'system',content:sys},
       {role:'user',content:tA('aip.shopAi.user', {recipes: recipeNames, pantry: pantryList})}
     ], 600);
+    if(typeof raw !== 'string' || !raw.trim()) throw new Error('AI unavailable');
     const data = JSON.parse(raw.trim().replace(/```json/g,'').replace(/```/g,'').trim());
-    if(!data.items?.length){ toast(t('pantry.aiNothing')); return; }
+    // Jen položky s názvem (text), krátké řetězce (4.82)
+    data.items = (Array.isArray(data?.items) ? data.items : [])
+      .filter(i => i && typeof i.name === 'string' && i.name.trim())
+      .map(i => ({name: cutName(i.name, 60), qty: cutName(typeof i.qty === 'string' || typeof i.qty === 'number' ? String(i.qty) : '', 30)}));
+    if(!data.items.length){ toast(t('pantry.aiNothing')); return; }
     const m = document.createElement('div');
     m.className = 'moverlay open';
     m.innerHTML = `<div class="modal" style="max-width:400px">
@@ -19437,7 +19521,7 @@ window.aiShopSuggest = async function() {
     </div>`;
     document.body.appendChild(m);
     m.addEventListener('click', e => { if(e.target===m) m.remove(); });
-    document.getElementById('ai-shop-add-btn')?.addEventListener('click', () => { aiShopAddAll(data.items); m.remove(); });
+    document.getElementById('ai-shop-add-btn')?.addEventListener('click', () => { if(aiShopAddAll(data.items) !== false) m.remove(); });
   } catch(e) {
     toast(t('pantry.aiNA'));
   } finally {
@@ -19445,19 +19529,26 @@ window.aiShopSuggest = async function() {
   }
 };
 
-window.aiShopAddAll = async function(items) {
+let _aiShopBusy = false;
+window.aiShopAddAll = function(items) {
+  if(!CU || _aiShopBusy) return false;
   const fid = shopGid(), shared = !!fid; // zobrazený seznam (4.50)
-  for(const i of items){
-    const cat = guessShopCategory(i.name);
-    if(shared){
-      await addDoc(collection(db,'families',fid,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,addedBy:CU.uid,createdAt:new Date().toISOString()});
-    } else {
-      await addDoc(collection(db,'users',CU.uid,'shopItems'),{name:i.name,qty:i.qty||'',category:cat,done:false,createdAt:new Date().toISOString()});
-    }
+  if(!shopListReady(fid)) return false;
+  // Jen položky s názvem; co už je mezi nekoupenými (shopKey), se přeskočí; jedna dávka bez await (4.82)
+  const have = activeShopItems(), seen = new Set(), out = [];
+  for(const i of (Array.isArray(items) ? items : [])){
+    if(!i || typeof i.name !== 'string' || !i.name.trim()) continue;
+    const name = cutName(i.name, 60), k = shopKey(name);
+    if(!k || seen.has(k) || shopHasOpen(have, name)) continue;
+    seen.add(k);
+    out.push({name, qty: cutName(String(i.qty ?? ''), 30), category: guessShopCategory(name), done: false, createdAt: new Date().toISOString()});
   }
-  if(shared && items.length) logGroupActivity(fid, 'shop', 'add', items[0]?.name || '', items.length);
   switchShopTab('list');
-  toast(tN('shop.addedN', items.length) + (items.length ? shopToSfx(fid) : ''));
+  if(!out.length){ toast(t('shop.allAlready')); return; }
+  _aiShopBusy = true;
+  toast(tN('shop.addedN', out.length) + shopToSfx(fid));
+  shopBusyUntil(shopBatchAdd(fid, out), document.getElementById('ai-shop-add-btn'), () => { _aiShopBusy = false; });
+  if(shared) logGroupActivity(fid, 'shop', 'add', out[0].name, out.length);
 };
 
 // Jednotky receptu → jednotky zásob (ks/g/kg/ml/l) a násobek. Celé slovo (u-příznak), aby „lžíce“ nebyla litr.
@@ -19599,11 +19690,11 @@ function pantryMatch(items, ingName) {
 // Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
   const gid = pantryGid(), items = pantryItemsOf(gid);
-  if (!items.length || !ingredients?.length) return;
+  if (!items.length || !ingredients?.length) return false;
   // ingredients může být pole objektů {name,qty} nebo pole stringů
   const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i).filter(i => i && typeof i.name === 'string');
   const matches = normalized.filter(ing => pantryMatch(items, ing.name));
-  if (!matches.length) return;
+  if (!matches.length) return false;
 
   document.getElementById('pantry-deduct-modal')?.remove();
   const m = document.createElement('div');
@@ -19621,6 +19712,7 @@ function offerPantryDeduct(ingredients) {
     </div>
   </div>`;
   document.body.appendChild(m);
+  return true;
 }
 
 window.deductPantryIngredients = async function(ingredients, gidArg) {
