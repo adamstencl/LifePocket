@@ -1015,11 +1015,22 @@ let chatMemorySummary=''; // AI-generated summary of older conversations
 let customReminders = [];
 
 // ── CLAUDE API HELPER — volá Firebase Function (klíč nikdy v klientu) ──────
+// Docházející denní limit AI (4.84): při ≤ 5 zbývajících dotazech jednou za den upozornit
+function aiLeftNote(rem) {
+  if (!Number.isInteger(rem) || rem < 0 || rem > 5) return;
+  try {
+    const d = toDS();
+    if (localStorage.getItem('lp_ai_low') === d) return;
+    localStorage.setItem('lp_ai_low', d);
+  } catch (e) { return; }
+  toast('⚠️ ' + tN('ai.leftToday', rem), 4000);
+}
 // quiet: bez toastu o limitu (opakovaný dotaz kvůli cizímu písmu)
 async function callClaudeRaw(messages, maxTokens = 500, quiet = false) {
   if (_accDeleting || _accDeleted || _accStopped) throw new Error('AI není k dispozici'); // během mazání účtu žádné AI dotazy
   try {
     const result = await claudeProxyFn({messages, maxTokens, lang: LANG}); // lang: jazyk chybových zpráv serveru
+    aiLeftNote(result?.data?.remaining);
     return result.data.text;
   } catch(e) {
     // Denní limit aplikace (claudeProxy vrací resource-exhausted); rate limit Anthropicu přijde jako internal
@@ -1606,7 +1617,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)

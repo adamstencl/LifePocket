@@ -1094,6 +1094,7 @@ export default {
   'pl.days': { one: '{n} den', few: '{n} dny', many: '{n} dne', other: '{n} dní' },
   'pl.ingr': { one: '{n} surovina', few: '{n} suroviny', many: '{n} suroviny', other: '{n} surovin' },
   'pl.recipesGen': { one: '{n} receptu', few: '{n} receptů', many: '{n} receptu', other: '{n} receptů' },
+  'ai.leftToday': { one: 'Dnes ti zbývá {n} dotaz na AI.', few: 'Dnes ti zbývají {n} dotazy na AI.', other: 'Dnes ti zbývá {n} dotazů na AI.' },
   'ln.morningHabits': { one: 'Čeká tě {n} návyk na dnes.', few: 'Čekají tě {n} návyky na dnes.', other: 'Čeká tě {n} návyků na dnes.' },
   'ln.evePart': { one: 'Splnil jsi {done} z {total} návyků. {n} zbývá — ještě je čas!', few: 'Splnil jsi {done} z {total} návyků. {n} zbývají — ještě je čas!', other: 'Splnil jsi {done} z {total} návyků. {n} zbývá — ještě je čas!' },
   'ln.evePart#f': { one: 'Splnila jsi {done} z {total} návyků. {n} zbývá — ještě je čas!', few: 'Splnila jsi {done} z {total} návyků. {n} zbývají — ještě je čas!', other: 'Splnila jsi {done} z {total} návyků. {n} zbývá — ještě je čas!' },

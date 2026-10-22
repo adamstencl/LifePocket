@@ -1086,6 +1086,7 @@ export default {
   'pl.days': { one: '{n} day', other: '{n} days' },
   'pl.ingr': { one: '{n} ingredient', other: '{n} ingredients' },
   'pl.recipesGen': { one: '{n} recipe', other: '{n} recipes' },
+  'ai.leftToday': { one: 'You have {n} AI question left today.', other: 'You have {n} AI questions left today.' },
   'ln.morningHabits': { one: 'You have {n} habit today.', other: 'You have {n} habits today.' },
   'ln.evePart': { one: 'You’ve done {done} of {total} habits. {n} to go — there’s still time!', other: 'You’ve done {done} of {total} habits. {n} to go — there’s still time!' },
   'ln.eveAll': { one: '🏆 Perfect day! You completed your habit!', other: '🏆 Perfect day! You completed all {n} habits!' },
