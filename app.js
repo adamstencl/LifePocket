@@ -1911,7 +1911,8 @@ window.setEntryMood=(m,btn)=>{
 window.markDirty=()=>{ entryDirty=true; };
 
 // Auto-save every 30s when dirty
-setInterval(()=>{ if(entryDirty&&curEntryId)saveEntry({auto:true}); },30000);
+// 4.81: i nový neuložený zápisek (stejná podmínka jako journalFlush)
+setInterval(()=>{ if(entryDirty) journalFlush(); },30000);
 
 // ── JOURNAL VOICE ──────────────────────────────────────
 const jIsMobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
