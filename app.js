@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.81';
+const APP_VERSION = '4.82';
 const CHANGELOG = [
+  { v:'4.82', items:[
+    '🔔 Odpolední připomínka nesplněných návyků vynechá návyky označené jako „Nesplněno“ nebo „Přeskočit“'
+  ], en:[
+    '🔔 The afternoon reminder of unfinished habits skips habits marked “Not done” or “Skip”'
+  ]},
   { v:'4.81', items:[
     '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky',
     '🔔 Ranní a večerní souhrn návyků přijde jen tomu, kdo Návyky používá a má na ten den nějaký návyk'
@@ -5959,7 +5964,7 @@ function checkAndRemindHabits() {
       }
       if (weekDone >= (freq.times||3)) return false; // cíl splněn
     }
-    return !hDone(h.id,today);
+    return !hMarked(h.id,today); // i „Nesplněno“ a „Přeskočit“ den uzavírá (4.82)
   });
   if (undone.length === 0) return;
   const lastRemind = localStorage.getItem('lp_last_remind');
