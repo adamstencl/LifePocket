@@ -8980,11 +8980,12 @@ window.joinFamily = async (codeArg) => {
   // Skupina, ve které už jsem (hlavní nebo přidaná), se znovu připojit nesmí
   if(typed === familyId || extraGroupIds.includes(typed)) { toast(t('grp.already')); return false; }
   if(groupLimitHit()) return false;
+  let code = null;
   try {
     // Z odkazu (codeArg) = nejspíš změněný kód skupiny; z formuláře spíš překlep → zkusit záměnné znaky
     const hit = await findFamilyByCode(typed, !fromLink);
     if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
-    const code = hit.code, fData = hit.snap.data();
+    code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(code === familyId || extraGroupIds.includes(code)) { toast(t('grp.already')); return false; }
     if(Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
@@ -9004,8 +9005,19 @@ window.joinFamily = async (codeArg) => {
     toast(t('grp.joined', {name: cutName(fData.groupName,40) || code}));
     notifAskSoon('group');
     return true;
-  } catch(e) { toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null; }
+  } catch(e) {
+    if(await joinGroupFull(e, code)) { toast(t('grp.full')); return false; }
+    toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null;
+  }
 };
+// Odmítnutý zápis při připojení (4.82): mezitím se skupina mohla zaplnit → čerstvý dokument, ≥ 8 členů = plná
+async function joinGroupFull(e, code) {
+  if(e?.code !== 'permission-denied' || !code) return false;
+  try {
+    const s = await getDoc(doc(db,'families',code));
+    return s.exists() && Object.keys(s.data()?.members || {}).length >= GROUP_MEMBERS_MAX;
+  } catch(err) { return false; }
+}
 
 // Skupiny, které uživatel právě sám opouští (aby se snapshot nesnažil o úklid souběžně)
 const _leavingGids = new Set();
@@ -9838,10 +9850,11 @@ window.joinExtraGroup = async (codeArg) => {
   if(extraGroupIds.includes(typed) || typed === familyId) { toast(t('grp.already')); return false; }
   if(groupLimitHit()) return false;
   const prevIds = extraGroupIds;
+  let code = null;
   try {
     const hit = await findFamilyByCode(typed, !fromLink);
     if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
-    const code = hit.code, fData = hit.snap.data();
+    code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(extraGroupIds.includes(code) || code === familyId) { toast(t('grp.already')); return false; }
     if(Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
@@ -9861,6 +9874,7 @@ window.joinExtraGroup = async (codeArg) => {
   } catch(e) {
     extraGroupIds = prevIds;
     console.warn('joinExtraGroup selhalo', e?.code || e?.name);
+    if(await joinGroupFull(e, code)) { toast(t('grp.full')); return false; }
     toast(t('grp.joinFail', {err: userErr(e,'skupina')}));
     return null;
   }
@@ -14650,6 +14664,23 @@ window.clearMealSlot = (dayKey, mealKey) => {
 };
 
 let _mealAiBusy = false;
+// Plán od AI → {d0..d6: {m0..m2: text ≤ 200}}; null, když v něm není žádné jídlo
+function mealPlanNorm(plan) {
+  if(!plan || typeof plan !== 'object' || Array.isArray(plan)) return null;
+  const out = {};
+  let any = false;
+  for(let d = 0; d < 7; d++) {
+    const src = plan['d' + d], day = {};
+    for(let m = 0; m < 3; m++) {
+      const v = src && typeof src === 'object' ? src['m' + m] : '';
+      const s = typeof v === 'string' ? cutName(v, 200) : '';
+      day['m' + m] = s;
+      if(s) any = true;
+    }
+    out['d' + d] = day;
+  }
+  return any ? out : null;
+}
 window.generateMealPlanAI = async () => {
   // Člen bez práv nesmí přepsat rodinný jídelníček
   if(!canEditMealPlan()) { toast(t('mp.adminOnlyShared')); return; }
@@ -14666,7 +14697,9 @@ window.generateMealPlanAI = async () => {
     ], 800);
     if (!raw) throw new Error('AI unavailable');
     const text = raw.replace(/```json|```/g,'').trim();
-    const plan = JSON.parse(text);
+    // 4.82: jen d0–d6 / m0–m2 jako text do 200 znaků; bez jediného jídla = chyba (nic se nepřepíše)
+    const plan = mealPlanNorm(JSON.parse(text));
+    if(!plan) throw new SyntaxError('JSON jídelníček');
     // Uložit
     if(shared) {
       if(!mealGroups().includes(fid) || !isMealAdmin(fid)) { toast(t('mp.groupChanged')); return; }
@@ -14674,8 +14707,9 @@ window.generateMealPlanAI = async () => {
       logGroupActivity(fid, 'meal', 'plan');
       renderMealPlan();
     } else {
+      // updateDoc nahradí celé pole mealPlan (merge by ponechal staré klíče)
       prof.mealPlan = plan;
-      await setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: plan}, {merge:true});
+      await updateDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: plan});
       renderMealPlan();
     }
     toast(t('mp.aiDone'));
@@ -15116,6 +15150,10 @@ window.openAddToMealplan = () => {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  // Zvýraznit předvybraný den a jídlo (4.82)
+  const bd = modal.querySelector(`[data-day="${_mealplanSelDay}"]`), bm = modal.querySelector(`[data-meal="${_mealplanSelMeal}"]`);
+  if(bd) window.selectMealplanDay(_mealplanSelDay, bd);
+  if(bm) window.selectMealplanMeal(_mealplanSelMeal, bm);
 };
 
 let _mealplanSelDay = 0, _mealplanSelMeal = 1, _mealplanTarget = ''; // '' = Moje, jinak gid
@@ -15135,18 +15173,21 @@ window.selectMealplanTarget = (gid) => {
 };
 window.selectMealplanDay = (i, btn) => {
   _mealplanSelDay = i;
-  document.querySelectorAll('#add-to-mealplan-modal [data-day]').forEach(b => b.style.borderColor = 'var(--border)');
+  document.querySelectorAll('#add-to-mealplan-modal [data-day]').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--text2)'; });
   btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)';
 };
 window.selectMealplanMeal = (i, btn) => {
   _mealplanSelMeal = i;
-  document.querySelectorAll('#add-to-mealplan-modal [data-meal]').forEach(b => b.style.borderColor = 'var(--border)');
+  document.querySelectorAll('#add-to-mealplan-modal [data-meal]').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--text2)'; });
   btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)';
 };
 window.confirmAddToMealplan = async () => {
   if(!lastRecipe) return;
   const canShare = mealGroups().length > 0;
   const target = canShare && mealGroups().includes(_mealplanTarget) ? _mealplanTarget : '';
+  // Obsazené místo: zeptat se, než se přepíše (4.82)
+  const prev = String(mealPlanOf(target)?.['d'+_mealplanSelDay]?.['m'+_mealplanSelMeal] || '').trim();
+  if(prev && prev !== String(lastRecipe.name || '').trim() && !confirm(t('mp.slotTaken', {name: prev}))) return;
   if(!saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name, target)) return;
   document.getElementById('add-to-mealplan-modal')?.remove();
   // Jídelníček ukáže plán, kam se jídlo uložilo
@@ -17775,12 +17816,18 @@ function guessShopCategory(name){
     ['Maso & ryby', ['maso','kuře','kuřecí','vepřové','hovězí','jehněčí','krůtí','kachna','slanina','šunka','salám','párky','klobása','játra','ryba','losos','treska','tuňák','sardinky','krevety','kalamáry','mušle','uzené','mleté','kotleta','řízek','steak','roštěná','svíčková']],
     ['Mléčné výrobky', ['mléko','máslo','smetana','jogurt','tvaroh','sýr','niva','eidam','gouda','hermelín','brie','cottage','ricotta','mozzarella','parmazán','kefír','podmáslí','šlehačka','crème','quark','bryndza']],
     ['Pečivo', ['chleba','chléb','rohlík','houska','bageta','tortilla','pita','croissant','koláč','buchta','závin','muffin','toastový','baguette','chlebíček','knäckebrot','pumpernikl']],
-    ['Trvanlivé', ['mouka','cukr','sůl','olej','ocet','rýže','těstoviny','pasta','nudle','špagety','kuskus','bulgur','kroupy','čočka','hrách','cizrna','konzerva','kompot','džem','med','sirup','koření','paprika mletá','kmín','skořice','vanilka','prášek do pečiva','soda','škrob','droždí','kakao','čokoláda','káva','čaj','ovesné vločky','müsli','corn flakes','cereálie','kečup','hořčice','majonéza','tatarka','sojová','worchester','tabasco','balzamiko','suš','trvanlivé']],
+    ['Trvanlivé', ['mouka','cukr','sůl','olej','ocet','rýže','těstoviny','pasta','nudle','špagety','kuskus','bulgur','kroupy','čočka','hrách','cizrna','konzerva','kompot','džem','med','sirup','koření','paprika mletá','kmín','skořice','vanilka','prášek do pečiva','soda','škrob','droždí','kakao','čokoláda','káva','čaj','ovesné vločky','müsli','corn flakes','cereálie','kečup','hořčice','majonéza','tatarka','sojová','worchester','tabasco','balzamiko','suš','trvanlivé',
+      'mletá paprika','uzená paprika','sladká paprika mletá','kokosové mléko','kokosový olej','kokosová smetana','kokosové mléko v plechovce',
+      'mandlové mléko','ovesné mléko','sójové mléko','rýžové mléko','arašídové máslo','kakaové máslo','mléčná čokoláda','sušené mléko',
+      'kondenzované mléko','rajčatový protlak','protlak','loupaná rajčata','krájená rajčata','kukuřice v plechovce','fazole v plechovce',
+      'kuřecí vývar','hovězí vývar','zeleninový vývar','bujón','strouhanka','kokosová moučka','kokosové chipsy']],
   ];
+  // 4.82: nejdelší shoda napříč kategoriemi (víceslovné výrazy vyhrají: „paprika mletá“, „kokosové mléko“)
+  let best='Ostatní', bl=0;
   for(const [cat,kw] of rules){
-    if(kw.some(k=>n.includes(k))) return cat;
+    for(const k of kw) if(k.length>bl && n.includes(k)){ best=cat; bl=k.length; }
   }
-  return 'Ostatní';
+  return best;
 }
 
 const SHOP_CATS=['Zelenina & ovoce','Maso & ryby','Mléčné výrobky','Pečivo','Trvanlivé','Ostatní'];
@@ -17903,8 +17950,8 @@ window.onShopInpKey=()=>{
   const hpg=pantryForShop(shopGid()), hItems=pantryItemsOf(hpg).filter(p=>p&&p.name);
   if(!pantryReady(hpg)){ if(hpg) subscribeGroupPantry(hpg); else subPantryMine(); }
   if(hint&&hItems.length){
-    const match=hItems.find(p=>p.name.toLowerCase().includes(name.toLowerCase())||name.toLowerCase().includes(p.name.toLowerCase()));
-    if(match){ hint.textContent=t('shop.inPantry',{qty:match.qty,unit:unitLabel(match.unit)}); hint.style.display=''; }
+    const match=pantryFind(hItems, name); // shoda po normalizaci (4.82), ne libovolný podřetězec
+    if(match){ hint.textContent=t('shop.inPantry',{qty:Number(match.qty)>0?Number(match.qty):0,unit:unitLabel(match.unit)}); hint.style.display=''; }
     else hint.style.display='none';
   }
 };
@@ -18196,13 +18243,21 @@ function checkRecurringShop() {
   const today = new Date();
   const todayISO = toDS(today);
   const todayDay = today.getDay();
-  // Je položka dnes na řadě (podle lastAdded ze serveru, viz transakce níže)?
+  // Je položka na řadě (podle lastAdded ze serveru, viz transakce níže)? 4.82: zmeškaný den se dožene –
+  // stačí, že poslední výskyt dne v týdnu (do dneška) je po lastAdded; data v lokálním čase
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const due = it => {
     if (!it || it.lastAdded === todayISO) return false;
-    const days = it.lastAdded ? Math.floor((today - new Date(it.lastAdded))/86400000) : 999;
-    if (it.freq === 'weekly') return todayDay === it.day;
-    if (it.freq === 'biweekly') return todayDay === it.day && days >= 14;
+    const last = it.lastAdded ? new Date(String(it.lastAdded).slice(0, 10) + 'T00:00') : null;
+    const days = last && !isNaN(last) ? Math.round((t0 - last)/86400000) : 999;
+    if (days <= 0) return false;
     if (it.freq === 'monthly') return days >= 30;
+    const day = Number(it.day);
+    if (!Number.isInteger(day) || day < 0 || day > 6) return false;
+    const occ = new Date(t0); occ.setDate(occ.getDate() - (todayDay - day + 7) % 7);
+    if (last && !isNaN(last) && occ <= last) return false;
+    if (it.freq === 'weekly') return true;
+    if (it.freq === 'biweekly') return days >= 14;
     return false;
   };
   if (navigator.onLine === false) { _recShopWait = true; return; } // offline nic nepřidávat (zastaralá cache → duplicity), znovu po online
@@ -18793,10 +18848,13 @@ function normalizeIngQty(amount, unit) {
   return `${a} ${unit}`;
 }
 
-window.saveManualRecipe = async function() {
+let _mrSaving = false; // pojistka proti dvojímu uložení (4.82)
+window.saveManualRecipe = function() {
+  if (_mrSaving || !CU) return;
   const name = document.getElementById('mr-name')?.value.trim();
   if (!name) { toast(t('ck.mr.nameReq')); return; }
-
+  _mrSaving = true;
+  try {
   const rawIngr = document.getElementById('mr-ingredients')?.value.trim() || '';
   const rawSteps = document.getElementById('mr-steps')?.value.trim() || '';
 
@@ -18821,17 +18879,19 @@ window.saveManualRecipe = async function() {
     tip: document.getElementById('mr-tip')?.value.trim() || '',
   };
 
-  // Ulož do Firestore
-  const data = { ...recipe, savedAt: Date.now(), manual: true };
-  const ref = await addDoc(collection(db, 'users', CU.uid, 'savedRecipes'), data);
-  recipe.id = ref.id; // sdílení pozná uložený recept podle ID
+  // Okno zavřít hned, zápis bez čekání na server (offline by okno viselo a další klepnutí založilo kopii)
   document.getElementById('manual-recipe-modal')?.remove();
+  const data = { ...recipe, savedAt: Date.now(), manual: true };
+  const ref = doc(collection(db, 'users', CU.uid, 'savedRecipes'));
+  setDoc(ref, data).catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
+  recipe.id = ref.id; // sdílení pozná uložený recept podle ID
 
   // Zobraz recept
   lastRecipe = recipe;
   document.getElementById('cook-welcome').style.display = 'none';
   renderRecipe(recipe);
   toast(t('ck.mr.saved'));
+  } finally { _mrSaving = false; }
 };
 
 function renderRecipe(r, scaledPortions){
@@ -19027,7 +19087,7 @@ function renderSavedRecipes(){
   if(!filtered.length){
     // Prázdný výsledek filtru: rovnou nabídnout zrušení filtru
     list.innerHTML=savedRecipes.length
-      ? `<div class="cook-empty">${tH('ck.noneFor',{type:cookMealType})}
+      ? `<div class="cook-empty">${tH('ck.noneFor',{type:mealTypeLabel(cookMealType)})}
            <button class="cook-empty-btn" onclick="setCookMealType(&#39;any&#39;,document.querySelector(&#39;.cook-opt-btn[data-m=any]&#39;))">${tH('ck.showAll')}</button></div>`
       : emptyHTML('cooking');
     return;

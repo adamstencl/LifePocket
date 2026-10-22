@@ -1330,6 +1330,7 @@ export default {
   'mp.orManual': 'Nebo napiš ručně:',
   'mp.addBtn': '✅ Přidat',
   'mp.added': '✅ Přidáno: {name}',
+  'mp.slotTaken': 'Na tomhle místě už je „{name}“. Přepsat?',
   'mp.writeName': 'Napiš název jídla',
   'mp.needRecipe': 'Nejprve nechej Rexe navrhnout recept',
   'mp.targetAria': 'Do kterého jídelníčku',

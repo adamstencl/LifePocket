@@ -1316,6 +1316,7 @@ export default {
   'mp.orManual': 'Or type it in:',
   'mp.addBtn': '✅ Add',
   'mp.added': '✅ Added: {name}',
+  'mp.slotTaken': 'This slot already has “{name}”. Replace it?',
   'mp.writeName': 'Type the meal name',
   'mp.needRecipe': 'First let Rex suggest a recipe',
   'mp.targetAria': 'Which meal plan',

@@ -118,7 +118,7 @@ Každé slovo musí být skutečné spisovné české slovo ve správném pádě
   'aip.rcp.quick': 'Recept musí být rychlý (do 30 min).',
   'aip.rcp.healthy': 'Recept musí být zdravý a výživný.',
   'aip.rcp.cheap': 'Recept musí být levný z dostupných surovin.',
-  'aip.rcp.mealType': 'Recept musí být vhodný jako: {type}.',
+  'aip.rcp.mealType': 'Recept musí být vhodný jako: {type}. Pole mealType nastav přesně na "{type}".',
   'aip.rcp.user': 'Recept na: {food} pro {n} osoby',
   // Postup k ručně zadanému receptu (prostý text)
   'aip.steps.sys': 'Jsi kuchařský asistent. Na základě názvu jídla a surovin napiš stručný postup vaření — 4 až 8 kroků. Každý krok na jeden řádek, bez číslování. Piš VÝHRADNĚ česky, jasně a srozumitelně jako recept z kuchařské knihy. Koření: „dochuťte solí a pepřem“ (ochutnejte = zkuste chuť, nikdy se 7. pádem). Každé slovo musí být skutečné spisovné české slovo ve správném pádě (kapary, tvarohu, sladká paprika, citronová šťáva); přídavné jméno před podstatným. Než odpověď vrátíš, v duchu ji zkontroluj jako korektor.',
