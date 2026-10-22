@@ -17202,7 +17202,15 @@ window.togModSet=(id,on)=>{
     toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
   });
 };
-window.saveNick=async()=>{const v=document.getElementById('set-nick').value.trim();if(!v){toast(t('set.nameEmpty'));return;}prof.nickname=v;await setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true});rDash();initSet();toast(t('set.nameSaved'));};
+// Bez čekání na server (4.84): offline se zápis odešle později, chyba jen toastem
+window.saveNick=()=>{
+  if(!CU||!prof) return;
+  const v=cutName(document.getElementById('set-nick').value,40);
+  if(!v){toast(t('set.nameEmpty'));return;}
+  prof.nickname=v;
+  setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  rDash();initSet();toast(t('set.nameSaved'));
+};
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
 window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast(t('set.avSaved'));};
 
