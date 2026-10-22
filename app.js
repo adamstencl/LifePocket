@@ -2790,11 +2790,14 @@ function renderHabitDetail(h) {
     const dl = isDone ? null : hLog(h.id + '_' + ds);
     const isFrozen = !!(dl && (dl.shield || dl.frozen));
     const isPausedDay = !isDone && !isFrozen && !(dl && dl.skipped) && isHabitPausedOn(h, ds);
+    // Třída podle habitDayState (4.81): neutrální den (přeskočeno, mimo frekvenci, před začátkem) není nesplněný
+    const st = habitDayState(h, ds, today);
     let cls = 'hd-day-cell';
-    if (isFuture) cls += ' empty';
-    else if (isDone) cls += ' done';
+    if (st === 'future') cls += ' empty';
+    else if (st === 'done') cls += ' done';
     else if (isFrozen) cls += ' frozen';
     else if (isPausedDay) cls += ' paused';
+    else if (st === 'neutral') cls += ' inactive';
     else cls += ' miss';
     if (isToday) cls += ' today';
     const tap = isFuture ? '' : ` role="button" tabindex="0" data-a0="${esc(h.id)}" data-a1="${esc(ds)}" onclick="hdDayTap(this.dataset.a0,this.dataset.a1)" style="cursor:pointer"`;
