@@ -2355,9 +2355,11 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 
 /* 4.85: větší dotyková plocha malých ovládacích prvků (vzhled beze změny, cíl aspoň 44 px) */
 .habit-check,.shop-check,.cnt-btn,.pantry-qty-btn{position:relative}
-.habit-check::after,.shop-check::after{content:'';position:absolute;inset:-11px}
-.cnt-btn::after,.pantry-qty-btn::after{content:'';position:absolute;inset:-9px}
-@media(max-width:640px){.cnt-btn::after{inset:-10px}}
+/* do stran jen o kousek: vedle leží ⏭ a hodnota počítadla, plocha je nesmí překrýt */
+.habit-check::after{content:'';position:absolute;inset:-11px -2px}
+.shop-check::after{content:'';position:absolute;inset:-11px}
+.cnt-btn::after,.pantry-qty-btn::after{content:'';position:absolute;inset:-9px -2px}
+@media(max-width:640px){.cnt-btn::after{inset:-10px -2px}}
 .shop-item-fav,.shop-item-del{min-width:44px;min-height:44px;margin:0 -6px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 .pantry-item-del{min-width:44px;min-height:44px}
 .habit-check:focus-visible,.shop-check:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
