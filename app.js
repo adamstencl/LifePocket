@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.78';
+const APP_VERSION = '4.79';
 const CHANGELOG = [
+  { v:'4.79', items:[
+    '🗺️ Průvodce z Nastavení teď projde všechny zapnuté moduly, nově i Pitný režim a Checklist'
+  ], en:[
+    '🗺️ The tour from Settings now walks through all your enabled modules, including Water and Checklist'
+  ]},
   { v:'4.78', items:[
     '🔔 Připomínky událostí chodí spolehlivěji: i na události po půlnoci, u vlastních typů událostí a správně při změně letního a zimního času',
     '🧊 Zásoby: dotaz „Přičíst?“ u podobné položky už neblokuje nakupování, víc položek se seřadí pod sebe. Appka líp pozná „200 g mouky“ jako Mouku a nesplete si „Mléko 1,5 %“ s „Mléko 3,5 %“',
