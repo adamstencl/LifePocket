@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.80';
+const APP_VERSION = '4.81';
 const CHANGELOG = [
+  { v:'4.81', items:[
+    '🔧 Opravy návyků, kalendáře, cílů, deníku a pitného režimu: nic se nezdvojí při dvojím ťuknutí nebo bez signálu, návyky po půlnoci přejdou na nový den, dnešní událost ukazuje „Dnes“, smazání cíle odklidí i jeho podcíle a termíny z kalendáře a deník uloží i změnu fotky'
+  ], en:[
+    '🔧 Fixes for habits, calendar, goals, journal and water: nothing gets duplicated on a double tap or offline, habits switch to the new day after midnight, today’s event shows “Today”, deleting a goal also removes its subgoals and calendar deadlines, and the journal saves photo changes'
+  ]},
   { v:'4.80', items:[
     '🔔 Připomínka návyku nepřijde, když už máš den označený, i jako „Nesplněno“ nebo „Přeskočit“'
   ], en:[
@@ -16543,7 +16548,7 @@ window.delG=async id=>{
   // Podcíle (podkolekce s cílem nezmizí) a jejich termíny v kalendáři (4.81); seznam z paměti + ze serveru
   const sids=new Set((subs[id]||[]).map(s=>s.id));
   try{ (await getDocs(collection(db,'users',CU.uid,'goals',id,'subgoals'))).docs.forEach(d=>sids.add(d.id)); }
-  catch(e){ console.warn('[LP] mazání podcílů:',e?.code||e?.name); }
+  catch(e){ console.warn('[LP] delG subgoals:',e?.code||e?.name); }
   for(const sid of sids){
     deleteDoc(doc(db,'users',CU.uid,'goals',id,'subgoals',sid)).catch(()=>{});
     deleteDoc(doc(db,'users',CU.uid,'events',`subgoal-${sid}`)).catch(()=>{});
