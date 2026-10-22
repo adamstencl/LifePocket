@@ -19762,7 +19762,15 @@ function showHabitDetectBanner(completed, newHabits) {
 }
 
 // Zaznamenat splněný návyk (existující nebo nový)
+// Pojistka (4.81): banner pryč hned, ID předem, zápis bez čekání (offline by visel, dvojí ťuk = duplicita)
+const hfeErr = e => toast(t('common.saveFailed',{err:userErr(e,'habit')}));
+let _hfeBusy = false;
 window.logHabitFromEntry = async (dataEnc) => {
+  if (_hfeBusy || !CU) return;
+  _hfeBusy = true;
+  try { logHabitFromEntryImpl(dataEnc); } finally { _hfeBusy = false; }
+};
+function logHabitFromEntryImpl(dataEnc) {
   const {item, existingHabitId} = JSON.parse(dataEnc);
   const today = toDS();
 
@@ -19773,8 +19781,8 @@ window.logHabitFromEntry = async (dataEnc) => {
     const logId = existingHabitId + '_' + today;
     const value = aiGoal(item.count);
     const goal = Math.max(1, Math.floor(Number(habit.goal))||1);
-    await putHabitLog({id:logId, habitId:existingHabitId, date:today, done:value>=goal, value});
     document.getElementById('habit-detect-banner')?.remove();
+    putHabitLog({id:logId, habitId:existingHabitId, date:today, done:value>=goal, value}).catch(hfeErr);
     toast(item.count ? t('nt.loggedN',{name:habit.name,n:item.count}) : t('nt.logged',{name:habit.name}));
     renderHabits();
   } else {
@@ -19787,18 +19795,24 @@ window.logHabitFromEntry = async (dataEnc) => {
       freq: {type: 'daily'},
       createdAt: new Date().toISOString()
     };
-    const ref = await addDoc(collection(db,'users',CU.uid,'habits'), newH);
+    document.getElementById('habit-detect-banner')?.remove();
+    const ref = doc(collection(db,'users',CU.uid,'habits'));
+    setDoc(ref, newH).catch(hfeErr);
     newH.id = ref.id;
     // Zaznamenat dnešní splnění
     const logId = ref.id + '_' + today;
-    await putHabitLog({id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)});
-    document.getElementById('habit-detect-banner')?.remove();
+    putHabitLog({id:logId, habitId:ref.id, date:today, done:true, value:aiGoal(item.count)}).catch(hfeErr);
     toast(t('nt.habitCreatedLogged',{name:item.activity}));
   }
-};
+}
 
 // Vytvořit nový návyk ze záměru
 window.createHabitFromEntry = async (dataEnc) => {
+  if (_hfeBusy || !CU) return;
+  _hfeBusy = true;
+  try { createHabitFromEntryImpl(dataEnc); } finally { _hfeBusy = false; }
+};
+function createHabitFromEntryImpl(dataEnc) {
   const h = JSON.parse(dataEnc);
   const newH = {
     name: h.name,
@@ -19808,16 +19822,17 @@ window.createHabitFromEntry = async (dataEnc) => {
     freq: {type: 'daily'},
     createdAt: new Date().toISOString()
   };
-  const newRef = await addDoc(collection(db,'users',CU.uid,'habits'), newH);
+  // Odstraň tuto kartu z banneru (hned, druhé ťuknutí už nic nevytvoří)
+  document.getElementById('habit-detect-banner')?.remove();
+  const newRef = doc(collection(db,'users',CU.uid,'habits'));
+  setDoc(newRef, newH).catch(hfeErr);
   // Zaznamenat dnešní splnění pokud je k dispozici
   if (h.logToday) {
     const lId = newRef.id + '_' + toDS();
-    await putHabitLog({id:lId, habitId:newRef.id, date:toDS(), done:true, value:1});
+    putHabitLog({id:lId, habitId:newRef.id, date:toDS(), done:true, value:1}).catch(hfeErr);
   }
-  // Odstraň tuto kartu z banneru
-  document.getElementById('habit-detect-banner')?.remove();
   toast(t('nt.habitCreated',{name:h.name}));
-};
+}
 
 
 // Helper: vytvoří bot bublinu s avatar row wrapperem
