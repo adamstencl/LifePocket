@@ -7425,6 +7425,8 @@ function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)
 // Den: splněné návyky (max. 10) + perfektní den (všechny denní návyky na řadě, aspoň 2). Týdenní se do perfektního dne nepočítají.
 // Archivovaný návyk splněný v ten den se počítá dál (archivace body neubere)
 function perfDue(ds){ return habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
+// Aktivní návyky na řadě v daný den (Domů, Rex, oslava „vše splněno“; 4.81): bez archivu, týdenních a neutrálních dnů
+function habitsDue(ds){ return habits.filter(h=>!h.archived&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
 function isPerfectDay(ds){
   const due=perfDue(ds);
   return due.length>=2&&due.every(h=>hDone(h.id,ds));
@@ -8369,9 +8371,10 @@ function checkAvatarReactions(hid, date, justCompleted) {
   }
 
   // Všechny návyky splněny
-  const totalH = habits.length;
+  const dueH = habitsDue(today);
+  const totalH = dueH.length;
   if(totalH > 1) {
-    const doneToday = habits.filter(hh =>
+    const doneToday = dueH.filter(hh =>
       hDone(hh.id,today)
     ).length;
     if(doneToday === totalH && lsGet('lp_perfect_day', '') !== today) {
@@ -15892,8 +15895,9 @@ function rDash(){
   // Dynamická Rex zpráva podle skutečného stavu
   const today_r=toDS();
   const h_r=new Date().getHours();
-  const doneToday_r=habitLogs.filter(l=>l.date===today_r&&l.done).length;
-  const totalHabits_r=habits.length;
+  const due_r=habitsDue(today_r), activeCnt_r=habits.filter(h=>!h.archived).length;
+  const doneToday_r=due_r.filter(h=>hDone(h.id,today_r)).length;
+  const totalHabits_r=due_r.length;
   const nextEv=[...events].filter(e=>{
     const d=new Date(e.date+'T12:00:00'); const t=new Date(); t.setHours(0,0,0,0);
     return d>=t;
@@ -15906,8 +15910,10 @@ function rDash(){
   const dv = {name:nm, n:totalHabits_r, done:doneToday_r, total:totalHabits_r, left:remaining_r, ev:evStr, g};
   const pickMsg = pre => t('dash.m.'+pre+(1+Math.floor(Math.random()*3)), dv);
   let dynamicMsg = gr;
-  if(totalHabits_r===0){
+  if(!activeCnt_r){
     dynamicMsg = pickMsg('none');
+  } else if(totalHabits_r===0){
+    // dnes nic na řadě (pauza, mimo dny frekvence): obecný pozdrav
   } else if(h_r<9){
     dynamicMsg = pickMsg('morning');
   } else if(h_r>=21){
@@ -15990,12 +15996,14 @@ function rDash(){
   else mw.water=waterWidgetHTML();
 
   // ── WIDGET: NÁVYKY ──
-  if(mods.includes('habits')&&habits.length){
-    const doneTodayH=habitLogs.filter(l=>l.date===today&&l.done).length;
-    const totalH=habits.length;
-    const pct=Math.round(doneTodayH/totalH*100);
+  const actH=habits.filter(h=>!h.archived);
+  if(mods.includes('habits')&&actH.length){
+    const dueH=habitsDue(today);
+    const doneTodayH=dueH.filter(h=>hDone(h.id,today)).length;
+    const totalH=dueH.length;
+    const pct=totalH?Math.round(doneTodayH/totalH*100):0;
     const pctColor=pct===100?'var(--green)':pct>50?'var(--accent)':'var(--accent2)';
-    const habRows=habits.slice(0,4).map(hb=>{
+    const habRows=actH.slice(0,4).map(hb=>{
       const log=hLogHD(hb.id,today);
       const done=log?.done||false;
       const failed=log?.failed||false;
@@ -16011,7 +16019,7 @@ function rDash(){
          :streak>1?`<div class="dw-hfire">🔥${streak}</div>`:''}
       </div>`;
     }).join('');
-    const more=habits.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:habits.length-4})}</div>`:'';
+    const more=actH.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:actH.length-4})}</div>`:'';
     mw.habits=`<div class="dw" onclick="sp('habits')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.h.title')}</div>
