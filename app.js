@@ -14984,8 +14984,10 @@ window.deleteFoodLog = async (id) => {
 };
 
 
+let _mpShopBusy = false; // hromadné přidání z jídelníčku (4.83)
 window.mealplanToShopping = async () => {
   if(!CU){ toast(t('mp.loginReq')); return; }
+  if(_mpShopBusy) return; // zápis předchozího klepnutí ještě běží
   const plan = currentMealPlan();
 
   const mealNames = [];
@@ -15021,7 +15023,7 @@ window.mealplanToShopping = async () => {
   }
   // Jedna dávka bez čekání na server (offline se zapíše vše), autor u položek skupiny
   const addedCount = toAdd.length, firstAdded = toAdd[0]?.name || '';
-  if(addedCount) shopBatchAdd(shopFid, toAdd);
+  if(addedCount) { _mpShopBusy = true; shopBusyUntil(shopBatchAdd(shopFid, toAdd), document.querySelector('[onclick="mealplanToShopping()"]'), () => { _mpShopBusy = false; }); }
   // Aktivita jednou za celou dávku (počet místo 20 volání)
   if(isSharedShop && addedCount) logGroupActivity(shopFid, 'shop', 'add', firstAdded, addedCount);
 
@@ -15303,7 +15305,7 @@ async function saveChecklistDoc(list) {
 }
 // 4.83: úprava položek. fn(items) upraví/vrátí pole položek (podle item.id, bez závislosti na indexech).
 // Osobní seznam se uloží celý; seznam skupiny transakcí nad čerstvými daty ze serveru, aby souběžné
-// zápisy dvou zařízení neztratily položky. Offline: přidání přes arrayUnion (addItem), jinak chyba.
+// zápisy dvou zařízení neztratily položky. Offline / bez spojení: zápis nad daty z cache (clOfflineWrite).
 const CL_MAX_LEN = 900000; // rezerva pod limitem dokumentu Firestore (1 MiB)
 function clTooBig(x) { try { return JSON.stringify(x).length > CL_MAX_LEN; } catch(e) { return true; } }
 function clErr(code) { const e = new Error(code); e.code = code; return e; }
@@ -15311,27 +15313,48 @@ function clCopyItems(items) {
   return (Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object')
     .map(i => Array.isArray(i.photos) ? {...i, photos: [...i.photos]} : {...i});
 }
+// Fronta zápisů na dokument: vlastní transakce stejného klienta se navzájem neruší
+const _clQ = new Map();
+function clQueue(key, job) {
+  const p = (_clQ.get(key) || Promise.resolve()).catch(() => {}).then(job);
+  _clQ.set(key, p);
+  p.catch(() => {}).finally(() => { if (_clQ.get(key) === p) _clQ.delete(key); });
+  return p;
+}
+function clIsOffline(e) {
+  return navigator.onLine === false || /unavailable|offline/i.test(String(e?.code || '') + ' ' + String(e?.message || ''));
+}
+// Offline / slabý signál: operace nad daty z cache, zápis bez await (dorazí po připojení); přidání přes arrayUnion
+async function clOfflineWrite(ref, fn, addItem) {
+  if (addItem) { updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()}).catch(clSaveErr); return; }
+  const s = await getDocFromCache(ref);
+  if (!s.exists()) throw clErr('not-found');
+  const cur = clCopyItems(s.data().items);
+  const r = fn(cur), next = Array.isArray(r) ? r : cur;
+  if (clTooBig(next)) throw clErr('cl-big');
+  updateDoc(ref, {items: next, updatedAt: Date.now()}).catch(clSaveErr);
+}
 function clSave(list, fn, addItem = null) {
   if (!CU || !list) return Promise.resolve();
   if (!Array.isArray(list.items)) list.items = [];
+  const before = clCopyItems(list.items); // při chybě zpět – UI neukáže neuložený stav
   const loc = fn(list.items);
   if (Array.isArray(loc)) list.items = loc;
-  if (!list._family) return clTooBig(list) ? Promise.reject(clErr('cl-big')) : saveChecklistDoc(list);
+  const undo = e => { list.items = before; throw e; };
+  if (!list._family) return (clTooBig(list) ? Promise.reject(clErr('cl-big')) : saveChecklistDoc(list)).catch(undo);
   if (!list._gid) return Promise.resolve();
   const ref = doc(db,'families',list._gid,'checklists',list.id);
-  if (addItem && navigator.onLine === false) return updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()});
-  return runTransaction(db, async tx => {
+  if (navigator.onLine === false) return clOfflineWrite(ref, fn, addItem).catch(undo);
+  return clQueue(ref.path, () => runTransaction(db, async tx => {
     const s = await tx.get(ref);
     if (!s.exists()) throw clErr('not-found');
     const cur = clCopyItems(s.data().items);
     const r = fn(cur), next = Array.isArray(r) ? r : cur;
     if (clTooBig(next)) throw clErr('cl-big');
     tx.update(ref, {items: next, updatedAt: Date.now()});
-  }).catch(e => {
-    if (addItem && /unavailable|offline/i.test(String(e?.code || '') + ' ' + String(e?.message || '')))
-      return updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()});
-    throw e;
-  });
+  }, {maxAttempts: 2}))
+    .catch(e => clIsOffline(e) ? clOfflineWrite(ref, fn, addItem) : Promise.reject(e))
+    .catch(undo);
 }
 function clSaveErr(e) {
   toast(e?.code === 'cl-big' ? t('cl.tooBig') : e?.code === 'not-found' ? t('cl.gone') : '⚠️ ' + userErr(e, 'seznam'));
@@ -15451,8 +15474,8 @@ function renderChecklist() {
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
 }
 
-// Seznam skupiny smí smazat jen autor (createdBy); starší seznamy bez autora kterýkoli člen
-function clCanDelGroup(list) { return !!CU && !!list?._family && (!list.createdBy || list.createdBy === CU.uid); }
+// Seznam skupiny smí smazat jen autor (createdBy, u starších vlastník owner); bez obojího kterýkoli člen
+function clCanDelGroup(list) { const by = list?.createdBy || list?.owner; return !!CU && !!list?._family && (!by || by === CU.uid); }
 
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
@@ -17607,7 +17630,9 @@ window.rexRecipe=async(food,btnEl)=>{
 
 // Recepty z chatu (klíč → recept), nejvýš 20 posledních; vymaže se při odhlášení
 const _rexRecipes=new Map();
+let _rexShopBusy=false;
 window.confirmRecipeToShop=(key,btnEl)=>{
+  if(_rexShopBusy) return;
   const recipe=_rexRecipes.get(key);
   if(!recipe||!CU){toast(t('mp.needRecipe'));return;}
   const shopFid = shopGid(), isShared = !!shopFid; // zobrazený seznam (4.50)
@@ -17615,7 +17640,8 @@ window.confirmRecipeToShop=(key,btnEl)=>{
   btnEl?.remove();
   const {out}=shopRecipeEntries(recipe.ingredients, activeShopItems(), recipe.name);
   const added=out.length, firstAdded=out[0]?.name||'';
-  shopBatchAdd(shopFid, out);
+  _rexShopBusy=true;
+  shopBusyUntil(shopBatchAdd(shopFid, out), null, ()=>{ _rexShopBusy=false; });
   if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
   const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
@@ -18254,18 +18280,31 @@ function checkRecurringShop() {
   // Je položka na řadě (podle lastAdded ze serveru, viz transakce níže)? 4.83: zmeškaný den se dožene –
   // stačí, že poslední výskyt dne v týdnu (do dneška) je po lastAdded; data v lokálním čase
   const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dayDiff = (a, b) => Math.round((a - b)/86400000);
   const due = it => {
     if (!it || it.lastAdded === todayISO) return false;
-    const last = it.lastAdded ? new Date(String(it.lastAdded).slice(0, 10) + 'T00:00') : null;
-    const days = last && !isNaN(last) ? Math.round((t0 - last)/86400000) : 999;
+    let last = it.lastAdded ? new Date(String(it.lastAdded).slice(0, 10) + 'T00:00') : null;
+    if (last && isNaN(last)) last = null;
+    const days = last ? dayDiff(t0, last) : 999;
     if (days <= 0) return false;
     if (it.freq === 'monthly') return days >= 30;
     const day = Number(it.day);
     if (!Number.isInteger(day) || day < 0 || day > 6) return false;
     const occ = new Date(t0); occ.setDate(occ.getDate() - (todayDay - day + 7) % 7);
-    if (last && !isNaN(last) && occ <= last) return false;
+    if (last && occ <= last) return false;
+    // Nová položka (bez lastAdded): hranicí je den založení, ne dnešek – přidá se až v naplánovaný den
+    if (!last) {
+      const c = it.createdAt ? new Date(it.createdAt) : null;
+      const created = c && !isNaN(c) ? new Date(c.getFullYear(), c.getMonth(), c.getDate()) : t0;
+      if (occ < created) return false;
+    }
     if (it.freq === 'weekly') return true;
-    if (it.freq === 'biweekly') return days >= 14;
+    // Každé 2 týdny: od naplánovaného dne, ke kterému patřilo poslední přidání (ne od samotného lastAdded)
+    if (it.freq === 'biweekly') {
+      if (!last) return true;
+      const prevOcc = new Date(last); prevOcc.setDate(prevOcc.getDate() - (last.getDay() - day + 7) % 7);
+      return dayDiff(occ, prevOcc) >= 14;
+    }
     return false;
   };
   if (navigator.onLine === false) { _recShopWait = true; return; } // offline nic nepřidávat (zastaralá cache → duplicity), znovu po online
@@ -18483,8 +18522,10 @@ function shopPantryUndo(shopId) {
   const ref = pantryDoc(e.gid, e.pantryId);
   const it = pantryItemsOf(e.gid).find(i => i.id === e.pantryId);
   const back = it ? Math.min(e.delta, pantryQty(it)) : e.delta;
-  if(!e.created && !(back > 0)) return;
-  const w = e.created ? deleteDoc(ref) : updateDoc(ref, {qty: increment(-back), updatedAt: Date.now()});
+  // Zásobu založenou tímto odškrtnutím smazat jen, když v ní mezitím nepřibylo nic dalšího
+  const del = e.created && (!it || pantryQty(it) <= e.delta);
+  if(!del && !(back > 0)) return;
+  const w = del ? deleteDoc(ref) : updateDoc(ref, {qty: increment(-back), updatedAt: Date.now()});
   w.catch(err => { if(err?.code !== 'not-found') pantryWriteErr(err); });
   toast(t('shop.pantryUndo', {name: cutName(it?.name || '', 40)}) + pantrySfx(e.gid));
 }
@@ -18684,7 +18725,9 @@ window.openRecipePickerForShop = function() {
   m.addEventListener('click', e => { if(e.target === m) m.remove(); });
 };
 
+let _rcpShopBusy = false;
 window.addRecipeToShop = function(recipeId, el) {
+  if(_rcpShopBusy) return;
   const recipe = savedRecipes.find(r => r.id === recipeId);
   if(!recipe) return;
   if(!recipe.ingredients?.length) { toast(t('shop.noIngr')); return; }
@@ -18695,7 +18738,8 @@ window.addRecipeToShop = function(recipeId, el) {
   // Jen proti nekoupeným položkám (koupené se smí přidat znovu); jedna dávka bez čekání na server (4.83)
   const {out} = shopRecipeEntries(recipe.ingredients, activeShopItems(), recipe.name);
   const added = out.length, firstAdded = out[0]?.name || '';
-  shopBatchAdd(shopFid, out);
+  _rcpShopBusy = true;
+  shopBusyUntil(shopBatchAdd(shopFid, out), null, () => { _rcpShopBusy = false; });
   if(isSharedShop && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   el.innerHTML = `<span style="color:var(--green);font-size:22px">✅</span><div style="flex:1;min-width:0"><div style="font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;color:var(--green)">${esc(recipe.name)}</div><div style="font-size:12px;color:var(--text3)">${added > 0 ? tNH('shop.ingrAdded', added) : tH('shop.allInShop')}</div></div>`;
   toast(added > 0 ? tN('cook.ingFromRecipe', added, {name: recipe.name}) + shopToSfx(shopFid) : t('shop.allInShopToast'));
@@ -19020,6 +19064,7 @@ window.sendToShopping=async(target)=>{
     subscribeGroupShop(gid); toast(t('mp.shopLoading')); return; // bez načteného seznamu by vznikly duplicity
   }
   _sendShopBusy=true;
+  let sw=null;
   try{
   const listItems=shopItemsOf(gid);
   let haveit=0;
@@ -19028,7 +19073,7 @@ window.sendToShopping=async(target)=>{
   // Množství v zobrazeném počtu porcí (4.83); jedna dávka bez čekání na server
   const {out, skipped}=shopRecipeEntries(lastRecipe.ingredients, listItems, lastRecipe.name, recipeScale(lastRecipe), isHave);
   const added=out.length, firstAdded=out[0]?.name||'';
-  shopBatchAdd(gid, out);
+  sw=shopBatchAdd(gid, out);
   if(gid&&added) logGroupActivity(gid,'shop','add',firstAdded,added);
   const parts=[];
   if(added>0) parts.push(t('ck.sAdded',{n:added}));
@@ -19040,7 +19085,7 @@ window.sendToShopping=async(target)=>{
   const btn = document.querySelector('.cook-actions .btn-s');
   if(btn){ btn.style.background='var(--accent)'; btn.style.color='#1a1a1a'; }
   }catch(e){ toast(t('common.saveFailed',{err:userErr(e)})); }
-  finally{ _sendShopBusy=false; }
+  finally{ if(sw) shopBusyUntil(sw, document.querySelector('[onclick="sendToShopping()"]'), ()=>{ _sendShopBusy=false; }); else _sendShopBusy=false; }
 };
 
 // ── SAVED RECIPES ─────────────────────────────────────
@@ -19812,9 +19857,12 @@ window.deductPantryIngredients = async function(ingredients, gidArg) {
   }
   if (changed.size) {
     // increment: souběžné změny z jiného zařízení se nepřepíšou; bez await (offline se zapíše po připojení)
-    const b = writeBatch(db), now = Date.now();
-    changed.forEach((d, id) => { if (d > 0) b.update(pantryDoc(gid, id), {qty: increment(-d), updatedAt: now}); });
-    b.commit().catch(pantryWriteErr);
+    // Každá zásoba zvlášť: smazaná zásoba (not-found) nezablokuje odečet ostatních
+    const now = Date.now();
+    changed.forEach((d, id) => {
+      if (d > 0) updateDoc(pantryDoc(gid, id), {qty: increment(-d), updatedAt: now})
+        .catch(e => { if (e?.code !== 'not-found') pantryWriteErr(e); });
+    });
     if (gid) logGroupActivity(gid, 'pantry', 'edit', firstName, matched);
   }
   toast(matched > 0 ? tN('pantry.deducted', matched) + pantrySfx(gid) : t('pantry.noneFound'));
