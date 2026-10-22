@@ -73,7 +73,8 @@ const OFFLINE_URLS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS)));
+  // cache:'reload' (4.84): nová verze nesmí do offline cache převzít starý soubor z HTTP cache prohlížeče
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS.map(u => new Request(u, {cache: 'reload'})))));
   self.skipWaiting();
 });
 
@@ -90,7 +91,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (isImmutableCdn(e.request.url)) { e.respondWith(cdnFirst(e.request)); return; }
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request).then(res => {
+  // Soubory appky (4.84): no-cache = vždy ověřit u serveru (GitHub Pages drží max-age 10 min) → nová verze hned
+  const sameOrigin = new URL(e.request.url).origin === self.location.origin;
+  const net = sameOrigin && e.request.mode !== 'navigate' ? fetch(e.request, {cache: 'no-cache'}) : fetch(e.request);
+  e.respondWith(net.catch(() => caches.match(e.request).then(res => {
     if (res) return res;
     // Navigace bez cache zásahu — spadni na hlavní stránku appky
     if (e.request.mode === 'navigate') return caches.match('/index.html');
