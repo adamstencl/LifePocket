@@ -14983,9 +14983,8 @@ window.mealplanToShopping = async () => {
   if(shopFid && !shopGrp[shopFid]?.loaded) { subscribeGroupShop(shopFid); toast(t('mp.shopLoading')); return; } // bez načteného seznamu by vznikly duplicity
   const shopActive = shopItemsOf(shopFid);
 
-  let addedCount = 0, firstAdded = '';
   let foundRecipes = [];
-  const alreadyAdded = new Set();
+  const toAdd = [];
 
   for(const mealName of mealNames) {
     const recipe = savedRecipes.find(r =>
@@ -14994,24 +14993,13 @@ window.mealplanToShopping = async () => {
     );
     if(recipe && recipe.ingredients?.length && !foundRecipes.find(r=>r.id===recipe.id)) {
       foundRecipes.push(recipe);
-      for(const ing of recipe.ingredients) {
-        const key = ing.name.toLowerCase();
-        if(alreadyAdded.has(key)) continue;
-        const exists = shopActive.some(i => i.name.toLowerCase() === key);
-        if(!exists) {
-          await addDoc(shopCol(shopFid), {
-            name: ing.name, qty: ing.qty||'',
-            category: shopCatOf(ing.category),
-            done: false, fromRecipe: recipe.name,
-            createdAt: new Date().toISOString()
-          });
-          if(!addedCount) firstAdded = ing.name;
-          addedCount++;
-          alreadyAdded.add(key);
-        }
-      }
+      // Bez duplicit proti nekoupeným i proti surovinám z předchozích receptů (4.82)
+      toAdd.push(...shopRecipeEntries(recipe.ingredients, [...shopActive, ...toAdd], recipe.name).out);
     }
   }
+  // Jedna dávka bez čekání na server (offline se zapíše vše), autor u položek skupiny
+  const addedCount = toAdd.length, firstAdded = toAdd[0]?.name || '';
+  if(addedCount) shopBatchAdd(shopFid, toAdd);
   // Aktivita jednou za celou dávku (počet místo 20 volání)
   if(isSharedShop && addedCount) logGroupActivity(shopFid, 'shop', 'add', firstAdded, addedCount);
 
