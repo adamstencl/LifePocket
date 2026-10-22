@@ -9714,7 +9714,37 @@ function initLoginScreen(){
   const hasInv=!!readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!hasInv; });
   document.documentElement.classList.remove('lp-boot'); // tlačítka přihlášení už fungují
+  initInAppBrowser();
 }
+// Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
+const IN_APP_BROWSER=/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
+function inAppLink(){
+  const inv=readPendingJoin();
+  return location.origin+'/'+(inv?'?join='+encodeURIComponent(inv.code):'');
+}
+function initInAppBrowser(){
+  if(!IN_APP_BROWSER||document.getElementById('lp-inapp')) return;
+  const card=()=>{
+    const d=document.createElement('div');
+    d.className='lp-invite lp-inapp';
+    d.innerHTML='<span aria-hidden="true">🌐</span><div><div style="font-weight:700">'+tH('landing.inAppT')+'</div>'
+      +'<div style="font-size:14px;color:var(--text2);margin:2px 0 8px">'+tH('landing.inAppD')+'</div>'
+      +'<button type="button" class="btn-s" onclick="copyInAppLink()">'+tH('landing.inAppCopy')+'</button></div>';
+    return d;
+  };
+  const ctas=document.querySelector('#lp-landing .lp-ctas');
+  if(ctas){ const c=card(); c.id='lp-inapp'; ctas.parentNode.insertBefore(c,ctas); }
+  const g=document.getElementById('login-btn');
+  if(g){
+    g.parentNode.insertBefore(card(),g);
+    g.hidden=true; g.style.display='none';
+    const sep=g.nextElementSibling; if(sep&&!sep.id) sep.style.display='none'; // oddělovač „nebo e-mailem“
+  }
+}
+window.copyInAppLink=()=>{
+  const url=inAppLink();
+  Promise.resolve().then(()=>navigator.clipboard.writeText(url)).then(()=>toast(t('landing.inAppCopied'))).catch(()=>prompt(t('landing.inAppCopy'),url));
+};
 initLoginScreen();
 function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} }
 // Vrátí platnou nevypršelou pozvánku {code, ts}, jinak ji smaže a vrátí null
