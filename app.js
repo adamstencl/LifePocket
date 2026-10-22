@@ -5384,7 +5384,16 @@ async function doRegisterFcmToken() {
     // Jiný účet na tomto zařízení (4.84): starý token by dál dostával notifikace předchozího účtu
     let fcmReset = false; try { fcmReset = localStorage.getItem('lp_fcm_reset') === '1'; } catch(e) {}
     if (fcmReset) {
-      try { await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 5000))]); } catch(e) {}
+      // Příznak smazat jen po úspěchu; při chybě nebo timeoutu token nebrat (patří předchozímu účtu), zkusí se při dalším startu
+      // getToken nejdřív předá SDK registraci SW (bez ní by deleteToken hledal firebase-messaging-sw.js); starý token se neukládá
+      let ok = false;
+      try {
+        ok = await Promise.race([
+          fcmSdk.getToken(messaging, {vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg}).then(() => fcmSdk.deleteToken(messaging)).then(() => true),
+          new Promise(r => setTimeout(() => r(false), 8000))
+        ]);
+      } catch(e) { ok = false; }
+      if (!ok) { fcmFail(t('notif.f.getToken')); updateNotifTokenLine(); return; }
       try { localStorage.removeItem('lp_fcm_reset'); } catch(e) {}
     }
     try {
