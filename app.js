@@ -4475,9 +4475,23 @@ function askPassword() {
 // Znovuověření (Google popup / heslo); false = uživatel zrušil
 async function reauthUser() {
   const kind = authProviderKind();
+  const sa = IS_TWA || isStandaloneApp();
   try {
     if (kind === 'google') {
-      await reauthenticateWithPopup(CU, new GoogleAuthProvider());
+      // Appka z plochy (4.84): okno Google se často nevrátí → po 60 s chyba, ať mazání neuvízne
+      let tm = 0;
+      try {
+        await (sa ? Promise.race([reauthenticateWithPopup(CU, new GoogleAuthProvider()), new Promise((_, rj) => { tm = setTimeout(() => rj({ code: 'lp/popup-timeout' }), 60000); })])
+                  : reauthenticateWithPopup(CU, new GoogleAuthProvider()));
+      } catch (e) {
+        if (!(sa && GOOGLE_PWA_FAIL.includes(e?.code))) throw e;
+        // Účet má i heslo → ověřit heslem; jinak poradit prohlížeč
+        if (!(CU?.providerData || []).some(p => p?.providerId === 'password')) throw Object.assign(new Error('reauth'), { code: 'lp/google-pwa' });
+        delAccSetStatus(t('acc.del.usePw'));
+        const pw = await askPassword();
+        if (pw === null) return false;
+        await reauthenticateWithCredential(CU, EmailAuthProvider.credential(CU.email, pw));
+      } finally { clearTimeout(tm); }
     } else if (kind === 'password') {
       const pw = await askPassword();
       if (pw === null) return false;
@@ -4513,6 +4527,7 @@ function delAccErrText(e) {
   const c = String(e?.code || '');
   const msg = String(e?.message || '').slice(0, 200);
   if (c === 'lp/no-provider') return t('acc.err.noProvider');
+  if (c === 'lp/google-pwa') return t('acc.err.googlePwa');
   if (['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(c)) return t('acc.err.wrongPw');
   if (c === 'auth/user-mismatch') return t('acc.err.mismatch');
   if (c === 'functions/failed-precondition') return t('acc.err.reauth');
