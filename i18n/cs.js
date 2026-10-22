@@ -2064,6 +2064,7 @@ export default {
   'tour.start': '🗺️ Ukáž mi co umíš!',
   'tour.skip': 'Zatím ne, díky',
   'tour.next': 'Další →',
+  'tour.prev': 'Předchozí krok',
   'tour.done': '🎉 Hotovo!',
   'tour.finT': 'To je vše, {name}!',
   'tour.finX': 'Základy máš za sebou. Kdykoliv budeš chtít průvodce znovu, najdeš ho v 🔧 Nastavení.',

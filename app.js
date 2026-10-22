@@ -4250,6 +4250,8 @@ window.addEventListener('popstate', () => {
   if(!preApp) setTimeout(backGuard, 0); // po zpracování Zpět znovu založit pojistku, pokud jsme spadli na kořen
   // 0. Výběr času leží nad ostatními modaly, zavírá se první
   if (timePickerOpen()) { closeTimePicker(); return; }
+  // 0a. Prohlídka appky (4.84): o krok zpět, na prvním kroku zavřít
+  if (document.getElementById('tour-step')) { window.prevTourStep(); return; }
   // 1. Zavři otevřený modal
   // Poslední otevřený v DOM leží nahoře (stejný z-index); detail skupiny je vložený na začátek body (4.51)
   const openModal = [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop();
@@ -20462,6 +20464,7 @@ function showTourStep() {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:12px;color:var(--text3)">${_tourStep + 1} / ${steps.length}</div>
         <div style="display:flex;gap:8px">
+          ${_tourStep > 0 ? `<button onclick="prevTourStep()" aria-label="${tH('tour.prev')}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text2);cursor:pointer">←</button>` : ''}
           <button onclick="dismissTour()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--text3);cursor:pointer">${tH('nt.skip')}</button>
           <button onclick="nextTourStep()" style="background:var(--accent);border:none;border-radius:8px;padding:8px 18px;font-family:'Crimson Pro',serif;font-size:14px;color:#1a1a1a;font-weight:700;cursor:pointer">${_tourStep + 1 < steps.length ? tH('tour.next') : tH('tour.done')}</button>
         </div>
@@ -20472,6 +20475,12 @@ function showTourStep() {
 
 window.nextTourStep = () => {
   _tourStep++;
+  showTourStep();
+};
+// Krok zpět (4.84): tlačítko ← i systémové Zpět; na prvním kroku Zpět prohlídku zavře
+window.prevTourStep = () => {
+  if(_tourStep <= 0) { window.dismissTour(); return; }
+  _tourStep--;
   showTourStep();
 };
 

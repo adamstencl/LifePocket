@@ -2048,6 +2048,7 @@ export default {
   'tour.start': '🗺️ Show me what you can do!',
   'tour.skip': 'Not now, thanks',
   'tour.next': 'Next →',
+  'tour.prev': 'Previous step',
   'tour.done': '🎉 Done!',
   'tour.finT': 'That’s it, {name}!',
   'tour.finX': 'You know the basics now. Whenever you want the tour again, you’ll find it in 🔧 Settings.',
