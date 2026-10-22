@@ -566,6 +566,8 @@ export default {
   'notif.st.denied1': '🚫 Notifikace jsou',
   'notif.st.denied2': 'zakázány',
   'notif.st.denied3': 'v nastavení prohlížeče. Klepni na 🔒 v adresním řádku a povol notifikace.',
+  'notif.st.deniedIos': 'v nastavení telefonu. Otevři Nastavení → Oznámení → LifePocket a zapni Povolit oznámení.',
+  'notif.st.deniedPwa': 'v nastavení telefonu. Podrž ikonu LifePocket → Informace o aplikaci → Oznámení a povol je.',
   'notif.st.default': '⚪ Notifikace nejsou povoleny. Klepni na tlačítko níže.',
   'notif.iosOpenHome': '📲 Na iPhonu otevři LifePocket z plochy (Sdílet → Přidat na plochu)',
   'notif.noSupportShort': '❌ Prohlížeč nepodporuje notifikace',

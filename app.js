@@ -5456,7 +5456,10 @@ async function checkNotifStatusInner() {
     // Vždy obnov FCM token při otevření nastavení (stav se doplní do řádku výše)
     registerFcmToken();
   } else if (perm === 'denied') {
-    box.innerHTML = tH('notif.st.denied1') + ' <b>' + tH('notif.st.denied2') + '</b> ' + tH('notif.st.denied3') + pushNote;
+    // Nainstalovaná appka (4.84): adresní řádek není → návod přes nastavení systému
+    const pf = getPlatform(), inst = isStandaloneApp() || IS_TWA;
+    const deniedHow = inst && pf === 'ios' ? tH('notif.st.deniedIos') : inst && pf === 'android' ? tH('notif.st.deniedPwa') : tH('notif.st.denied3');
+    box.innerHTML = tH('notif.st.denied1') + ' <b>' + tH('notif.st.denied2') + '</b> ' + deniedHow + pushNote;
     box.style.borderColor = 'rgba(255,107,107,0.3)';
     box.style.color = 'var(--red)';
     if (enableBtn) enableBtn.style.display = 'none';

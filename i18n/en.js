@@ -558,6 +558,8 @@ export default {
   'notif.st.denied1': '🚫 Notifications are',
   'notif.st.denied2': 'blocked',
   'notif.st.denied3': 'in your browser settings. Tap 🔒 in the address bar and allow notifications.',
+  'notif.st.deniedIos': 'in your phone settings. Open Settings → Notifications → LifePocket and turn on Allow Notifications.',
+  'notif.st.deniedPwa': 'in your phone settings. Long-press the LifePocket icon → App info → Notifications and allow them.',
   'notif.st.default': '⚪ Notifications aren’t on. Tap the button below.',
   'notif.iosOpenHome': '📲 On iPhone, open LifePocket from your home screen (Share → Add to Home Screen)',
   'notif.noSupportShort': '❌ This browser doesn’t support notifications',
