@@ -67,8 +67,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.84';
+const APP_VERSION = '4.85';
 const CHANGELOG = [
+  { v:'4.85', items:[
+    '🎨 Čitelnější barvy ve všech vzhledech a hlavička, která na iPhonu nezajede pod výřez',
+    '👆 Větší tlačítka a zaškrtávátka, pohodlnější ovládání palcem i klávesnicí',
+    '🇨🇿 Lepší čeština: správné tvary slov, uvozovky a tykání',
+    '💧 Návyk na pití vody teď můžeš jedním klepnutím propojit s Pitným režimem'
+  ], en:[
+    '🎨 More readable colours in all themes and a header that no longer slides under the iPhone notch',
+    '👆 Bigger buttons and checkboxes, easier to use with your thumb or keyboard',
+    '✍️ Polished wording across the app',
+    '💧 A habit for drinking water can now be linked to Water with one tap'
+  ]},
   { v:'4.84', items:[
     '✨ Nová verze appky se ti nabídne sama, stačí ťuknout na „Načíst novou verzi“',
     '↩️ Tlačítko Zpět na telefonu funguje i v přihlášení, prvním nastavení a prohlídce appky',
