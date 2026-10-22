@@ -3411,7 +3411,8 @@ function getEventsForDate(ds){
 
 function getUpcoming14(){
   const today=new Date(); today.setHours(0,0,0,0);
-  const future=new Date(today); future.setDate(future.getDate()+14);
+  const future=new Date(today); future.setDate(future.getDate()+14); future.setHours(23,59,59,999); // včetně celého 14. dne
+  const todayDS=toDS(today);
   const result=[];
   [...events, ...getAllFamilyEvents()].forEach(ev=>{
     let evDate=new Date(ev.date+'T12:00:00');
@@ -3420,6 +3421,8 @@ function getUpcoming14(){
       const nextYear=new Date(today.getFullYear()+1,evDate.getMonth(),evDate.getDate());
       if(thisYear>=today&&thisYear<=future) result.push({...ev,_date:thisYear});
       else if(nextYear>=today&&nextYear<=future) result.push({...ev,_date:nextYear});
+    } else if(ev.dateEnd&&ev.date<todayDS&&ev.dateEnd>=todayDS){
+      result.push({...ev,_date:new Date(todayDS+'T12:00:00')}); // probíhající vícedenní událost: řadí se jako dnešní
     } else {
       if(evDate>=today&&evDate<=future) result.push({...ev,_date:evDate});
     }
@@ -3478,7 +3481,7 @@ function renderEvList(){
       +'<div class="ev-info">'
       +'<div class="ev-name">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
-        ?fmtDate(ev._date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
+        ?fmtDate(ev.repeat==='yes'?ev._date:ev.date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
         :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
