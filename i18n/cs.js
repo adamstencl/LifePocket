@@ -598,6 +598,7 @@ export default {
   'gn.from': 'Od',
   'gn.to': 'Do',
   'gn.quietHint': 'V nočním klidu tě nebudíme, změny ti pošleme ráno najednou.',
+  'gn.quietWater': 'Noční klid platí i pro připomínky pití.',
   'gn.hint': '„Hned“ = do pár minut, víc změn v jedné zprávě. „15 min“ = souhrn každou čtvrthodinu. „Večer“ = v čase večerního shrnutí. Celou historii najdeš ve skupině pod „Co je nového“.',
   'gn.saved': '✅ Upozornění ze skupin uložena',
   'gn.autoNote': 'Ostatní ve skupině dostanou upozornění na změny automaticky.',

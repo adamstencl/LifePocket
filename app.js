@@ -14590,8 +14590,7 @@ function renderGroupNotifSettings() {
   const box = document.getElementById('gn-box'); if(!box) return;
   const gids = myGroupIds();
   const inGroup = gids.length || prof?.familyId || prof?.extraGroupIds?.length;
-  box.hidden = !inGroup;
-  if(!inGroup) { box.innerHTML = ''; return; }
+  box.hidden = !prof; // noční klid i bez skupiny (4.84): platí i pro připomínky pití
   const gp = groupNotifPrefs();
   // Jen moduly sdílené aspoň v jedné skupině (dokud se skupiny načítají, všechny); osobní moduly zvlášť
   const shMods = GA_MODS.filter(m => !GA_PERSONAL.includes(m));
@@ -14601,22 +14600,22 @@ function renderGroupNotifSettings() {
       <div class="seg seg--block" role="radiogroup" aria-labelledby="gn-lbl-${k}">${GN_OPTS.map(v =>
         `<button type="button" class="seg-btn${gp[k] === v ? ' active' : ''}" role="radio" aria-checked="${gp[k] === v}" data-a0="${k}" data-a1="${v}" onclick="setGroupNotif(this.dataset.a0,this.dataset.a1)">${tH('gn.opt.' + v)}</button>`).join('')}</div></div>`;
   const tpStyle = 'background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:\'Crimson Pro\',serif;font-size:15px;outline:none;width:7.5em';
-  box.innerHTML = `<div class="gn-h">👨‍👩‍👧 ${tH('gn.title')}</div>
+  box.innerHTML = (inGroup ? `<div class="gn-h">👨‍👩‍👧 ${tH('gn.title')}</div>
     <div class="gn-d">${tH('gn.desc')}</div>
     ${mods.map(row).join('')}
     <label class="gn-check"><input type="checkbox" id="gn-checked"${gp.notifyChecked ? ' checked' : ''} onchange="setGroupNotif('notifyChecked',this.checked)"><span>${tH('gn.checked')}</span></label>
     <div class="gf-day">${tH('gn.personal')}</div>
     ${GA_PERSONAL.map(row).join('')}
-    <label class="gn-check"><input type="checkbox" id="gn-ms"${gp.msInstant ? ' checked' : ''} onchange="setGroupNotif('msInstant',this.checked)"><span>🎉 ${tH('gn.msInstant')}</span></label>
-    <label class="gn-check"><input type="checkbox" id="gn-quiet-on"${gp.quiet ? ' checked' : ''} onchange="setGroupQuiet()"><span>🌙 ${tH('gn.quiet')}</span></label>
+    <label class="gn-check"><input type="checkbox" id="gn-ms"${gp.msInstant ? ' checked' : ''} onchange="setGroupNotif('msInstant',this.checked)"><span>🎉 ${tH('gn.msInstant')}</span></label>` : '')
+    + `<label class="gn-check"><input type="checkbox" id="gn-quiet-on"${gp.quiet ? ' checked' : ''} onchange="setGroupQuiet()"><span>🌙 ${tH('gn.quiet')}</span></label>
     ${gp.quiet ? `<div class="setrow" id="gn-quiet-times" style="gap:12px">
       <div class="fg"><label class="flbl" for="gn-quiet-from">${tH('gn.from')}</label>
         <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-from" value="${esc(gp.quiet?.from || GROUP_NOTIF_DEFAULTS.quiet.from)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
       <div class="fg"><label class="flbl" for="gn-quiet-to">${tH('gn.to')}</label>
         <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="gn-quiet-to" value="${esc(gp.quiet?.to || GROUP_NOTIF_DEFAULTS.quiet.to)}" style="${tpStyle}" onchange="setGroupQuiet()"></div>
     </div>` : ''}
-    <div class="gn-hint">${tH('gn.quietHint')}</div>
-    <div class="gn-hint">💡 ${tH('gn.hint')}</div>`;
+    <div class="gn-hint">${inGroup ? tH('gn.quietHint') + ' ' : ''}${tH('gn.quietWater')}</div>
+    ${inGroup ? `<div class="gn-hint">💡 ${tH('gn.hint')}</div>` : ''}`;
 }
 function saveGroupNotif(patch) {
   if(!CU || !prof) return;

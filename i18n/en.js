@@ -590,6 +590,7 @@ export default {
   'gn.from': 'From',
   'gn.to': 'To',
   'gn.quietHint': 'We won’t wake you during quiet hours; changes arrive together in the morning.',
+  'gn.quietWater': 'Quiet hours also apply to water reminders.',
   'gn.hint': '“Now” = within a few minutes, several changes in one message. “15 min” = a summary every quarter hour. “Evening” = at your evening summary time. The full history is in the group under “What’s new”.',
   'gn.saved': '✅ Group alerts saved',
   'gn.autoNote': 'Others in the group get alerts about changes automatically.',
