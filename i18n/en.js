@@ -292,6 +292,7 @@ export default {
   'set.contact.msg': 'Message',
   'set.contact.send': '📤 Send message',
   'set.contact.sent': '✅ Message sent! We’ll get back to you soon.',
+  'set.contact.again': '✏️ Write another',
   'set.tour.title': '🗺️ Tour',
   'set.tour.desc': 'See again what LifePocket can do',
   'set.tour.btn': 'Start tour',

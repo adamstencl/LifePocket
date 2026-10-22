@@ -293,6 +293,7 @@ export default {
   'set.contact.msg': 'Zpráva',
   'set.contact.send': '📤 Odeslat zprávu',
   'set.contact.sent': '✅ Zpráva odeslána! Ozveme se brzy.',
+  'set.contact.again': '✏️ Napsat další',
   'set.tour.title': '🗺️ Průvodce',
   'set.tour.desc': 'Projdi si znovu co LifePocket umí',
   'set.tour.btn': 'Spustit průvodce',

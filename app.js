@@ -17089,6 +17089,7 @@ function initSet(){
   renderGameSetting(); // přepínač Body a úrovně (4.40)
   renderSimpleSetting(); setGrpInit(); // jednoduchý režim a sbalené skupiny (4.68)
   document.getElementById('set-avsub').textContent=prof.nickname||'';
+  contactPrefill(); // e-mail ve formuláři Napiš nám (4.84)
   renderLangSwitch();
   renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
 }
@@ -20665,6 +20666,7 @@ window.handleContactSubmit = async function(e) {
       form.style.display = 'none';
       const successEl = document.getElementById('contact-success');
       if (successEl) successEl.style.display = 'block';
+      const again = document.getElementById('contact-again'); if (again) again.style.display = 'block';
     } else {
       btn.disabled = false;
       btn.textContent = t('set.contact.send');
@@ -20675,6 +20677,22 @@ window.handleContactSubmit = async function(e) {
     btn.textContent = t('set.contact.send');
     toast(t('set.contact.fail'));
   }
+};
+
+// Další zpráva (4.84): prázdný formulář s předvyplněným e-mailem
+function contactPrefill() {
+  const ce = document.querySelector('.contact-form input[name=email]');
+  if (ce && !ce.value && CU?.email) ce.value = CU.email;
+}
+window.contactAgain = () => {
+  const form = document.querySelector('.contact-form');
+  if (!form) return;
+  form.reset(); _cfImgs = []; _cfRef = null; cfRenderImgs();
+  const btn = form.querySelector('.cf-submit'); if (btn) { btn.disabled = false; btn.textContent = t('set.contact.send'); }
+  ['contact-success', 'contact-again'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  form.style.display = '';
+  contactPrefill();
+  form.querySelector('textarea')?.focus();
 };
 
 // Restart tour z nastavení
