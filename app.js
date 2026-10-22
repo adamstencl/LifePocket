@@ -16499,8 +16499,7 @@ async function saveSubGImpl(){
     // Editace
     const sg=subs[gid]?.find(s=>s.id===sid)||{};
     const updated={...sg,name:nm,description:desc,deadline,updatedAt:new Date().toISOString()};
-    const {id:_omit,...updDoc}=updated; void _omit; // ID není pole dokumentu
-    setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updDoc).catch(sgErr);
+    setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),updated).catch(sgErr);
     const idx=subs[gid]?.findIndex(s=>s.id===sid);
     if(idx>=0) subs[gid][idx]=updated;
     toast(t('goal.sub.edited'));
