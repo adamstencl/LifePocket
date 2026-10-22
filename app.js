@@ -10415,7 +10415,7 @@ window.shareChecklistTo = async (listId, gid) => {
   try {
     // Kopie už ve skupině leží (např. sdílená z jiného zařízení) → nepřepisovat ji starším obsahem
     if(!e.lists.some(f => f.id === list.id)) await setDoc(doc(db,'families',gid,'checklists',list.id), {
-      name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid
+      name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid, createdBy: CU.uid
     });
   } catch(err) { toast('⚠️ '+userErr(err,'seznam')); renderChecklist(); return; }
   logGroupActivity(gid, 'check', 'share', list.name || '');
@@ -15354,7 +15354,7 @@ function renderChecklist() {
         <span class="cl-list-name">${esc(list.name)}</span>
         ${total > 0 ? `<span class="cl-progress">${done}/${total}</span>` : ''}
         ${canShare ? `<button type="button" class="cl-share-btn" data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${shGid?'rgba(76,217,100,.15)':'none'};border:1px solid ${shGid?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${shGid?'var(--green)':'var(--text3)'};cursor:pointer;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${shGid?tH('cl.unshare'):tH('cl.shareFam')}" aria-label="${shGid?tH('cl.unshareAria', {name: grpName(shGid)}):tH('cl.shareFam')}">${shGid?'✓ '+esc(grpLabel(shGid)):tH('cl.private')}</button>` : ''}
-        ${checklists.length > 1 ? `<button data-a0="${esc(list.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
+        ${(isFamilyList ? clCanDelGroup(base) : checklists.length > 1) ? `<button data-a0="${esc(base.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
       </div>
       ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}</button>` : ''}
     </div>
@@ -15397,6 +15397,9 @@ function renderChecklist() {
   `;
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
 }
+
+// Seznam skupiny smí smazat jen autor (createdBy); starší seznamy bez autora kterýkoli člen
+function clCanDelGroup(list) { return !!CU && !!list?._family && (!list.createdBy || list.createdBy === CU.uid); }
 
 // Pořadí nesplněných položek po přetažení; splněné zůstanou na svých místech (stejně jako u šipek)
 function reorderCheckItems(listId, ids) {
@@ -15578,6 +15581,7 @@ window.deleteChecklist = async function(id) {
   const list = allChecklists().find(c => c.id === id);
   const isFamilyList = list?._family === true;
   if (!isFamilyList && checklists.length <= 1) return; // nesmaz poslední osobní seznam
+  if (isFamilyList && !clCanDelGroup(list)) return; // seznam skupiny maže jen autor
   // Vlastní sdílený seznam: smaže se i kopie ve skupině (zmizí i ostatním); bez načtené skupiny nic
   const shGid = !isFamilyList && list?.shared ? clSharedGid(list) : null;
   if (!isFamilyList && list?.shared && !clEditFind(id)) return;
