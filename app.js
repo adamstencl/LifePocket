@@ -3770,6 +3770,7 @@ window.calDayClick=(ds)=>{
     const edi=document.getElementById('ev-date-inp'); if(edi) edi.value=ds;
     const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
     const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
+    const eed=document.getElementById('ev-end-date-inp'); if(eed) eed.value=''; // jinak zůstane konec předchozí události
     const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='no';
     selEvType_val='event';
     renderEvTypeButtons();
@@ -3819,6 +3820,7 @@ window.addEventForDay = (ds) => {
   const edi = document.getElementById('ev-date-inp'); if(edi) edi.value = ds;
   const eni = document.getElementById('ev-name-inp'); if(eni) eni.value = '';
   const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = '';
+  const eed = document.getElementById('ev-end-date-inp'); if(eed) eed.value = '';
   const ri = document.getElementById('ev-repeat-inp'); if(ri) ri.value = 'no';
   selEvType_val = 'event';
   renderEvTypeButtons();
@@ -3864,6 +3866,7 @@ window.openEvModal=()=>{
   selEvType_val='event';
   renderEvTypeButtons();
   selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
+  document.getElementById('m-event').querySelector('.mtitle').textContent=t('cal.newTitle'); // po úpravě jinak zůstane „Upravit“
   updateEvShareUI(false);
   om('m-event');
   setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
