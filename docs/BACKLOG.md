@@ -29,3 +29,13 @@
 - Šipka › u dne návyků aktivní i na dnešku; budoucí buňky mají `cursor:pointer`.
 - Týdenní návyky: série a procenta po dnech (potřebuje návrh).
 - Server: `habit.nag` nekontroluje modul Návyky; en „all 2 habits“.
+
+## Z 4.83
+- `clOfflineWrite` neběží v `clQueue`: dvě rychlé offline úpravy mohou číst stejnou cache; offline zápis celého `items` může po připojení přepsat cizí změny (jako před 4.83).
+- Dvě chyby za sebou: druhý `undo` vrátí stav s první neuloženou změnou (opraví další snapshot).
+- `scaleQty`: zlomky „1/2“, rozsahy „2-3“, „1.000 g“, desetinná tečka.
+- `shopPantryUndo`: prázdné jméno, „vráceno“ i u smazané zásoby, dvojí přičtení při rychlém odškrtnutí během načítání.
+- Lišta „Přičíst / Jako nová“ zůstane po zrušení odškrtnutí; starý recept z chatu → zavádějící toast.
+- Vlastní AI jídelníček přes `updateDoc` – bez `profile/main` skončí not-found.
+- Kategorie: Brambory, Rajčata, Jablka, Vejce, Pepř → Ostatní; Zubní pasta → Trvanlivé; suroviny z receptu bez kategorie nepoužijí `guessShopCategory`.
+- Měsíční pravidelná položka se přidá hned při založení (i před 4.83).
