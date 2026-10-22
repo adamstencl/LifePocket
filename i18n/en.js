@@ -1193,7 +1193,6 @@ export default {
   'a11y.portionsLess': 'Fewer servings',
   'a11y.portionsMore': 'More servings',
   'a11y.habitEmoji': 'Habit icon',
-  'a11y.entryMood': 'Entry mood',
   'a11y.mood.great': 'Mood: great',
   'a11y.mood.good': 'Mood: good',
   'a11y.mood.ok': 'Mood: okay',

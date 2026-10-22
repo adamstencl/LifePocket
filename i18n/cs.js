@@ -1207,7 +1207,6 @@ export default {
   'a11y.portionsLess': 'Méně porcí',
   'a11y.portionsMore': 'Více porcí',
   'a11y.habitEmoji': 'Ikona návyku',
-  'a11y.entryMood': 'Nálada zápisu',
   'a11y.mood.great': 'Nálada: skvělá',
   'a11y.mood.good': 'Nálada: dobrá',
   'a11y.mood.ok': 'Nálada: normální',
