@@ -4622,7 +4622,7 @@ window.openDeleteAccount = () => {
     <div style="font-size:14px;color:var(--text2);line-height:1.6">
       <ul style="margin:0 0 12px;padding-left:20px">
         <li>${tH('acc.del.li1')}</li>
-        <li>${tH('acc.del.li2')}</li>
+        <li>${tH('acc.del.li2', {g: prof?.gender})}</li>
         <li><b style="color:var(--red)">${tH('acc.del.li3')}</b></li>
       </ul>
     </div>
@@ -9279,7 +9279,7 @@ async function leaveFamilyNow(fid) {
     resetFamilyLocal();
     initPantry(); // zásoby: výchozí zobrazení bez staré skupiny
     renderAfterFamilyChange();
-    toast(t(profOk ? 'grp.leave.done' : 'grp.leave.doneProf'));
+    toast(t(profOk ? 'grp.leave.done' : 'grp.leave.doneProf', {g: prof?.gender}));
     return true;
   } catch(e) { toast(t('grp.leave.fail', {err: userErr(e,'odchod ze skupiny')})); return false; }
   finally { _leavingGids.delete(fid); }
@@ -9339,7 +9339,7 @@ function openLeaveGroup(gid) {
       : tH('grp.leave.info')}</div>
     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${tH('grp.leave.keepQ')}</div>
     ${opt('all', tH('grp.leave.optAll'), (isMain ? tH('grp.leave.optAllD') : esc(leaveCopyText(gData))), true)}
-    ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD'), false)}
+    ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD', {g: prof?.gender}), false)}
     ${opt('none', tH('grp.leave.optNone'), '', false)}
     ${last ? `<label style="display:block;font-size:14px;margin:10px 0 4px;color:var(--red)">${tH('grp.leave.typeLabel', {word})}</label>
     <input class="finp" id="leave-confirm-inp" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:100%;box-sizing:border-box">` : ''}
@@ -9379,7 +9379,7 @@ window.confirmLeaveGroup = async (gid) => {
         if(n) toast(tN('grp.leave.copied', n), 4000);
       } catch(e) {
         console.warn('[LP] kopie skupiny:', e?.code || e?.name);
-        leaveSetStatus(t('grp.leave.copyFail', {err: userErr(e, 'kopie skupiny')}), true);
+        leaveSetStatus(t('grp.leave.copyFail', {err: userErr(e, 'kopie skupiny'), g: prof?.gender}), true);
         return;
       }
     }
@@ -10092,8 +10092,8 @@ async function leaveExtraGroupNow(gid) {
   shopViewForget(gid); mealViewForget(gid); pantryViewForget(gid);
   try {
     await dropExtraGroupLocal(gid);
-    toast(t('grp.leave.done'));
-  } catch(e) { console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); toast(t('grp.leave.doneProf')); }
+    toast(t('grp.leave.done', {g: prof?.gender}));
+  } catch(e) { console.warn('[LP] úklid profilu po odchodu:', e?.code || e?.name); toast(t('grp.leave.doneProf', {g: prof?.gender})); }
   finally { _leavingGids.delete(gid); }
   return true;
 }
@@ -11127,7 +11127,7 @@ window.openRestoreGroup = async () => {
   m.id = 'm-restoregrp'; m.className = 'moverlay open';
   m.innerHTML = `<div class="modal" style="max-width:440px">
     <div class="mtitle">${tH('grp.restore.title')}</div>
-    <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:12px">${tH('grp.restore.desc')}</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:12px">${tH('grp.restore.desc', {g: prof?.gender})}</div>
     <div id="restore-body" role="status" aria-live="polite" style="font-size:14px">${tH('grp.restore.loading')}</div>
     <div class="macts"><button type="button" class="btn-s" id="restore-close" onclick="closeRestoreGroup()">${tH('common.close')}</button></div>
   </div>`;
@@ -11920,7 +11920,7 @@ function renderChalSheet() {
   const over = chOver(c), today = toDS(), y = addDays(today, -1);
   let act = '';
   if(over || (!joined && today > c.to)) act = chResultHTML(gid, c);   // ráno po konci se už přidat nejde
-  else if(!joined) act = `<p class="ch-note">${tH(c.kind === 'daily' ? 'ch.joinDaily' : 'ch.joinSum')}</p>
+  else if(!joined) act = `<p class="ch-note">${tH(c.kind === 'daily' ? 'ch.joinDaily' : 'ch.joinSum', {g: prof?.gender})}</p>
     <button type="button" class="btn-p ch-big" data-a0="${esc(gid)}" data-a1="${esc(cid)}" onclick="chJoin(this.dataset.a0,this.dataset.a1)">${tH('ch.join')}</button>`;
   else if(c.kind === 'daily') {
     const days = chPartDays(c, e), j = chJoinDs(c, e);
@@ -11952,7 +11952,7 @@ function renderChalSheet() {
   bEl.innerHTML = chCardHTML(gid, c, 'sheet')
     + act
     + (manage ? `<div class="ch-manage">${manage}</div>` : '')
-    + `<p class="ch-note">${tH(c.board ? 'ch.privBoard' : 'ch.priv')}</p>`;
+    + `<p class="ch-note">${tH(c.board ? 'ch.privBoard' : 'ch.priv', {g: prof?.gender})}</p>`;
   for(const [i, v, f] of keep) { const el = document.getElementById(i); if(!el) continue; if(v != null) el.value = v; if(f) el.focus(); }
 }
 
@@ -12537,7 +12537,7 @@ function pcCheckBtn(c, me, compact) {
   return `<button type="button" class="pc-check" aria-pressed="${on}"${_pcPending[c.id] ? ' disabled' : ''} data-a0="${esc(c.id)}" data-a1="${late ? 'y' : 't'}" onclick="pcDay(this.dataset.a0,this.dataset.a1)">${on ? '✅' : '⬜'} ${esc(compact ? t(late ? 'pc.yesterday' : 'pc.todayShort') : lbl)}</button>`;
 }
 function pcResultText(c, me) {
-  return me.n >= c.goal ? t('pc.resGood', {n: me.n, days: c.days}) : t('pc.resTry', {n: me.n});
+  return me.n >= c.goal ? t('pc.resGood', {n: me.n, days: c.days, g: prof?.gender}) : t('pc.resTry', {n: me.n, g: prof?.gender});
 }
 function pcBigHTML(c) {
   const st = pcState(c), me = pcMe[c.id], b = _pcBoard[c.id], cid = esc(c.id);
@@ -12548,7 +12548,7 @@ function pcBigHTML(c) {
   if(st === 'soon') {
     body = top + `<div class="ch-meta">${tH('pc.soon', {d: fmtDate(c.start, 'dm')})}</div></div></div>`
       + (pcDesc(c) ? `<div class="pc-desc">${esc(pcDesc(c))}</div>` : '')
-      + (me ? `<div class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm')})}</div>`
+      + (me ? `<div class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm'), g: prof?.gender})}</div>`
         : `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.joinEarly')}</button>`);
   } else if(!me) {
     const tot = b && typeof b.total === 'number' ? ' · ' + t('pc.joined', {n: b.total}) : '';
@@ -12557,7 +12557,7 @@ function pcBigHTML(c) {
       + `<button type="button" class="btn-p ch-big" data-a0="${cid}" onclick="pcOpen(this.dataset.a0,'join')">${tH('pc.join')}</button>
         <button type="button" class="ch-link" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)">${tH('pc.showBoard')} →</button>`;
   } else if(st === 'over') {
-    const pos = b && b.pos && typeof b.total === 'number' ? `<div class="ch-mine">${tH('pc.resPos', {pos: b.pos, n: b.total})}</div>` : '';
+    const pos = b && b.pos && typeof b.total === 'number' ? `<div class="ch-mine">${tH('pc.resPos', {pos: b.pos, n: b.total, g: prof?.gender})}</div>` : '';
     body = top + `<div class="ch-meta">${esc(pcRange(c))}</div></div></div>
       <div class="ch-num">${esc(pcResultText(c, me))}</div>${pos}
       <button type="button" class="ch-link" data-a0="${cid}" onclick="pcOpen(this.dataset.a0)">${tH('pc.results')} →</button>`;
@@ -12858,7 +12858,7 @@ function pcRenderSheet() {
     // Rozepsaná přezdívka a zaškrtnutí se při překreslení zachovají
     const nickV = document.getElementById('pc-nick')?.value ?? (lsGet('lp_pc_nick', '') || pcRandomNick());
     const remV = document.getElementById('pc-remind')?.checked ?? true;
-    h += `<div class="ch-h">${tH('pc.howT')}</div><p class="pc-text">${tH('pc.how')}</p>
+    h += `<div class="ch-h">${tH('pc.howT')}</div><p class="pc-text">${tH('pc.how', {g: prof?.gender})}</p>
       <div class="fg"><label class="flbl" for="pc-nick">${tH('pc.nickL')}</label>
         <div class="pc-nickrow"><input class="finp" id="pc-nick" maxlength="20" autocomplete="off" autocapitalize="sentences" aria-describedby="pc-nick-h pc-nick-err" oninput="pcNickInput()" value="${esc(nickV)}">
           <button type="button" class="pc-dice" aria-label="${tH('pc.dice')}" onclick="pcDice()">🎲</button></div>
@@ -12891,7 +12891,7 @@ function pcRenderSheet() {
       const btn = (ds, w, key) => ds < c.start || ds > c.end ? '' :
         `<button type="button" class="ch-day${me.d.includes(ds) ? ' on' : ''}" aria-pressed="${me.d.includes(ds)}"${_pcPending[c.id] ? ' disabled' : ''} data-a0="${cid}" data-a1="${w}" onclick="pcDay(this.dataset.a0,this.dataset.a1)">${me.d.includes(ds) ? '✅' : '⬜'} ${tH(key)}</button>`;
       h += `<div class="ch-days">${st === 'run' ? btn(today, 't', 'pc.todayShort') : ''}${btn(y, 'y', st === 'late' ? 'pc.yesterdayLast' : 'pc.yesterday')}</div>`;
-    } else if(st === 'soon') h += `<p class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm')})}</p>`;
+    } else if(st === 'soon') h += `<p class="ch-mine">✅ ${tH('pc.soonIn', {d: fmtDate(c.start, 'dm'), g: prof?.gender})}</p>`;
     else h += `<p class="ch-num">${esc(pcResultText(c, me))}</p>`;
     const sk = st === 'over' ? 0 : pcStreak(me.d);
     h += pcGridHTML(c, me) + `<p class="ch-mine">${esc(t('pc.doneOf', {n: me.n, goal: c.goal}) + (sk ? ' · ' + t('pc.streak', {n: sk}) : ''))}</p>`;

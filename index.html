@@ -126,7 +126,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
 <div class="screen" id="s-deleted" style="flex-direction:column;gap:16px;background:var(--bg);text-align:center;padding:24px">
   <img src="icon-192.png" loading="lazy" width="72" height="72" style="width:72px;height:72px;border-radius:18px" alt="">
   <div style="font-family:'Playfair Display',serif;font-size:24px;color:var(--text)" data-i18n="deleted.title">Účet byl smazán</div>
-  <div style="font-size:15px;color:var(--text2);max-width:320px;line-height:1.5" data-i18n="deleted.text">Tvoje data jsme smazali a odešel/odešla jsi ze všech skupin. Díky, že jsi LifePocket používal/a.</div>
+  <div style="font-size:15px;color:var(--text2);max-width:320px;line-height:1.5" data-i18n="deleted.text">Tvoje data jsme smazali a tvůj účet už není v žádné skupině. Díky za používání LifePocketu.</div>
   <button class="btn-p" style="width:auto;padding:10px 24px" onclick="goHomeAfterDelete()" data-i18n="deleted.home">Na úvod</button>
 </div>
 
@@ -317,7 +317,7 @@ else show();
         <span class="startq-chk" aria-hidden="true"></span>
       </button>
     </div>
-    <button type="button" class="lp-link" onclick="pickStartCustom()" data-i18n="onb.start.custom">Vyberu si moduly sám/a →</button>
+    <button type="button" class="lp-link" onclick="pickStartCustom()" data-i18n="onb.start.custom">Moduly si vyberu ručně →</button>
     </div>
     <!-- Vlastní výběr: šablony a mřížka modulů jako do 4.68 -->
     <div id="onb-grid" hidden>
@@ -1132,7 +1132,7 @@ else show();
               </label>
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co jsi splnil/a)</span>
+                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co se ti dnes povedlo)</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
