@@ -1346,35 +1346,41 @@ exports.sendScheduledNotifications = onSchedule(
           return dueCache;
         };
 
+        // Ranní a večerní shrnutí návyků jen s modulem Návyky (starý profil bez modules = zapnuto)
+        // a jen když má na dnes aspoň jeden návyk (prázdné varianty se neposílají)
+        const habitsOn = Array.isArray(prof.modules) ? prof.modules.includes('habits') : true;
+
         // ── Ranní notifikace ──
-        if (ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
+        if (habitsOn && ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
           const total = (await getDueHabits()).length;
-          const body = total > 0 ? tS(L, 'morning.b', {n: total}) : tS(L, 'morning.empty');
-          try { await push(tS(L, 'morning.t', {name: nickname}), body, 'morning', {data: {open: 'habits'}}); }
-          catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
+          if (total > 0) {
+            try { await push(tS(L, 'morning.t', {name: nickname}), tS(L, 'morning.b', {n: total}), 'morning', {data: {open: 'habits'}}); }
+            catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
+          }
         }
 
         // ── Večerní shrnutí ──
-        if (ns.eveningDigest !== false) {
+        if (habitsOn && ns.eveningDigest !== false) {
           const eveningTime = ns.evening || '21:00';
           if (isTimeMatch(h, m, eveningTime)) {
             const dueDocs = await getDueHabits();
             const total = dueDocs.length;
-            const dueIds = new Set(dueDocs.map(d => d.id));
-            const logsSnap = await db.collection(`users/${uid}/habitLogs`)
-              .where('date', '==', today).where('done', '==', true).get();
-            // Počítej jen splnění dnešních návyků (ne archivovaných / pozastavených)
-            const done = logsSnap.docs.filter(l => {
-              const hid = l.data().habitId || l.id.slice(0, -(today.length + 1));
-              return dueIds.has(hid);
-            }).length;
-            let body;
-            if (total === 0) body = tS(L, 'evening.none');
-            else if (done === total) body = tS(L, 'evening.all', {n: total, g});
-            else if (done === 0) body = tS(L, 'evening.zero', {g});
-            else body = tS(L, 'evening.part', {done, n: total, left: total - done, g});
-            try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}}); }
-            catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
+            if (total > 0) {
+              const dueIds = new Set(dueDocs.map(d => d.id));
+              const logsSnap = await db.collection(`users/${uid}/habitLogs`)
+                .where('date', '==', today).where('done', '==', true).get();
+              // Počítej jen splnění dnešních návyků (ne archivovaných / pozastavených)
+              const done = logsSnap.docs.filter(l => {
+                const hid = l.data().habitId || l.id.slice(0, -(today.length + 1));
+                return dueIds.has(hid);
+              }).length;
+              let body;
+              if (done === total) body = tS(L, 'evening.all', {n: total, g});
+              else if (done === 0) body = tS(L, 'evening.zero', {g});
+              else body = tS(L, 'evening.part', {done, n: total, left: total - done, g});
+              try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}}); }
+              catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
+            }
           }
         }
 
