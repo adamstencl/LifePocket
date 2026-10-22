@@ -299,7 +299,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .nbtn:hover{background:var(--card2);color:var(--text)}.nbtn.active{background:var(--card2);color:var(--accent)}
 .hright{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .upill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:50px;padding:4px 10px 4px 4px;cursor:pointer;transition:all .2s}
-.upill:hover{border-color:var(--accent2)}.upill img{width:24px;height:24px;border-radius:50%;object-fit:cover}.upill span{font-size:13px;color:var(--text2)}
+.upill:hover{border-color:var(--accent2)}.upill img{width:24px;height:24px;border-radius:50%;object-fit:cover}.upill span{font-size:13px;color:var(--text2);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lbtn{background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text3);font-family:'Crimson Pro',serif;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
 .lbtn:hover{border-color:var(--red);color:var(--red)}
 .abody{flex:1;overflow-y:auto}
@@ -1294,7 +1294,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .shop-item.done{opacity:.5}
 .shop-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s;flex-shrink:0}
 .shop-check.done{background:var(--green);border-color:var(--green);color:var(--on-green)}
-.shop-item-name{flex:1;font-size:15px;color:var(--text);transition:all .2s}
+.shop-item-name{flex:1;min-width:0;font-size:15px;color:var(--text);transition:all .2s}
 .shop-item.done .shop-item-name{text-decoration:line-through;color:var(--text3)}
 .shop-item-qty{position:relative;flex-shrink:0;min-height:44px;min-width:44px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 10px;border-radius:18px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .shop-item-qty.empty{color:var(--text3);border-style:dashed;font-weight:400;font-size:13px}
@@ -2360,3 +2360,6 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .shop-item-fav,.shop-item-del{min-width:44px;min-height:44px;margin:0 -6px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 .pantry-item-del{min-width:44px;min-height:44px}
 .habit-check:focus-visible,.shop-check:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 4.85: dlouhé názvy bez mezer nerozbijí řádek */
+.habit-name,.pantry-item-name,.dash-event-name,.cl-item-text,.shop-item-name{overflow-wrap:anywhere}
