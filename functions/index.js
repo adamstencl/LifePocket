@@ -1377,7 +1377,7 @@ exports.sendScheduledNotifications = onSchedule(
               let body;
               if (done === total) body = tS(L, 'evening.all', {n: total, g});
               else if (done === 0) body = tS(L, 'evening.zero', {g});
-              else body = tS(L, 'evening.part', {done, n: total, left: total - done, g});
+              else body = tS(L, 'evening.part', {done, total, n: total - done, g}); // plurál podle zbývajících
               try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}}); }
               catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
             }
