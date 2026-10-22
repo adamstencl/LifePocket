@@ -250,7 +250,13 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
       throw new HttpsError('unavailable', tS(L, 'err.aiUnavail'));
     }
     // Neplatný klíč → příště načíst config/secrets znovu (klíč mohl být vyměněn)
-    if (result.status === 401 || result.status === 403) cachedClaudeKey = null;
+    // Chyba na naší straně (klíč/oprávnění) → vrátit limit, uživateli obecná hláška
+    if (result.status === 401 || result.status === 403) {
+      cachedClaudeKey = null;
+      console.error('[LP] Claude API: chyba klíče/oprávnění, status', result.status);
+      await refundRate(rateRef, today);
+      throw new HttpsError('unavailable', tS(L, 'err.aiUnavail'));
+    }
     const msg = result.body?.error?.message || tS(L, 'err.aiHttp', {code: result.status});
     throw new HttpsError('internal', msg);
   }
