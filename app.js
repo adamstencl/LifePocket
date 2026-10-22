@@ -19005,7 +19005,7 @@ window.openManualRecipe = function() {
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
             <div style="font-size:13px;font-weight:600;color:var(--text2)">${tH('ck.mr.stepsLbl')}</div>
-            <button onclick="aiSuggestSteps()" style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif">${tH('ck.mr.aiSteps')}</button>
+            <button onclick="aiSuggestSteps()" style="background:var(--accent);color:var(--on-accent);border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Crimson Pro',serif">${tH('ck.mr.aiSteps')}</button>
           </div>
           <textarea id="mr-steps" class="finp" rows="6" placeholder="${tH('ck.mr.stepsPh').replace(/\n/g,'&#10;')}" style="resize:vertical;font-size:14px"></textarea>
         </div>
@@ -20056,7 +20056,7 @@ function showFoodDetectBanner(foods) {
     </div>
     <div class="food-detect-btns">
       <button data-a0="${esc(JSON.stringify(foods))}" onclick="addPlannedMeals(JSON.parse(this.dataset.a0),this.closest('.food-detect-banner'))"
-        style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:8px 16px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer">
+        style="background:var(--accent);color:var(--on-accent);border:none;border-radius:8px;padding:8px 16px;font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;cursor:pointer">
         ${tH('nt.foodAdd')}
       </button>
       <button onclick="this.closest('.food-detect-banner').remove()"
@@ -20160,7 +20160,7 @@ function showMoodSuggest(mood, reason) {
         <div style="font-size:12px;color:var(--text3);margin-top:1px">${esc(reason ?? '')}</div>
       </div>
       <button data-a0="${esc(mood)}" onclick="acceptMood(this.dataset.a0)"
-        style="background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
+        style="background:var(--accent);color:var(--on-accent);border:none;border-radius:8px;padding:5px 12px;font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;cursor:pointer">
         ${tH('nt.use')}
       </button>
       <button onclick="document.getElementById('mood-suggest').style.display='none'"
