@@ -16031,7 +16031,7 @@ function rDash(){
     if(upcoming.length){
       const todayDate=new Date(); todayDate.setHours(0,0,0,0);
       const evRows=upcoming.slice(0,3).map(ev=>{
-        const diff=Math.round((ev._date-todayDate)/86400000);
+        const diff=dsDiff(toDS(todayDate),toDS(ev._date)); // přes kalendářní dny, ne ms (12:00 vs 0:00)
         const diffLbl=diff===0?t('dash.c.today'):diff===1?t('dash.c.tomorrow'):t('dash.c.inDays',{n:diff});
         const isSoon=diff<=2;
         return `<div class="dw-ev-row">
