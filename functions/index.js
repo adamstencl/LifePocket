@@ -235,10 +235,19 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
 
   if (result.status !== 200) {
     const errType = result.body?.error?.type;
-    const overloaded = result.status >= 500 || result.status === 529 || errType === 'overloaded_error';
+    const errMsg = String(result.body?.error?.message || '');
+    // Přetížení nebo limit na straně Anthropicu (429) = chyba služby, ne uživatele → dotaz se nezapočítá
+    const overloaded = result.status >= 500 || result.status === 529 || result.status === 429
+      || errType === 'overloaded_error' || errType === 'rate_limit_error';
     if (overloaded) {
       await refundRate(rateRef, today);
       throw new HttpsError('unavailable', tS(L, 'err.aiOverload'));
+    }
+    // Došel kredit / fakturace (billing_error, 402, nebo 400 „credit balance is too low“) → vrátit limit, bez detailu účtu
+    if (errType === 'billing_error' || result.status === 402 || /credit balance/i.test(errMsg)) {
+      console.error('[LP] Claude API: problém s kreditem/fakturací, status', result.status);
+      await refundRate(rateRef, today);
+      throw new HttpsError('unavailable', tS(L, 'err.aiUnavail'));
     }
     // Neplatný klíč → příště načíst config/secrets znovu (klíč mohl být vyměněn)
     if (result.status === 401 || result.status === 403) cachedClaudeKey = null;
