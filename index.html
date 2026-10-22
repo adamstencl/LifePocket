@@ -90,8 +90,9 @@ window.__lpLang=l; // rychlý start landingu (skript za #s-login)
   <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent)">LifePocket</div>
   <div id="load-spin" style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite"></div>
   <div id="load-err" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:0 24px;text-align:center">
-    <div style="font-size:15px;color:var(--text2);max-width:280px;line-height:1.5" data-i18n="load.err">📶 Nepodařilo se načíst data – zkontroluj připojení</div>
+    <div id="load-err-t" style="font-size:15px;color:var(--text2);max-width:280px;line-height:1.5" data-i18n="load.err">📶 Nepodařilo se načíst data – zkontroluj připojení</div>
     <button class="btn-p" style="width:auto;padding:9px 22px" onclick="retryLoad()" data-i18n="common.retry">Zkusit znovu</button>
+    <button type="button" class="lp-link" onclick="loadErrLogout()" data-i18n="set.logout.btn">Odhlásit se</button>
   </div>
   <!-- Hlídač startu (4.75): appka se do 12 s neukázala nebo app.js nenačetla → nabídnout nové načtení -->
   <div id="load-slow" style="display:none;flex-direction:column;align-items:center;gap:12px;padding:0 24px;text-align:center">

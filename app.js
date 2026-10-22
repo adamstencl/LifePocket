@@ -1302,7 +1302,7 @@ async function startSession(u){
   showLoadError(false);
   let s;
   try{ s=await profileGet(u.uid); }
-  catch(e){ if(CU?.uid===u.uid){ userErr(e,'načtení profilu'); showLoadError(true); } return; }
+  catch(e){ if(CU?.uid===u.uid){ showLoadError(true, userErr(e,'načtení profilu')); } return; }
   finally{ if(_profLoading===u.uid) _profLoading=null; }
   if(CU?.uid!==u.uid)return; // mezitím odhlášen nebo jiný účet
   _profCacheUid=s.metadata.fromCache?u.uid:''; // profil z cache (offline start) → po připojení znovu ze serveru
@@ -1477,14 +1477,17 @@ const avVibe=a=>t('av.'+a.id+'.vibe');
 // Ukázkový návyk šablony v jazyce appky (ONB_TPLS drží jen nastavení návyku)
 const tplHabitName=(tpl,i)=>t('tpl.'+tpl+'.h'+(i+1));
 // Úvodní obrazovka: spinner, nebo hláška o chybě načtení s tlačítkem
-function showLoadError(on){
+function showLoadError(on, msg){
   const spin=document.getElementById('load-spin'), box=document.getElementById('load-err');
+  const tx=document.getElementById('load-err-t'); if(tx&&on) tx.textContent=msg?'⚠️ '+msg:t('load.err'); // důvod chyby (4.84)
   if(spin) spin.style.display=on?'none':'';
   if(box) box.style.display=on?'flex':'none';
   const slow=document.getElementById('load-slow'); if(slow&&on) slow.style.display='none'; // hlídač startu (index.html)
   if(on) ss('s-loading');
 }
 window.retryLoad=()=>{ if(CU) startSession(CU); else location.reload(); };
+// Odhlášení z chyby načtení (4.84): profil se nenačetl, nic nezapisovat
+window.loadErrLogout=async()=>{ try{ await signOut(auth); }catch(e){} clearUserSessionState(); await clearFsCache(); location.reload(); };
 // Po návratu signálu zkus načíst automaticky (jen když visí hláška o chybě)
 window.addEventListener('online',()=>{
   if(CU&&document.getElementById('load-err')?.style.display==='flex'){ startSession(CU); return; }
