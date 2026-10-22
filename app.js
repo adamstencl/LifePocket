@@ -7126,9 +7126,7 @@ const quickAdd = {
     // Bez seznamu otevřít Úkoly; seznam skupiny se načítá (toast dal clEditFind) → zůstat, text v kartě zůstane
     if (!list) { if (!checklists.some(c => c && c.id === activeChecklist)) window.sp('checklist'); return false; }
     const item = {id: genId(), text, done: false};
-    list.items = Array.isArray(list.items) ? list.items : [];
-    list.items.unshift(item);
-    const w = saveChecklistDoc(list);
+    const w = clSave(list, clOps.add(item), item);
     gaCheck(list, 'add', text);
     renderChecklist();
     return w;
@@ -10413,7 +10411,7 @@ window.shareChecklistTo = async (listId, gid) => {
   if(!list || !checkGroups().includes(gid) || !e?.ready || clSharedGid(list)) return;
   // Sdílený v jiné (dřívější) skupině bez kopie = tady nesdílený → sdílet do zvolené
   list.shared = true; list.sharedGid = gid;
-  saveChecklistDoc(list);
+  saveChecklistDoc(list).catch(clSaveErr);
   try {
     // Kopie už ve skupině leží (např. sdílená z jiného zařízení) → nepřepisovat ji starším obsahem
     if(!e.lists.some(f => f.id === list.id)) await setDoc(doc(db,'families',gid,'checklists',list.id), {
@@ -15250,6 +15248,79 @@ async function saveChecklistDoc(list) {
     await setDoc(doc(db,'users',CU.uid,'checklists',list.id), list);
   }
 }
+// 4.82: úprava položek. fn(items) upraví/vrátí pole položek (podle item.id, bez závislosti na indexech).
+// Osobní seznam se uloží celý; seznam skupiny transakcí nad čerstvými daty ze serveru, aby souběžné
+// zápisy dvou zařízení neztratily položky. Offline: přidání přes arrayUnion (addItem), jinak chyba.
+const CL_MAX_LEN = 900000; // rezerva pod limitem dokumentu Firestore (1 MiB)
+function clTooBig(x) { try { return JSON.stringify(x).length > CL_MAX_LEN; } catch(e) { return true; } }
+function clErr(code) { const e = new Error(code); e.code = code; return e; }
+function clCopyItems(items) {
+  return (Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object')
+    .map(i => Array.isArray(i.photos) ? {...i, photos: [...i.photos]} : {...i});
+}
+function clSave(list, fn, addItem = null) {
+  if (!CU || !list) return Promise.resolve();
+  if (!Array.isArray(list.items)) list.items = [];
+  const loc = fn(list.items);
+  if (Array.isArray(loc)) list.items = loc;
+  if (!list._family) return clTooBig(list) ? Promise.reject(clErr('cl-big')) : saveChecklistDoc(list);
+  if (!list._gid) return Promise.resolve();
+  const ref = doc(db,'families',list._gid,'checklists',list.id);
+  if (addItem && navigator.onLine === false) return updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()});
+  return runTransaction(db, async tx => {
+    const s = await tx.get(ref);
+    if (!s.exists()) throw clErr('not-found');
+    const cur = clCopyItems(s.data().items);
+    const r = fn(cur), next = Array.isArray(r) ? r : cur;
+    if (clTooBig(next)) throw clErr('cl-big');
+    tx.update(ref, {items: next, updatedAt: Date.now()});
+  }).catch(e => {
+    if (addItem && /unavailable|offline/i.test(String(e?.code || '') + ' ' + String(e?.message || '')))
+      return updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()});
+    throw e;
+  });
+}
+function clSaveErr(e) {
+  toast(e?.code === 'cl-big' ? t('cl.tooBig') : e?.code === 'not-found' ? t('cl.gone') : '⚠️ ' + userErr(e, 'seznam'));
+  renderChecklist();
+}
+// Operace nad položkami (čisté funkce nad polem, použijí se lokálně i v transakci)
+const clOps = {
+  add: item => items => [item, ...items.filter(i => i.id !== item.id)],
+  set: (id, patch) => items => { const it = items.find(i => i.id === id); if (it) Object.assign(it, patch); return items; },
+  del: id => items => items.filter(i => i.id !== id),
+  clearDone: () => items => items.filter(i => !i.done),
+  // Prohození se sousední nesplněnou položkou
+  move: (id, dir) => items => {
+    const undone = items.filter(i => !i.done), k = undone.findIndex(i => i.id === id), j = k + dir;
+    if (k < 0 || j < 0 || j >= undone.length) return items;
+    const a = items.indexOf(undone[k]), b = items.indexOf(undone[j]);
+    [items[a], items[b]] = [items[b], items[a]];
+    return items;
+  },
+  // Nové pořadí nesplněných položek; položky, které jinde mezitím přibyly, zůstanou na svém místě
+  order: ids => items => {
+    const want = ids.filter(id => items.some(i => i.id === id && !i.done));
+    const slots = items.map((it, i) => (!it.done && want.includes(it.id)) ? i : -1).filter(i => i >= 0);
+    const byId = Object.fromEntries(items.filter(i => want.includes(i.id)).map(i => [i.id, i]));
+    want.forEach((id, k) => { items[slots[k]] = byId[id]; });
+    return items;
+  },
+  photoAdd: (id, photo) => items => {
+    const it = items.find(i => i.id === id);
+    if (it) { if (!Array.isArray(it.photos)) { it.photos = it.photo ? [it.photo] : []; delete it.photo; } it.photos.push(photo); }
+    return items;
+  },
+  photoDel: (id, photo) => items => {
+    const it = items.find(i => i.id === id);
+    if (!it) return items;
+    if (!Array.isArray(it.photos)) { it.photos = it.photo ? [it.photo] : []; delete it.photo; }
+    const k = it.photos.indexOf(photo);
+    if (k >= 0) it.photos.splice(k, 1);
+    if (!it.photos.length) delete it.photos;
+    return items;
+  }
+};
 
 
 function renderChecklist() {
@@ -15333,10 +15404,7 @@ function reorderCheckItems(listId, ids) {
   if (!list || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const undone = list.items.filter(i => !i.done);
   if (undone.length !== ids.length || !ids.every(id => undone.some(i => i.id === id))) return; // seznam se mezitím změnil
-  const slots = list.items.map((it, i) => it.done ? -1 : i).filter(i => i >= 0);
-  const byId = Object.fromEntries(undone.map(i => [i.id, i]));
-  ids.forEach((id, k) => { list.items[slots[k]] = byId[id]; });
-  saveChecklistDoc(list).catch(e => toast(t('hb.orderFail', {err: userErr(e, 'seznam')})));
+  clSave(list, clOps.order(ids)).catch(e => { toast(t('hb.orderFail', {err: userErr(e, 'seznam')})); renderChecklist(); });
   renderChecklist();
 }
 
@@ -15368,10 +15436,13 @@ window.addCheckItem = function() {
   const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = {id: genId(), text: inp.value.trim(), done: false};
-  if (clNewPhoto) { item.photos = [clNewPhoto]; clNewPhoto = null; }
-  list.items.unshift(item);
+  if (clNewPhoto) {
+    // Fotka by přeplnila dokument seznamu → odmítnout (text zůstane v poli)
+    if (clTooBig({...list, items: [{...item, photos: [clNewPhoto]}, ...(list.items || [])]})) { toast(t('cl.tooBig')); return; }
+    item.photos = [clNewPhoto]; clNewPhoto = null;
+  }
   inp.value = '';
-  saveChecklistDoc(list);
+  clSave(list, clOps.add(item), item).catch(clSaveErr);
   gaCheck(list, 'add', item.text);
   renderChecklist();
   document.getElementById('cl-new-inp')?.focus();
@@ -15384,11 +15455,7 @@ window.moveCheckItem = function(itemId, dir) {
   const idx = undone.findIndex(i => i.id === itemId);
   const swapIdx = idx + dir;
   if (idx < 0 || swapIdx < 0 || swapIdx >= undone.length) return;
-  // Swap in original list
-  const idxA = list.items.indexOf(undone[idx]);
-  const idxB = list.items.indexOf(undone[swapIdx]);
-  [list.items[idxA], list.items[idxB]] = [list.items[idxB], list.items[idxA]];
-  saveChecklistDoc(list);
+  clSave(list, clOps.move(itemId, dir)).catch(clSaveErr);
   renderChecklist();
 };
 
@@ -15396,8 +15463,8 @@ window.toggleCheckItem = function(itemId) {
   const list = clEditFind(activeChecklist);
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
-  if (item) { item.done = !item.done; }
-  saveChecklistDoc(list);
+  if (!item) return;
+  clSave(list, clOps.set(itemId, {done: !item.done})).catch(clSaveErr);
   // Odškrtnutí → „hotovo“; vrácení zpět vyjme položku z čekajícího záznamu
   if (item?.done) gaCheck(list, 'done', item.text);
   else if (item && list._family && list._gid) unlogGroupActivity(list._gid, 'check', 'done', gaTitle(item.text, list.name || ''));
@@ -15422,9 +15489,8 @@ window.saveExpandedCheckItem = function(itemId) {
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   const changed = !!item && item.text !== newText;
-  if (item) item.text = newText;
   expandedCheckItemId = null;
-  saveChecklistDoc(list);
+  if (changed) clSave(list, clOps.set(itemId, {text: newText})).catch(clSaveErr);
   if (changed) gaCheck(list, 'edit', newText);
   renderChecklist();
 };
@@ -15433,8 +15499,7 @@ window.deleteCheckItem = function(itemId) {
   const list = clEditFind(activeChecklist);
   if (!list) return;
   const gone = list.items.find(i => i.id === itemId);
-  list.items = list.items.filter(i => i.id !== itemId);
-  saveChecklistDoc(list);
+  clSave(list, clOps.del(itemId)).catch(clSaveErr);
   if (gone) gaCheck(list, 'del', gone.text);
   renderChecklist();
 };
@@ -15456,9 +15521,9 @@ window.triggerClItemPhoto = function(itemId) {
       if (!list) return;
       const item = list.items.find(i => i.id === itemId);
       if (item) {
-        if(!item.photos){item.photos=item.photo?[item.photo]:[];delete item.photo;}
-        item.photos.push(photo);
-        saveChecklistDoc(list); renderChecklist();
+        // Fotka by přeplnila dokument seznamu → odmítnout
+        if (clTooBig(list) || JSON.stringify(list).length + photo.length > CL_MAX_LEN) { toast(t('cl.tooBig')); inp.value = ''; return; }
+        clSave(list, clOps.photoAdd(itemId, photo)).catch(clSaveErr); renderChecklist();
       }
     } catch(e) { toast(t('nt.photoFail')); }
     inp.value = '';
@@ -15470,10 +15535,9 @@ window.removeClItemPhoto = function(itemId, photoIdx=0) {
   if (!list) return;
   const item = list.items.find(i => i.id === itemId);
   if (!item) return;
-  if (!item.photos) { item.photos = item.photo ? [item.photo] : []; delete item.photo; }
-  item.photos.splice(photoIdx, 1);
-  if (!item.photos.length) delete item.photos;
-  saveChecklistDoc(list); renderChecklist();
+  const photo = getItemPhotos(item)[photoIdx];
+  if (photo === undefined) return;
+  clSave(list, clOps.photoDel(itemId, photo)).catch(clSaveErr); renderChecklist();
 };
 window.showClItemPhoto = function(itemId, photoIdx=0) {
   const list = clFind(activeChecklist);
@@ -15497,8 +15561,7 @@ window.clearDoneChecklistItems = function() {
   const list = clEditFind(activeChecklist);
   if (!list) return;
   const nDone = list.items.filter(i => i.done).length;
-  list.items = list.items.filter(i => !i.done);
-  saveChecklistDoc(list);
+  clSave(list, clOps.clearDone()).catch(clSaveErr);
   if (nDone) gaCheck(list, 'clear', '', nDone);
   renderChecklist();
 };
@@ -15508,7 +15571,7 @@ window.addChecklist = function() {
   if (!name?.trim()) return;
   const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
   activeChecklist = newList.id;
-  saveChecklistDoc(newList);
+  saveChecklistDoc(newList).catch(clSaveErr);
 };
 
 window.deleteChecklist = async function(id) {

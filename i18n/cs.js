@@ -1884,6 +1884,8 @@ export default {
   'cl.defName': 'Úkoly',
   'cl.processing': '📷 Zpracovávám…',
   'cl.imgFail': '❌ Nepodařilo se načíst obrázek',
+  'cl.tooBig': '⚠️ Seznam je s fotkami moc velký, fotku nejde přidat. Smaž některé fotky nebo položky.',
+  'cl.gone': '⚠️ Seznam už ve skupině neexistuje',
   'cl.unshare': 'Přestat sdílet',
   'cl.shareFam': 'Sdílet se skupinou',
   'cl.private': '👤 Soukromé',

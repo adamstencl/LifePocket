@@ -1868,6 +1868,8 @@ export default {
   'cl.defName': 'Tasks',
   'cl.processing': '📷 Processing…',
   'cl.imgFail': '❌ Could not load the image',
+  'cl.tooBig': '⚠️ The list is too large with photos, the photo can’t be added. Delete some photos or items.',
+  'cl.gone': '⚠️ The list no longer exists in the group',
   'cl.unshare': 'Stop sharing',
   'cl.shareFam': 'Share with a group',
   'cl.private': '👤 Private',
