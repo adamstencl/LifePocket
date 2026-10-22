@@ -5939,7 +5939,8 @@ function sendMorningNotif() {
     return ev.date === today;
   });
   const todayDow = new Date().getDay();
-  const habitCount = habits.filter(h => isHabitDueToday(h, today, todayDow)).length;
+  const habitCount = hasMod('habits') ? habits.filter(h => isHabitDueToday(h, today, todayDow)).length : 0;
+  if (!habitCount) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
   let body = tN('ln.morningHabits', habitCount);
   if (todayEvents.length > 0) {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
@@ -5951,13 +5952,13 @@ function sendMorningNotif() {
 function sendEveningNotif() {
   if (hasPushToken()) return; // s push tokenem posílá server
   const today = toDS();
+  if (!hasMod('habits')) return;
   const due = habits.filter(h => isHabitDueToday(h, today, new Date().getDay()));
   const done = due.filter(h => hDone(h.id,today)).length;
   const total = due.length;
+  if (total === 0) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
   let body = '';
-  if (total === 0) {
-    body = t('ln.eveNone');
-  } else if (done === total) {
+  if (done === total) {
     body = tN('ln.eveAll', total, {g: prof?.gender});
   } else if (done === 0) {
     body = t('ln.eveZero', {g: prof?.gender});
