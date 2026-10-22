@@ -17265,8 +17265,12 @@ window.saveNick=()=>{
   if(!CU||!prof) return;
   const v=cutName(document.getElementById('set-nick').value,40);
   if(!v){toast(t('set.nameEmpty'));return;}
+  const prev=prof.nickname, uid=CU.uid;
   prof.nickname=v;
-  setDoc(doc(db,'users',CU.uid,'profile','main'),{nickname:v},{merge:true}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  setDoc(doc(db,'users',uid,'profile','main'),{nickname:v},{merge:true}).catch(e=>{
+    if(CU?.uid===uid&&prof&&prof.nickname===v){ prof.nickname=prev; rDash(); initSet(); } // zápis selhal → původní přezdívka
+    toast(t('common.saveFailed',{err:userErr(e,'profil')}));
+  });
   rDash();initSet();toast(t('set.nameSaved'));
 };
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
