@@ -4748,6 +4748,7 @@ window.doEmailRegister=async()=>{
   }catch(ex){
     b.disabled=false;b.textContent=t('auth.createAccount');
     const msgs={'auth/email-already-in-use':'auth.err.emailInUse','auth/invalid-email':'auth.err.invalidEmail','auth/weak-password':'auth.err.weakPassword'};
+    if(ex.code==='auth/email-already-in-use') window.toggleLoginMode('login'); // účet existuje → rovnou přihlášení (4.84)
     e.textContent=msgs[ex.code]?t(msgs[ex.code]):userErr(ex,'login');
     e.classList.add('show');
   }

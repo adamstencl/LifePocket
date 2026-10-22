@@ -97,7 +97,7 @@ export default {
   'auth.logoutConfirm': 'Odhlásit se?',
   'auth.err.invalidCredential': 'Špatný e-mail nebo heslo',
   'auth.err.invalidEmail': 'Neplatný e-mail',
-  'auth.err.emailInUse': 'E-mail je už registrovaný',
+  'auth.err.emailInUse': 'Tenhle e-mail už účet má. Přihlas se (třeba přes Google), nebo si nastav heslo přes Zapomenuté heslo.',
   'auth.err.weakPassword': 'Heslo je příliš slabé',
 
   // ── Chybové hlášky (userErr) ──

@@ -96,7 +96,7 @@ export default {
   'auth.logoutConfirm': 'Log out?',
   'auth.err.invalidCredential': 'Wrong email or password',
   'auth.err.invalidEmail': 'Invalid email',
-  'auth.err.emailInUse': 'This email is already registered',
+  'auth.err.emailInUse': 'This e-mail already has an account. Sign in (maybe with Google), or set a password via Forgot password.',
   'auth.err.weakPassword': 'Password is too weak',
 
   // ── Error messages (userErr) ──
