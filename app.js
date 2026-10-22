@@ -2931,6 +2931,19 @@ window.habitNextDay=()=>{
   const d=new Date(habitDay+'T12:00:00'); d.setDate(d.getDate()+1);
   habitDay=toDS(d); renderHabits();
 };
+// Po půlnoci (appka otevřená nebo vrácená z pozadí): byl-li vybraný „dnešek“, přejít na nový den (4.81)
+let _habitToday=habitDay;
+function habitDayRoll(){
+  const td=toDS();
+  if(_habitToday===td) return;
+  const follow=habitDay===_habitToday;
+  _habitToday=td;
+  if(follow){ habitDay=td; if(CU) renderHabits(); }
+}
+(function armHabitMidnight(){
+  const n=new Date(); n.setHours(24,0,5,0);
+  setTimeout(()=>{ habitDayRoll(); armHabitMidnight(); },n-Date.now());
+})();
 
 window.toggleHabit=async(hid,date,currentState)=>{
   if(!CU)return;
@@ -7574,6 +7587,7 @@ function gamePraise(target){
 // Nový den (appka otevřená přes půlnoc nebo vrácená z pozadí): štíty a přepočet
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'||!CU) return;
+  habitDayRoll();
   if(_gameDay&&_gameDay!==toDS()){ _gameDay=toDS(); gameKick(); rDash(); }
 });
 
