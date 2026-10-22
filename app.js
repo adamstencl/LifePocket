@@ -2199,8 +2199,8 @@ function subHabits(){
 
 function habitDayLabel(){
   const today=toDS(new Date());
-  const yesterday=toDS(new Date(Date.now()-86400000));
-  const tomorrow=toDS(new Date(Date.now()+86400000));
+  const yesterday=addDays(today,-1); // přes kalendář, ne ±24 h (změna času)
+  const tomorrow=addDays(today,1);
   if(habitDay===today)return t('hb.today');
   if(habitDay===yesterday)return t('hb.yesterday');
   if(habitDay===tomorrow)return t('hb.tomorrow');
