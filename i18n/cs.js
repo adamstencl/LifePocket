@@ -1624,7 +1624,7 @@ export default {
   'ck.preparing': 'Připravuji recept, chvilku strpení…',
   'ck.cooking': 'Vařím recept…',
   'ck.suggested': '🍳 Navrhovaný recept',
-  'ck.portions': '{n} porcí',
+  'ck.portions': { one: '{n} porce', few: '{n} porce', many: '{n} porce', other: '{n} porcí' },
   'ck.ingrCaps': 'SUROVINY:',
   'ck.stepsCaps': 'POSTUP:',
   'ck.useToShop': '✅ Použít — přidat suroviny do nákupu',

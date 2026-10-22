@@ -1610,7 +1610,7 @@ export default {
   'ck.preparing': 'Preparing the recipe, just a moment…',
   'ck.cooking': 'Cooking up a recipe…',
   'ck.suggested': '🍳 Suggested recipe',
-  'ck.portions': '{n} servings',
+  'ck.portions': { one: '{n} serving', other: '{n} servings' },
   'ck.ingrCaps': 'INGREDIENTS:',
   'ck.stepsCaps': 'METHOD:',
   'ck.useToShop': '✅ Use — add ingredients to shopping',
