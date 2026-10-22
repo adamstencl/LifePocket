@@ -2528,7 +2528,7 @@ function buildHabitCard(h){
     else if(isPartial) inner=`<span style="font-size:10px">${Number(l.value)||0}</span>`;
     else inner='×';
 
-    thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3);font-size:9px">${d.getDate()}.${d.getMonth()+1}</span></th>`;
+    thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3)">${d.getDate()}.${d.getMonth()+1}</span></th>`;
     tdHtml+=`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
   }
 
