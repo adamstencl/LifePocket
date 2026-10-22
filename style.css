@@ -2364,3 +2364,6 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 
 /* 4.85: dlouhé názvy bez mezer nerozbijí řádek */
 .habit-name,.pantry-item-name,.dash-event-name,.cl-item-text,.shop-item-name{overflow-wrap:anywhere}
+
+/* 4.85: toast a reakce parťáka nad spodní lištou (i s výřezem iPhonu) */
+@media(max-width:640px){.toast,.av-reaction{bottom:calc(var(--bn-h) + 12px)}}
