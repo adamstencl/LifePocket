@@ -19829,7 +19829,7 @@ function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.
 // ── TOUR / PRŮVODCE ───────────────────────────────────
 
 // Texty kroků: tour.<modul>.t / tour.<modul>.x
-const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan']
+const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist']
   .map(k => [k, {title: t('tour.' + k + '.t'), text: t('tour.' + k + '.x')}]));
 TOUR_MODULES.avatar = {
   title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return t('tour.avatar.t');}})()}`,
@@ -19839,6 +19839,8 @@ TOUR_MODULES.avatar = {
 // Spustit uvítací tour pro nového uživatele
 // Průvodce je naplánovaný nebo běží (uvítání, kroky, závěrečné okno) → nepřekrývat ho dalšími okny
 let _tourPlanned = false, _tourFromOnboard = false, _joinBeforeTour = false;
+// Plný průvodce (4.79): spuštěný z Nastavení projde všechny zapnuté moduly
+let _tourFull = false;
 function tourActive() {
   return _tourPlanned || !!document.querySelector('#tour-welcome,#tour-step,#tour-overlay,#tour-done');
 }
@@ -19879,11 +19881,18 @@ function startWelcomeTour() {
   document.body.appendChild(modal);
 }
 
-// Tour po modulech — spotlight + popis. Nejvýš 3 kroky (4.59): Domů, hlavní modul šablony, AI parťák
+// Tour po modulech — spotlight + popis. Po onboardingu nejvýš 3 kroky (4.59): Domů, hlavní modul šablony, AI parťák.
+// Z Nastavení (_tourFull, 4.79): Domů, všechny zapnuté moduly v pořadí lišty a panelu Více, parťák.
 const TOUR_MAIN = {family:'shopping', student:'calendar', health:'habits'};
 const TOUR_FALLBACK = ['habits','shopping','calendar','journal','goals','cooking','mealplan'];
 function tourSteps() {
   const mods = prof?.modules || [];
+  if(_tourFull) {
+    // Pořadí z lišty a Více (buildNav), pak zbylé zapnuté; jen moduly s textem a vlastní stránkou
+    const bar = [...document.querySelectorAll('#bottom-nav-inner .bnbtn')].map(b => b.id.slice(3)).concat(_bnMore.map(p => p.id));
+    const full = [...new Set([...bar, ...simpleModOrder()])].filter(m => m !== 'dashboard' && mods.includes(m) && TOUR_MODULES[m] && document.getElementById('p-' + m));
+    return ['dashboard', ...full, ...(mods.includes('rex') ? ['avatar'] : [])];
+  }
   // Člen skupiny s Nákupy (pozvaný) uvidí hned sdílený nákup
   const grpShop = !!(familyId || extraGroupIds.length) && mods.includes('shopping') ? 'shopping' : null;
   // Jednoduchý režim (4.69): první modul z lišty (odpověď z onboardingu)
@@ -19953,6 +19962,7 @@ window.nextTourStep = () => {
 };
 
 function finishTour() {
+  _tourFull = false;
   _tourPlanned = true; // mezi zavřením kroků a vložením #tour-done nesmí naskočit jiné okno
   document.getElementById('tour-step')?.remove();
   document.getElementById('tour-overlay')?.remove();
@@ -19986,6 +19996,7 @@ window.closeTourDone = () => {
 };
 
 window.dismissTour = () => {
+  _tourFull = false;
   document.getElementById('tour-welcome')?.remove();
   document.getElementById('tour-step')?.remove();
   document.getElementById('tour-overlay')?.remove();
@@ -20158,6 +20169,7 @@ window.restartTour = () => {
   // Smaž všechny hint záznamy
   Object.keys(localStorage).filter(k => k.startsWith('lp_hint_')).forEach(k => localStorage.removeItem(k));
   localStorage.removeItem('lp_tour_done');
+  _tourFull = true;
   startWelcomeTour();
 };
 
