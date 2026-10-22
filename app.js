@@ -4127,7 +4127,7 @@ window.delEvent=async(id)=>{
   toast(t('cal.deleted'));
 };
 
-function om(id){document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')}
+function om(id){window.ctaAskClose?.();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení nesmí ležet nad oknem (4.85)
 function cm(id){document.getElementById(id).classList.remove('open');}
 window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
