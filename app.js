@@ -5480,7 +5480,13 @@ function updateInstallBtn() {
 }
 window.installAppSet = async () => {
   if (canInstallPrompt() && typeof window.installPWA === 'function') { await window.installPWA(); updateInstallBtn(); return; }
-  if (getPlatform() === 'ios') { const bn = document.getElementById('ios-banner'); if (bn) bn.style.display = 'block'; }
+  if (getPlatform() === 'ios') {
+    // Banner skrývá html.lp-noinstall (style.css) → odemknout instalaci jako po první akci (bez započtení aktivního dne)
+    try { localStorage.setItem('lp_inst_ok', '1'); } catch (e) {}
+    installGate();
+    document.documentElement.classList.remove('lp-noinstall');
+    const bn = document.getElementById('ios-banner'); if (bn) bn.style.display = 'block';
+  }
 };
 window.addEventListener('beforeinstallprompt', () => setTimeout(updateInstallBtn, 0)); // po uložení výzvy v pwa.js
 window.addEventListener('appinstalled', () => setTimeout(updateInstallBtn, 0));
@@ -9828,7 +9834,8 @@ function initLoginScreen(){
   initInAppBrowser();
 }
 // Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
-const IN_APP_BROWSER=/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
+// Ne v oficiální appce z Google Play (TWA): její záložní WebView má v UA také „; wv)“
+const IN_APP_BROWSER=!IS_TWA&&/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
 function inAppLink(){
   const inv=readPendingJoin();
   return location.origin+'/'+(inv?'?join='+encodeURIComponent(inv.code):'');
