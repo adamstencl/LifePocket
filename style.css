@@ -546,7 +546,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .cf-label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:5px}
 .cf-input,.cf-textarea{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--bg2);color:var(--text);resize:vertical;box-sizing:border-box;outline:none;transition:border-color .2s}
 .cf-input:focus,.cf-textarea:focus{border-color:var(--accent)}
-.cf-submit{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;width:100%}
+.cf-submit{background:var(--accent);color:var(--on-accent);border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;width:100%}
 .cf-success{background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:14px;text-align:center;font-weight:600;margin-top:10px}
 
 /* SETTINGS */
@@ -1711,7 +1711,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 /* ── CHECKLIST ──────────────────────────────────────── */
 .cl-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .cl-tab{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:all .15s}
-.cl-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cl-tab.active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .cl-tab-add{font-size:18px;padding:4px 10px}
 .cl-header{margin-bottom:10px}
 .cl-title-row{display:flex;justify-content:space-between;align-items:center}
@@ -2344,3 +2344,6 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .sup-ln-amts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .sup-amt--s{flex:1 1 auto;min-width:56px;min-height:44px;font-size:13px;padding:0 6px}
 .sup-ln-sats{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.4}
+
+/* 4.85: iOS nezoomuje při fokusu, když má pole aspoň 16 px */
+@media(max-width:640px){.finp,.setinp,.cta,.j-search,.cf-input,.cf-textarea,select,textarea{font-size:16px}}
