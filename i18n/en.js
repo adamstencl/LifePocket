@@ -1164,7 +1164,7 @@ export default {
   'shop.allInShop': 'You already have everything on the list',
   'shop.allInShopToast': '📌 Everything from this recipe is already on your list',
   'shop.allAlready': '📌 Everything is already on your list',
-  'shop.delDone': '🗑 Deleted: <b>{name}</b>',
+  'shop.delDone': '🗑 Deleted: {name}',
   'shop.restored': '↩️ Restored: {name}',
   'common.undo': 'Undo',
   'ck.cooked': '✅ Cooked – deduct from pantry',

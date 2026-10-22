@@ -1178,7 +1178,7 @@ export default {
   'shop.allInShop': 'Vše už máš v nákupu',
   'shop.allInShopToast': '📌 Vše z tohoto receptu už máš v nákupu',
   'shop.allAlready': '📌 Všechno už v nákupu máš',
-  'shop.delDone': '🗑 Smazáno: <b>{name}</b>',
+  'shop.delDone': '🗑 Smazáno: {name}',
   'shop.restored': '↩️ Vráceno: {name}',
   'common.undo': 'Vrátit',
   'ck.cooked': '✅ Uvařeno – odečíst ze zásob',
