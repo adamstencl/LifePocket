@@ -16497,6 +16497,7 @@ async function saveGImpl(){
   syncShared('g',gid); // název, ikona, termín ve sdíleném zrcadle
   // Sync deadline → kalendář (bez čekání, chybu řeší funkce sama)
   if(deadline) syncGoalToCalendar(`goal-${gid}`, `🏆 ${nm}`, deadline);
+  else if(prevG?.deadline) deleteDoc(doc(db,'users',CU.uid,'events',`goal-${gid}`)).catch(()=>{}); // termín smazán → pryč z kalendáře
   cm('m-goal');
   if(isNewG) ctaAskShare('g',gid); // nabídka sdílení (4.49)
 }
@@ -16553,6 +16554,7 @@ async function saveSubGImpl(){
   const deadline=document.getElementById('sg-dl').value;
   const gid=editSGGoalId;
   let sid=editSGId;
+  const prevDl=sid?(subs[gid]?.find(s=>s.id===sid)?.deadline||''):'';
   const sgErr=e=>toast(t('common.saveFailed',{err:userErr(e,'goal')}));
   if(sid){
     // Editace
@@ -16575,6 +16577,7 @@ async function saveSubGImpl(){
   // Sync deadline → kalendář
   syncShared('g',gid); // počet podcílů ve sdíleném zrcadle
   if(deadline) syncGoalToCalendar(`subgoal-${sid}`, `🎯 ${nm}`, deadline);
+  else if(prevDl) deleteDoc(doc(db,'users',CU.uid,'events',`subgoal-${sid}`)).catch(()=>{});
   cm('m-subgoal');
   rGoals();
 }
