@@ -5429,7 +5429,23 @@ function loadNotifSettings() {
     if (el) el.checked = notifSettings[keys[i]];
   });
   renderGroupNotifSettings();
+  updateInstallBtn();
 }
+
+// Instalace z Nastavení → Upozornění (4.84): Android/PC přes výzvu prohlížeče (pwa.js), iPhone návod; nainstalovaná skrýt
+function canInstallPrompt() { return typeof deferredPrompt !== 'undefined' && !!deferredPrompt; } // deferredPrompt z pwa.js
+function updateInstallBtn() {
+  const b = document.getElementById('install-app-btn');
+  if (!b) return;
+  const show = !(isStandaloneApp() || IS_TWA) && (canInstallPrompt() || getPlatform() === 'ios');
+  b.style.display = show ? '' : 'none';
+}
+window.installAppSet = async () => {
+  if (canInstallPrompt() && typeof window.installPWA === 'function') { await window.installPWA(); updateInstallBtn(); return; }
+  if (getPlatform() === 'ios') { const bn = document.getElementById('ios-banner'); if (bn) bn.style.display = 'block'; }
+};
+window.addEventListener('beforeinstallprompt', () => setTimeout(updateInstallBtn, 0)); // po uložení výzvy v pwa.js
+window.addEventListener('appinstalled', () => setTimeout(updateInstallBtn, 0));
 
 window.saveNotifSettings = () => {
   const m = document.getElementById('notif-morning');

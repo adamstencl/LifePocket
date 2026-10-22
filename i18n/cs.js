@@ -257,6 +257,7 @@ export default {
   'set.notif.desc': 'Připomínky návyků a denní přehled přímo do telefonu nebo prohlížeče. Funguje na Android a PC (Chrome/Edge). iPhone má omezení.',
   'set.notif.checking': '⏳ Zjišťuji stav notifikací…',
   'set.notif.enable': '🔔 Povolit notifikace',
+  'set.notif.install': '📲 Nainstalovat appku',
   'set.notif.testLocal': '🧪 Test (lokální)',
   'set.notif.testServer': '📡 Test server push',
   'set.notif.refresh': '🔄 Obnovit token',

@@ -256,6 +256,7 @@ export default {
   'set.notif.desc': 'Habit reminders and a daily overview straight to your phone or browser. Works on Android and PC (Chrome/Edge). iPhone has limitations.',
   'set.notif.checking': '⏳ Checking notification status…',
   'set.notif.enable': '🔔 Turn on notifications',
+  'set.notif.install': '📲 Install the app',
   'set.notif.testLocal': '🧪 Test (local)',
   'set.notif.testServer': '📡 Test server push',
   'set.notif.refresh': '🔄 Refresh token',
