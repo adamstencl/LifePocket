@@ -3334,9 +3334,18 @@ let calFilter='all';
 const EV_ICONS={birthday:'🎂',event:'📌'};
 const EV_LABELS={birthday:'cal.type.birthday',event:'cal.type.event'}; // klíče i18n
 // Vrátí ikonu i pro vlastní typy (hasOwnProperty kvůli prototypovým vlastnostem jako 'constructor')
-function getEvIcon(type){return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||'📌';}
+// ev (nepovinné): sdílená událost s vlastním typem jiného člena nese typeEmoji/typeLabel (4.81)
+function getEvIcon(type,ev){return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||(typeof ev?.typeEmoji==='string'&&ev.typeEmoji)||'📌';}
 // Vrátí popisek i pro vlastní typy
-function getEvLabel(type){return Object.prototype.hasOwnProperty.call(EV_LABELS,type)?t(EV_LABELS[type]):((prof.customEvTypes||[]).find(x=>x.key===type)?.label)||type||t('cal.type.event');}
+function getEvLabel(type,ev){
+  if(Object.prototype.hasOwnProperty.call(EV_LABELS,type)) return t(EV_LABELS[type]);
+  const own=(prof.customEvTypes||[]).find(x=>x.key===type)?.label;
+  if(own) return own;
+  if(typeof ev?.typeLabel==='string'&&ev.typeLabel) return ev.typeLabel;
+  return (!type||String(type).startsWith('c_'))?t('cal.type.event'):type; // neznámý vlastní klíč nezobrazovat
+}
+// Vlastní typ k uložení do události (aby ho viděli i ostatní ve skupině)
+function evTypeMeta(type){ const c=(prof.customEvTypes||[]).find(x=>x.key===type); return c?{typeLabel:cutName(c.label||'',25),typeEmoji:String(c.emoji||'📌').slice(0,4)}:null; }
 // Typ narozenin nemá čas ani datum konce
 const evHasTime=t=>t!=='birthday';
 const evHasEnd =t=>t==='event';
@@ -3373,7 +3382,7 @@ function renderCal(){
     const hasEv=dayEvs.length>0;
     html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
       ${day}
-      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?esc(getEvIcon(dayEvs[0].type)):''}</span>`:''}
+      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?esc(getEvIcon(dayEvs[0].type,dayEvs[0])):''}</span>`:''}
     </div>`;
   }
   // Next month
@@ -3436,7 +3445,8 @@ function renderEvList(){
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">'+tH('cal.all')+' <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(getEvIcon(t))+' '+esc(getEvLabel(t))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
+        const sm=allEvents.find(e=>(e.type||'event')===t);
+        fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(getEvIcon(t,sm))+' '+esc(getEvLabel(t,sm))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       fb+='</div>';
       filterBar.innerHTML=fb;
@@ -3464,7 +3474,7 @@ function renderEvList(){
   container.innerHTML=filtered.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div class="ev-card">'
-      +'<div class="ev-icon">'+esc(getEvIcon(ev.type))+'</div>'
+      +'<div class="ev-icon">'+esc(getEvIcon(ev.type,ev))+'</div>'
       +'<div class="ev-info">'
       +'<div class="ev-name">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
@@ -3793,10 +3803,10 @@ function showDayEventsModal(ds, dayEvs) {
   const evHtml = dayEvs.map(ev=>{
     const author=getEventAuthorName(ev);
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
-      +'<div style="font-size:22px">'+esc(getEvIcon(ev.type))+'</div>'
+      +'<div style="font-size:22px">'+esc(getEvIcon(ev.type,ev))+'</div>'
       +'<div style="flex:1">'
       +'<div style="font-weight:600;color:var(--text1)">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type,ev))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
       +'</div>'
       +'<button data-a0="'+esc(JSON.stringify(ev))+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
       +'<button data-a0="'+esc(ev.id)+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
@@ -3973,6 +3983,8 @@ async function saveEventImpl(){
   const ev={name,date,type:selEvType_val,repeat,createdAt:new Date().toISOString(),addedBy:CU.uid};
   if(time) ev.time=time;
   if(dateEnd) ev.dateEnd=dateEnd;
+  const tMeta=evTypeMeta(selEvType_val); // vlastní typ: název a ikona i pro ostatní ve skupině
+  if(tMeta) Object.assign(ev,tMeta);
   if(editingEventId) {
     // Cíl úpravy = skupina zachycená při otevření; nesdílí-li už kalendář, neukládat (žádná osobní kopie se stejným ID)
     const editGroupId = editingEventGid;
@@ -3980,6 +3992,7 @@ async function saveEventImpl(){
     const evUpdate = {name, date, type:selEvType_val, repeat, addedBy:CU.uid};
     if(time) evUpdate.time = time;
     if(dateEnd) evUpdate.dateEnd = dateEnd;
+    if(tMeta) Object.assign(evUpdate, tMeta);
     // Zápis bez čekání (offline by visel), chyba jen toastem
     const evErr = e => toast('⚠️ '+userErr(e,'událost'));
     if(editGroupId) {
@@ -16101,7 +16114,7 @@ function rDash(){
         const diffLbl=diff===0?t('dash.c.today'):diff===1?t('dash.c.tomorrow'):t('dash.c.inDays',{n:diff});
         const isSoon=diff<=2;
         return `<div class="dw-ev-row">
-          <div class="dw-ev-ico">${esc(getEvIcon(ev.type))}</div>
+          <div class="dw-ev-ico">${esc(getEvIcon(ev.type,ev))}</div>
           <div style="flex:1">
             <div class="dw-ev-name">${evGrpPrefix(ev)}${esc(ev.name)}</div>
             <div class="dw-ev-date">${ev._date.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'long'})}</div>
@@ -17195,7 +17208,7 @@ function buildChatContext(){
     return [...list.slice(0,25).map(({ev,own,gid,ds})=>{
       let author=null;
       if(!own){try{author=getEventAuthorName(ev);}catch(e){}}
-      return '- '+(ds===today?tA('aip.ctx.today'):ctxDay(ds))+(okEvTime(ev.time)?' '+ev.time:'')+' ['+ctxT(getEvLabel(ev.type),20)+'] '+ctxT(ev.name,60)
+      return '- '+(ds===today?tA('aip.ctx.today'):ctxDay(ds))+(okEvTime(ev.time)?' '+ev.time:'')+' ['+ctxT(getEvLabel(ev.type,ev),20)+'] '+ctxT(ev.name,60)
         +(isD(ev.dateEnd)?tA('aip.ctx.cal.until',{d:ctxDay(ev.dateEnd)}):'')+(ev.repeat==='yes'?tA('aip.ctx.cal.yearly'):'')
         +(!own?tA('aip.ctx.cal.shared',{group:ctxGrp(gid)})+(author?tA('aip.ctx.cal.from',{name:ctxT(author,20)}):''):'');
     }),...ctxMore(list.length,25)];
