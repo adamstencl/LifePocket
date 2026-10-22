@@ -4240,15 +4240,19 @@ document.addEventListener('keydown', e => {
 
 // ── Android back button (popstate) ──────────────────────────────────────
 // Pojistka: nad kořenovým záznamem vždy leží záznam 'guard', jinak by Zpět na telefonu (PWA/TWA) appku zavřelo
-function backGuard(){ if(!history.state || history.state.type==='root') history.pushState({type:'guard'}, ''); }
+function backGuard(){ if(!history.state || history.state.type==='root' || history.state.type==='pre') history.pushState({type:'guard'}, ''); }
 window.addEventListener('popstate', () => {
-  setTimeout(backGuard, 0); // po zpracování Zpět znovu založit pojistku, pokud jsme spadli na kořen
+  // Před vstupem do appky (úvod, přihlášení, onboarding) pojistka ne: Zpět z úvodu smí stránku opustit
+  const preApp = !document.getElementById('app')?.classList.contains('active');
+  if(!preApp) setTimeout(backGuard, 0); // po zpracování Zpět znovu založit pojistku, pokud jsme spadli na kořen
   // 0. Výběr času leží nad ostatními modaly, zavírá se první
   if (timePickerOpen()) { closeTimePicker(); return; }
   // 1. Zavři otevřený modal
   // Poslední otevřený v DOM leží nahoře (stejný z-index); detail skupiny je vložený na začátek body (4.51)
   const openModal = [...document.querySelectorAll('.moverlay.open, .modal-wrap.open')].pop();
   if(openModal) { if(openModal.id==='m-sccard') window.closeShareCard(); else if(openModal.id==='join-invite-modal') window.laterPendingJoin(); else if(openModal.id) cm(openModal.id); else openModal.remove(); return; }
+  // 0b. Přihlášení a onboarding (4.84): panel → úvod, krok 3 → 2 → 1
+  if(preApp) { preStepBack(); return; }
   // 1b. Otevřený zápisek na mobilu → zpět na seznam zápisků
   if(document.getElementById('p-journal')?.classList.contains('active') && journalEntryOpen() && jMobileMQ?.matches) {
     window.closeEntry(); return;
@@ -4826,7 +4830,7 @@ window.gS2=()=>{
   else if(_onbCustom) window.pickTpl(selTpl,true);
   else window.pickStart(selStart);
   onbS2View();
-  ss('s-step2');
+  ss('s-step2'); preStepPush();
 };
 // Přepne krok 2 mezi otázkou a mřížkou modulů (titulek, podtitulek, poznámka k pozvánce)
 function onbS2View(){
@@ -4862,8 +4866,19 @@ window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 window.gS3=()=>{
   if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return;}
   if(!_selAvTouched) selAv=(selTpl&&AV_REC[selTpl])||'rex';
-  rAvGrid('av-grid',false);ss('s-step3');
+  rAvGrid('av-grid',false);ss('s-step3'); preStepPush();
 };
+// Systémové Zpět v onboardingu a přihlášení (4.84): každý krok vpřed = záznam {type:'pre'}, Zpět = o krok zpět
+function preStepPush(){ if(history.state?.type!=='pre') history.pushState({type:'pre'},''); }
+function preStepBack(){
+  if(document.getElementById('s-step3')?.classList.contains('active')){ ss('s-step2'); return true; }
+  if(document.getElementById('s-step2')?.classList.contains('active')){ ss('s-step1'); return true; }
+  const a=document.getElementById('auth-panel');
+  if(document.getElementById('s-login')?.classList.contains('active')&&a&&!a.hidden){ lpShowLanding(); return true; }
+  return false;
+}
+// Tlačítko „← Zpět“ v krocích: přes historii, ať systémové Zpět pak nevrací o krok navíc
+window.onbBack=id=>{ if(history.state?.type==='pre') history.back(); else ss(id); };
 function rMods(){
   const p=selTpl?ONB_TPLS[selTpl].mods:ONB_BASE_MODS;
   const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
@@ -9726,15 +9741,17 @@ function showAuthPanel(mode){
   window.toggleLoginMode(mode==='register'?'register':'login');
   window.scrollTo(0,0);
   document.getElementById('auth-mode-lbl')?.focus({preventScroll:true}); // čtečka ohlásí režim
+  preStepPush(); // systémové Zpět vrátí na úvod (4.84)
 }
 window.showAuthPanel=showAuthPanel;
-window.showLanding=()=>{
+window.showLanding=()=>{ if(history.state?.type==='pre') history.back(); else lpShowLanding(); };
+function lpShowLanding(){
   const l=document.getElementById('lp-landing'), a=document.getElementById('auth-panel');
   if(!l||!a) return;
   a.hidden=true; l.hidden=false;
   document.getElementById('login-err')?.classList.remove('show');
   document.getElementById('lp-start-btn')?.focus({preventScroll:true});
-};
+}
 // Kdo se tu už přihlásil nebo má appku na ploše, landing nevidí
 function initLoginScreen(){
   let known=false; try{ known=!!localStorage.getItem('lp_owner_uid'); }catch(e){}
