@@ -327,7 +327,7 @@ export default {
   'set.support.sats': '≈ {sats} sats',
   'set.support.lnSats': 'Částka do peněženky: {sats} sats (≈ {czk} Kč)',
   'set.contact.emailPh': 'tvuj@email.cz',
-  'set.contact.msgPh': 'Váš dotaz nebo nápad...',
+  'set.contact.msgPh': 'Tvůj dotaz nebo nápad…',
   'set.notif.habits': '🎯 Připomínka nesplněných návyků',
   'set.notif.morningOpt': '🌅 Ranní přehled dne (události, návyky)',
   'set.notif.eveningOpt': '🌙 Večerní shrnutí (co jsi splnil/a)',

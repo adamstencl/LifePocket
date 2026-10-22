@@ -7092,7 +7092,7 @@ window.openFocusModal = function(mode) {
       ${history.map(h => {
         const d = fmtDate(h.date, 'dm'); // 'YYYY-MM-DD' jako místní poledne
         const doneIcon = h.done ? '<span style="color:var(--green);font-size:11px">✓</span>' : '';
-        return `<div style="font-size:13px;padding:6px 10px;background:var(--bg2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
+        return `<div style="font-size:13px;padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
       }).join('')}
     </div>` : '';
   const title    = tH(isTmrw ? 'focus.titleTomorrow' : 'focus.titleToday');

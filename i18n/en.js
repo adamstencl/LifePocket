@@ -326,7 +326,7 @@ export default {
   'set.support.sats': '≈ {sats} sats',
   'set.support.lnSats': 'Amount for your wallet: {sats} sats (≈ {czk} CZK)',
   'set.contact.emailPh': 'you@email.com',
-  'set.contact.msgPh': 'Your question or idea...',
+  'set.contact.msgPh': 'Your question or idea…',
   'set.notif.habits': '🎯 Reminder for unfinished habits',
   'set.notif.morningOpt': '🌅 Morning overview (events, habits)',
   'set.notif.eveningOpt': '🌙 Evening summary (what you got done)',
