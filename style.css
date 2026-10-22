@@ -645,8 +645,9 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .epbtn{background:var(--card2);border:2px solid var(--border2);border-radius:8px;width:36px;height:36px;font-size:17px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
 .epbtn:hover{transform:scale(1.1)}.epbtn.sel{border-color:var(--accent);background:rgba(245,200,66,.1)}
 .cpick{display:flex;gap:7px;flex-wrap:wrap}
-.cpbtn{width:26px;height:26px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:all .15s}
-.cpbtn:hover{transform:scale(1.15)}.cpbtn.sel{border-color:white;transform:scale(1.15)}
+.cpbtn{width:26px;height:26px;padding:0;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:all .15s;-webkit-appearance:none;appearance:none}
+.cpbtn:hover{transform:scale(1.15)}.cpbtn.sel{border-color:transparent;box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--text);transform:scale(1.15)}
+.cpbtn:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 .macts{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
 .macts .btn-p{flex:1;padding:11px;font-size:16px}
 .vtarea{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:12px;color:var(--text);font-family:'Playfair Display',serif;font-size:17px;font-style:italic;outline:none;resize:none;min-height:90px;line-height:1.6;transition:border-color .2s}

@@ -16786,7 +16786,7 @@ window.openGM=(gid=null)=>{
   om('m-goal');
 };
 window.sGE=(e,b)=>{gEm=e;document.querySelectorAll('#g-epick .epbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-epick [data-e="${e}"]`);if(t)t.classList.add('sel');};
-window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>x.classList.remove('sel'));const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t)t.classList.add('sel');};
+window.sGC=(c,b)=>{gCol=c;document.querySelectorAll('#g-cpick .cpbtn').forEach(x=>{x.classList.remove('sel');x.setAttribute('aria-pressed','false');});const t=b||document.querySelector(`#g-cpick [data-c="${c}"]`);if(t){t.classList.add('sel');t.setAttribute('aria-pressed','true');}};
 window.sGP=(p,btn)=>{gPriority=p;document.querySelectorAll('#g-prio-row .gprio-btn').forEach(x=>x.classList.remove('sel'));const t=btn||document.querySelector(`#g-prio-row [data-p="${p}"]`);if(t)t.classList.add('sel');};
 
 window.saveG=()=>guardSave('g','#m-goal .btn-p[onclick="saveG()"]',saveGImpl);
