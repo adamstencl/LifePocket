@@ -2968,7 +2968,7 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   if(!CU)return;
   const logId=hid+'_'+date;
   const ex=habitLogs.find(l=>l.id===logId);
-  const cur=ex?ex.value:0;
+  const cur=Number(ex?.value)||0; // záznam štítu nemá value → jinak NaN
   const newVal=Math.max(0,cur+delta);
   if(delta>0 && newVal>=goal && cur<goal) { xpPop(hid, XP.habit); installUnlock('habits'); }
   if(newVal===0){
