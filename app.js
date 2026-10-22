@@ -3267,9 +3267,11 @@ function renderArchivedHabits() {
         <div style="font-size:12px;color:var(--text3)">${tH(lookupOr({morning:'hb.grp.morning',day:'hb.grp.day',evening:'hb.grp.evening'},h.group||'day','hb.grp.day'))} · ${esc(habitFreqLabel(h.freq))}</div>
       </div>
       <button data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)" title="${tH('hd.restore')}" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer">↩ ${tH('hd.restore')}</button>
-      <button data-a0="${esc(h.id)}" onclick="deleteHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
+      <button data-a0="${esc(h.id)}" onclick="deleteArchivedHabit(this.dataset.a0)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px">🗑️</button>
     </div>`).join('');
 }
+// Smazání z archivu je nevratné → potvrdit
+window.deleteArchivedHabit=id=>{ if(confirm(t('hd.delQ'))) window.deleteHabit(id); };
 
 
 // ── CALENDAR ─────────────────────────────────────────
