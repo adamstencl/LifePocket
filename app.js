@@ -2117,21 +2117,41 @@ async function putHabitLog(log,merge=false){
     if(typeof at==='string'&&/^\d\d:\d\d$/.test(at)) log={...log,at};
   }
   if(wasDone&&!log.done) atRemember(prevLog);
-  const ref=doc(db,'users',CU.uid,'habitLogs',log.id);
-  await (merge?setDoc(ref,log,{merge:true}):setDoc(ref,log));
+  // 4.81: nejdřív paměť (offline se hned překreslí), pak zápis; při chybě se paměť vrátí
+  const backup=prevLog?{...prevLog}:null;
   const ex=hLog(log.id);
   if(ex)Object.assign(ex,log); else habitLogs.push(log);
   shieldCacheReset();
-  onHabitLogChanged(log.habitId,log.date,wasDone,!!hLog(log.id)?.done);
+  const isDone=!!hLog(log.id)?.done;
+  onHabitLogChanged(log.habitId,log.date,wasDone,isDone);
+  const ref=doc(db,'users',CU.uid,'habitLogs',log.id);
+  const w=(merge?setDoc(ref,log,{merge:true}):setDoc(ref,log)).catch(e=>{
+    hlRevert(log.id,backup); onHabitLogChanged(log.habitId,log.date,isDone,wasDone); throw e;
+  });
+  if(_hlDefer){ w.catch(()=>{}); _hlDefer.push(w); return; }
+  await w;
 }
+// Vrácení záznamu v paměti po neúspěšném zápisu
+function hlRevert(id,backup){
+  habitLogs=habitLogs.filter(l=>l.id!==id);
+  if(backup) habitLogs.push(backup);
+  shieldCacheReset();
+}
+// Detail návyku: zápisy se jen nasbírají, čeká se na ně až po uvolnění (hdRun)
+let _hlDefer=null;
 // silent: hromadné mazání (smazání návyku), zrcadlo se ruší zvlášť
 async function delHabitLog(logId,silent=false){
   const prev=hLog(logId);
   atRemember(prev);
-  await deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId));
+  const backup=prev?{...prev}:null;
   habitLogs=habitLogs.filter(l=>l.id!==logId);
   shieldCacheReset();
   if(!silent&&prev) onHabitLogChanged(prev.habitId,prev.date,!!prev.done,false);
+  const w=deleteDoc(doc(db,'users',CU.uid,'habitLogs',logId)).catch(e=>{
+    hlRevert(logId,backup); if(!silent&&prev) onHabitLogChanged(prev.habitId,prev.date,false,!!prev.done); throw e;
+  });
+  if(_hlDefer){ w.catch(()=>{}); _hlDefer.push(w); return; }
+  await w;
 }
 
 // Splní se po prvním snapshotu návyků i záznamů (akce "Splněno" z notifikace na nich závisí)
@@ -2637,13 +2657,18 @@ let _hdBusy = false;
 async function hdRun(hid, fn) {
   if (_hdBusy || !CU) return;
   _hdBusy = true;
+  // 4.81: zápisy záznamů se nečekají uvnitř fn (offline by detail zamrzl); paměť je už změněná
+  const pend = _hlDefer = [];
+  const redraw = () => { const h = habits.find(x => x.id === hid); if (h && detailHabitId === hid) renderHabitDetail(h); };
   try { await fn(); }
   catch (e) { userErr(e, 'detail návyku'); }
   finally {
+    if (_hlDefer === pend) _hlDefer = null;
     _hdBusy = false;
-    const h = habits.find(x => x.id === hid);
-    if (h && detailHabitId === hid) renderHabitDetail(h);
+    redraw();
   }
+  try { await Promise.all(pend); }
+  catch (e) { toast(t('common.saveFailed', { err: userErr(e, 'habit') })); renderHabits(); redraw(); }
 }
 window.hdToggleToday = hid => hdRun(hid, async () => {
   const today = toDS();
