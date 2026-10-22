@@ -1160,6 +1160,8 @@ export default {
   'shop.rec.day': 'Den',
   'shop.rec.added': '✓ {name} přidáno do pravidelného nákupu',
   'shop.pantryQty': '🧊 {name}: {qty} {unit}',
+  'shop.pantryUndo': '↩️ Ze zásob vráceno zpět: {name}',
+  'pantry.gone': '⚠️ Zásoba už neexistuje (smazaná na jiném zařízení)',
   'shop.toPantry': 'přidán do zásoby ({qty} {unit})',
   'shop.listEmpty': 'Seznam je prázdný',
   'shop.allBought': 'Vše už nakoupeno! 🎉',

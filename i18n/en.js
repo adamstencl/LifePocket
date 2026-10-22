@@ -1146,6 +1146,8 @@ export default {
   'shop.rec.day': 'Day',
   'shop.rec.added': '✓ {name} added to regular shopping',
   'shop.pantryQty': '🧊 {name}: {qty} {unit}',
+  'shop.pantryUndo': '↩️ Taken back out of the pantry: {name}',
+  'pantry.gone': '⚠️ This pantry item no longer exists (deleted on another device)',
   'shop.toPantry': 'added to the pantry ({qty} {unit})',
   'shop.listEmpty': 'The list is empty',
   'shop.allBought': 'Everything’s bought! 🎉',
