@@ -67,8 +67,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.83';
+const APP_VERSION = '4.84';
 const CHANGELOG = [
+  { v:'4.84', items:[
+    '✨ Nová verze appky se ti nabídne sama, stačí ťuknout na „Načíst novou verzi“',
+    '↩️ Tlačítko Zpět na telefonu funguje i v přihlášení, prvním nastavení a prohlídce appky',
+    '🔧 Spolehlivější smazání účtu v appce z plochy, zapínání modulů a přezdívka hned i bez signálu, noční klid i bez skupiny',
+    '📲 Instalace appky z Nastavení → Upozornění, jasnější návody k notifikacím a upozornění, když ti docházejí dotazy na AI'
+  ], en:[
+    '✨ A new app version is offered automatically, just tap “Load new version”',
+    '↩️ The phone’s Back button now works in sign-in, first setup and the app tour',
+    '🔧 More reliable account deletion in the home-screen app, modules and nickname update instantly even offline, quiet hours without a group',
+    '📲 Install the app from Settings → Notifications, clearer notification help and a heads-up when your AI questions are running low'
+  ]},
   { v:'4.83', items:[
     '🛒 Spolehlivější sdílené nákupy, zásoby a checklist ve skupině: souběžné úpravy z více telefonů se už nepřepisují',
     '📶 Hromadné akce (recept do nákupu, smazání koupeného, docházející zásoby) fungují i bez signálu pro všechny položky',
@@ -1234,7 +1245,7 @@ function logClientError(msg, src, stack) {
 }
 // Česká věta pro uživatele podle kódu/obsahu chyby; technický detail jen do konzole a zapisovače chyb
 // e může být Error, chyba Firebase (e.code) nebo událost SpeechRecognition (e.error)
-const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie', 'nahlášení AI'];
+const AI_ERR_CTX = ['chat', 'report', 'recept', 'kalorie'];
 function userErr(e, ctx = '') {
   const full = String(e?.code || '');
   const code = full.replace(/^[a-z-]+\//, '');
