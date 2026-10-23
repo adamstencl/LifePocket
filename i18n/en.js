@@ -1759,7 +1759,7 @@ export default {
   'notif.f.refresh': 'Refreshing the token failed',
   'notif.f.register': 'Push registration failed',
   'notif.saved': '✅ Notification settings saved',
-  'notif.test.sending': '📡 Sending a test via the server...',
+  'notif.test.sending': '📡 Sending a test via the server…',
   'notif.test.sentN': { one: '✅ Test notification sent to {n} device! Close the app and check it.', other: '✅ Test notification sent to {n} devices! Close the app and check it.' },
   'notif.test.sent': '✅ Test notification sent! Close the app and check it.',
   'notif.test.noToken': '⚠️ Notifications aren’t enabled on this device yet — tap “Refresh token”',

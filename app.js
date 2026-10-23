@@ -3280,7 +3280,8 @@ window.directInput=async(hid,date,curVal,goal)=>{
 
   document.getElementById('di-ok').onclick = save;
   document.getElementById('di-clear')?.addEventListener('click', clear);
-  inp.addEventListener('keydown', e => { if(e.key==='Enter') save(); if(e.key==='Escape') modal.remove(); });
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') save(); });
+  modal.addEventListener('keydown', e => { if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); modal.remove(); } }); // Esc odkudkoli v okně
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
@@ -6652,8 +6653,8 @@ function wtHabitUnlink(oldId,newId){
 // ── Nabídka propojit návyk s pitným režimem (4.85) ──
 // Pitný režim zapnutý, žádný propojený návyk a ano/ne návyk s „vod/pít/water/drink“ v názvu → jednorázová lišta.
 // Každý návyk jen jednou (lp_wtlink_<id> v zařízení), nikdy přes průvodce ani otevřené okno (whenUiFree).
-const WT_LINK_RE=/(^|[^a-z])(vod(a|y|u|ou|e)?|pit(i|ny)?|napit( se)?|water|drink(ing)?)([^a-z]|$)/;
-const WT_LINK_NO=/(^|[^a-z])(mene|less|nepit)([^a-z]|$)/; // „Pít méně kávy“, „Drink less soda“, „Nepít alkohol“
+const WT_LINK_RE=/(^|[^a-z])(vod(a|u|y|e|ou|ick[a-z]*)|pit(i|ny|neho|nym?)?|vypit|napit|pij|water|drink|hydrat[a-z]*)(?![a-z])/;
+const WT_LINK_NO=/(^|[^a-z])(mene|less)(?![a-z])/; // „Pít méně kávy“, „Drink less soda“
 const wtLinkName=n=>{ const s=String(n||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); return WT_LINK_RE.test(s)&&!WT_LINK_NO.test(s); };
 const wtLinkSeen=hid=>{ try{ return !!localStorage.getItem('lp_wtlink_'+hid); }catch(e){ return true; } }; // bez úložiště raději nenabízet
 const wtLinkMark=hid=>{ try{ localStorage.setItem('lp_wtlink_'+hid,'1'); }catch(e){} };
@@ -6665,7 +6666,7 @@ function wtLinkOffer(h,tries=0){
   whenUiFree(()=>{
     _wtLinkQ=false;
     if(!waterCfg()||wtHabit()||!wtLinkFits(h)) return;
-    if(document.querySelector('.cta-ask')){ if(tries<20) setTimeout(()=>wtLinkOffer(h,tries+1),3000); return; } // nejdřív doběhne nabídka sdílení
+    if(naCovered()){ if(tries<20) setTimeout(()=>wtLinkOffer(h,tries+1),3000); return; } // nejdřív instalační banner a nabídka sdílení
     wtLinkMark(h.id);
     const el=document.createElement('div');
     el.id='wt-link-ask'; el.className='cta-ask wtl-ask'; el.setAttribute('role','status');
@@ -6673,7 +6674,13 @@ function wtLinkOffer(h,tries=0){
       <button type="button" class="cta-ask-b" data-a0="${esc(h.id)}" onclick="wtLinkYes(this.dataset.a0)">${tH('wt.linkYes')}</button>
       <button type="button" class="wtl-no" onclick="wtLinkClose()">${tH('wt.linkNo')}</button>`;
     document.body.appendChild(el);
-    clearTimeout(_wtLinkT); _wtLinkT=setTimeout(window.wtLinkClose,20000);
+    const run=()=>{ clearTimeout(_wtLinkT); _wtLinkT=setTimeout(window.wtLinkClose,20000); };
+    const pause=()=>{ clearTimeout(_wtLinkT); _wtLinkT=null; };
+    el.addEventListener('mouseenter',pause);
+    el.addEventListener('focusin',pause);
+    el.addEventListener('mouseleave',()=>{ if(!el.contains(document.activeElement)) run(); });
+    el.addEventListener('focusout',e=>{ if(!el.contains(e.relatedTarget)&&!el.matches(':hover')) run(); });
+    run();
   },120000,()=>{ _wtLinkQ=false; });
 }
 window.wtLinkClose=()=>{ clearTimeout(_wtLinkT); _wtLinkT=null; document.getElementById('wt-link-ask')?.remove(); };

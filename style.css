@@ -5,7 +5,7 @@
   --bg:#0c0c10;--card:#16161c;--card2:#1e1e26;--card3:#262630;
   --border:#252532;--border2:#32323f;
   --accent:#f5c842;--accent2:#e0954a;
-  --text:#f0f0f5;--text1:#f0f0f5;--text2:#9090a8;--text3:#74748e;
+  --text:#f0f0f5;--text1:#f0f0f5;--text2:#9090a8;--text3:#84849c;
   --green:#3dd68c;--red:#ff6b6b;--blue:#5b9cf6;
   --shadow:0 4px 24px rgba(0,0,0,.4);
   --shadow-lg:0 12px 40px rgba(0,0,0,.5);
@@ -18,7 +18,7 @@
   --bg:#0c0c10;--card:#16161c;--card2:#1e1e26;--card3:#262630;
   --border:#252532;--border2:#32323f;
   --accent:#f5c842;--accent2:#e0954a;
-  --text:#f0f0f5;--text1:#f0f0f5;--text2:#9090a8;--text3:#74748e;
+  --text:#f0f0f5;--text1:#f0f0f5;--text2:#9090a8;--text3:#84849c;
   --green:#3dd68c;--red:#ff6b6b;--blue:#5b9cf6;
   --shadow:0 4px 24px rgba(0,0,0,.4);
   --shadow-lg:0 12px 40px rgba(0,0,0,.5);
@@ -29,7 +29,7 @@
   --bg:#faf8f0;--card:#ffffff;--card2:#f5f2e8;--card3:#ede8d8;
   --border:#e0d8c0;--border2:#ccc4a8;
   --accent:#d4870a;--accent2:#c0582a;
-  --text:#1c1808;--text1:#1c1808;--text2:#6a5f40;--text3:#9a9070;
+  --text:#1c1808;--text1:#1c1808;--text2:#6a5f40;--text3:#766c50;
   --green:#2e7d32;--red:#c62828;--blue:#1565c0;
   --shadow:0 4px 24px rgba(0,0,0,.08);
   --shadow-lg:0 12px 40px rgba(0,0,0,.12);
@@ -40,7 +40,7 @@
   --bg:#fff1e6;--card:#ffffff;--card2:#fde9d7;--card3:#f8dcc2;
   --border:#f0d3b6;--border2:#e0b78f;
   --accent:#c94800;--accent2:#b03a0a;
-  --text:#2b1607;--text1:#2b1607;--text2:#7a4d26;--text3:#a87d55;
+  --text:#2b1607;--text1:#2b1607;--text2:#7a4d26;--text3:#86603c;
   --green:#2e7d32;--red:#c62828;--blue:#1565c0;
   --shadow:0 4px 24px rgba(120,50,0,.10);
   --shadow-lg:0 12px 40px rgba(120,50,0,.14);
@@ -86,6 +86,9 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 /* Text na plné barvě akcentu (tangerine potřebuje bílou kvůli kontrastu) */
 :root,[data-theme="dark-gold"],[data-theme="sunshine"]{--on-accent:#1a1a1a}
 [data-theme="tangerine"]{--on-accent:#ffffff}
+/* text v barvě akcentu na světlé ploše (4.85): sunshine potřebuje tmavší odstín kvůli kontrastu */
+:root,[data-theme="dark-gold"],[data-theme="tangerine"]{--accent-text:var(--accent)}
+[data-theme="sunshine"]{--accent-text:#9c6200}
 /* text na zelené ploše (4.85): tmavý na světle zelené, bílý na tmavé zelené světlých motivů */
 :root,[data-theme="dark-gold"]{--on-green:#0c0c10}
 [data-theme="sunshine"],[data-theme="tangerine"]{--on-green:#fff}
@@ -827,16 +830,12 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
   .cnt-val{font-size:14px;min-width:24px}
 
   /* ── HABIT TABULKA — kompaktnější ── */
-  .habit-table th{font-size:10px;padding:1px 0}
-  .htd-dot{width:18px;height:18px;font-size:9px;border-radius:4px}
-  .htd-val{font-size:10px}
 
   /* ── HABIT DETAIL — month grid fix ── */
   .hd-month-grid{width:100%}
   .hd-day-cell{aspect-ratio:unset;height:38px;min-width:0}
 
   /* ── HABIT DETAIL — chart labels ── */
-  .hd-streak-lbl{font-size:10px;overflow:hidden;white-space:nowrap;max-width:100%;text-overflow:clip}
   .hd-stat-num{font-size:22px}
   .hd-stat-lbl{font-size:10px}
 
@@ -2371,15 +2370,15 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 @media(max-width:640px){.toast,.av-reaction{bottom:calc(var(--bn-h) + 12px)}}
 
 /* Zadat hodnotu u počítaného návyku (4.85): barvy z motivu */
-.di-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;padding-top:max(20px,env(safe-area-inset-top));overflow-y:auto}
+.di-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:calc(20px + var(--keyboard-offset,0px));overflow-y:auto}
 [data-theme="sunshine"] .di-ov,[data-theme="tangerine"] .di-ov{background:rgba(0,0,0,.4)}
 .di-card{max-width:320px;text-align:center;border-color:var(--accent)}
-.di-title{color:var(--accent);margin-bottom:6px}
+.di-title{color:var(--accent-text);margin-bottom:6px}
 .di-goal{font-size:14px;color:var(--text2);margin-bottom:16px}
 .di-inp{border:2px solid var(--accent);font-family:'Playfair Display',serif;font-size:28px!important;text-align:center;padding:12px}
 .di-card .macts{margin-top:16px;margin-bottom:8px}
-.di-card .macts .btn-s,.di-card .macts .btn-p{flex:1}
-.di-clear{width:100%;min-height:40px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px}
+.di-card .macts .btn-s,.di-card .macts .btn-p{flex:1;min-height:44px}
+.di-clear{width:100%;min-height:44px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;padding:4px}
 
 /* 4.85: otevřená klávesnice (iOS) – okno jde odscrollovat nad ni (--keyboard-offset nastavuje app.js) */
 .moverlay{padding-bottom:calc(16px + var(--keyboard-offset,0px))}
@@ -2390,3 +2389,11 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .wtl-ask .cta-ask-t{flex:1 1 180px}
 .wtl-no{flex:none;min-height:40px;padding:6px 12px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
 .wtl-no:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Tabulka návyků na mobilu (4.85): až za základními pravidly, jinak by je přebila */
+@media(max-width:640px){
+  .habit-table th{font-size:10px;padding:1px 0}
+  .htd-dot{width:18px;height:18px;font-size:10px;border-radius:4px}
+  .htd-val{font-size:10px}
+  .hd-streak-lbl{overflow:hidden;white-space:nowrap;max-width:100%;text-overflow:clip}
+}

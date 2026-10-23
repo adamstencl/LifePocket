@@ -2043,7 +2043,7 @@ export default {
   'wt.habitEmpty': 'Zatím nemáš návyk typu ano/ne, se kterým by šel propojit.',
   'wt.habitTag': 'Plní se z pitného režimu',
   'wt.saved': '💧 Uloženo',
-  'wt.linkAsk': 'Chceš návyk „{name}“ plnit automaticky z Pitného režimu?',
+  'wt.linkAsk': 'Chceš návyk „{name}“ plnit automaticky z pitného režimu?',
   'wt.linkYes': 'Propojit',
   'wt.linkNo': 'Ne, díky',
   'wt.linkDone': '💧 Návyk „{name}“ se teď plní z pitného režimu',
