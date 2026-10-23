@@ -5095,10 +5095,11 @@ async function loadChatHistory() {
       if(c && chatH.length > 0){
         document.getElementById('cwelcome')?.remove();
         chatH.forEach(m => {
-          if(m.role==='user') appendMsg('user', m.content);
+          const ts = Number.isFinite(m.ts) ? m.ts : null; // starší zprávy bez času: čas se nezobrazí
+          if(m.role==='user') appendMsg('user', m.content, '', '', ts);
           else if(m.role==='assistant'){
             const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
-            appendMsg('bot', m.content, av.name, av.emoji);
+            appendMsg('bot', m.content, av.name, av.emoji, ts);
           }
         });
         scrollChat();
@@ -5112,7 +5113,7 @@ async function loadChatHistory() {
 let _chatDirty = false; // v chatH je něco, co ještě není ve Firestore
 async function saveChatMessage(role, content, persist = true) {
   if(!CU) return;
-  chatH.push({role, content});
+  chatH.push({role, content, ts: Date.now()}); // ts: čas zprávy pro zobrazení v historii
   if(!persist) _chatDirty = true;
 
   // Každých 20 zpráv vygeneruj nový summary
@@ -17974,7 +17975,7 @@ async function chatSend(){
   const memorySec = chatMemorySummary ? tA('aip.chat.memory',{s:ctxStrip(chatMemorySummary,6000)}) : '';
   const sys=tA('aip.chat.sys',{name:av.name,nick:prof.prezdivka||prof.nickname,memory:memorySec,ctx:chatCtx||tA('aip.chat.noCtx')});
   try{
-    let rep=await chatAwaitAI(callClaude([{role:'system',content:sys},...chatH.slice(-10)],600),uid);
+    let rep=await chatAwaitAI(callClaude([{role:'system',content:sys},...chatH.slice(-10).map(m=>({role:m.role,content:m.content}))],600),uid);
     if(CU?.uid!==uid){document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     const foodMatch=rep.match(/\[FOOD:([^\]]*)\]/);
@@ -20641,9 +20642,16 @@ function makeBotBubble(htmlContent, labelEmoji='', labelName=''){
   return {row,bubble};
 }
 
-function appendMsg(role,text,nm='',em=''){
+// ts: čas zprávy (ms); undefined = teď, null = neznámý (starší historie) → bez času
+function chatMsgTime(ts){
+  if(ts===undefined) return fmtTime(new Date());
+  if(!Number.isFinite(ts)) return '';
+  const d=new Date(ts);
+  return toDS(d)===toDS()?fmtTime(d):fmtDate(d,'dm')+' '+fmtTime(d);
+}
+function appendMsg(role,text,nm='',em='',ts){
   const c=document.getElementById('chatmsgs');
-  const now=fmtTime(new Date());
+  const now=esc(chatMsgTime(ts));
   if(role==='sys'){
     const d=document.createElement('div');
     d.className='msg sys';
