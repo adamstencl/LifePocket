@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.86';
+const APP_VERSION = '4.87';
 const CHANGELOG = [
+  { v:'4.87', items:[
+    '🤖 Rex vidí celé zápisky v deníku, na které se ptáš, a celý měsíc v kalendáři; správný čas u starších zpráv'
+  ], en:[
+    '🤖 Rex sees the full journal entries you ask about and the whole month in the calendar; correct time on older messages'
+  ]},
   { v:'4.86', items:[
     '🏠 Domů si teď upravíš: pořadí karet i co chceš vidět, ✏️ Upravit Domů'
   ], en:[
