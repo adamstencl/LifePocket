@@ -56,3 +56,7 @@
 - `--text3` na card2/card3 4,1–4,65:1.
 - `.hlogo` aria-label „Domů“ vs. viditelný text; `.habit-check` aria-pressed nerozliší „nesplněno“.
 - Plochy ⏭ / − + do stran jen +2 px (ne 44 px na šířku).
+
+## Z 4.86
+- Skryté karty (návyky, série, deník, nálada) se v rDash pořád počítají – přidat `!dHid.has(id)`.
+- Zavření modalu přes ✕/Hotovo nevrací záznam historie ani fokus na ✏️ (jako ostatní modaly); `.macts` tlačítka 39–40 px.

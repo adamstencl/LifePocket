@@ -16382,7 +16382,7 @@ function dashEditRender(){
       <span class="dl-nm"><span aria-hidden="true">${em}</span> ${esc(nm)}${off?`<span class="dl-sub">${tH('dash.edit.hidden')}</span>`:''}</span>
       <button type="button" class="dl-btn" data-a0="${id}" data-dir="-1" ${i?'':'disabled'} aria-label="${tH('dash.edit.up',{name:nm})}" onclick="dashMove(this.dataset.a0,-1)">▲</button>
       <button type="button" class="dl-btn" data-a0="${id}" data-dir="1" ${i<last?'':'disabled'} aria-label="${tH('dash.edit.down',{name:nm})}" onclick="dashMove(this.dataset.a0,1)">▼</button>
-      <button type="button" class="dl-btn" data-a0="${id}" data-tg="1" aria-pressed="${off}" aria-label="${tH(off?'dash.edit.show':'dash.edit.hide',{name:nm})}" onclick="dashToggle(this.dataset.a0)">${off?'🙈':'👁'}</button>
+      <button type="button" class="dl-btn" data-a0="${id}" data-tg="1" aria-label="${tH(off?'dash.edit.show':'dash.edit.hide',{name:nm})}" onclick="dashToggle(this.dataset.a0)">${off?'🙈':'👁'}</button>
     </div>`;
   }).join('');
   enableDragReorder(el,'.dl-row',dashDrop); // příznak na elementu brání zdvojení
@@ -16783,7 +16783,7 @@ function rDash(){
     }
   }
   // Karty v uloženém (nebo výchozím) pořadí; všechny schované → nápověda, jak je vrátit
-  const dOrd=dashOrder(Object.keys(mw));
+  const dOrd=dashOrder(Object.keys(mw).filter(id=>mw[id])); // prázdné karty (vypnutý modul) nepočítat
   html+=dOrd.map(id=>mw[id]).join('');
   if(!dOrd.length&&dEd.length&&dEd.every(id=>dHid.has(id))) html+=`<div class="dw" style="cursor:default"><div class="dw-empty">${tH('dash.edit.allHidden')}</div></div>`;
   } // konec mimo jednoduchý režim
