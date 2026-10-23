@@ -3715,7 +3715,10 @@ function dragScrollParent(el){
 const SA_FOCUSABLE = 'button,[tabindex],input,textarea,select,a[href]';
 let _saTap = null; // poslední stisk {el, t}
 document.addEventListener('pointerdown', e => { _saTap = { el: e.target, t: Date.now() }; }, true);
-function saItemId(el, attr) { return el ? el.getAttribute(attr) : null; }
+// Stav položky, při jehož změně se položka nejspíš přesunula (splněné na konec) → jako kotva se nehodí
+function saState(el) { return (el.classList.contains('done') ? 'd' : '') + (el.classList.contains('failed') ? 'f' : ''); }
+// Prvek pro návrat fokusu: stejná značka, první třída a data-a0 (pořadí jen mezi shodnými)
+function saFocusKey(el) { return el.tagName + '|' + (el.classList[0] || '') + '|' + (el.dataset.a0 || ''); }
 function scrollAnchorSave(list, sel, attr, opts = {}) {
   try {
     if (!list || !list.isConnected || !list.offsetParent) return null; // skrytá stránka: nic neměřit
@@ -3730,30 +3733,44 @@ function scrollAnchorSave(list, sel, attr, opts = {}) {
     const vh = window.innerHeight || document.documentElement.clientHeight;
     const vis = items.filter(c => { const r = c.getBoundingClientRect(); return r.bottom > 0 && r.top < vh; });
     const cands = [];
-    const add = c => { if (c && c.getAttribute(attr) && !cands.some(x => x.el === c)) cands.push({ el: c, id: c.getAttribute(attr), top: c.getBoundingClientRect().top }); };
+    const idOf = c => (c ? c.getAttribute(attr) : null);
+    // Ke každé kotvě i sousedé a stav: kotva, která se mezitím přesunula (jiné zařízení), se přeskočí
+    const add = (c, keep) => {
+      if (!c || !idOf(c) || cands.some(x => x.el === c)) return;
+      const i = items.indexOf(c);
+      cands.push({ el: c, id: idOf(c), top: c.getBoundingClientRect().top, prev: idOf(items[i - 1]), next: idOf(items[i + 1]), st: saState(c), keep: !!keep });
+    };
     // Když položka zmizí (filtr) nebo se přesune, drží se místo položka nad ní: obsah nad klepnutím se nehne
     const ti = tapped ? items.indexOf(tapped) : -1;
-    if (tapped && !opts.moves) add(tapped);
+    if (tapped && !opts.moves) add(tapped, true); // klepnutá karta se mění záměrně, nepřeskakuje se
     if (ti > 0) add(items[ti - 1]);
     vis.forEach(c => { if (c !== tapped) add(c); });
     if (ti >= 0) add(items[ti + 1]);
     if (!cands.length) return null;
-    let fi = -1, fid = null;
+    let fi = -1, fid = null, fk = null;
     if (ae && ae !== document.body && list.contains(ae)) {
       const card = ae.closest(sel);
-      if (card) { fid = card.getAttribute(attr); fi = [...card.querySelectorAll(SA_FOCUSABLE)].indexOf(ae); }
+      if (card) { fid = card.getAttribute(attr); fk = saFocusKey(ae); fi = [...card.querySelectorAll(SA_FOCUSABLE)].filter(f => saFocusKey(f) === fk).indexOf(ae); }
     }
     if (fresh) list._saLast = { id: tapped.getAttribute(attr), t: Date.now() };
-    return { list, sel, attr, cands: cands.map(({ id, top }) => ({ id, top })), fi, fid, sc: dragScrollParent(list) };
+    return { list, sel, attr, cands: cands.map(({ el, ...c }) => c), fi, fid, fk, sc: dragScrollParent(list) };
   } catch (e) { return null; }
 }
 function scrollAnchorRestore(a) {
   if (!a) return;
-  const find = id => [...a.list.querySelectorAll(a.sel)].find(c => c.getAttribute(a.attr) === id);
+  const all = () => [...a.list.querySelectorAll(a.sel)].filter(c => c.getAttribute(a.attr));
+  const find = id => all().find(c => c.getAttribute(a.attr) === id);
   const fix = () => {
+    const items = all();
     for (const c of a.cands) {
-      const el = find(c.id);
-      if (!el) continue;
+      const i = items.findIndex(x => x.getAttribute(a.attr) === c.id);
+      if (i < 0) continue;
+      const el = items[i];
+      if (!c.keep) {
+        if (saState(el) !== c.st) continue; // změnil stav → mohl se přesunout
+        const p = items[i - 1]?.getAttribute(a.attr) || null, n = items[i + 1]?.getAttribute(a.attr) || null;
+        if (p !== c.prev && n !== c.next) continue; // jiní oba sousedé → přesunutá položka
+      }
       const d = el.getBoundingClientRect().top - c.top;
       if (Math.abs(d) >= 1) a.sc.scrollTop += d;
       return;
@@ -3763,10 +3780,13 @@ function scrollAnchorRestore(a) {
     fix();
     // Fokus zpět (klávesnice, čtečka) bez posunu stránky
     if (a.fid != null && a.fi >= 0) {
-      const f = find(a.fid)?.querySelectorAll(SA_FOCUSABLE)[a.fi];
+      const card = find(a.fid);
+      const f = card && [...card.querySelectorAll(SA_FOCUSABLE)].filter(x => saFocusKey(x) === a.fk)[a.fi];
       if (f && document.activeElement !== f) f.focus({ preventScroll: true });
     }
-    requestAnimationFrame(() => { try { fix(); } catch (e) {} }); // případné dorovnání po vykreslení
+    // Dorovnání po vykreslení, jen když mezitím nescrolloval uživatel
+    const y = a.sc.scrollTop;
+    requestAnimationFrame(() => { try { if (a.sc.scrollTop === y) fix(); } catch (e) {} });
   } catch (e) {}
 }
 
@@ -15738,6 +15758,10 @@ function renderChecklist() {
   const sortedItems = [...list.items.filter(i => !i.done), ...list.items.filter(i => i.done)];
 
   const anchor = scrollAnchorSave(el, '.cl-item', 'data-cid', {moves: true}); // 4.88: splněné jdou na konec
+  // Rozepsané pole (nová položka, úprava položky) přežije překreslení: text, kurzor i fokus
+  const ae = document.activeElement;
+  const typing = ae && el.contains(ae) && ae.id && (ae.id === 'cl-new-inp' || ae.tagName === 'TEXTAREA')
+    ? { id: ae.id, v: ae.value, s: ae.selectionStart, e: ae.selectionEnd } : null;
   el.innerHTML = `
     <div class="cl-tabs">
       ${checklists.map(c => { const sg = clSharedGid(c); return `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)"${sg ? ` aria-label="${tH('cl.tabAria', {name: c.name || '', grp: grpName(sg)})}"` : ''}>${sg ? `<span aria-hidden="true">${esc(grpEmoji(sg))}</span> ` : ''}${esc(c.name)}</button>`; }).join('')}
@@ -15792,6 +15816,11 @@ function renderChecklist() {
   `;
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
   scrollAnchorRestore(anchor);
+  const f = typing && document.getElementById(typing.id);
+  if (f && el.contains(f)) {
+    f.value = typing.v;
+    try { f.focus({ preventScroll: true }); f.setSelectionRange(typing.s, typing.e); } catch (e) {}
+  }
 }
 
 // Seznam skupiny smí smazat jen autor (createdBy, u starších vlastník owner); bez obojího kterýkoli člen
