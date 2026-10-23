@@ -60,3 +60,9 @@
 ## Z 4.86
 - Skryté karty (návyky, série, deník, nálada) se v rDash pořád počítají – přidat `!dHid.has(id)`.
 - Zavření modalu přes ✕/Hotovo nevrací záznam historie ani fokus na ✏️ (jako ostatní modaly); `.macts` tlačítka 39–40 px.
+
+## Z 4.87
+- `buildChatContext`: prázdné `catch(e){}` u kalendáře – přidat `console.warn('[LP] ctx cal', e?.name)`.
+- `chatSend`: nouzové zkracování `chatCtx` řeže uprostřed bloku (dnes se nespustí) – řezat po řádcích.
+- `ctxStem`: 5písmenná slova → 4 znaky přidávají falešné shody („domov“ → „domo“).
+- `CTX_STOP`: duplicitní slova.
