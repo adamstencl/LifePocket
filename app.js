@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.85';
+const APP_VERSION = '4.86';
 const CHANGELOG = [
+  { v:'4.86', items:[
+    '🏠 Domů si teď upravíš: pořadí karet i co chceš vidět, ✏️ Upravit Domů'
+  ], en:[
+    '🏠 You can now customise Home: card order and what you want to see, ✏️ Edit Home'
+  ]},
   { v:'4.85', items:[
     '🎨 Čitelnější barvy ve všech vzhledech a hlavička, která na iPhonu nezajede pod výřez',
     '👆 Větší tlačítka a zaškrtávátka, pohodlnější ovládání palcem i klávesnicí',
