@@ -2379,8 +2379,13 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .pantry-item-del{min-width:44px;min-height:44px}
 .habit-check:focus-visible,.shop-check:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* 4.85: dlouhé názvy bez mezer nerozbijí řádek */
-.habit-name,.pantry-item-name,.dash-event-name,.cl-item-text,.shop-item-name{overflow-wrap:anywhere}
+/* 4.85/4.88: dlouhé slovo bez mezer (URL) se zalomí, běžná slova ne (anywhere zužovalo sloupec a lámalo slova) */
+.habit-name,.pantry-item-name,.dash-event-name,.cl-item-text,.shop-item-name{overflow-wrap:break-word;word-break:normal}
+.dash-event-info{min-width:0}
+/* 4.88: název návyku aspoň ~7em, ovládání (počítadlo), které se nevejde, spadne na další řádek vpravo */
+.habit-card-top.cnt{flex-wrap:wrap}
+.habit-card-top.cnt .habit-info{flex:1 1 7em}
+.habit-card-top.cnt .habit-ctl{margin-left:auto}
 
 /* 4.85: toast a reakce parťáka nad spodní lištou (i s výřezem iPhonu) */
 @media(max-width:640px){.toast,.av-reaction{bottom:calc(var(--bn-h) + 12px)}}

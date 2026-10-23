@@ -2585,13 +2585,13 @@ function buildHabitCard(h){
   const canUp=hIdx>0, canDown=hIdx<groupHabits.length-1;
 
   return `<div class="habit-card${cardDone?' done':''}" data-drag-id="${esc(h.id)}">
-    <div class="habit-card-top">
+    <div class="habit-card-top${h.type==='count'&&!isPaused?' cnt':''}">
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
         <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.upName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
         <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.downName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
       </div>
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
-      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer;flex:1;min-width:0" title="${tH('hb.historyTitle')}">
+      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">
         <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
         ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
@@ -2601,9 +2601,9 @@ function buildHabitCard(h){
       </div>
       ${badgeHtml}
       ${isPaused
-        ? `<span style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
+        ? `<span class="habit-ctl" style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
         : h.type==='count'
-          ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          ? `<div class="habit-ctl" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
               <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
                 <div class="cnt-val cnt-clickable">${val}</div>
@@ -2611,7 +2611,7 @@ function buildHabitCard(h){
               </div>
               <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
             </div>`
-          : `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          : `<div class="habit-ctl" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
               ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</button>`:''}
             </div>`
@@ -2644,12 +2644,12 @@ function renderHabits(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
   if(habitViewMonth){ renderHabitMonth(); return; } // měsíční pohled: snapshot ho nesmí přepsat denním
-  const scrollEl=document.getElementById('abody');
-  const savedScroll=scrollEl?scrollEl.scrollTop:0;
   const lbl=document.getElementById('habit-day-lbl');
   const list=document.getElementById('habits-list');
   const empty=document.getElementById('habits-empty');
   if(!lbl||!list||!empty)return;
+  // 4.88: stránku scrolluje dokument (ne #abody) → kotvit klepnutou kartu, ne scrollTop
+  const anchor=scrollAnchorSave(list,'.habit-card','data-drag-id');
   lbl.textContent=habitDayLabel();
 
   const activeHabits = habits.filter(h => !h.archived);
@@ -2660,13 +2660,13 @@ function renderHabits(){
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
     list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block';
-    requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+    scrollAnchorRestore(anchor);
     return;
   }
   if(!activeHabits.length){
     list.innerHTML=`<div style="color:var(--text3);font-size:14px;padding:20px;text-align:center">${tH('hb.allArchived')}</div>`;
     empty.style.display='none';
-    requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+    scrollAnchorRestore(anchor);
     return;
   }
   empty.style.display='none';
@@ -2724,7 +2724,7 @@ function renderHabits(){
   list.innerHTML='<div data-cta-tip="h">'+ctaListTipHTML('h')+'</div>'+html;
   // Při filtru bez přetahování (pořadí podmnožiny by přepsalo pořadí celé skupiny)
   if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
-  requestAnimationFrame(()=>{ if(scrollEl) scrollEl.scrollTop=savedScroll; });
+  scrollAnchorRestore(anchor);
   wtLinkScan(); // nabídka propojení s pitným režimem (4.85)
 }
 
@@ -3702,6 +3702,66 @@ function dragScrollParent(el){
     if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
   }
   return document.scrollingElement || document.documentElement;
+}
+
+// Kotva scrollu při překreslení seznamu přes innerHTML (4.88): klepnutá (nebo první viditelná) položka
+// zůstane na stejném místě obrazovky a fokus se vrátí na stejný prvek. Bez scrollIntoView.
+// moves: klepnutá položka se po změně přesune (splněné na konec) → kotví se sousední položka.
+const SA_FOCUSABLE = 'button,[tabindex],input,textarea,select,a[href]';
+let _saTap = null; // poslední stisk {el, t}
+document.addEventListener('pointerdown', e => { _saTap = { el: e.target, t: Date.now() }; }, true);
+function saItemId(el, attr) { return el ? el.getAttribute(attr) : null; }
+function scrollAnchorSave(list, sel, attr, opts = {}) {
+  try {
+    if (!list || !list.isConnected || !list.offsetParent) return null; // skrytá stránka: nic neměřit
+    const items = [...list.querySelectorAll(sel)].filter(c => c.getAttribute(attr));
+    if (!items.length) return null;
+    const ae = document.activeElement;
+    let tapped = ae && ae !== document.body && list.contains(ae) ? ae.closest(sel) : null;
+    if (!tapped && _saTap && Date.now() - _saTap.t < 4000 && list.contains(_saTap.el)) tapped = _saTap.el.closest(sel);
+    // Druhé překreslení (snapshot) po prvním: původní prvek už je pryč, platí naposledy kotvená položka
+    if (!tapped && list._saLast && Date.now() - list._saLast.t < 4000) tapped = items.find(c => c.getAttribute(attr) === list._saLast.id) || null;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const vis = items.filter(c => { const r = c.getBoundingClientRect(); return r.bottom > 0 && r.top < vh; });
+    const cands = [];
+    const add = c => { if (c && c.getAttribute(attr) && !cands.some(x => x.el === c)) cands.push({ el: c, id: c.getAttribute(attr), top: c.getBoundingClientRect().top }); };
+    // Když položka zmizí (filtr) nebo se přesune, drží se místo položka nad ní: obsah nad klepnutím se nehne
+    const ti = tapped ? items.indexOf(tapped) : -1;
+    if (tapped && !opts.moves) add(tapped);
+    if (ti > 0) add(items[ti - 1]);
+    vis.forEach(c => { if (c !== tapped) add(c); });
+    if (ti >= 0) add(items[ti + 1]);
+    if (!cands.length) return null;
+    let fi = -1, fid = null;
+    if (ae && ae !== document.body && list.contains(ae)) {
+      const card = ae.closest(sel);
+      if (card) { fid = card.getAttribute(attr); fi = [...card.querySelectorAll(SA_FOCUSABLE)].indexOf(ae); }
+    }
+    if (tapped) list._saLast = { id: tapped.getAttribute(attr), t: list._saLast?.id === tapped.getAttribute(attr) ? list._saLast.t : Date.now() };
+    return { list, sel, attr, cands: cands.map(({ id, top }) => ({ id, top })), fi, fid, sc: dragScrollParent(list) };
+  } catch (e) { return null; }
+}
+function scrollAnchorRestore(a) {
+  if (!a) return;
+  const find = id => [...a.list.querySelectorAll(a.sel)].find(c => c.getAttribute(a.attr) === id);
+  const fix = () => {
+    for (const c of a.cands) {
+      const el = find(c.id);
+      if (!el) continue;
+      const d = el.getBoundingClientRect().top - c.top;
+      if (Math.abs(d) >= 1) a.sc.scrollTop += d;
+      return;
+    }
+  };
+  try {
+    fix();
+    // Fokus zpět (klávesnice, čtečka) bez posunu stránky
+    if (a.fid != null && a.fi >= 0) {
+      const f = find(a.fid)?.querySelectorAll(SA_FOCUSABLE)[a.fi];
+      if (f && document.activeElement !== f) f.focus({ preventScroll: true });
+    }
+    requestAnimationFrame(() => { try { fix(); } catch (e) {} }); // případné dorovnání po vykreslení
+  } catch (e) {}
 }
 
 function enableDragReorder(container, itemSelector, onDrop, opts = {}){
@@ -15671,6 +15731,7 @@ function renderChecklist() {
   // Splněné položky vždy na konec
   const sortedItems = [...list.items.filter(i => !i.done), ...list.items.filter(i => i.done)];
 
+  const anchor = scrollAnchorSave(el, '.cl-item', 'data-cid', {moves: true}); // 4.88: splněné jdou na konec
   el.innerHTML = `
     <div class="cl-tabs">
       ${checklists.map(c => { const sg = clSharedGid(c); return `<button class="cl-tab ${c.id === activeChecklist ? 'active' : ''}" data-a0="${esc(c.id)}" onclick="switchChecklist(this.dataset.a0)"${sg ? ` aria-label="${tH('cl.tabAria', {name: c.name || '', grp: grpName(sg)})}"` : ''}>${sg ? `<span aria-hidden="true">${esc(grpEmoji(sg))}</span> ` : ''}${esc(c.name)}</button>`; }).join('')}
@@ -15698,7 +15759,7 @@ function renderChecklist() {
       ${sortedItems.length ? sortedItems.map(item => {
         const isExpanded = expandedCheckItemId === item.id;
         return `
-        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}"${!item.done && !expandedCheckItemId ? ` data-drag-id="${esc(item.id)}"` : ''}>
+        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}" data-cid="${esc(item.id)}"${!item.done && !expandedCheckItemId ? ` data-drag-id="${esc(item.id)}"` : ''}>
           <button class="cl-check" data-a0="${esc(item.id)}" onclick="toggleCheckItem(this.dataset.a0)">
             ${item.done ? '✓' : ''}
           </button>
@@ -15724,6 +15785,7 @@ function renderChecklist() {
     </div>
   `;
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
+  scrollAnchorRestore(anchor);
 }
 
 // Seznam skupiny smí smazat jen autor (createdBy, u starších vlastník owner); bez obojího kterýkoli člen
@@ -18430,12 +18492,13 @@ function renderShop(){
     return (ai===-1?99:ai)-(bi===-1?99:bi);
   });
 
+  const anchor=scrollAnchorSave(list,'.shop-item','data-sid',{moves:true}); // 4.88: odškrtnutá jde na konec kategorie
   list.innerHTML=sortedCats.map((cat, catIdx)=>{
     const items=cats[cat].sort((a,b)=>a.done===b.done?0:a.done?1:-1);
     return `<div class="shop-category">
       <div class="shop-cat-label">${esc(catLabel(cat))}</div>
       ${items.map(i=>`
-        <div class="shop-item ${i.done?'done':''}">
+        <div class="shop-item ${i.done?'done':''}" data-sid="${esc(i.id)}">
           <div class="shop-check ${i.done?'done':''}" role="button" tabindex="0" aria-pressed="${!!i.done}" aria-label="${tH('shop.checkAria',{name:i.name})}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${esc(i.name)}</span>
           <button type="button" class="shop-item-qty${i.qty?'':' empty'}" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" aria-label="${i.qty?tH('shop.qtyAria',{name:i.name,qty:i.qty}):tH('shop.qtyAddAria',{name:i.name})}">${i.qty?esc(i.qty):tH('shop.qtyAdd')}</button>
@@ -18446,6 +18509,7 @@ function renderShop(){
         </div>`).join('')}
     </div>`;
   }).join('');
+  scrollAnchorRestore(anchor);
 }
 
 function guessShopCategory(name){
