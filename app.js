@@ -17635,7 +17635,6 @@ function ctxGrp(gid){return tA('aip.ctx.g.tag',{name:ctxT(groupDataOf(gid)?.grou
 // ── Dotaz uživatele → hledání v deníku a období (4.87) ──
 // Normalizace: malá písmena, bez diakritiky; slova jen [a-z0-9]
 const ctxNorm=s=>String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-const ctxTok=s=>ctxNorm(s).split(/[^a-z0-9]+/).filter(Boolean);
 // Měsíce v pádech (cs) a anglicky → index 0–11 („may“ jen po předložce, jinak je to sloveso)
 const CTX_MONTHS=(()=>{
   const m={},f=[['leden','ledna','lednu','lednem','january'],['unor','unora','unoru','unorem','february'],['brezen','brezna','breznu','breznem','march'],
@@ -17654,13 +17653,14 @@ const CTX_STOP=new Set(('jsem jsme jste jsou bych bychom bude budu budes budeme 
   +'minuly minule minulem minuleho minulou posledni poslednich poslednim posledne tenhle tomhle tento mezi pred potom kolem okolo '
   +'nich vubec hodne tedy takze jenze prave vlastne treba asi spis bylo byla byli byly jsi mel mela meli meles melas '
   +'about what when where with this that have from they your were been will would could should there their which tell show '
-  +'summarize summary please today yesterday week month last past some something anything know does did into over').split(' '));
+  +'summarize summary please today yesterday week month last past some something anything know does did into over '
+  +'delal delala delali delalo delat delam delas udelal udelala udelali udelat dela delaji jsem mela meli melo mit byl byla byli bylo').split(' '));
 // Slova, která míří na deník (začátky slov) a na kalendář
 const CTX_J_PFX=['denik','zapis','zapsa','psal','napsa','poznam','journal','diary','entr','wrote','note'];
 const CTX_C_PFX=['ceka','kalendar','udalost','naplan','akce','calendar','event','schedul','upcoming','plans'];
 const ctxPfx=(w,arr)=>arr.some(p=>w.startsWith(p));
-// Kmen slova pro skloňování: do 5 znaků celé, delší bez posledních 2 (aspoň 5): Šmahaj → smaha
-const ctxStem=w=>w.length<=5?w:w.slice(0,Math.max(5,w.length-2));
+// Kmen slova pro skloňování: 4 znaky celé, 5 znaků → 4 (práci → prac), delší bez posledních 2 (aspoň 5): Šmahaj → smaha
+const ctxStem=w=>w.length<=4?w:w.length===5?w.slice(0,4):w.slice(0,Math.max(5,w.length-2));
 // Rozbor dotazu: kmeny pro hledání, období pro deník (minulost) a kalendář (nejbližší výskyt)
 function ctxParseQ(q,now){
   const res={stems:[],jWord:false,calWord:false,rel:false,jr:null,cal:[]};
@@ -17677,15 +17677,19 @@ function ctxParseQ(q,now){
   const nearest=fn=>{
     let best=null,bd=Infinity;
     for(const y of [y0-1,y0,y0+1]){
-      const p=fn(y), dist=today<p.from?(new Date(p.from)-new Date(today)):today>p.to?(new Date(today)-new Date(p.to)):0;
+      const p=fn(y);
+      if(!p) continue; // den v tom roce není (29. 2.)
+      const dist=today<p.from?(new Date(p.from)-new Date(today)):today>p.to?(new Date(today)-new Date(p.to)):0;
       if(dist<bd||(dist===bd&&p.from>today)){bd=dist;best=p;}
     }
     return best;
   };
   const addCal=p=>{ if(p&&res.cal.length<2&&!res.cal.some(c=>c.from===p.from&&c.to===p.to)) res.cal.push(p); };
   const monthP=(y,m)=>({from:D(y,m,1),to:D(y,m+1,0),month:true});
-  const dayP=(y,m,d)=>{const s=D(y,m,d);return {from:s,to:s};};
-  const validDay=(d,m)=>d>=1&&d<=31&&m>=0&&m<=11;
+  // Den musí v měsíci opravdu být (31. 2. → null); bez roku se ověřuje přestupným rokem
+  const dayP=(y,m,d)=>{const x=new Date(y,m,d);if(x.getMonth()!==m||x.getDate()!==d)return null;const s=toDS(x);return {from:s,to:s};};
+  const validDay=(d,m)=>m>=0&&m<=11&&!!dayP(2024,m,d);
+  const setJP=p=>{ if(p) setJ(p.from,p.to,false,3); };
   const pastY=(m,d)=>qy||((m>m0||(m===m0&&d>now.getDate()))?y0-1:y0); // deník: poslední už proběhlý výskyt
   // Data „23.10.“, „23. 10. 2025“
   const re=/(\d{1,2})\.\s{0,2}(\d{1,2})\.(?:\s{0,2}(\d{4}))?/g;
@@ -17693,8 +17697,7 @@ function ctxParseQ(q,now){
   while((mm=re.exec(n))){
     const d=Number(mm[1]), m=Number(mm[2])-1, y=mm[3]?Number(mm[3]):null;
     if(!validDay(d,m)) continue;
-    const jy=y||pastY(m,d), jp=dayP(jy,m,d);
-    setJ(jp.from,jp.to,false,3);
+    setJP(dayP(y||pastY(m,d),m,d));
     addCal(y?dayP(y,m,d):nearest(yy=>dayP(yy,m,d)));
   }
   const NUMW=new Set(['den','dny','dni','dnu','dnech','days','day']);
@@ -17708,7 +17711,7 @@ function ctxParseQ(q,now){
     // Měsíc slovem (s číslem dne před ním = konkrétní den)
     if(Object.prototype.hasOwnProperty.call(CTX_MONTHS,w)&&(w!=='may'||['in','of','since','during','last','next'].includes(pv))){
       const m=CTX_MONTHS[w], d=/^\d{1,2}$/.test(pv)?Number(pv):0;
-      if(d&&validDay(d,m)){ const jp=dayP(pastY(m,d),m,d); setJ(jp.from,jp.to,false,3); addCal(qy?dayP(qy,m,d):nearest(yy=>dayP(yy,m,d))); }
+      if(d&&validDay(d,m)){ setJP(dayP(pastY(m,d),m,d)); addCal(qy?dayP(qy,m,d):nearest(yy=>dayP(yy,m,d))); }
       else{ const jp=monthP(qy||(m>m0?y0-1:y0),m); setJ(jp.from,jp.to,false,3); addCal(qy?monthP(qy,m):nearest(yy=>monthP(yy,m))); }
     }
     // Relativní období: minulý/tento/poslední týden a měsíc, posledních N dní
@@ -17734,10 +17737,13 @@ function ctxParseQ(q,now){
   });
   return res;
 }
-// Počet kmenů dotazu, které se v zápisku vyskytují jako začátek slova (nadpis + text)
+// Počet kmenů dotazu, které se v zápisku vyskytují jako začátek slova (nadpis + prvních 5000 znaků)
+// Normalizovaný text se pamatuje u objektu zápisku (nový snapshot = nové objekty, cache se obnoví sama)
+const _ctxEntNorm=new WeakMap();
 function ctxScore(e,stems){
-  if(!stems.length||!e) return 0;
-  const hay=' '+ctxTok(String(e.title||'')+' '+String(e.text||'').slice(0,20000)).join(' ');
+  if(!stems.length||!e||typeof e!=='object') return 0;
+  let hay=_ctxEntNorm.get(e);
+  if(hay===undefined){ hay=' '+ctxNorm((String(e.title||'')+' '+String(e.text||'')).slice(0,5000)).replace(/[^a-z0-9]+/g,' '); _ctxEntNorm.set(e,hay); }
   return stems.reduce((n,s)=>n+(hay.includes(' '+s)?1:0),0);
 }
 
@@ -17902,9 +17908,11 @@ function buildChatContext(question=''){
   // Kalendář (4.87): celý tento měsíc (i proběhlé dny) až do +90 dní, osobní i sdílené; období z dotazu mimo okno zvlášť
   const isD=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'');
   const calSrc=[]; // {ev, own, gid}: osobní + události skupin s kalendářem (jako UI), u sdílených název skupiny
-  events.forEach(ev=>calSrc.push({ev,own:true,gid:null}));
-  if(famOk&&familyData.shareCal) (Array.isArray(familyEvents)?familyEvents:[]).forEach(ev=>calSrc.push({ev,own:false,gid:familyId}));
-  extraIds.forEach(gid=>{ if(extraGroupsData[gid]&&extraGroupsData[gid].shareCal&&Array.isArray(extraGroupEvents[gid])) extraGroupEvents[gid].forEach(ev=>calSrc.push({ev,own:false,gid})); });
+  try{
+    (Array.isArray(events)?events:[]).forEach(ev=>calSrc.push({ev,own:true,gid:null}));
+    if(famOk&&familyData.shareCal) (Array.isArray(familyEvents)?familyEvents:[]).forEach(ev=>calSrc.push({ev,own:false,gid:familyId}));
+    extraIds.forEach(gid=>{ if(extraGroupsData[gid]&&extraGroupsData[gid].shareCal&&Array.isArray(extraGroupEvents[gid])) extraGroupEvents[gid].forEach(ev=>calSrc.push({ev,own:false,gid})); });
+  }catch(e){}
   // První výskyt události v okně a..b (Date o půlnoci); probíhající vícedenní = začátek okna, výroční podle roků okna
   const evFirst=(ev,a,b)=>{
     if(!ev||!ev.name||!isD(ev.date)) return null;
@@ -17943,14 +17951,16 @@ function buildChatContext(question=''){
     return l.length?l:[tA('aip.ctx.cal.none')];
   });
   // Období z dotazu mimo hlavní okno („v září“ zpětně, „v lednu“ příští rok), z dat v paměti
-  (qp.cal||[]).forEach(p=>{
-    const a=new Date(p.from+'T00:00:00'), b=new Date(p.to+'T00:00:00');
-    if(isNaN(a)||isNaN(b)||(a>=calA&&b<=calB)) return;
-    add(tA('aip.ctx.s.calQ',{p:p.month?fmtDate(p.from,'my'):fmtDate(p.from,'dmy')}),3,()=>{
-      const l=calLines(a,b,30);
-      return l.length?l:[tA('aip.ctx.cal.none')];
+  try{
+    (qp.cal||[]).forEach(p=>{
+      const a=new Date(p.from+'T00:00:00'), b=new Date(p.to+'T00:00:00');
+      if(isNaN(a)||isNaN(b)||(a>=calA&&b<=calB)) return;
+      add(tA('aip.ctx.s.calQ',{p:p.month?fmtDate(p.from,'my'):fmtDate(p.from,'dmy')}),3,()=>{
+        const l=calLines(a,b,30);
+        return l.length?l:[tA('aip.ctx.cal.none')];
+      });
     });
-  });
+  }catch(e){}
 
   // Zásoby (4.70): osobní a hlavní skupiny; další skupiny ve svých sekcích níž
   const isLowP=i=>i.minQty&&ctxNum(i.qty)<=ctxNum(i.minQty);
@@ -18116,6 +18126,20 @@ async function chatDataReady(){
   try{ await Promise.race([loadHealthCtx(),new Promise(r=>setTimeout(r,3000))]); }catch(e){}
 }
 
+// Délka dotazu chatu (4.87): server bere 60 000 znaků celkem; 4000 rezerva na opakovaný dotaz (aiRetryMessages)
+const CHAT_REQ_MAX = 56000;
+const chatLen=arr=>arr.reduce((n,m)=>n+String(m.content||'').length,0);
+// Historie do dotazu: posledních 10 zpráv, nejstarší odpadají, dokud se nevejde; začíná zprávou uživatele.
+// Jedna obří zpráva tak chat nezasekne natrvalo (při dalším dotazu vypadne z historie).
+function chatFitHist(sysLen,hist,max=CHAT_REQ_MAX){
+  const h=hist.map(m=>({role:m.role,content:String(m.content||'')}));
+  while(h.length>1&&sysLen+chatLen(h)>max) h.shift();
+  while(h.length>1&&h[0].role!=='user') h.shift();
+  const last=h[h.length-1];
+  if(last&&sysLen+chatLen(h)>max&&last.content.length>20000) last.content=last.content.slice(-20000); // dlouhá vložená zpráva: konec
+  return h;
+}
+
 // CHAT SEND
 window.askC=t=>{if(_chatSending)return;document.getElementById('c-inp').value=t;send();};
 window.ck=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
@@ -18141,9 +18165,15 @@ async function chatSend(){
   try{chatCtx=buildChatContext(userMsg);}catch(e){chatCtx='';}
 
   const memorySec = chatMemorySummary ? tA('aip.chat.memory',{s:ctxStrip(chatMemorySummary,6000)}) : '';
-  const sys=tA('aip.chat.sys',{name:av.name,nick:prof.prezdivka||prof.nickname,memory:memorySec,ctx:chatCtx||tA('aip.chat.noCtx')});
+  const mkSys=(ctx,mem)=>tA('aip.chat.sys',{name:av.name,nick:prof.prezdivka||prof.nickname,memory:mem,ctx:ctx||tA('aip.chat.noCtx')});
+  let sys=mkSys(chatCtx,memorySec);
+  const hist=chatFitHist(sys.length,chatH.slice(-10));
+  // Pořád moc dlouhé: zkrátit kontext, nakonec i bez paměti
+  let over=sys.length+chatLen(hist)-CHAT_REQ_MAX;
+  if(over>0){ chatCtx=chatCtx.slice(0,Math.max(0,chatCtx.length-over)); sys=mkSys(chatCtx,memorySec); over=sys.length+chatLen(hist)-CHAT_REQ_MAX; }
+  if(over>0) sys=mkSys(chatCtx,'');
   try{
-    let rep=await chatAwaitAI(callClaude([{role:'system',content:sys},...chatH.slice(-10).map(m=>({role:m.role,content:m.content}))],600),uid);
+    let rep=await chatAwaitAI(callClaude([{role:'system',content:sys},...hist],600),uid);
     if(CU?.uid!==uid){document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
     if(!rep)throw new Error('AI není k dispozici — klíč bude nastaven brzy');
     const foodMatch=rep.match(/\[FOOD:([^\]]*)\]/);
