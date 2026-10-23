@@ -48,3 +48,11 @@
 - Prohlídka během otevřeného modalu: Zpět vrátí krok prohlídky, modal zůstane.
 - sw.js `no-cache`: offline obrázky mimo OFFLINE_URLS → 503.
 - `IN_APP_BROWSER`: TikTok a appky bez značky v UA se nerozpoznají.
+
+## Z 4.85
+- Mobilní tabulka návyků: tečky teď 18 px (pravidla konečně platí) – ověřit klikací plochu.
+- `--keyboard-offset` při pinch-zoomu s otevřenou klávesnicí zůstává na poslední hodnotě.
+- Tangerine `.btn-p:hover` stín i u `.gcomplete-btn`.
+- `--text3` na card2/card3 4,1–4,65:1.
+- `.hlogo` aria-label „Domů“ vs. viditelný text; `.habit-check` aria-pressed nerozliší „nesplněno“.
+- Plochy ⏭ / − + do stran jen +2 px (ne 44 px na šířku).
