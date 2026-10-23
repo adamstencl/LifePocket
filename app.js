@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.87';
+const APP_VERSION = '4.88';
 const CHANGELOG = [
+  { v:'4.88', items:[
+    '✅ Návyky: obrazovka při odškrtnutí neposkakuje, názvy se nelámou uprostřed slova'
+  ], en:[
+    '✅ Habits: the screen no longer jumps when you tick a habit, names no longer break mid-word'
+  ]},
   { v:'4.87', items:[
     '🤖 Rex vidí celé zápisky v deníku, na které se ptáš, a celý měsíc v kalendáři; správný čas u starších zpráv'
   ], en:[
@@ -3720,6 +3725,7 @@ function scrollAnchorSave(list, sel, attr, opts = {}) {
     let tapped = ae && ae !== document.body && list.contains(ae) ? ae.closest(sel) : null;
     if (!tapped && _saTap && Date.now() - _saTap.t < 4000 && list.contains(_saTap.el)) tapped = _saTap.el.closest(sel);
     // Druhé překreslení (snapshot) po prvním: původní prvek už je pryč, platí naposledy kotvená položka
+    const fresh = !!tapped;
     if (!tapped && list._saLast && Date.now() - list._saLast.t < 4000) tapped = items.find(c => c.getAttribute(attr) === list._saLast.id) || null;
     const vh = window.innerHeight || document.documentElement.clientHeight;
     const vis = items.filter(c => { const r = c.getBoundingClientRect(); return r.bottom > 0 && r.top < vh; });
@@ -3737,7 +3743,7 @@ function scrollAnchorSave(list, sel, attr, opts = {}) {
       const card = ae.closest(sel);
       if (card) { fid = card.getAttribute(attr); fi = [...card.querySelectorAll(SA_FOCUSABLE)].indexOf(ae); }
     }
-    if (tapped) list._saLast = { id: tapped.getAttribute(attr), t: list._saLast?.id === tapped.getAttribute(attr) ? list._saLast.t : Date.now() };
+    if (fresh) list._saLast = { id: tapped.getAttribute(attr), t: Date.now() };
     return { list, sel, attr, cands: cands.map(({ id, top }) => ({ id, top })), fi, fid, sc: dragScrollParent(list) };
   } catch (e) { return null; }
 }
