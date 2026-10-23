@@ -66,3 +66,7 @@
 - `chatSend`: nouzové zkracování `chatCtx` řeže uprostřed bloku (dnes se nespustí) – řezat po řádcích.
 - `ctxStem`: 5písmenná slova → 4 znaky přidávají falešné shody („domov“ → „domo“).
 - `CTX_STOP`: duplicitní slova.
+
+## Z 4.88
+- `renderChecklist`: rozepsaný text z `#cl-new-inp` může přejít do jiného seznamu, pokud se při přepnutí záložky nepřesune fokus – ukládat id seznamu a porovnat.
+- Počítaný návyk na mobilu: štítek „0 / 10“ v 1. řádku, ovládání ve 2. – UX kontrola.
