@@ -919,7 +919,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
 function uiBusy() {
-  return tourActive() || !!document.querySelector('.moverlay.open,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
+  return tourActive() || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
 }
 // Fronta: fn se spustí, až nebude otevřené jiné okno (kontrola po 1,5 s, nejdéle maxMs, pak se vzdá a zavolá onGiveUp)
 function whenUiFree(fn, maxMs = 600000, onGiveUp) {
@@ -1681,6 +1681,7 @@ function clearUserSessionState(){
     extraGroupsData={}; extraGroupEvents={}; pantryMine=[]; pantryMineLoaded=false; pantryMineErr=0; pantryMineCache=undefined;
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
+    _wtLinkScanned=false; _wtLinkQ=false; window.wtLinkClose?.(); // nabídka propojení pití (4.85)
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
@@ -4145,7 +4146,7 @@ window.delEvent=async(id)=>{
   toast(t('cal.deleted'));
 };
 
-function om(id){window.ctaAskClose?.();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení nesmí ležet nad oknem (4.85)
+function om(id){window.ctaAskClose?.();window.wtLinkClose?.();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení a propojení pití nesmí ležet nad oknem (4.85)
 function cm(id){document.getElementById(id).classList.remove('open');}
 window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
@@ -4277,6 +4278,7 @@ document.addEventListener('keydown', e => {
 }, true);
 // Klikací div s role="button" (bez vlastního onkeydown) jde ovládat i klávesnicí Enter/mezerník (4.85)
 document.addEventListener('keydown', e => {
+  if (e.repeat || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role="button"]:not(button):not(a):not(input):not([onkeydown])')) {
     e.preventDefault(); e.target.click();
   }
@@ -6650,8 +6652,9 @@ function wtHabitUnlink(oldId,newId){
 // ── Nabídka propojit návyk s pitným režimem (4.85) ──
 // Pitný režim zapnutý, žádný propojený návyk a ano/ne návyk s „vod/pít/water/drink“ v názvu → jednorázová lišta.
 // Každý návyk jen jednou (lp_wtlink_<id> v zařízení), nikdy přes průvodce ani otevřené okno (whenUiFree).
-const WT_LINK_RE=/(^|[^a-z])(vod|pit|napit|water|drink)/;
-const wtLinkName=n=>WT_LINK_RE.test(String(n||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase());
+const WT_LINK_RE=/(^|[^a-z])(vod(a|y|u|ou|e)?|pit(i|ny)?|napit( se)?|water|drink(ing)?)([^a-z]|$)/;
+const WT_LINK_NO=/(^|[^a-z])(mene|less|nepit)([^a-z]|$)/; // „Pít méně kávy“, „Drink less soda“, „Nepít alkohol“
+const wtLinkName=n=>{ const s=String(n||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); return WT_LINK_RE.test(s)&&!WT_LINK_NO.test(s); };
 const wtLinkSeen=hid=>{ try{ return !!localStorage.getItem('lp_wtlink_'+hid); }catch(e){ return true; } }; // bez úložiště raději nenabízet
 const wtLinkMark=hid=>{ try{ localStorage.setItem('lp_wtlink_'+hid,'1'); }catch(e){} };
 const wtLinkFits=h=>!!h&&WT_HB_RE.test(h.id||'')&&wtHabitOk(h)&&wtLinkName(h.name)&&!wtLinkSeen(h.id);
@@ -6687,6 +6690,7 @@ window.wtLinkYes=hid=>{
   renderWaterAll();
   wtHabitSync(); gameKick();
   renderHabits();
+  if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
 };
 // Už existující návyky: jednou za načtení, až přijdou ze serveru
 function wtLinkScan(){
@@ -20907,7 +20911,9 @@ window.restartTour = () => {
 // Keyboard offset — posun modálů nahoru při otevření klávesnice na mobilu
 if(window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
-    const offset = Math.max(0, Math.round(window.innerHeight - window.visualViewport.height));
+    const vv = window.visualViewport;
+    if (Math.abs((vv.scale || 1) - 1) > 0.01) return; // přiblížení prsty mění výšku viewportu, není to klávesnice
+    const offset = Math.max(0, Math.round(window.innerHeight - vv.height));
     document.documentElement.style.setProperty('--keyboard-offset', offset + 'px'); // použito v .moverlay (padding-bottom)
   });
 }
