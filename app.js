@@ -4148,7 +4148,7 @@ window.delEvent=async(id)=>{
 };
 
 function om(id){window.ctaAskClose?.();window.wtLinkClose?.();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení a propojení pití nesmí ležet nad oknem (4.85)
-function cm(id){document.getElementById(id).classList.remove('open');}
+function cm(id){document.getElementById(id).classList.remove('open');if(id==='m-dashedit')dashSave(true);} // editor Domů: uložit hned (i Zpět, Esc)
 window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
 // Na mobilu scrollni datum/čas input do středu modalu hned po focusu
@@ -7988,7 +7988,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin','m-admov']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin','m-admov','m-dashedit']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -16296,6 +16296,130 @@ function simpleModOrder(){
   const first=src.filter(id=>mods.includes(id));
   return [...first,...MODS.map(m=>m.id).filter(id=>mods.includes(id)&&!first.includes(id))];
 }
+// ── Přizpůsobení Domů (4.86): prof.dashLayout = {order, hidden} v users/{uid}/profile/main ──
+// Bez úprav pole neexistuje (platí výchozí pořadí). Pevné pásmo (Začínáme, nabídky, souhrn) se neupravuje.
+const DASH_CARDS=[{id:'focus',em:'🎯'},{id:'water',em:'💧'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},{id:'energy',em:'⭐'},{id:'quote',em:'💬'},
+  {id:'habits',em:'🔥'},{id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},
+  {id:'mood',em:'😊'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
+const DASH_IDS=DASH_CARDS.map(c=>c.id);
+const DASH_MODCARDS=['habits','journal','goals','calendar','cooking','shopping','mood'];
+const dashIdsOk=a=>Array.isArray(a)&&a.length<=40&&a.every(x=>typeof x==='string'&&x.length>0&&x.length<=20);
+// Validované {order, hidden}; neplatné pole = prázdné
+function dashLayout(){
+  const l=prof?.dashLayout;
+  return {order:dashIdsOk(l?.order)?l.order:[], hidden:dashIdsOk(l?.hidden)?l.hidden:[]};
+}
+// Výchozí pořadí; v jednoduchém režimu karty modulů v pořadí lišty (nálada hned za Poznámkami)
+function dashDefault(){
+  if(!isSimple()) return DASH_IDS;
+  const mo=[...new Set([...simpleModOrder().flatMap(id=>id==='journal'?['journal','mood']:[id]).filter(id=>DASH_MODCARDS.includes(id)),...DASH_MODCARDS])];
+  let i=0;
+  return DASH_IDS.map(id=>DASH_MODCARDS.includes(id)?mo[i++]:id);
+}
+// Uložené pořadí sloučené s výchozím: známá id bez duplicit, chybějící (nová karta) hned za nejbližšího předchůdce
+function dashMerged(){
+  const def=dashDefault(), seen=new Set(), out=[];
+  for(const id of dashLayout().order) if(DASH_IDS.includes(id)&&!seen.has(id)){ seen.add(id); out.push(id); }
+  if(!out.length) return [...def];
+  def.forEach((id,i)=>{
+    if(seen.has(id)) return;
+    let at=0;
+    for(let j=i-1;j>=0;j--){ const k=out.indexOf(def[j]); if(k>=0){ at=k+1; break; } }
+    out.splice(at,0,id); seen.add(id);
+  });
+  return out;
+}
+// Id karet k vykreslení: jen z avail, bez schovaných
+function dashOrder(avail){
+  const hid=new Set(dashLayout().hidden), av=new Set(avail);
+  return dashMerged().filter(id=>av.has(id)&&!hid.has(id));
+}
+// Karty do editoru: podle modulů a odkrytí, ne podle toho, jestli mají právě data
+function dashEditAvail(){
+  const mods=prof?.modules||[];
+  return DASH_IDS.filter(id=>{
+    switch(id){
+      case 'focus': return unlD('focus');
+      case 'water': return waterOn();
+      case 'pc': return unlD('pc')||pcJoined();
+      case 'ch': case 'quote': case 'report': return true;
+      case 'energy': return rexEnergyVisible();
+      case 'streaks': return mods.includes('habits');
+      default: return mods.includes(id);
+    }
+  });
+}
+const dashEditIds=()=>{ const av=new Set(dashEditAvail()); return dashMerged().filter(id=>av.has(id)); };
+// Nový stav do prof; neznámá id (karta z novější verze) zůstanou na konci
+function dashSet(order,hidden){
+  const l=dashLayout(), unk=a=>a.filter(id=>!DASH_IDS.includes(id));
+  prof.dashLayout={order:[...new Set([...order.filter(id=>DASH_IDS.includes(id)),...unk(l.order)])].slice(0,40),
+    hidden:[...new Set([...hidden.filter(id=>DASH_IDS.includes(id)),...unk(l.hidden)])].slice(0,40)};
+}
+// Zápis po 800 ms klidu, při zavření editoru hned (now); bez await, chyba = toast, lokální stav zůstane
+let _dashT=0, _dashUid='';
+function dashSave(now){
+  if(!now){ clearTimeout(_dashT); _dashUid=CU?.uid||''; _dashT=setTimeout(()=>dashSave(true),800); return; }
+  if(!_dashUid) return;
+  clearTimeout(_dashT);
+  const uid=_dashUid; _dashUid='';
+  if(CU?.uid!==uid||!prof?.dashLayout) return; // mezitím jiný účet nebo obnoveno výchozí
+  updateDoc(doc(db,'users',uid,'profile','main'),{dashLayout:prof.dashLayout}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+}
+function dashApply(order,hidden){ dashSet(order,hidden); rDash(); dashEditRender(); dashSave(); }
+function dashEditRender(){
+  const el=document.getElementById('dl-list'); if(!el) return;
+  const hid=new Set(dashLayout().hidden), ids=dashEditIds(), last=ids.length-1;
+  el.innerHTML=ids.map((id,i)=>{
+    const em=DASH_CARDS.find(c=>c.id===id).em, nm=t('dash.card.'+id), off=hid.has(id);
+    return `<div class="dl-row${off?' off':''}" data-drag-id="${id}">
+      <span class="dl-grip" aria-hidden="true">≡</span>
+      <span class="dl-nm"><span aria-hidden="true">${em}</span> ${esc(nm)}${off?`<span class="dl-sub">${tH('dash.edit.hidden')}</span>`:''}</span>
+      <button type="button" class="dl-btn" data-a0="${id}" data-dir="-1" ${i?'':'disabled'} aria-label="${tH('dash.edit.up',{name:nm})}" onclick="dashMove(this.dataset.a0,-1)">▲</button>
+      <button type="button" class="dl-btn" data-a0="${id}" data-dir="1" ${i<last?'':'disabled'} aria-label="${tH('dash.edit.down',{name:nm})}" onclick="dashMove(this.dataset.a0,1)">▼</button>
+      <button type="button" class="dl-btn" data-a0="${id}" data-tg="1" aria-pressed="${off}" aria-label="${tH(off?'dash.edit.show':'dash.edit.hide',{name:nm})}" onclick="dashToggle(this.dataset.a0)">${off?'🙈':'👁'}</button>
+    </div>`;
+  }).join('');
+  enableDragReorder(el,'.dl-row',dashDrop); // příznak na elementu brání zdvojení
+}
+// Puštění řádku: nové pořadí viditelných karet do jejich míst v celém pořadí (ostatní se nehnou)
+function dashDrop(ids){
+  const vis=new Set(dashEditIds()), q=ids.filter(id=>vis.has(id));
+  if(q.length!==vis.size) return;
+  let k=0;
+  dashApply(dashMerged().map(id=>vis.has(id)?q[k++]:id), dashLayout().hidden);
+}
+window.dashMove=(id,dir)=>{
+  const vis=dashEditIds(), i=vis.indexOf(id), j=i+dir;
+  if(i<0||j<0||j>=vis.length) return;
+  const full=dashMerged(), a=full.indexOf(id), b=full.indexOf(vis[j]);
+  full[a]=vis[j]; full[b]=id;
+  dashApply(full, dashLayout().hidden);
+  // Fokus zůstane na stejném tlačítku přesunutého řádku (na kraji na opačné šipce)
+  const q=d=>document.querySelector(`#dl-list .dl-btn[data-a0="${id}"][data-dir="${d}"]`), btn=q(dir);
+  (btn&&!btn.disabled?btn:q(-dir))?.focus();
+};
+window.dashToggle=id=>{
+  if(!DASH_IDS.includes(id)) return;
+  const h=new Set(dashLayout().hidden);
+  if(h.has(id)) h.delete(id); else h.add(id);
+  dashApply(dashMerged(), [...h]);
+  document.querySelector(`#dl-list .dl-btn[data-a0="${id}"][data-tg]`)?.focus();
+};
+window.dashReset=()=>{
+  if(!confirm(t('dash.edit.resetQ'))) return;
+  clearTimeout(_dashT); _dashUid='';
+  delete prof.dashLayout;
+  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'),{dashLayout:deleteField()}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'profil')})));
+  rDash(); dashEditRender();
+  toast(t('dash.edit.resetOk'));
+};
+window.openDashEdit=()=>{
+  if(!CU||!prof||simpleDash()||tourActive()) return;
+  const ov=document.getElementById('m-dashedit'); if(!ov) return;
+  dashEditRender();
+  if(!ov.classList.contains('open')){ om('m-dashedit'); focusOverlay(ov); }
+};
 function rDash(){
   const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
   const g=prof.gender==='f'||prof.gender==='x'?prof.gender:'m'; // x = neutrální tvary (#x)
@@ -16364,10 +16488,14 @@ function rDash(){
   // hlavní úkol a výzva měsíce až po odkrytí. Pak Domů jako dřív, jen s odkrýváním (unlD) a s frontou nabídek místo karet novinek.
   const simple=isSimple(), slots=simple&&simpleDash();
   const mw={}; // karty modulů podle id (v jednoduchém režimu se vybírají v pořadí lišty)
+  // Upravitelné karty (4.86): mimo sloty se sbírají do mw a řadí přes dashOrder(); schované se nevykreslí
+  const dHid=slots?new Set():new Set(dashLayout().hidden), dEd=slots?[]:dashEditAvail();
   let html='';
   if(!slots){
-  // Karta Začínáme (nováček) nahoře, pod ní hlavní úkol dne
-  html+=quickStartHTML()+(unlD('focus')?focusWidgetHTML():'')+waterWidgetHTML();
+  // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
+  html+=quickStartHTML();
+  if(unlD('focus')) mw.focus=focusWidgetHTML();
+  mw.water=waterWidgetHTML();
   if(simple) html+=nudgeForDash(); // nabídka z fronty (pitný režim, body, upozornění ze skupin … pod jedním limitem)
   else {
   // Novinka Pitný režim (4.62): šablona Zdraví / návyk o pití výš, ostatní níž
@@ -16381,14 +16509,14 @@ function rDash(){
   html+=weekCardHTML();
   if(!simple) html+=wtIntroSlot(false);
   // Výzva měsíce / týdne pro všechny (4.63), nad výzvami skupin
-  if(unlD('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
+  if(unlD('pc')||pcJoined()) mw.pc='<div id="pc-dash">'+pcDashHTML()+'</div>';
   // Společné výzvy ve skupinách (4.43)
-  html+='<div id="ch-dash">'+chDashHTML()+'</div>';
+  if(!dHid.has('ch')) mw.ch='<div id="ch-dash">'+chDashHTML()+'</div>';
 
   // Mini Rex energy widget; nováček ho uvidí až po první aktivitě (prázdný ukazatel nemotivuje)
   const rexEn = getRexEnergy();
   const rexSt = getRexState(rexEn);
-  if (rexEnergyVisible()) html += `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
+  if (rexEnergyVisible()) mw.energy = `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
     <div class="dw-head">
       <div class="dw-title">${av.emoji||'⭐'} ${av.name||'Rex'}</div>
       <div class="dw-arrow">→</div>
@@ -16404,11 +16532,12 @@ function rDash(){
     </div>
   </div>`;
 
-  // ── WIDGET: DENNÍ CITÁT ──
+  // ── WIDGET: DENNÍ CITÁT ── (schovaný citát se nenačítá)
+  if(!dHid.has('quote')){
   const quoteToday = lsGet('lp_daily_quote', null);
   const quoteTodayStr = toDS();
   const quoteText = quoteToday?.date === quoteTodayStr && (quoteToday.lang || 'cs') === LANG ? quoteToday.text : null;
-  html += `<div class="dw" id="dash-quote-widget">
+  mw.quote = `<div class="dw" id="dash-quote-widget">
     <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">${tH('dash.quote.says',{name:av.name})}</div>
     <div id="dash-quote-text" style="font-family:'Crimson Pro',serif;font-style:italic;font-size:16px;color:var(--text);line-height:1.5">${esc(quoteText || '...')}</div>
   </div>`;
@@ -16417,6 +16546,7 @@ function rDash(){
       const el = document.getElementById('dash-quote-text');
       if (el) el.textContent = q;
     });
+  }
   }
   } // konec bloků mimo jednoduchý režim
   else mw.water=waterWidgetHTML();
@@ -16549,7 +16679,7 @@ function rDash(){
   }
 
   // ── WIDGET: NÁKUPY ──
-  if(mods.includes('shopping')){
+  if(mods.includes('shopping')&&!dHid.has('shopping')){ // schované Nákupy neodebírají seznam skupiny
     // Naposledy zobrazený seznam v Nákupech (osobní nebo skupiny, 4.50)
     const sg=shopGid(); if(sg) subscribeGroupShop(sg);
     const shopItemsArr=sg?shopGrpItems(sg):(typeof shopItems!=='undefined'?shopItems:[]);
@@ -16603,7 +16733,6 @@ function rDash(){
     if(unl('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
     html+='<div id="ch-dash">'+chDashHTML()+'</div>'; // běžící výzvy skupiny (pozvaný je vidí hned)
   } else {
-  html+=['habits','journal','goals','calendar','cooking','shopping','mood'].map(k=>mw[k]||'').join('');
 
   // ── WIDGET: TÝDENNÍ REPORT ──
   const weeklyData = localStorage.getItem('lp_weekly_report');
@@ -16616,7 +16745,7 @@ function rDash(){
         const dateLabel = reportDate.toLocaleDateString(LOCALE,{weekday:'long',day:'numeric',month:'long'});
         const wText = aiFixCs(aiPlain(wr.text)); // i dřív uložený report: bez cizího písma a markdownu
         const shortReport = wText.length > 120 ? wText.slice(0,120)+'…' : wText;
-        html += `<div class="dw" style="cursor:default;background:linear-gradient(135deg,rgba(245,200,66,.07),rgba(224,149,74,.05));border-color:rgba(245,200,66,.25)">
+        mw.report = `<div class="dw" style="cursor:default;background:linear-gradient(135deg,rgba(245,200,66,.07),rgba(224,149,74,.05));border-color:rgba(245,200,66,.25)">
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:20px">${esc(wr.avatar||'⭐')}</span>
             <span style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--accent)">${tH('dash.wr.title')}</span>
@@ -16635,7 +16764,7 @@ function rDash(){
     const streakHabits = habits.filter(h => !h.archived).map(h => ({...h, streak: habitStreak(h.id, today)})).filter(h => h.streak >= 2).sort((a,b) => b.streak - a.streak).slice(0,4);
 
     if(streakHabits.length) {
-      html += `<div class="dw" style="cursor:default">
+      mw.streaks = `<div class="dw" style="cursor:default">
         <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">${tH('dash.streaks.title')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${streakHabits.map(h=>`
@@ -16648,6 +16777,10 @@ function rDash(){
       </div>`;
     }
   }
+  // Karty v uloženém (nebo výchozím) pořadí; všechny schované → nápověda, jak je vrátit
+  const dOrd=dashOrder(Object.keys(mw));
+  html+=dOrd.map(id=>mw[id]).join('');
+  if(!dOrd.length&&dEd.length&&dEd.every(id=>dHid.has(id))) html+=`<div class="dw" style="cursor:default"><div class="dw-empty">${tH('dash.edit.allHidden')}</div></div>`;
   } // konec mimo jednoduchý režim
 
   // ── Pokud žádné moduly (bez focus widgetu) — ukáž nápovědu ──
@@ -16657,6 +16790,8 @@ function rDash(){
       <div style="font-size:15px;color:var(--text2)">${tH('dash.noMods')} <b style="color:var(--accent)">${tH('nav.settings')}</b></div>
     </div>`;
   }
+  // ✏️ Upravit Domů úplně dole (ne v prvních 14 dnech jednoduchého režimu)
+  if(dEd.length>=2) html+=`<button type="button" class="dash-edit" onclick="openDashEdit()">${tH('dash.edit.btn')}</button>`;
 
   const dw=document.getElementById('d-widgets');
   if(dw){
@@ -17317,6 +17452,8 @@ window.simpleUnlockAll=()=>{
 };
 function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
+  // Úprava Domů (4.86): ne v prvních 14 dnech jednoduchého režimu
+  document.getElementById('set-mods').insertAdjacentHTML('beforeend',simpleDash()?'':`<button type="button" class="dl-set" onclick="openDashEdit()"><span>${tH('set.mods.dash')}</span><span aria-hidden="true">→</span></button>`);
 }
 // Optimisticky (4.84): lišta a Domů hned (i offline), zápis na pozadí; při chybě původní moduly zpět
 window.togModSet=(id,on)=>{

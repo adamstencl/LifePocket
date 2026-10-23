@@ -1373,6 +1373,19 @@ else show();
   </div>
 </div>
 
+<!-- Úprava Domů 4.86: pořadí a schování karet (dashEditRender) -->
+<div class="moverlay" id="m-dashedit" onclick="if(event.target===this)cm(&#39;m-dashedit&#39;)">
+  <div class="modal gf-sheet dl-sheet" role="dialog" aria-modal="true" aria-labelledby="dl-title">
+    <div class="gf-head">
+      <div class="mtitle" id="dl-title" data-i18n="dash.edit.title">Uprav si Domů</div>
+      <button type="button" class="gf-x" onclick="cm(&#39;m-dashedit&#39;)" aria-label="Zavřít" data-i18n-attr="aria-label:common.close">✕</button>
+    </div>
+    <div class="dl-hint" data-i18n="dash.edit.hint">Podrž ≡ a přetáhni, nebo použij šipky. 👁 kartu schová.</div>
+    <div class="dl-list" id="dl-list"></div>
+    <div class="dl-hint" data-i18n="dash.edit.fixed">Tipy a karta Začínáme jsou vždy nahoře a zmizí samy.</div>
+    <div class="macts"><button type="button" class="btn-s" onclick="dashReset()" data-i18n="dash.edit.reset">Obnovit výchozí</button><button type="button" class="btn-p" onclick="cm(&#39;m-dashedit&#39;)" data-i18n="dash.edit.done">Hotovo</button></div>
+  </div>
+</div>
 <!-- Výzva měsíce / týdne 4.63: přihlášení a detail (pcRenderSheet) -->
 <div class="moverlay" id="m-pc">
   <div class="modal gf-sheet pc-sheet" role="dialog" aria-modal="true" aria-labelledby="pc-title">

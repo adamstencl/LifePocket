@@ -1764,6 +1764,21 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .lp-drag-on,.lp-drag-on [data-drag-id]{cursor:grabbing;-webkit-user-select:none;user-select:none}
 .lp-drag-shift{transition:transform .18s ease!important}
 .lp-drag-lift{position:relative;z-index:20;transition:none!important;box-shadow:0 10px 28px rgba(0,0,0,.35);will-change:transform}
+/* Úprava Domů 4.86 */
+.dash-edit{display:block;margin:4px auto 8px;min-height:44px;padding:0 18px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
+.dash-edit:focus-visible,.dl-set:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dl-sheet{margin:auto 0 0}
+.dl-hint{font-size:13px;color:var(--text3);line-height:1.45;margin:6px 0 10px}
+.dl-list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow-y:auto}
+.dl-row{display:flex;align-items:center;gap:4px;min-height:52px;padding:0 4px 0 10px;background:var(--card2);border:1px solid var(--border);border-radius:12px}
+.dl-row.off{opacity:.55}
+.dl-grip{color:var(--text3);font-size:18px;width:20px}
+.dl-nm{flex:1;min-width:0;font-size:15px;color:var(--text)}
+.dl-sub{display:block;font-size:12px;color:var(--text3)}
+.dl-btn{min-width:44px;min-height:44px;background:none;border:none;color:var(--text2);font-size:16px;cursor:pointer;border-radius:10px}
+.dl-btn:disabled{opacity:.25;cursor:default}
+.dl-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dl-set{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;margin-top:8px;padding:0 4px;background:none;border:none;border-top:1px solid var(--border);color:var(--text);font-family:inherit;font-size:15px;text-align:left;cursor:pointer}
 
 /* ── Upozornění ze skupin (Nastavení) a feed „Co je nového“ ── */
 .gn-box{margin-top:16px}
