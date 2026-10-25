@@ -1697,6 +1697,7 @@ function clearUserSessionState(){
     chatH=[]; chatMemorySummary=''; _chatDirty=false; _healthCtxDay=''; _healthCtxUid='';
     waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     _wtLinkScanned=false; _wtLinkQ=false; window.wtLinkClose?.(); // nabídka propojení pití (4.85)
+    window.chainBarClose?.(); // lišta „Další krok“ rutiny (4.89)
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
@@ -2708,6 +2709,170 @@ function chainApply(ids,segOf,okMsg){
   batch.commit().catch(e=>toast(t('hb.orderFail',{err:userErr(e,'habit')})));
   return true;
 }
+// Okno „Spojit návyky do rutiny“: klepání v pořadí; edit = štítek upravované rutiny (její nevybrané kroky se odpojí)
+let _chn={group:'day',sel:[],edit:null};
+function chainSheetGroup(g,hid){
+  const list=chainGroupList(g), segs=chainSegs(list);
+  const f=list.find(h=>segs.has(h.id)), steps=(hid&&segs.get(hid))||(f?segs.get(f.id):null);
+  _chn={group:g,sel:steps?steps.map(s=>s.id):[],edit:steps?steps[0].id:null};
+}
+function renderChainSheet(){
+  const box=document.getElementById('chn-sheet'); if(!box) return;
+  const list=chainGroupList(_chn.group);
+  _chn.sel=_chn.sel.filter(id=>list.some(h=>h.id===id)); // návyk mezitím archivovaný / smazaný
+  const n=_chn.sel.length, ok=n>1||(n===0&&!!_chn.edit);
+  const firstH=n?list.find(h=>h.id===_chn.sel[0]):null;
+  const grps=[['morning','🌅','hb.grp.morning'],['day','☀️','hb.grp.day'],['evening','🌙','hb.grp.evening']];
+  box.innerHTML=`<div class="gf-head"><div class="mtitle" id="chn-title">${tH('hb.chain.title')}</div>
+      <button type="button" class="gf-x" onclick="cm('m-chain')" aria-label="${tH('common.close')}">✕</button></div>
+    <div class="chn-hint">${tH('hb.chain.hint')}</div>
+    <div class="seg seg--block" role="group">${grps.map(([g,em,k])=>`<button type="button" class="seg-btn${_chn.group===g?' active':''}" aria-pressed="${_chn.group===g}" data-a0="${g}" onclick="chainSheetGrp(this.dataset.a0)">${em} ${tH(k)}</button>`).join('')}</div>
+    <div class="chn-list">${list.length>1?list.map(h=>{ const i=_chn.sel.indexOf(h.id)+1;
+      return `<button type="button" class="chn-pick${i?' sel':''}" aria-pressed="${!!i}" data-a0="${esc(h.id)}" onclick="chainPick(this.dataset.a0)"><span class="chn-num" aria-hidden="true">${i||''}</span><span>${esc(h.emoji||'🎯')} ${esc(h.name)}</span></button>`; }).join('')
+      :`<div class="chn-note">${tH('hb.chain.few')}</div>`}</div>
+    ${firstH&&firstH.reminderTime&&n>1?`<div class="chn-note">${tH('hb.chain.remHint',{time:firstH.reminderTime})}</div>`:''}
+    ${n===1?`<div class="chn-note">${tH('hb.chain.min')}</div>`:n===0&&_chn.edit?`<div class="chn-note">${tH('hb.chain.dissolve')}</div>`:''}
+    <div class="macts"><button type="button" class="btn-s" onclick="cm('m-chain')">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" id="chn-save" onclick="chainSaveGo()" ${ok?'':'disabled'}>${tH('hb.chain.save')}</button></div>`;
+}
+// hid: otevřít s rutinou tohoto návyku (detail), jinak skupina podle denní doby
+window.openChainSheet=hid=>{
+  if(!CU) return;
+  const h=hid?habits.find(x=>x.id===hid&&!x.archived):null, hr=new Date().getHours();
+  let g=h?(h.group||'day'):hr<11?'morning':hr<17?'day':'evening';
+  if(!h&&chainGroupList(g).length<2) g=CHAIN_GROUPS.find(x=>chainGroupList(x).length>1)||g;
+  chainSheetGroup(g,h?h.id:null);
+  renderChainSheet();
+  om('m-chain');
+};
+window.chainSheetGrp=g=>{ if(!CHAIN_GROUPS.includes(g)) return; chainSheetGroup(g); renderChainSheet(); };
+window.chainPick=id=>{
+  const i=_chn.sel.indexOf(id);
+  if(i>=0) _chn.sel.splice(i,1); else _chn.sel.push(id);
+  renderChainSheet();
+  [...document.querySelectorAll('#chn-sheet .chn-pick')].find(b=>b.dataset.a0===id)?.focus({preventScroll:true});
+};
+window.chainSaveGo=()=>guardSave('chain','#chn-save',async()=>{ if(chainSave(_chn.group,_chn.sel.slice(),_chn.edit)!==false) cm('m-chain'); });
+// Uložení rutiny: vybrané kroky za sebe na místo prvního vybraného, ostatní si drží vzájemné pořadí. 0 vybraných = zrušit upravovanou.
+function chainSave(group,sel,edit){
+  const list=chainGroupList(group);
+  if(!sel.every(id=>list.some(h=>h.id===id))||(sel.length===1)||(!sel.length&&!edit)){ toast(t('hb.chain.min')); return false; }
+  const segOf=chainSegOfList(list);
+  if(edit) list.forEach(h=>{ if(segOf.get(h.id)===edit) segOf.set(h.id,null); });
+  if(!sel.length){ chainApply(list.map(h=>h.id),segOf,t('hb.chain.removed')); return true; }
+  const NEW='\u0001new';
+  sel.forEach(id=>segOf.set(id,NEW));
+  const at=list.findIndex(h=>sel.includes(h.id)), rest=list.filter(h=>!sel.includes(h.id)).map(h=>h.id);
+  chainApply([...rest.slice(0,at),...sel,...rest.slice(at)],segOf,t('hb.chain.saved'));
+  return true;
+}
+// Detail: odpojit krok (přesune se na konec skupiny, zbytek rutiny se zacelí)
+window.chainDetach=hid=>{
+  const h=habits.find(x=>x.id===hid), steps=chainOf(h);
+  if(!CU||!steps) return;
+  const list=chainGroupList(h.group||'day'), segOf=chainSegOfList(list);
+  const ids=list.map(x=>x.id).filter(x=>x!==hid);
+  ids.push(hid); segOf.set(hid,null);
+  chainApply(ids,segOf,t('hd.chain.detached'));
+  if(steps[0].id===hid&&steps.length>2) chainNewHead(steps[1]);
+  if(detailHabitId===hid) renderHabitDetail(h);
+};
+// Detail: navázat samostatný návyk hned pod vybraný návyk stejné skupiny
+window.chainAttach=(hid,afterId)=>{
+  const h=habits.find(x=>x.id===hid&&!x.archived), a=habits.find(x=>x.id===afterId&&!x.archived);
+  if(!CU||!h||!a||hid===afterId||(h.group||'day')!==(a.group||'day')) return;
+  const list=chainGroupList(h.group||'day'), segOf=chainSegOfList(list);
+  const ids=list.map(x=>x.id).filter(x=>x!==hid);
+  ids.splice(ids.indexOf(afterId)+1,0,hid);
+  const s=segOf.get(afterId)||afterId;
+  segOf.set(afterId,s); segOf.set(hid,s);
+  chainApply(ids,segOf,t('hb.chain.saved'));
+  if(detailHabitId===hid) renderHabitDetail(h);
+};
+// Sekce „Rutina“ v detailu (nad připomínkou); v jednoduchém režimu až po odemčení návyků, pokud návyk v rutině není
+function chainDetailHTML(h,steps){
+  if(h.archived) return '';
+  const id=esc(h.id), title=`<div class="hd-section-title" style="margin-top:20px">${tH('hd.chain.sec')}</div>`;
+  if(steps){
+    const n=steps.findIndex(s=>s.id===h.id)+1;
+    return title+`<div class="hd-chain">
+      <div class="hd-chain-step">${tH('hd.chain.step',{name:chainName(h.group||'day'),n,total:steps.length})}</div>
+      <div class="hd-chain-chips">${steps.map(s=>`<button type="button" class="hd-chain-chip${s.id===h.id?' cur':''}"${s.id===h.id?' aria-current="step"':''} data-a0="${esc(s.id)}" onclick="openHabitDetail(this.dataset.a0)">${esc(s.emoji||'🎯')} ${esc(s.name)}</button>`).join('')}</div>
+      <div class="hd-chain-btns"><button type="button" class="btn-s" data-a0="${id}" onclick="openChainSheet(this.dataset.a0)">${tH('hd.chain.edit')}</button>
+        <button type="button" class="btn-s" data-a0="${id}" onclick="chainDetach(this.dataset.a0)">${tH('hd.chain.detach')}</button></div>
+    </div>`;
+  }
+  if(!unl('habits')) return '';
+  const others=chainGroupList(h.group||'day').filter(x=>x.id!==h.id);
+  if(!others.length) return '';
+  return title+`<div class="hd-chain"><label class="hd-chain-lbl" for="hd-chain-sel">${tH('hd.chain.attach')}</label>
+    <select id="hd-chain-sel" class="finp hd-chain-sel" data-a0="${id}" onchange="chainAttach(this.dataset.a0,this.value)">
+      <option value="">${tH('hd.chain.attachNone')}</option>${others.map(x=>`<option value="${esc(x.id)}">${esc(x.emoji||'🎯')} ${esc(x.name)}</option>`).join('')}
+    </select></div>`;
+}
+// ── Lišta „Další krok“ rutiny (4.89): jen po akci uživatele na tomto zařízení, dnes; sama zmizí po 15 s ──
+let _chnT=null;
+function chainBarClose(){ clearTimeout(_chnT); _chnT=null; document.getElementById('chain-next')?.remove(); }
+window.chainBarClose=chainBarClose;
+// Jiné okno nebo plovoucí lišta (sdílení, voda, instalace) → místo lišty jen toast
+function chainBarShow(html,fallback){
+  chainBarClose();
+  if(uiBusy()||naCovered()){ toast(fallback,3500); return; }
+  const el=document.createElement('div');
+  el.id='chain-next'; el.className='cta-ask chn-ask'; el.setAttribute('role','status');
+  el.innerHTML=html;
+  document.body.appendChild(el);
+  const run=()=>{ clearTimeout(_chnT); _chnT=setTimeout(chainBarClose,CTA_ASK_MS); };
+  const pause=()=>{ clearTimeout(_chnT); _chnT=null; };
+  el.addEventListener('mouseenter',pause);
+  el.addEventListener('focusin',pause);
+  el.addEventListener('mouseleave',()=>{ if(!el.contains(document.activeElement)) run(); });
+  el.addEventListener('focusout',e=>{ if(!el.contains(e.relatedTarget)&&!el.matches(':hover')) run(); });
+  run();
+}
+// Volat synchronně po změně paměti (ne po await zápisu), jen z akcí uživatele: krok přešel na splněno (how 'done') nebo přeskočeno ('skip')
+function chainAfter(hid,ds,how){
+  if(!CU||ds!==toDS()) return;
+  const h=habits.find(x=>x.id===hid), steps=chainOf(h);
+  if(!steps) return;
+  const next=chainNextStep(steps,ds);
+  if(!next){
+    chainBarClose();
+    const p=chainProgress(steps,ds);
+    if(p.done>1&&p.done===p.total) toast(t('hb.chain.allDone',{name:chainName(h.group||'day'),n:p.done}),3500);
+    return;
+  }
+  const habit=(next.emoji||'🎯')+' '+next.name, key=how==='skip'?'hb.chain.nextBarSkip':'hb.chain.nextBar', id=esc(next.id);
+  const goal=Number(next.goal)||1;
+  chainBarShow(`<span class="cta-ask-t">${tH(key,{habit})}</span>
+    <button type="button" class="cta-ask-x" data-a0="${id}" aria-label="${tH('hb.chain.skipAria',{habit})}" onclick="chainNextSkip(this.dataset.a0)">⏭</button>
+    <button type="button" class="cta-ask-b" data-a0="${id}" onclick="chainNextDone(this.dataset.a0)">${next.type==='count'?tH('hb.chain.cntBtn',{goal}):tH('hb.chain.doneBtn')}</button>
+    <button type="button" class="cta-ask-x" aria-label="${tH('hb.chain.closeAria')}" onclick="chainBarClose()">✕</button>`, t(key,{habit}));
+}
+// Splnění dalšího kroku z lišty: ano/ne jako klepnutí, počítaný rovnou na cíl (lišta se přepíše přes chainAfter)
+window.chainNextDone=hid=>{
+  quickOnce('chn-'+hid,()=>{
+    const td=toDS(), h=habits.find(x=>x.id===hid);
+    if(!h||!isHabitPending(h,td)){ chainBarClose(); return; }
+    if(h.type==='count'){ const goal=Number(h.goal)||1, cur=Number(hLog(hid+'_'+td)?.value)||0; return window.adjustHabit(hid,td,goal-cur,goal); }
+    return window.toggleHabit(hid,td,'empty');
+  });
+};
+window.chainNextSkip=hid=>{
+  quickOnce('chn-s-'+hid,()=>{
+    const td=toDS(), h=habits.find(x=>x.id===hid);
+    if(!h||!isHabitPending(h,td)){ chainBarClose(); return; }
+    return window.skipHabitDay(hid,td);
+  });
+};
+// 1. krok rutiny archivovaný / odpojený: nový 1. krok připomínku nemá → nabídnout ji
+function chainNewHead(step){
+  if(!step||step.reminderTime) return;
+  const habit=(step.emoji||'🎯')+' '+step.name;
+  chainBarShow(`<span class="cta-ask-t">${tH('hb.chain.newHead',{habit})}</span>
+    <button type="button" class="cta-ask-b" data-a0="${esc(step.id)}" onclick="chainBarClose();openHabitDetail(this.dataset.a0)">${tH('hb.chain.newHeadBtn')}</button>
+    <button type="button" class="cta-ask-x" aria-label="${tH('hb.chain.closeAria')}" onclick="chainBarClose()">✕</button>`, t('hb.chain.newHead',{habit}));
+}
 function renderHabits(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
@@ -3006,6 +3171,9 @@ function renderHabitDetail(h) {
       ${cells}
     </div>`;
 
+  // Rutina (4.89): navazující krok nemá vlastní připomínku, připomíná ho 1. krok
+  const hdChain = chainOf(h), hdChainFirst = hdChain && hdChain[0].id !== h.id ? hdChain[0] : null;
+
   // Splnění dneška přímo z detailu (otevírá se i z notifikace)
   const tLog = hLog(h.id + '_' + today);
   const tDone = hDone(h.id, today);
@@ -3066,6 +3234,9 @@ function renderHabitDetail(h) {
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;">
       ${monthsHtml}
     </div>
+    ${chainDetailHTML(h, hdChain)}
+    ${hdChainFirst ? `<div class="hd-section-title" style="margin-top:20px">${tH('hd.reminder')}</div>
+    <button type="button" class="hd-chain-rem" data-a0="${esc(hdChainFirst.id)}" onclick="openHabitDetail(this.dataset.a0)">${hdChainFirst.reminderTime ? tH('hb.chain.remFirst', {habit: (hdChainFirst.emoji || '🎯') + ' ' + hdChainFirst.name, time: hdChainFirst.reminderTime}) : tH('hb.chain.remNone')}</button>` : `
     <div class="hd-section-title" style="margin-top:20px">${tH('hd.reminder')}</div>
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
@@ -3077,7 +3248,7 @@ function renderHabitDetail(h) {
         ${h.reminderTime ? `<button class="btn-s" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,null)">${tH('hd.reminderOff')}</button>` : ''}
         <button class="btn-p" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,document.getElementById('hd-notif-time').value)">💾 ${tH('common.save')}</button>
       </div>
-    </div>
+    </div>`}
 
     ${(!h.freq || h.freq.type !== 'weekly') ? habitShieldSectionHTML(h) : ''}
     ${habitPauseSectionHTML(h)}
@@ -3135,6 +3306,7 @@ let _habitToday=habitDay;
 function habitDayRoll(){
   const td=toDS();
   if(_habitToday===td) return;
+  chainBarClose(); // nový den: rutina začíná od 1. kroku (4.89)
   const follow=habitDay===_habitToday;
   _habitToday=td;
   if(follow){ habitDay=td; if(CU) renderHabits(); }
@@ -3155,7 +3327,9 @@ window.toggleHabit=async(hid,date,currentState)=>{
   } else {
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
     installUnlock('habits'); // první užitečná akce → může se nabídnout instalace (před await: offline zápis čeká na server)
-    await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
+    const w=putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
+    chainAfter(hid,date,'done'); // rutina: paměť je už změněná, lišta nečeká na server (4.89)
+    await w;
     checkAvatarReactions(hid, date, true);
     notifAskSoon('habit'); // po 3. splněném návyku nabídnout upozornění
   }
@@ -3174,7 +3348,9 @@ window.adjustHabit=async(hid,date,delta,goal)=>{
   if(newVal===0){
     await delHabitLog(logId);
   } else {
-    await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
+    const w=putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
+    if(delta>0 && newVal>=goal && cur<goal) chainAfter(hid,date,'done'); // přechod přes cíl (4.89)
+    await w;
   }
   renderHabits();
   // Reakce avatara pokud byl právě splněn cíl (done přešlo na true)
@@ -3225,7 +3401,9 @@ window.toggleHabitDay=async(hid,date)=>{
     await hbClearLog(hid,date);
   } else {
     installUnlock('habits');
-    await putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
+    const w=putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
+    chainAfter(hid,date,'done'); // jen dnes (4.89)
+    await w;
   }
   renderHabits();
 };
@@ -3238,8 +3416,10 @@ window.skipHabitDay=async(hid,date)=>{
     await delHabitLog(logId);
     toast(t('hb.unskipped'));
   } else {
-    await putHabitLog({id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0});
+    const w=putHabitLog({id:logId,habitId:hid,date,done:false,failed:false,skipped:true,value:0});
     toast(t('hb.skippedT'));
+    chainAfter(hid,date,'skip'); // lišta posune na další krok (4.89)
+    await w;
   }
   renderHabits();
 };
@@ -3360,9 +3540,12 @@ window.directInput=async(hid,date,curVal,goal)=>{
     modal.remove();
     if(isNaN(newVal)||newVal<0){toast(t('hb.di.bad'));return;}
     if(newVal>=goal) installUnlock('habits');
-    await putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
-    renderHabits();
+    const was=hDone(hid,date);
+    const w=putHabitLog({id:logId,habitId:hid,date,done:newVal>=goal,value:newVal});
     toast(t('hb.di.logged',{n:newVal}));
+    if(!was&&newVal>=goal) chainAfter(hid,date,'done'); // přechod přes cíl (4.89)
+    await w;
+    renderHabits();
   };
 
   const clear = async () => {
@@ -3409,12 +3592,14 @@ window.archiveHabit = async (id) => {
   const isArchived = h.archived || false;
   const msg = isArchived ? t('hb.restoreQ') : t('hb.archiveQ');
   if (!confirm(msg)) return;
+  const steps = isArchived ? null : chainOf(h); // 1. krok rutiny → nový 1. krok bez připomínky (4.89)
   await updateDoc(doc(db, 'users', CU.uid, 'habits', id), { archived: !isArchived });
   h.archived = !isArchived;
   syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
   toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
+  if (steps && steps[0].id === id && steps.length > 2) chainNewHead(steps[1]);
 };
 
 // ── PAUZA NÁVYKU (rozsahy pauses + synchronní pausedUntil pro server) ──
@@ -4331,7 +4516,7 @@ window.delEvent=async(id)=>{
   toast(t('cal.deleted'));
 };
 
-function om(id){window.ctaAskClose?.();window.wtLinkClose?.();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení a propojení pití nesmí ležet nad oknem (4.85)
+function om(id){window.ctaAskClose?.();window.wtLinkClose?.();chainBarClose();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení a propojení pití nesmí ležet nad oknem (4.85)
 function cm(id){document.getElementById(id).classList.remove('open');if(id==='m-dashedit')dashSave(true);} // editor Domů: uložit hned (i Zpět, Esc)
 window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
@@ -6033,6 +6218,7 @@ async function handleNotifHabitDone(data) {
       renderHabits();
       rDash();
       toast(t('notif.h.done', {emoji: habit.emoji, name: habit.name}));
+      chainAfter(data.habitId, date, 'done'); // rutina: nabídnout další krok (4.89)
     }
   }
 
@@ -7666,7 +7852,9 @@ function coTedHTML() {
       + `<button type="button" class="btn-p ct-add" onclick="ctAdd()" aria-label="${tH('ct.add')}">+</button></div>`
       + (Object.prototype.hasOwnProperty.call(ES, id) ? `<button type="button" class="lp-es-ex ct-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.' + id + '.ex')}</button>` : '');
   } else if (kind === 'habits') {
-    const td = toDS(), hs = habits.filter(h => h && h.type !== 'count' && isHabitPending(h, td)).slice(0, 3); // jen dnes na řadě
+    // jen dnes na řadě; z rutiny jen její další krok (4.89)
+    const td = toDS(), chm = chainMapAll();
+    const hs = habits.filter(h => h && h.type !== 'count' && isHabitPending(h, td) && (!chm.has(h.id) || chainNextStep(chm.get(h.id), td) === h)).slice(0, 3);
     body = hs.length ? `<div class="ct-hbs">${hs.map(h => `<button type="button" class="ct-hb" data-a0="${esc(h.id)}" onclick="ctHabit(this.dataset.a0)"><span class="ct-hb-c" aria-hidden="true"></span><span>${esc(h.emoji || '⭐')} ${esc(h.name)}</span></button>`).join('')}</div>`
       : `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.open')}</button>`;
   } else if (kind === 'water') {
