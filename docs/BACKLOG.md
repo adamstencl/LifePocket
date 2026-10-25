@@ -70,3 +70,9 @@
 ## Z 4.88
 - `renderChecklist`: rozepsaný text z `#cl-new-inp` může přejít do jiného seznamu, pokud se při přepnutí záložky nepřesune fokus – ukládat id seznamu a porovnat.
 - Počítaný návyk na mobilu: štítek „0 / 10“ v 1. řádku, ovládání ve 2. – UX kontrola.
+
+## Z 4.89
+- `chainSave`: odebraný 1. krok s připomínkou – nový 1. krok ji nedostane ani nenabídne.
+- 1. krok s připomínkou přetažený do jiné rutiny: připomínka se jen nabídne, nepřesune.
+- Smazání 1. kroku dvoukrokové rutiny: zbylý návyk zůstane bez připomínky.
+- „Spustit rutinu“ přes celou obrazovku, řádek rutiny na Domů, body/odznak za rutinu (4.90+).
