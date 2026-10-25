@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.88';
+const APP_VERSION = '4.89';
 const CHANGELOG = [
+  { v:'4.89', items:[
+    '🔗 Rutiny: spoj návyky do řady (čištění zubů → protažení → kliky) a appka ti po každém kroku nabídne další'
+  ], en:[
+    '🔗 Routines: link habits into a sequence (brushing teeth → stretching → push-ups) and the app offers you the next one after each step'
+  ]},
   { v:'4.88', items:[
     '✅ Návyky: obrazovka při odškrtnutí neposkakuje, názvy se nelámou uprostřed slova'
   ], en:[
