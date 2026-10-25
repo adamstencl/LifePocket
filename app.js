@@ -2894,6 +2894,17 @@ window.chainNextSkip=hid=>{
     return window.skipHabitDay(hid,td);
   });
 };
+// 1. krok rutiny smazaný (move) nebo archivovaný: připomínka se přesune na nový 1. krok, jinak se nabídne
+function chainHeadGone(steps,h,move){
+  if(!CU||!steps||steps[0].id!==h.id||steps.length<3) return;
+  const nh=steps[1];
+  if(move&&h.reminderTime&&!nh.reminderTime){
+    nh.reminderTime=h.reminderTime;
+    updateDoc(doc(db,'users',CU.uid,'habits',nh.id),{reminderTime:nh.reminderTime}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'habit')})));
+    toast(t('hb.chain.remMoved',{time:nh.reminderTime,habit:nh.name}),6000);
+    renderHabits();
+  } else chainNewHead(nh);
+}
 // 1. krok rutiny archivovaný / odpojený: nový 1. krok připomínku nemá → nabídnout ji
 function chainNewHead(step){
   if(!step||step.reminderTime) return;
@@ -3601,6 +3612,7 @@ window.showDeleteHabitConfirm=(id,btn)=>{
 window.deleteHabit=async(id)=>{
   if(!CU)return;
   unshareAll('h',id); // zrcadla ve skupinách pryč dřív, než návyk zmizí
+  const delH=habits.find(h=>h.id===id), delSteps=chainOf(delH); // 1. krok rutiny: připomínka na nový 1. krok (4.89)
   await deleteDoc(doc(db,'users',CU.uid,'habits',id));
   habits=habits.filter(h=>h.id!==id);
   // Listener drží jen posledních HL_WINDOW dní → smazat i starší záznamy (offline aspoň ty v paměti)
@@ -3611,6 +3623,7 @@ window.deleteHabit=async(id)=>{
   habitLogs=habitLogs.filter(l=>l.habitId!==id);
   renderHabits(); toast(t('hb.deleted'));
   window.closeHabitDetail();
+  if(delH) chainHeadGone(delSteps, delH, true);
 };
 
 let _showArchived = false;
@@ -3631,7 +3644,7 @@ window.archiveHabit = async (id) => {
   toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
-  if (steps && steps[0].id === id && steps.length > 2) chainNewHead(steps[1]);
+  chainHeadGone(steps, h, false);
 };
 
 // ── PAUZA NÁVYKU (rozsahy pauses + synchronní pausedUntil pro server) ──
@@ -4129,7 +4142,10 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
     st.items = items; st.from = st.to = from;
     st.tops = rects.map(r => r.top - cTop);
     st.hs = rects.map(r => r.height);
-    const gap = items.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 0;
+    // Nejmenší mezera mezi řádky (hlavička rutiny mezi kartami by posun zvětšila, 4.89)
+    let gap = Infinity;
+    for (let i = 1; i < rects.length; i++) gap = Math.min(gap, rects[i].top - rects[i - 1].bottom);
+    gap = Number.isFinite(gap) ? Math.max(0, gap) : 0;
     st.shift = st.hs[from] + gap;
     st.startY = st.lastY - cTop; // pozice prstu vůči containeru v okamžiku zvednutí
     st.active = true;
@@ -6240,7 +6256,9 @@ async function handleNotifHabitDone(data) {
     } else {
       const log = {id: logId, habitId: data.habitId, date, done: true, value: 1};
       try {
-        await putHabitLog(log, true);
+        const w = putHabitLog(log, true);
+        chainAfter(data.habitId, date, 'done'); // rutina: hned po změně paměti (4.89)
+        await w;
       } catch(e) {
         // Trvalá chyba (oprávnění, neplatná data) → zahodit, ať nevzniká "poison pill"; dočasná (offline) → nechat na příště
         const perm = ['permission-denied','invalid-argument','failed-precondition','not-found','out-of-range'].includes(e && e.code);
@@ -6249,8 +6267,7 @@ async function handleNotifHabitDone(data) {
       }
       renderHabits();
       rDash();
-      toast(t('notif.h.done', {emoji: habit.emoji, name: habit.name}));
-      chainAfter(data.habitId, date, 'done'); // rutina: nabídnout další krok (4.89)
+      if (!document.getElementById('chain-next')) toast(t('notif.h.done', {emoji: habit.emoji, name: habit.name}));
     }
   }
 
@@ -7886,7 +7903,8 @@ function coTedHTML() {
   } else if (kind === 'habits') {
     // jen dnes na řadě; z rutiny jen její další krok (4.89)
     const td = toDS(), chm = chainMapAll();
-    const hs = habits.filter(h => h && h.type !== 'count' && isHabitPending(h, td) && (!chm.has(h.id) || chainNextStep(chm.get(h.id), td) === h)).slice(0, 3);
+    // počítaný návyk jen jako aktuální krok rutiny (klepnutí ho splní na cíl)
+    const hs = habits.filter(h => h && isHabitPending(h, td) && (chm.has(h.id) ? chainNextStep(chm.get(h.id), td) === h : h.type !== 'count')).slice(0, 3);
     body = hs.length ? `<div class="ct-hbs">${hs.map(h => `<button type="button" class="ct-hb" data-a0="${esc(h.id)}" onclick="ctHabit(this.dataset.a0)"><span class="ct-hb-c" aria-hidden="true"></span><span>${esc(h.emoji || '⭐')} ${esc(h.name)}</span></button>`).join('')}</div>`
       : `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.open')}</button>`;
   } else if (kind === 'water') {
@@ -7928,7 +7946,9 @@ window.ctAdd = () => {
 window.ctHabit = hid => {
   quickOnce('ct-h', () => {
     const td = toDS();
-    if (!habits.some(h => h.id === hid) || hLogHD(hid, td)?.done) return;
+    const h = habits.find(x => x.id === hid);
+    if (!h || hLogHD(hid, td)?.done) return;
+    if (h.type === 'count') { const goal = Number(h.goal) || 1, cur = Number(hLog(hid + '_' + td)?.value) || 0; const w = window.adjustHabit(hid, td, goal - cur, goal); quickRefresh(); return w; }
     const w = window.toggleHabitDay(hid, td); quickRefresh(); return w;
   });
 };

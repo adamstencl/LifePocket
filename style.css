@@ -2445,7 +2445,7 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .hd-chain-step{font-size:14px;color:var(--text2);margin-bottom:10px}
 .hd-chain-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .hd-chain-chip{min-height:44px;padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:20px;color:var(--text);font:inherit;font-size:14px;cursor:pointer}
-.hd-chain-chip.cur{border-color:var(--accent);color:var(--accent);font-weight:700}
+.hd-chain-chip.cur{border-color:var(--accent);color:var(--accent-text);font-weight:700}
 .hd-chain-btns{display:flex;gap:8px;flex-wrap:wrap}
 .hd-chain-btns .btn-s{flex:1;min-width:120px;min-height:44px}
 .hd-chain-lbl{display:block;font-size:14px;color:var(--text2);margin-bottom:8px}
@@ -2455,3 +2455,8 @@ body.chn-on .toast{bottom:calc(144px + var(--chn-h,64px))}
 .hd-chain-own{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:14px;color:var(--text2)}
 .hd-chain-own span{flex:1 1 180px}
 .hd-chain-own .btn-s{min-height:44px}
+@media (max-width:380px){
+  .habit-card.hb-in-chain{margin-left:8px}
+  .habit-card.hb-in-chain::before{left:-7px}
+  .hb-chain-head{margin-left:8px}
+}
