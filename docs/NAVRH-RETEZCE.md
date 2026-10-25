@@ -248,7 +248,7 @@ V `sendScheduledNotifications` v čase připomínky 1. kroku: když je 1. krok v
 @media (prefers-reduced-motion:no-preference){.habit-card.hb-next{transition:border-color .25s,box-shadow .25s}}
 ```
 
-Kontrast ověřit u světlých témat sunshine a tangerine, kde je `--accent` tmavší oranžová: štítek „Další“ musí mít bílý text na `--accent` aspoň 4,5 : 1 (`--on-accent`). Okno: standardní `.moverlay`/`.modal`, zavření přes `cm()`/Zpět jako ostatní.
+Kontrast ověřit u světlých témat sunshine a tangerine, kde je `--accent` tmavší oranžová: štítek „Další“ používá `--on-accent` (tmavý v dark-gold a sunshine, bílý v tangerine) a musí mít proti `--accent` aspoň 4,5 : 1. Okno: standardní `.moverlay`/`.modal`, zavření přes `cm()`/Zpět jako ostatní.
 
 ### 7.4 Verze
 
