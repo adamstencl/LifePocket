@@ -2896,14 +2896,20 @@ window.chainNextSkip=hid=>{
 };
 // 1. krok rutiny smazaný (move) nebo archivovaný: připomínka se přesune na nový 1. krok, jinak se nabídne
 function chainHeadGone(steps,h,move){
-  if(!CU||!steps||steps[0].id!==h.id||steps.length<3) return;
-  const nh=steps[1];
-  if(move&&h.reminderTime&&!nh.reminderTime){
-    nh.reminderTime=h.reminderTime;
-    updateDoc(doc(db,'users',CU.uid,'habits',nh.id),{reminderTime:nh.reminderTime}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'habit')})));
-    toast(t('hb.chain.remMoved',{time:nh.reminderTime,habit:nh.name}),6000);
+  if(!CU||!steps||steps[0].id!==h.id||steps.length<2) return;
+  // Nový 1. krok bez chain, jinak by se zbytek rutiny přilepil k návyku nad ní; připomínka ve stejném zápisu
+  const nh=steps[1], up={};
+  if(nh.chain) up.chain=false;
+  const mv=steps.length>2&&move&&h.reminderTime&&!nh.reminderTime;
+  if(mv) up.reminderTime=h.reminderTime;
+  if(Object.keys(up).length){
+    Object.assign(nh,up);
+    updateDoc(doc(db,'users',CU.uid,'habits',nh.id),up).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'habit')})));
     renderHabits();
-  } else chainNewHead(nh);
+  }
+  if(steps.length<3) return;
+  if(mv) toast(t('hb.chain.remMoved',{time:nh.reminderTime,habit:nh.name}),6000);
+  else chainNewHead(nh);
 }
 // 1. krok rutiny archivovaný / odpojený: nový 1. krok připomínku nemá → nabídnout ji
 function chainNewHead(step){
@@ -6260,6 +6266,7 @@ async function handleNotifHabitDone(data) {
         chainAfter(data.habitId, date, 'done'); // rutina: hned po změně paměti (4.89)
         await w;
       } catch(e) {
+        chainBarClose(); // zápis selhal: lišta „Další krok“ by lhala (4.89)
         // Trvalá chyba (oprávnění, neplatná data) → zahodit, ať nevzniká "poison pill"; dočasná (offline) → nechat na příště
         const perm = ['permission-denied','invalid-argument','failed-precondition','not-found','out-of-range'].includes(e && e.code);
         console.warn('[LP] Splnění návyku z notifikace selhalo:', e && e.code || '');
