@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.89';
+const APP_VERSION = '4.90';
 const CHANGELOG = [
+  { v:'4.90', items:[
+    '✅ Návyky: názvy se na užším telefonu nelámou uprostřed slova'
+  ], en:[
+    '✅ Habits: names no longer break mid-word on narrower phones'
+  ]},
   { v:'4.89', items:[
     '🔗 Rutiny: spoj návyky do řady (čištění zubů → protažení → kliky) a appka ti po každém kroku nabídne další'
   ], en:[
