@@ -2645,6 +2645,68 @@ function isHabitPending(h,ds){
   }
   return true;
 }
+// ── RUTINY (4.89): návyk s chain:true navazuje na aktivní návyk nad sebou ve skupině ──
+// Rutina = souvislý úsek aktivních návyků skupiny; 1. krok bez chain, další s chain:true (u prvního návyku skupiny se ignoruje)
+const CHAIN_GROUPS=['morning','day','evening'];
+// Aktivní návyky skupiny v pořadí seznamu (stejný řadič jako renderHabits)
+function chainGroupList(group){ return habits.filter(x=>(x.group||'day')===group&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0)); }
+// Úseky seřazeného seznamu: Map id → pole kroků (jen rutiny o 2+ krocích)
+function chainSegs(list){
+  const m=new Map(); let cur=null;
+  const end=()=>{ if(cur&&cur.length>1) cur.forEach(h=>m.set(h.id,cur)); };
+  list.forEach((h,i)=>{ if(i>0&&h.chain===true) cur.push(h); else { end(); cur=[h]; } });
+  end();
+  return m;
+}
+// Štítek rutiny pro každý návyk seznamu (id 1. kroku, samostatný = null)
+function chainSegOfList(list){
+  const segs=chainSegs(list), m=new Map();
+  list.forEach(h=>{ const s=segs.get(h.id); m.set(h.id,s?s[0].id:null); });
+  return m;
+}
+// Všechny rutiny všech skupin (jednou na render, ne pro každou kartu)
+function chainMapAll(){
+  const m=new Map();
+  new Set(habits.filter(h=>!h.archived).map(h=>h.group||'day')).forEach(g=>chainSegs(chainGroupList(g)).forEach((v,k)=>m.set(k,v)));
+  return m;
+}
+function chainOf(h){ return h&&!h.archived?(chainSegs(chainGroupList(h.group||'day')).get(h.id)||null):null; }
+// Další krok = první krok rutiny, který je ve zvolený den na řadě a nic nemá
+function chainNextStep(steps,ds){ return (steps||[]).find(s=>isHabitPending(s,ds))||null; }
+// Hotové / dnešní kroky (přeskočené a mimo frekvenci se nepočítají, jako ve statistikách)
+function chainProgress(steps,ds){
+  let done=0,total=0;
+  (steps||[]).forEach(s=>{ const st=habitDayState(s,ds); if(st==='done'){done++;total++;} else if(st==='miss') total++; });
+  return {done,total};
+}
+const CHAIN_NAME={morning:'hb.chain.name.morning',day:'hb.chain.name.day',evening:'hb.chain.name.evening'};
+const chainName=g=>t(CHAIN_NAME[g]||CHAIN_NAME.day);
+// Zápis pořadí a příznaků chain skupiny jednou dávkou. segOf: id → štítek rutiny (null = samostatně);
+// chain = stejný štítek jako návyk nad ním. Navazující kroky ztratí reminderTime (rutinu připomíná 1. krok), toast to vždy řekne.
+function chainApply(ids,segOf,okMsg){
+  if(!CU) return false;
+  const batch=writeBatch(db), off=[];
+  let n=0;
+  ids.forEach((id,i)=>{
+    const h=habits.find(x=>x.id===id); if(!h) return;
+    const s=segOf.get(id)||null;
+    const ch=i>0&&s!==null&&(segOf.get(ids[i-1])||null)===s;
+    const up={};
+    if(h.order!==i) up.order=i;
+    if(!!h.chain!==ch) up.chain=ch;
+    if(ch&&h.reminderTime){ off.push({habit:h.name,time:h.reminderTime}); up.reminderTime=null; }
+    if(!Object.keys(up).length) return;
+    Object.assign(h,up); n++;
+    batch.update(doc(db,'users',CU.uid,'habits',id),up);
+  });
+  if(off.length===1) toast(t('hb.chain.remOff',off[0]),6000);
+  else if(off.length) toast(t('hb.chain.remOffN',{list:off.map(o=>o.habit+' ('+o.time+')').join(', ')}),6000);
+  else if(okMsg) toast(okMsg);
+  if(!n) return false;
+  renderHabits(); // hned nové pořadí, snapshot ho potvrdí
+  batch.commit().catch(e=>toast(t('hb.orderFail',{err:userErr(e,'habit')})));
+  return true;
+}
 function renderHabits(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
@@ -3680,20 +3742,31 @@ window.moveHabit = async function(id, dir) {
   const h = habits.find(x=>x.id===id);
   if(!h) return;
   const group = h.group||'day';
-  const groupHabits = habits.filter(x=>(x.group||'day')===group&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
+  const groupHabits = chainGroupList(group);
   const idx = groupHabits.findIndex(x=>x.id===id);
   const swapIdx = idx+dir;
-  if(swapIdx<0||swapIdx>=groupHabits.length) return;
+  if(idx<0||swapIdx<0||swapIdx>=groupHabits.length) return;
   // Přečíslovat celou skupinu (4.81): při stejném order by prohození nic nezměnilo
   const ids = groupHabits.map(x=>x.id);
-  [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
-  saveHabitOrder(ids);
+  // Rutiny (4.89): prohození uvnitř rutiny ji nemění, krajní krok šipkou ven z ní vystoupí
+  // a soused z jiné rutiny se přeskočí celou rutinou (šipka rutinu nerozdělí ani do ní návyk nepřidá)
+  const segOf = chainSegOfList(groupHabits), s = segOf.get(id)||null, ns = segOf.get(ids[swapIdx])||null;
+  if(ns && ns!==s){
+    ids.splice(idx,1);
+    const blk = ids.filter(x=>segOf.get(x)===ns);
+    ids.splice(dir>0 ? ids.indexOf(blk[blk.length-1])+1 : ids.indexOf(blk[0]), 0, id);
+    segOf.set(id,null);
+  } else {
+    [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
+    if(s && s!==ns) segOf.set(id,null);
+  }
+  chainApply(ids, segOf);
 };
 
 // ── Přesouvání řádků dlouhým stiskem (návyky, checklist) ──────────────
 // enableDragReorder(container, itemSelector, onDrop[, opts]): řádky = potomci containeru dle itemSelector
 // s data-drag-id. Podržení ~350 ms (mimo tlačítka a pole) řádek zvedne, tažení přesouvá, puštění
-// zavolá onDrop(ids v novém pořadí). Volat po každém renderu; listenery se nezdvojí (příznak na elementu).
+// zavolá onDrop(ids v novém pořadí, id taženého řádku). Volat po každém renderu; listenery se nezdvojí (příznak na elementu).
 const DRAG_HOLD_MS = 350, DRAG_SLOP = 8;
 const DRAG_SKIP = 'button,input,textarea,select,label,a,img,[contenteditable],.no-drag';
 let _dragSuppressClick = 0; // čas, do kdy se spolkne klik po puštění řádku
@@ -3894,7 +3967,7 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
     if (to === from) return;
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
-    try { onDrop(ids); } catch(err) { console.warn('[LP] přesun:', err?.name); }
+    try { onDrop(ids, moved); } catch(err) { console.warn('[LP] přesun:', err?.name); } // moved = id taženého řádku (4.89)
   }
 
   function onCancel(e){ if (st && e.pointerId === st.pid) cleanup(); }
@@ -3918,25 +3991,23 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
   container.addEventListener('contextmenu', e => { if (st) e.preventDefault(); });
 }
 
-// Pořadí návyků po přetažení: zapíše jen změněné `order` jednou dávkou (jako šipky – v rámci skupiny)
-function saveHabitOrder(ids){
+// Pořadí návyků po přetažení: zapíše jen změněné `order` (a `chain`) jednou dávkou (jako šipky – v rámci skupiny)
+// movedId = přesunutý návyk (4.89): do rutiny patří, když dopadl dovnitř ní, nebo nad krok své rutiny; jinak je samostatný.
+// Ostatní si rutinu nechávají, mezera po přesunutém kroku se zacelí. movedId null = rutiny beze změny (prohození uvnitř rutiny).
+function saveHabitOrder(ids, movedId){
   if (!CU || !ids.length || new Set(ids).size !== ids.length) return; // duplicity = chybný seznam
   const first = habits.find(x => x.id === ids[0]);
   if (!first) return;
   const group = first.group || 'day';
-  const groupHabits = habits.filter(x => (x.group || 'day') === group && !x.archived);
+  const groupHabits = chainGroupList(group);
   if (groupHabits.length !== ids.length || !ids.every(id => groupHabits.some(h => h.id === id))) return; // seznam se mezitím změnil
-  const batch = writeBatch(db);
-  let n = 0;
-  ids.forEach((id, i) => {
-    const h = habits.find(x => x.id === id);
-    if (h.order === i) return;
-    h.order = i; n++;
-    batch.update(doc(db, 'users', CU.uid, 'habits', id), {order: i});
-  });
-  if (!n) return;
-  renderHabits(); // hned nové pořadí, snapshot ho potvrdí
-  batch.commit().catch(e => toast(t('hb.orderFail',{err:userErr(e, 'návyk')})));
+  const segOf = chainSegOfList(groupHabits);
+  const i = movedId ? ids.indexOf(movedId) : -1;
+  if (i >= 0) {
+    const own = segOf.get(movedId), a = i > 0 ? segOf.get(ids[i - 1]) : null, b = i < ids.length - 1 ? segOf.get(ids[i + 1]) : null;
+    segOf.set(movedId, a && a === b ? a : own && b === own ? own : null);
+  }
+  chainApply(ids, segOf);
 }
 
 // Cíle přesunu osobních událostí: skupiny, kde kalendář opravdu sdílím (hlavní první)
