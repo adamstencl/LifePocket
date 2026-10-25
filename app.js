@@ -2690,25 +2690,41 @@ const CHAIN_NAME={morning:'hb.chain.name.morning',day:'hb.chain.name.day',evenin
 const chainName=g=>t(CHAIN_NAME[g]||CHAIN_NAME.day);
 // Zápis pořadí a příznaků chain skupiny jednou dávkou. segOf: id → štítek rutiny (null = samostatně);
 // chain = stejný štítek jako návyk nad ním. Navazující kroky ztratí reminderTime (rutinu připomíná 1. krok), toast to vždy řekne.
+// Nemá-li nový 1. krok úseku připomínku, přesune se na něj odebraný čas kroku téhož úseku (prohození 1. kroku);
+// odešel-li z rutiny 1. krok s připomínkou, nabídne se připomínka novému 1. kroku.
 function chainApply(ids,segOf,okMsg){
   if(!CU) return false;
-  const batch=writeBatch(db), off=[];
+  const hs=ids.map(id=>habits.find(x=>x.id===id));
+  if(hs.some(h=>!h)) return false; // seznam se mezitím změnil
+  const lab=id=>segOf.get(id)||null;
+  const ch=ids.map((id,i)=>i>0&&lab(id)!==null&&lab(ids[i-1])===lab(id));
+  const rem=hs.map(h=>h.reminderTime||null), off=[], moved=[];
+  let offer=null;
+  ch.forEach((c,i)=>{ if(c&&rem[i]){ off.push({i,habit:hs[i].name,time:rem[i]}); rem[i]=null; } });
+  for(let i=0;i<ids.length;i++){
+    let j=i+1; while(j<ids.length&&ch[j]) j++;
+    if(j-i>1&&!rem[i]){
+      const o=off.find(x=>x.i>i&&x.i<j);
+      if(o){ rem[i]=o.time; off.splice(off.indexOf(o),1); moved.push({time:o.time,habit:hs[i].name}); }
+      else{ const old=habits.find(x=>x.id===lab(ids[i])); if(old&&old!==hs[i]&&old.reminderTime&&!ids.slice(i,j).includes(old.id)) offer=hs[i]; }
+    }
+    i=j-1;
+  }
+  const batch=writeBatch(db);
   let n=0;
-  ids.forEach((id,i)=>{
-    const h=habits.find(x=>x.id===id); if(!h) return;
-    const s=segOf.get(id)||null;
-    const ch=i>0&&s!==null&&(segOf.get(ids[i-1])||null)===s;
+  hs.forEach((h,i)=>{
     const up={};
     if(h.order!==i) up.order=i;
-    if(!!h.chain!==ch) up.chain=ch;
-    if(ch&&h.reminderTime){ off.push({habit:h.name,time:h.reminderTime}); up.reminderTime=null; }
+    if(!!h.chain!==ch[i]) up.chain=ch[i];
+    if((h.reminderTime||null)!==rem[i]) up.reminderTime=rem[i];
     if(!Object.keys(up).length) return;
     Object.assign(h,up); n++;
-    batch.update(doc(db,'users',CU.uid,'habits',id),up);
+    batch.update(doc(db,'users',CU.uid,'habits',ids[i]),up);
   });
-  if(off.length===1) toast(t('hb.chain.remOff',off[0]),6000);
-  else if(off.length) toast(t('hb.chain.remOffN',{list:off.map(o=>o.habit+' ('+o.time+')').join(', ')}),6000);
-  else if(okMsg) toast(okMsg);
+  const msg=[...moved.map(m=>t('hb.chain.remMoved',m)),
+    off.length===1?t('hb.chain.remOff',off[0]):off.length?t('hb.chain.remOffN',{list:off.map(o=>o.habit+' ('+o.time+')').join(', ')}):''].filter(Boolean).join(' ');
+  if(msg) toast(msg,6000); else if(okMsg) toast(okMsg);
+  if(offer) setTimeout(()=>chainNewHead(offer),0); // až po zavření okna rutiny
   if(!n) return false;
   renderHabits(); // hned nové pořadí, snapshot ho potvrdí
   batch.commit().catch(e=>toast(t('hb.orderFail',{err:userErr(e,'habit')})));
@@ -2778,8 +2794,8 @@ window.chainDetach=hid=>{
   const list=chainGroupList(h.group||'day'), segOf=chainSegOfList(list);
   const ids=list.map(x=>x.id).filter(x=>x!==hid);
   ids.push(hid); segOf.set(hid,null);
-  chainApply(ids,segOf,t('hd.chain.detached'));
-  if(steps[0].id===hid&&steps.length>2) chainNewHead(steps[1]);
+  chainApply(ids,segOf,t('hd.chain.detached')); // 1. krok s připomínkou: nabídku nového 1. kroku řeší chainApply
+  if(steps[0].id===hid&&steps.length>2&&!h.reminderTime) chainNewHead(steps[1]);
   if(detailHabitId===hid) renderHabitDetail(h);
 };
 // Detail: navázat samostatný návyk hned pod vybraný návyk stejné skupiny
@@ -2817,7 +2833,9 @@ function chainDetailHTML(h,steps){
 }
 // ── Lišta „Další krok“ rutiny (4.89): jen po akci uživatele na tomto zařízení, dnes; sama zmizí po 15 s ──
 let _chnT=null;
-function chainBarClose(){ clearTimeout(_chnT); _chnT=null; document.getElementById('chain-next')?.remove(); }
+function chainBarClose(){ clearTimeout(_chnT); _chnT=null; document.getElementById('chain-next')?.remove(); document.body.classList.remove('chn-on'); }
+// Dvojklik: druhé klepnutí by trefilo tlačítko nově vykreslené lišty a splnilo i další krok → do 400 ms od zobrazení nic
+const chainBarFresh=()=>{ const el=document.getElementById('chain-next'); return !!el&&Date.now()-(Number(el.dataset.t0)||0)<400; };
 window.chainBarClose=chainBarClose;
 // Jiné okno nebo plovoucí lišta (sdílení, voda, instalace) → místo lišty jen toast
 function chainBarShow(html,fallback){
@@ -2825,8 +2843,12 @@ function chainBarShow(html,fallback){
   if(uiBusy()||naCovered()){ toast(fallback,3500); return; }
   const el=document.createElement('div');
   el.id='chain-next'; el.className='cta-ask chn-ask'; el.setAttribute('role','status');
+  el.dataset.t0=String(Date.now());
   el.innerHTML=html;
   document.body.appendChild(el);
+  // Toast nad lištu (víceřádkový by ji překryl)
+  document.body.style.setProperty('--chn-h',el.offsetHeight+'px');
+  document.body.classList.add('chn-on');
   const run=()=>{ clearTimeout(_chnT); _chnT=setTimeout(chainBarClose,CTA_ASK_MS); };
   const pause=()=>{ clearTimeout(_chnT); _chnT=null; };
   el.addEventListener('mouseenter',pause);
@@ -2856,6 +2878,7 @@ function chainAfter(hid,ds,how){
 }
 // Splnění dalšího kroku z lišty: ano/ne jako klepnutí, počítaný rovnou na cíl (lišta se přepíše přes chainAfter)
 window.chainNextDone=hid=>{
+  if(chainBarFresh()) return;
   quickOnce('chn-'+hid,()=>{
     const td=toDS(), h=habits.find(x=>x.id===hid);
     if(!h||!isHabitPending(h,td)){ chainBarClose(); return; }
@@ -2864,6 +2887,7 @@ window.chainNextDone=hid=>{
   });
 };
 window.chainNextSkip=hid=>{
+  if(chainBarFresh()) return;
   quickOnce('chn-s-'+hid,()=>{
     const td=toDS(), h=habits.find(x=>x.id===hid);
     if(!h||!isHabitPending(h,td)){ chainBarClose(); return; }
@@ -3241,7 +3265,8 @@ function renderHabitDetail(h) {
     </div>
     ${chainDetailHTML(h, hdChain)}
     ${hdChainFirst ? `<div class="hd-section-title" style="margin-top:20px">${tH('hd.reminder')}</div>
-    <button type="button" class="hd-chain-rem" data-a0="${esc(hdChainFirst.id)}" onclick="openHabitDetail(this.dataset.a0)">${hdChainFirst.reminderTime ? tH('hb.chain.remFirst', {habit: (hdChainFirst.emoji || '🎯') + ' ' + hdChainFirst.name, time: hdChainFirst.reminderTime}) : tH('hb.chain.remNone')}</button>` : `
+    <button type="button" class="hd-chain-rem" data-a0="${esc(hdChainFirst.id)}" onclick="openHabitDetail(this.dataset.a0)">${hdChainFirst.reminderTime ? tH('hb.chain.remFirst', {habit: (hdChainFirst.emoji || '🎯') + ' ' + hdChainFirst.name, time: hdChainFirst.reminderTime}) : tH('hb.chain.remNone')}</button>
+    ${h.reminderTime ? `<div class="hd-chain-own"><span>${tH('hd.chain.ownRem', {time: h.reminderTime})}</span><button type="button" class="btn-s" data-a0="${esc(h.id)}" onclick="saveHabitReminder(this.dataset.a0,null)">${tH('hd.reminderOff')}</button></div>` : ''}` : `
     <div class="hd-section-title" style="margin-top:20px">${tH('hd.reminder')}</div>
     <div class="hd-notif-row" style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;overflow:hidden">
       <div style="flex:1;min-width:0">
@@ -3598,8 +3623,10 @@ window.archiveHabit = async (id) => {
   const msg = isArchived ? t('hb.restoreQ') : t('hb.archiveQ');
   if (!confirm(msg)) return;
   const steps = isArchived ? null : chainOf(h); // 1. krok rutiny → nový 1. krok bez připomínky (4.89)
-  await updateDoc(doc(db, 'users', CU.uid, 'habits', id), { archived: !isArchived });
+  // Obnovený návyk se vrací samostatně (4.89): na jeho místě už může být jiná rutina
+  await updateDoc(doc(db, 'users', CU.uid, 'habits', id), isArchived ? { archived: false, chain: false } : { archived: true });
   h.archived = !isArchived;
+  if (isArchived) h.chain = false;
   syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
   toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
@@ -4212,7 +4239,7 @@ function saveHabitOrder(ids, movedId){
   const i = movedId ? ids.indexOf(movedId) : -1;
   if (i >= 0) {
     const own = segOf.get(movedId), a = i > 0 ? segOf.get(ids[i - 1]) : null, b = i < ids.length - 1 ? segOf.get(ids[i + 1]) : null;
-    segOf.set(movedId, a && a === b ? a : own && b === own ? own : null);
+    segOf.set(movedId, a && a === b ? a : own && (a === own || b === own) ? own : null); // i na poslední místo vlastní rutiny
   }
   chainApply(ids, segOf);
 }
