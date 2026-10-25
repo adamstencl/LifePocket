@@ -2456,7 +2456,8 @@ function habitShieldSectionHTML(h){
     </div>`;
 }
 
-function buildHabitCard(h){
+// ch (4.89): {cls, next} = třídy spojnice rutiny a příznak dalšího kroku
+function buildHabitCard(h,ch){
   const logId=h.id+'_'+habitDay;
   const log=hLog(logId);
   const done=log&&log.done;
@@ -2589,7 +2590,7 @@ function buildHabitCard(h){
   const hIdx=groupHabits.findIndex(x=>x.id===h.id);
   const canUp=hIdx>0, canDown=hIdx<groupHabits.length-1;
 
-  return `<div class="habit-card${cardDone?' done':''}" data-drag-id="${esc(h.id)}">
+  return `<div class="habit-card${cardDone?' done':''}${ch?ch.cls:''}${ch&&ch.next?' hb-next':''}" data-drag-id="${esc(h.id)}">
     <div class="habit-card-top${h.type==='count'&&!isPaused?' cnt':''}">
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
         <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.upName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
@@ -2597,7 +2598,7 @@ function buildHabitCard(h){
       </div>
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">
-        <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}</div>
+        <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}${ch&&ch.next?`<span class="hb-next-tag">${tH('hb.chain.next')}</span>`:''}</div>
         ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
@@ -2723,6 +2724,10 @@ function renderHabits(){
   const archivedHabits = habits.filter(h => h.archived);
   const pendWrap=document.getElementById('hb-pend-chip')?.parentElement;
   if(pendWrap) pendWrap.hidden=!activeHabits.length;
+  // Rutiny (4.89): úseky jednou na render; čip až od 2 aktivních návyků ve skupině, v jednoduchém režimu po odemčení návyků
+  const chains=chainMapAll();
+  const chainChip=document.getElementById('hb-chain-chip');
+  if(chainChip) chainChip.hidden=!((unl('habits')||chains.size)&&CHAIN_GROUPS.some(g=>chainGroupList(g).length>1));
   const archToggle = document.getElementById('habits-archive-toggle');
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
@@ -2781,7 +2786,19 @@ function renderHabits(){
         </div>
       </div>
       <div class="habit-group-body ${isOpen?'open':''}">
-        ${shown.map(h=>buildHabitCard(h)).join('')}
+        ${shown.map((h,i)=>{
+          // Rutina: hlavička nad 1. viditelným krokem, spojnice jen třídami na kartách (bez obalu, ať funguje přetahování)
+          const steps=chains.get(h.id);
+          if(!steps) return buildHabitCard(h);
+          const prev=shown[i-1], nxt=shown[i+1];
+          const first=!prev||chains.get(prev.id)!==steps, last=!nxt||chains.get(nxt.id)!==steps;
+          let head='';
+          if(first){
+            const p=chainProgress(steps,habitDay), nm=chainName(g.id);
+            head=`<div class="hb-chain-head"><span aria-hidden="true">🔗</span> ${p.total?tH('hb.chain.head',{name:nm,done:p.done,total:p.total}):esc(nm)}</div>`;
+          }
+          return head+buildHabitCard(h,{cls:' hb-in-chain'+(first?' hb-chain-first':'')+(last?' hb-chain-last':''),next:chainNextStep(steps,habitDay)===h});
+        }).join('')}
       </div>
     </div>`;
   });

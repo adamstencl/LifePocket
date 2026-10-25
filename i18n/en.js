@@ -1487,7 +1487,6 @@ export default {
   'hb.pendEmpty': 'All done 🎉',
   'hb.pendFuture': 'This day hasn’t come yet',
   'hb.chain.chip': '🔗 Routine',
-  'hb.chain.chipAria': 'Link habits into a routine',
   'hb.chain.title': '🔗 Link habits into a routine',
   'hb.chain.hint': 'Tap them in the order you do them.',
   'hb.chain.save': 'Save routine',

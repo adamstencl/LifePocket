@@ -1517,7 +1517,6 @@ export default {
   'hb.pendEmpty': 'Vše vyřízeno 🎉',
   'hb.pendFuture': 'Tento den ještě nenastal',
   'hb.chain.chip': '🔗 Rutina',
-  'hb.chain.chipAria': 'Spojit návyky do rutiny',
   'hb.chain.title': '🔗 Spojit návyky do rutiny',
   'hb.chain.hint': 'Klepej v pořadí, jak je děláš.',
   'hb.chain.save': 'Uložit rutinu',

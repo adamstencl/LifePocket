@@ -525,7 +525,7 @@ else show();
       </div>
 
       <!-- Filtr „Jen nevyřízené“ (toggleHabitPending) -->
-      <div class="hb-filter" hidden><button type="button" id="hb-pend-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitPending()" data-i18n="hb.pendOnly">⏳ Jen nevyřízené</button></div>
+      <div class="hb-filter" hidden><button type="button" id="hb-pend-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitPending()" data-i18n="hb.pendOnly">⏳ Jen nevyřízené</button><button type="button" id="hb-chain-chip" class="hb-pend-chip" onclick="openChainSheet()" aria-haspopup="dialog" data-i18n="hb.chain.chip" hidden>🔗 Rutina</button></div>
 
       <!-- Habits list -->
       <div id="habits-list"></div>
@@ -1346,6 +1346,11 @@ else show();
     <div class="fg"><label class="flbl"><span data-i18n="goal.sf.deadline">Termín</span> <span style="color:var(--text3);font-weight:400" data-i18n="goal.sf.dlHint">(volitelné — přidá se do kalendáře)</span></label><input class="finp" type="date" id="sg-dl"></div>
     <div class="macts"><button class="btn-s" onclick="cm('m-subgoal')" data-i18n="common.cancel">Zrušit</button><button class="btn-p" onclick="saveSubG()" data-i18n="goal.sf.save">Uložit podcíl</button></div>
   </div>
+</div>
+
+<!-- Spojení návyků do rutiny 4.89 (obsah vykresluje renderChainSheet) -->
+<div class="moverlay" id="m-chain">
+  <div class="modal gf-sheet" id="chn-sheet" role="dialog" aria-modal="true" aria-labelledby="chn-title"></div>
 </div>
 
 <!-- Co je nového ve skupině (obsah vykresluje renderGroupFeed) -->
