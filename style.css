@@ -2387,6 +2387,16 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .habit-card-top.cnt{flex-wrap:wrap}
 .habit-card-top.cnt .habit-info{flex:1 1 7em}
 .habit-card-top.cnt .habit-ctl{margin-left:auto}
+/* 4.90: čipy (každý den, 🔥 4 dny, 🔔 7:00) se nelámou uvnitř; dny v týdnu jen mezi dny. Dlouhé slovo (12+ znaků) raději se spojovníkem */
+.habit-streak>span:not(.hb-freq-days){white-space:nowrap}
+.habit-name{-webkit-hyphens:auto;hyphens:auto;-webkit-hyphenate-limit-before:5;-webkit-hyphenate-limit-after:5;hyphenate-limit-chars:12 5 5}
+/* 4.90: úzký telefon – pilulka Splněno/Nesplněno jen opakuje kolečko (nedá se na ni kliknout), skryje se; název aspoň 7.5em (≈ 9em písma názvu 13 px), ovládání, které se nevejde, spadne na další řádek vpravo */
+@media (max-width:480px){
+  .habit-card-top .habit-done-badge{display:none}
+  .habit-card-top,.habit-card-top.cnt{flex-wrap:wrap}
+  .habit-card-top .habit-info,.habit-card-top.cnt .habit-info{flex:1 1 7.5em;min-width:7.5em}
+  .habit-card-top .habit-ctl{margin-left:auto}
+}
 
 /* 4.85: toast a reakce parťáka nad spodní lištou (i s výřezem iPhonu) */
 @media(max-width:640px){.toast,.av-reaction{bottom:calc(var(--bn-h) + 12px)}}

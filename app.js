@@ -2512,12 +2512,12 @@ function buildHabitCard(h,ch){
   } else if(streak >= 3) {
     streakBadge = `<span class="streak-badge s-normal">🔥 ${tNH('pl.days', streak)}</span>`;
   } else if(streak > 0) {
-    streakBadge = `<span class="habit-streak-fire">🔥</span> ${tNH('pl.days', streak)}`;
+    streakBadge = `<span><span class="habit-streak-fire">🔥</span> ${tNH('pl.days', streak)}</span>`;
   }
   const streakHtml=(streak>0
     ? streakBadge
-    :(weeklyStatus||`<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`))
-    +`<span class="habit-freq-badge">${freqLabel}</span>`;
+    :(weeklyStatus?`<span>${weeklyStatus}</span>`:`<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`))
+    +`<span class="habit-freq-badge${freq.type==='days'?' hb-freq-days':''}">${freqLabel}</span>`; // 4.90: čipy ve vlastním <span> (nelámou se uvnitř)
 
   // 7-day table
   const DAY_NAMES=dowNames();
