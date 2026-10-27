@@ -2396,7 +2396,6 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 /* 4.92: pilulka týdne = stejný čip jako „každý den“ (velikost i styl), splněný týden zelený */
 .habit-week-pill{font-size:11px;color:var(--text3);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:2px 8px;vertical-align:middle}
 .habit-week-pill.met{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:600}
-@media(max-width:640px){.habit-week-pill{font-size:10px;padding:1px 6px}}
 .hd-day-cell.rest,.htd-dot.rest{background:transparent;color:var(--text3);opacity:.55}
 .htd-dot.future{background:transparent;box-shadow:inset 0 0 0 1px var(--border)}
 .htd-dot.future.today{box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--accent)}
