@@ -206,6 +206,7 @@ PRAVIDLO JAZYK: Vysvětlení piš VÝHRADNĚ česky. ZAKÁZÁNO použít jakéko
   'aip.ctx.hab.sum': 'Dnes splněno {done} z {n} návyků',
   'aip.ctx.hab.week': ' | týden {done}/{n}',
   'aip.ctx.hab.streak': ' | streak {n} dní',
+  'aip.ctx.hab.wstreak': ' · týdenní série {n}',
   'aip.ctx.notes.mood': 'Nálada 7 dní (od nejstarší): ',
   'aip.ctx.cl.list': 'Seznam',
   'aip.ctx.cl.shared': ' (sdílený, {group})',

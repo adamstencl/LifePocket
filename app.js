@@ -3179,6 +3179,34 @@ window.hdDayTap = (hid, ds) => {
   });
 };
 
+// Dlaždice detailu týdenního návyku (4.91): tento týden, série v týdnech, splněné týdny za 12 týdnů, 4 / 26 týdnů a od založení
+function hdWeekStatsHTML(h, today, cur, best, totalDone) {
+  const w = habitWeekStat(h, weekStartDS(today), today);
+  const r12 = habitWeeksRate(h, 12, today), pct = r => r.total ? Math.round(r.met / r.total * 100) : 0;
+  const st = habitStartDS(h), first = habitLogs.reduce((m, l) => l && l.habitId === h.id && l.done && typeof l.date === 'string' && (!m || l.date < m) ? l.date : m, '');
+  const from = [st, first].filter(Boolean).sort()[0] || today;
+  if (_hlCutoff && from < _hlCutoff) hlNeedHistory(h.id);  // celá historie (od založení) se dotáhne
+  const nAll = Math.min(520, Math.floor((new Date(weekStartDS(today) + 'T12:00:00') - new Date(weekStartDS(from) + 'T12:00:00')) / 6048e5) + 1);
+  const p12 = pct(r12), p4 = pct(habitWeeksRate(h, 4, today)), p26 = pct(habitWeeksRate(h, 26, today)), pAll = pct(habitWeeksRate(h, nAll, today));
+  const col = p => p >= 80 ? 'color:var(--green)' : p >= 50 ? 'color:var(--accent)' : '';
+  const rec = cur > 0 && cur === best;
+  const tile = (num, lbl, style = '') => `<div class="hd-stat"><div class="hd-stat-num" style="${style}">${num}</div><div class="hd-stat-lbl">${lbl}</div></div>`;
+  return `<div class="hd-stat-grid">
+      ${tile(w.state === 'none' ? '—' : (w.state === 'met' ? '✓ ' : '') + w.done + '/' + w.target, tH('hd.wk.this'), w.state === 'met' ? 'color:var(--green)' : '')}
+      <div class="hd-stat" style="${rec ? 'border-color:var(--accent);background:rgba(245,200,66,.08)' : ''}">
+        <div class="hd-stat-num" style="${cur >= 12 ? 'color:var(--accent)' : cur >= 4 ? 'color:var(--green)' : ''}">${cur}${rec && cur > 1 ? '<span style="font-size:12px;color:var(--accent);margin-left:4px">★</span>' : ''}</div>
+        <div class="hd-stat-lbl">${tH('hd.wk.streak')}${rec && cur > 1 ? ` <span style="color:var(--accent);font-size:10px">${tH('hd.record')}</span>` : ''}</div>
+      </div>
+      ${tile(best, tH('hd.wk.best'))}
+      ${tile(r12.met + '/' + r12.total, tH('hd.wk.met'))}
+      ${tile(p12 + '%', tH('hd.wk.rate'), col(p12))}
+      ${tile(totalDone, tH('hd.totalDone'))}
+      ${tile(p4 + '%', '📅 ' + tNH('hd.nWeeks', 4), col(p4))}
+      ${tile(p26 + '%', '📅 ' + tNH('hd.nWeeks', 26), col(p26))}
+      ${tile(pAll + '%', tH('hd.overall'), col(pAll))}
+    </div>`;
+}
+
 function renderHabitDetail(h) {
   const body = document.getElementById('hd-body');
   const today = toDS(new Date());
@@ -3222,9 +3250,15 @@ function renderHabitDetail(h) {
   // Linked goal
   const hdLinkedGoal = h.goalId ? goals.find(x=>x.id===h.goalId) : null;
 
-  // Build line chart — last 12 weeks (% per week)
+  // Build line chart — last 12 weeks (% per week); týdenní návyk (4.91): týdny po–ne, min(splněno, cíl) / cíl
+  const weekly = isWeekly(h), wMonNow = weekStartDS(today);
   const weeks = [];
-  for (let i = 11; i >= 0; i--) {
+  if (weekly) for (let i = 11; i >= 0; i--) {
+    const mon = addDays(wMonNow, -7 * i), w = habitWeekStat(h, mon, today), sun = new Date(addDays(mon, 6) + 'T12:00:00');
+    const pct = w.target > 0 ? Math.round(Math.min(w.done, w.target) / w.target * 100) : 0;
+    weeks.push({pct, label: sun.getDate() + '.' + (sun.getMonth()+1), title: w.target > 0 ? tH('hd.wk.colTitle', {done: w.done, n: w.target, pct}) : '—'});
+  }
+  else for (let i = 11; i >= 0; i--) {
     const wEnd = new Date(); wEnd.setDate(wEnd.getDate() - i * 7);
     const wStart = new Date(wEnd); wStart.setDate(wEnd.getDate() - 6);
     let done = 0, total = 0;
@@ -3234,7 +3268,7 @@ function renderHabitDetail(h) {
     }
     const pct = total > 0 ? Math.round(done/total*100) : 0;
     const label = wEnd.getDate() + '.' + (wEnd.getMonth()+1);
-    weeks.push({pct, label, done, total});
+    weeks.push({pct, label, title: tH('hd.weekTitle',{done,total,pct})});
   }
   const maxPct = Math.max(...weeks.map(w => w.pct), 1);
 
@@ -3243,7 +3277,7 @@ function renderHabitDetail(h) {
       <div class="hd-section-title" style="margin-top:0">${tH('hd.byWeek')}</div>
       <div class="hd-streak-bar">
         ${weeks.map(w => `
-          <div class="hd-streak-col" title="${tH('hd.weekTitle',{done:w.done,total:w.total,pct:w.pct})}">
+          <div class="hd-streak-col" title="${w.title}">
             <div class="hd-streak-fill" style="height:${Math.max(w.pct/maxPct*70,w.pct>0?4:2)}px;background:${w.pct>=80?'var(--green)':w.pct>=50?'var(--accent)':'var(--accent2)'}"></div>
             <div class="hd-streak-lbl">${w.label}</div>
           </div>`).join('')}
@@ -3278,16 +3312,23 @@ function renderHabitDetail(h) {
     const isPausedDay = !isDone && !isFrozen && !(dl && dl.skipped) && isHabitPausedOn(h, ds);
     // Třída podle habitDayState (4.81): neutrální den (přeskočeno, mimo frekvenci, před začátkem) není nesplněný
     const st = habitDayState(h, ds, today);
+    // Týdenní návyk (4.91): den bez splnění podle týdne (volno / běží / nesplněný týden), nesplněný uzavřený týden jemně podbarvený
+    const wDay = weekly ? habitWeekDay(h, ds, today) : null;
+    const wk = weekly && !isFuture ? habitWeekStat(h, weekStartDS(ds), today) : null;
     let cls = 'hd-day-cell';
     if (st === 'future') cls += ' empty';
     else if (st === 'done') cls += ' done';
     else if (isFrozen) cls += ' frozen';
     else if (isPausedDay) cls += ' paused';
+    else if (wDay === 'rest') cls += ' rest';
+    else if (wDay === 'open' || wDay === 'wmiss') cls += ' miss';
     else if (st === 'neutral') cls += ' inactive';
     else cls += ' miss';
+    if (wk && wk.state === 'miss' && !isPausedDay && !isFrozen) cls += ' wk-miss';
     if (isToday) cls += ' today';
-    const tap = isFuture ? '' : ` role="button" tabindex="0" data-a0="${esc(h.id)}" data-a1="${esc(ds)}" onclick="hdDayTap(this.dataset.a0,this.dataset.a1)" style="cursor:pointer"`;
-    cells += `<div class="${cls}" title="${esc(fmtDate(new Date(ds+'T12:00:00'),'dm'))}"${tap}>${isDone ? '✓' : isFuture ? '' : isFrozen ? '❄️' : isPausedDay ? '⏸' : day}</div>`;
+    const dTitle = fmtDate(new Date(ds+'T12:00:00'),'dm') + (wk && (wk.state === 'met' || wk.state === 'miss') ? ' · ' + t(wk.state === 'met' ? 'hd.wk.metTitle' : 'hd.wk.missTitle', {done: wk.done, n: wk.target}) : '');
+    const tap = isFuture ? '' : ` role="button" tabindex="0"${wk ? ` aria-label="${esc(dTitle)}"` : ''} data-a0="${esc(h.id)}" data-a1="${esc(ds)}" onclick="hdDayTap(this.dataset.a0,this.dataset.a1)" style="cursor:pointer"`;
+    cells += `<div class="${cls}" title="${esc(dTitle)}"${tap}>${isDone ? '✓' : isFuture ? '' : isFrozen ? '❄️' : isPausedDay ? '⏸' : day}</div>`;
   }
 
   const monthsHtml = `
@@ -3326,7 +3367,7 @@ function renderHabitDetail(h) {
 
   body.innerHTML = todayHtml + `
     <!-- Stats -->
-    <div class="hd-stat-grid">
+    ${weekly ? hdWeekStatsHTML(h, today, curStreak, bestStreak, totalDone) : `    <div class="hd-stat-grid">
       <div class="hd-stat" style="${curStreak>0&&curStreak===bestStreak?'border-color:var(--accent);background:rgba(245,200,66,.08)':''}">
         <div class="hd-stat-num" style="${curStreak>=30?'color:var(--accent)':curStreak>=7?'color:var(--green)':''}">${curStreak}${curStreak>0&&curStreak===bestStreak&&curStreak>1?'<span style="font-size:12px;color:var(--accent);margin-left:4px">★</span>':''}</div>
         <div class="hd-stat-lbl">${tH('hd.curStreak')}${curStreak>0&&curStreak===bestStreak&&curStreak>1?` <span style="color:var(--accent);font-size:10px">${tH('hd.record')}</span>`:''}</div>
@@ -3354,7 +3395,7 @@ function renderHabitDetail(h) {
       <div class="hd-stat"><div class="hd-stat-num" style="${pct30>=80?'color:var(--green)':pct30>=50?'color:var(--accent)':''}">${pct30}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:30})}</div></div>
       <div class="hd-stat"><div class="hd-stat-num" style="${pct60>=80?'color:var(--green)':pct60>=50?'color:var(--accent)':''}">${pct60}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:60})}</div></div>
       <div class="hd-stat"><div class="hd-stat-num" style="${pct90>=80?'color:var(--green)':pct90>=50?'color:var(--accent)':''}">${pct90}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:90})}</div></div>
-    </div>
+    </div>`}
     ${shUsed90 || paused90 ? `<div class="hd-neutral-note">${[shUsed90 ? tH('hd.shUsed90',{n:shUsed90}) : '', paused90 ? tH('hd.paused90',{n:paused90}) : ''].filter(Boolean).join(' · ')}</div>` : ''}
 
     ${hdLinkedGoal ? `<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">🏆</span><div><div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${tH('hd.linkedGoal')}</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${esc(hdLinkedGoal.name)}</div><div class="habit-prog-bar" style="margin-top:6px;width:120px"><div class="habit-prog-fill" style="width:${hdLinkedGoal.progress||0}%"></div></div></div></div>` : ''}
@@ -4038,6 +4079,17 @@ function renderHabitMonth() {
   // Spočítej % plnění za posledních 30 dní pro každý návyk
   const todayDS = toDS();
   const stats = activeHabits.map(h => {
+    // Týdenní návyk (4.91): poslední 4 hodnocené týdny (běžící jen splněný), týden = jedna položka
+    if(isWeekly(h)){
+      let total=0, done=0, mon=weekStartDS(todayDS);
+      for(let i=0; i<60 && total<4; i++, mon=addDays(mon,-7)){
+        if(_hlCutoff && mon<_hlCutoff && !_hlOldAll && !_hlOldHabits.has(h.id)) break; // starší záznamy nejsou načtené
+        const s=habitWeekStat(h, mon, todayDS).state;
+        if(s==='met'){ total++; done++; } else if(s==='miss') total++;
+        const st=habitStartDS(h); if(st && addDays(mon,6)<st) break;
+      }
+      return {h, done, total, pct: total>0 ? Math.round(done/total*100) : 0, wk: true};
+    }
     let total=0, done=0, ds=todayDS;
     // Neutrální dny (pauza, přeskočeno, štít, mimo frekvenci) se nepočítají
     for(let i=0; i<days; i++, ds=addDays(ds,-1)){
@@ -4059,7 +4111,7 @@ function renderHabitMonth() {
       <div style="font-size:42px;font-weight:700;color:${overallColor};font-family:'Playfair Display',serif">${overallPct}%</div>
       <div style="font-size:13px;color:var(--text3)">${tH('hb.m.done',{done:overallDone,total:overallTotal})}</div>
     </div>
-    ${stats.map(({h,done,total,pct})=>{
+    ${stats.map(({h,done,total,pct,wk})=>{
       const color = pct>=80?'var(--green)':pct>=50?'var(--accent)':'var(--red)';
       return `<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
         <span style="font-size:22px">${esc(h.emoji||'🎯')}</span>
@@ -4068,7 +4120,7 @@ function renderHabitMonth() {
           <div style="background:var(--card2);border-radius:6px;height:6px;overflow:hidden">
             <div style="width:${pct}%;height:100%;background:${color};border-radius:6px;transition:width .4s"></div>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">${tH('hb.m.days',{done,total})}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">${wk?tNH('hb.m.weeks',total,{met:done,total}):tH('hb.m.days',{done,total})}</div>
         </div>
         <div style="font-size:18px;font-weight:700;color:${color};min-width:40px;text-align:right">${pct}%</div>
       </div>`;

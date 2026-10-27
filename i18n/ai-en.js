@@ -199,6 +199,7 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.hab.sum': 'Done today: {done} of {n} habits',
   'aip.ctx.hab.week': ' | week {done}/{n}',
   'aip.ctx.hab.streak': ' | streak {n} d',
+  'aip.ctx.hab.wstreak': ' · weekly streak {n}',
   'aip.ctx.notes.mood': 'Mood for 7 days (oldest first): ',
   'aip.ctx.cl.list': 'List',
   'aip.ctx.cl.shared': ' (shared, {group})',
