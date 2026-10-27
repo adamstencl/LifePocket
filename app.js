@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.90';
+const APP_VERSION = '4.91';
 const CHANGELOG = [
+  { v:'4.91', items:[
+    '🔥 Týdenní návyky (např. 3× týdně) mají sérii v týdnech, správné procento a dny navíc už nejsou červené'
+  ], en:[
+    '🔥 Weekly habits (e.g. 3× a week) now have a streak in weeks, the right percentage, and days off are no longer red'
+  ]},
   { v:'4.90', items:[
     '✅ Návyky: názvy se na užším telefonu nelámou uprostřed slova'
   ], en:[
@@ -3186,7 +3191,7 @@ function hdWeekStatsHTML(h, today, cur, best, totalDone) {
   const st = habitStartDS(h), first = habitLogs.reduce((m, l) => l && l.habitId === h.id && l.done && typeof l.date === 'string' && (!m || l.date < m) ? l.date : m, '');
   const from = [st, first].filter(Boolean).sort()[0] || today;
   if (_hlCutoff && from < _hlCutoff) hlNeedHistory(h.id);  // celá historie (od založení) se dotáhne
-  const nAll = Math.min(520, Math.floor((new Date(weekStartDS(today) + 'T12:00:00') - new Date(weekStartDS(from) + 'T12:00:00')) / 6048e5) + 1);
+  const nAll = Math.min(520, Math.round((new Date(weekStartDS(today) + 'T12:00:00') - new Date(weekStartDS(from) + 'T12:00:00')) / 6048e5) + 1); // round: změna času ±1 h
   const p12 = pct(r12), p4 = pct(habitWeeksRate(h, 4, today)), p26 = pct(habitWeeksRate(h, 26, today)), pAll = pct(habitWeeksRate(h, nAll, today));
   const col = p => p >= 80 ? 'color:var(--green)' : p >= 50 ? 'color:var(--accent)' : '';
   const rec = cur > 0 && cur === best;
