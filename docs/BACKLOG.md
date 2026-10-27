@@ -76,3 +76,11 @@
 - 1. krok s připomínkou přetažený do jiné rutiny: připomínka se jen nabídne, nepřesune.
 - Smazání 1. kroku dvoukrokové rutiny: zbylý návyk zůstane bez připomínky.
 - „Spustit rutinu“ přes celou obrazovku, řádek rutiny na Domů, body/odznak za rutinu (4.90+).
+
+## Z 4.91
+- Týdenní: `checkAndRemindHabits` a `calcWeekSummaryRaw` počítají cíl podle `times`, ne podle cíle upraveného pauzou/založením.
+- Zrcadlo ve skupině: starší klienti (≤4.90) uvidí týdenní sérii jako „N dní“; `mirrorDoc` drží starý `best` ve dnech.
+- Pilulka „x/y tento týden“ při prohlížení dne z minulého týdne.
+- Dny `rest` kontrast 2,1–2,3 (opacity .55).
+- Pauza od pondělí po prvním splnění zmenší cíl na 1 (podle návrhu, zneužitelné).
+- Detail týdenního: dokud se nedotáhne historie, dlaždice 12/26/celkem krátce ukazují nižší čísla.
