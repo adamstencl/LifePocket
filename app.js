@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.91';
+const APP_VERSION = '4.92';
 const CHANGELOG = [
+  { v:'4.92', items:[
+    '📅 Všechny návyky ukazují stejně týden od pondělí do neděle'
+  ], en:[
+    '📅 All habits now show the same week from Monday to Sunday'
+  ]},
   { v:'4.91', items:[
     '🔥 Týdenní návyky (např. 3× týdně) mají sérii v týdnech, správné procento a dny navíc už nejsou červené'
   ], en:[
