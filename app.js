@@ -2189,7 +2189,7 @@ function hlMergeOld(docs){
   hlIndex();
   const add=[];
   docs.forEach(d=>{ if(!_hlIdx.has(d.id)) add.push({id:d.id,...d.data()}); });
-  if(add.length) habitLogs=habitLogs.concat(add);
+  if(add.length){ habitLogs=habitLogs.concat(add); _wsCache=new Map(); } // stav týdnů se přepočítá i se staršími záznamy
   return add.length;
 }
 // Celá historie jednoho návyku (detail: nejlepší série, celkem splněno, starší měsíce)
@@ -2331,6 +2331,7 @@ function habitDayLabel(){
 
 // Datum ± n dní (poledne: změna času den nepřeskočí)
 function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return toDS(d);}
+const weekStartDS=ds=>addDays(ds,-((new Date(ds+'T12:00:00').getDay()+6)%7));   // pondělí týdne (po–ne, místní čas)
 // Pauzy návyku: rozsahy {from,to,reason}; pausedUntil zůstává synchronní s aktivní pauzou (čte ho server)
 function habitPauses(h){return Array.isArray(h?.pauses)?h.pauses.filter(p=>p&&typeof p.from==='string'&&typeof p.to==='string'):[];}
 // Dnešek a budoucnost rozhoduje pausedUntil (stejně jako server a starší klienti), minulost rozsahy v pauses
@@ -2367,6 +2368,7 @@ function habitDayState(h,ds,today=toDS()){
   if(f.type==='days'&&!(Array.isArray(f.days)?f.days:[]).map(Number).includes(new Date(ds+'T12:00:00').getDay())) return 'neutral';
   const st=habitStartDS(h);
   if(st&&ds<st) return 'neutral';
+  if(f.type==='weekly') return 'neutral';                  // 4.91: týdenní cíl, žádný konkrétní den není povinný (viz habitWeekDay)
   return 'miss';
 }
 
@@ -2374,6 +2376,7 @@ function habitDayState(h,ds,today=toDS()){
 // Neutrální dny (přeskočeno, štít, pauza, mimo dny frekvence) sérii nepřeruší ani nepřičtou; nesplněný dnešek ji nepřeruší.
 function habitStreak(hid,ds){
   const h=habits.find(x=>x.id===hid)||{id:hid};
+  if(isWeekly(h)) return habitWeekStreak(h,ds);            // 4.91: týdenní návyk = série v týdnech
   const today=toDS(), start=habitStartDS(h);
   let d=ds, n=0;
   if(ds===today&&habitDayState(h,ds,today)!=='done') d=addDays(ds,-1);
@@ -2387,6 +2390,7 @@ function habitStreak(hid,ds){
 }
 // Nejlepší série z načtených záznamů (stejná pravidla jako habitStreak)
 function calcBestStreak(h){
+  if(isWeekly(h)) return calcBestWeekStreak(h);
   let first='';
   for(const l of habitLogs) if(l&&l.habitId===h.id&&l.done&&typeof l.date==='string'&&(!first||l.date<first)) first=l.date;
   if(!first) return 0;
@@ -2401,12 +2405,85 @@ function calcBestStreak(h){
 // Je den návyku započítatelný do procent (neutrální dny se nepočítají do jmenovatele)?
 function habitDayCounts(h,ds,today=toDS()){ const st=habitDayState(h,ds,today); return st==='done'||st==='miss'; }
 
+// ── TÝDENNÍ NÁVYKY (4.91): série v týdnech po–ne, cíl týdne podle aktivních dnů ──
+const isWeekly=h=>!!(h&&h.freq&&h.freq.type==='weekly');
+const weekTimes=h=>clampInt(h?.freq?.times||3,1,7);
+// Série nebo nejlepší série jako text (dny / týdny podle frekvence), do HTML
+const fmtStreak=(h,n)=>tNH(isWeekly(h)?'pl.weeks':'pl.days',n);
+let _wsCache=new Map(); // h.id|pondělí|dnes → stav týdne (maže shieldCacheReset)
+// Stav týdne od pondělí mon: active = dny od založení a mimo pauzu (splněný den vždy), cíl úměrně aktivním dnům.
+// state: 'met' splněno, 'open' běží a nesplněno, 'miss' skončil nesplněný, 'none' celý neutrální (pauza, před založením)
+function habitWeekStat(h,mon,today=toDS()){
+  const key=h.id+'|'+mon+'|'+today;
+  const hit=_wsCache.get(key); if(hit) return hit;
+  const st=habitStartDS(h);
+  let done=0, active=0;
+  for(let i=0,ds=mon;i<7;i++,ds=addDays(ds,1)){
+    if(hDone(h.id,ds)){ done++; active++; continue; }   // splnění před založením (import) se počítá
+    if(st&&ds<st) continue;
+    if(isHabitPausedOn(h,ds)) continue;
+    active++;                                           // budoucí dny se počítají (cíl se během týdne nemění)
+  }
+  const target=active?Math.min(active,Math.max(1,Math.ceil(weekTimes(h)*active/7))):0;
+  const state=!active?'none':done>=target?'met':addDays(mon,6)<today?'miss':'open';
+  const r={done,target,active,state};
+  _wsCache.set(key,r);
+  return r;
+}
+// Vzhled nesplněného dne týdenního návyku: 'rest' týden splněn, 'open' týden běží, 'wmiss' týden skončil nesplněný,
+// null = splněno, budoucnost, přeskočeno, pauza, před založením nebo nejde o týdenní návyk
+function habitWeekDay(h,ds,today=toDS()){
+  if(!isWeekly(h)||ds>today||hDone(h.id,ds)) return null;
+  if(hLog(h.id+'_'+ds)?.skipped||isHabitPausedOn(h,ds)) return null;
+  const st=habitStartDS(h); if(st&&ds<st) return null;
+  const s=habitWeekStat(h,weekStartDS(ds),today).state;
+  return s==='met'?'rest':s==='miss'?'wmiss':s==='open'?'open':null;
+}
+// Týdenní série k datu ds: týden s ds se přičte jen splněný (běžící nesplněný ji nepřeruší), dál zpět
+// 'none' přeskočit, 'met' +1, 'miss' konec. Před oknem listeneru se dotáhne historie.
+function habitWeekStreak(h,ds=toDS()){
+  const today=toDS(), st=habitStartDS(h);
+  let mon=weekStartDS(ds), n=0;
+  const cur=habitWeekStat(h,mon,today).state;
+  if(cur==='met') n++; else if(cur==='miss') return 0;
+  for(let i=0;i<520;i++){
+    mon=addDays(mon,-7);
+    const w=habitWeekStat(h,mon,today);
+    if(st&&addDays(mon,6)<st&&!w.done) break;          // celý týden před založením a bez splnění
+    if(w.state==='met') n++;
+    else if(w.state==='miss'){ if(_hlCutoff&&mon<_hlCutoff) hlNeedHistory(h.id); break; } // před oknem nemusí být data
+  }
+  return n;
+}
+// Nejlepší týdenní série z načtených záznamů (stejná pravidla jako habitWeekStreak)
+function calcBestWeekStreak(h){
+  let first='';
+  for(const l of habitLogs) if(l&&l.habitId===h.id&&l.done&&typeof l.date==='string'&&(!first||l.date<first)) first=l.date;
+  if(!first) return 0;
+  const today=toDS();
+  let best=0, cur=0, mon=weekStartDS(first);
+  for(let i=0;i<520&&mon<=today;i++,mon=addDays(mon,7)){
+    const s=habitWeekStat(h,mon,today).state;
+    if(s==='met'){ cur++; if(cur>best) best=cur; } else if(s==='miss') cur=0;
+  }
+  return best;
+}
+// Hodnocené týdny za posledních n týdnů včetně běžícího (ten jen splněný): {met, total}
+function habitWeeksRate(h,n,today=toDS()){
+  let met=0, total=0, mon=weekStartDS(today);
+  for(let i=0;i<n;i++,mon=addDays(mon,-7)){
+    const s=habitWeekStat(h,mon,today).state;
+    if(s==='met'){ met++; total++; } else if(s==='miss') total++;
+  }
+  return {met,total};
+}
+
 
 // ── ŠTÍTY SÉRIE ❄️ (odvozené z logů, použitý štít = log {skipped,frozen,shield}) ──
 // Za každých 7 splněných dní v řadě 1 štít, max. 2 na návyk. Deterministicky z historie → stejné na všech zařízeních.
 const SHIELD_EVERY=7, SHIELD_MAX=2, SHIELD_DEPTH=14; // hloubka hledání mezery (dny)
 let _shCache=new Map(), _bdCtx=null, _wkCache=new Map(); // _bdCtx: podklady pro odznaky, _wkCache: týdenní souhrny (stejný reset jako štíty)
-function shieldCacheReset(){ _shCache=new Map(); _bdCtx=null; _wkCache=new Map(); }
+function shieldCacheReset(){ _shCache=new Map(); _bdCtx=null; _wkCache=new Map(); _wsCache=new Map(); }
 // Stav štítů návyku k datu: {sh: počet, run: splněné dny v aktuálním běhu}
 function habitShieldState(h,upTo=toDS()){
   const key=h.id+'|'+upTo;
@@ -8775,7 +8852,6 @@ function badgeCardSpec(id,nick){
 window.shareBadge=id=>{ if(!game?.badges?.[id]) return; cm('m-badge'); openShareCard('badge',id); };
 
 // ── TÝDENNÍ SOUHRN OD SPOLEČNÍKA (karta na Domů v pondělí a úterý, za minulý týden po–ne, lokální čas) ──
-const weekStartDS=ds=>addDays(ds,-((new Date(ds+'T12:00:00').getDay()+6)%7));   // pondělí týdne
 function calcWeekSummary(mon){
   const key=toDS()+'|'+gameTotal()+'|'+Object.keys(game?.badges||{}).length+'|'+habits.length, hit=_wkCache.get(mon);
   if(hit&&hit.key===key) return hit.S;

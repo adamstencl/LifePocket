@@ -1114,6 +1114,7 @@ export default {
 
   // ── Plurály (4.46) ──
   'pl.days': { one: '{n} day', other: '{n} days' },
+  'pl.weeks': { one: '{n} week', other: '{n} weeks' },
   'pl.ingr': { one: '{n} ingredient', other: '{n} ingredients' },
   'pl.recipesGen': { one: '{n} recipe', other: '{n} recipes' },
   'ai.leftToday': { one: 'You have {n} AI question left today.', other: 'You have {n} AI questions left today.' },

@@ -1128,6 +1128,7 @@ export default {
 
   // ── Plurály (4.46) ──
   'pl.days': { one: '{n} den', few: '{n} dny', many: '{n} dne', other: '{n} dní' },
+  'pl.weeks': { one: '{n} týden', few: '{n} týdny', many: '{n} týdne', other: '{n} týdnů' },
   'pl.ingr': { one: '{n} surovina', few: '{n} suroviny', many: '{n} suroviny', other: '{n} surovin' },
   'pl.recipesGen': { one: '{n} receptu', few: '{n} receptů', many: '{n} receptu', other: '{n} receptů' },
   'ai.leftToday': { one: 'Dnes ti zbývá {n} dotaz na AI.', few: 'Dnes ti zbývají {n} dotazy na AI.', other: 'Dnes ti zbývá {n} dotazů na AI.' },
