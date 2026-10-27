@@ -8215,7 +8215,7 @@ window.dismissQS = () => {
 // ── GAMIFIKACE: body (XP) a úrovně v users/{uid}/game/main (docs/NAVRH-GAMIFIKACE.md, F1) ──
 // Nikdy přes celoprofilový zápis profile/main. Dny se přepočítávají (jen dnes a včera), jednorázové odměny
 // mají pevný klíč a zapisují se přepisem (žádný increment). Úroveň je odvozená z XP, xp v dokumentu je jen cache.
-const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},sub:15,task:5,taskCap:10,metric:5,
+const XP={habit:10,habitCap:10,perfect:20,streak:{7:25,30:75,100:200,365:500},wstreak:{4:25,12:75,26:200,52:500},sub:15,task:5,taskCap:10,metric:5,
   gms:{25:25,50:25,75:25,100:100},praise:5,praiseCap:3,badge:25,chDone:50,pcMonth:50,pcWeek:20,bonusCap:200,water:10};
 const GAME_MAX_LVL=50;
 const lvlXP=L=>50*(L-1)+12.5*(L-1)*(L-2);          // XP potřebné pro úroveň L (L1 = 0)
@@ -8317,9 +8317,15 @@ function gameSync(){
   }
   if(Object.keys(patch).length){ game.xp=gameTotal(); patch.xp=game.xp; gameWrite(patch); }
   // Milník série 7/30/100/365: klíč s datem dosažení → 1× za běh série
+  // Týdenní návyk (4.91): 4/12/26/52 týdnů v týdnu, kdy série dosáhne n (klíč s pondělím → 1× za týden)
   for(const h of habits){
     if(h.archived||!hDone(h.id,today)) continue;
     const s=habitStreak(h.id,today);
+    if(isWeekly(h)){
+      const mon=weekStartDS(today);
+      if(XP.wstreak[s]&&habitWeekStat(h,mon,today).state==='met') gameAward('sw_'+h.id+'_'+s+'_'+mon,XP.wstreak[s]);
+      continue;
+    }
     if(XP.streak[s]) gameAward('st_'+h.id+'_'+s+'_'+today,XP.streak[s]);
   }
   gameAfter(before,gameTotal());
@@ -8516,7 +8522,7 @@ function renderGameSheet(){
     <div class="gs-sec">${tH('game.ring')}</div>
     <div class="gw-grid">${GAME_RINGS.map(ringBtn).join('')}</div>
     <details class="gs-how"><summary>${tH('game.how')}</summary>
-      <ul><li>${tH('game.how.habit')}</li><li>${tH('game.how.perfect')}</li><li>${tH('game.how.streak')}</li><li>${tH('game.how.goal')}</li><li>${tH('game.how.sub')}</li><li>${tH('game.how.praise')}</li><li>${tH('game.how.shield')}</li></ul>
+      <ul><li>${tH('game.how.habit')}</li><li>${tH('game.how.perfect')}</li><li>${tH('game.how.streak')}</li><li>${tH('game.how.wstreak')}</li><li>${tH('game.how.goal')}</li><li>${tH('game.how.sub')}</li><li>${tH('game.how.praise')}</li><li>${tH('game.how.shield')}</li></ul>
     </details>`;
 }
 window.gameWear=id=>{
@@ -9192,7 +9198,16 @@ function checkAvatarReactions(hid, date, justCompleted) {
   // Každá oslava jen jednou za den (odškrtnutí a nové zaškrtnutí ji nezopakuje)
   const seen = (() => { const v = lsGet('lp_avr', null); return v && v.d === today && Array.isArray(v.k) ? v : {d: today, k: []}; })();
   const once = k => { if(seen.k.includes(k)) return false; seen.k.push(k); lsSave('lp_avr', seen); return true; };
-  const msNew = [3,7,14,30].includes(streak) && once(hid + '_' + streak);
+  // Týdenní návyk (4.91): milníky 4/12/26/52 týdnů jen při splnění, které týden dokončí; denní milníky se nespouští
+  if(isWeekly(h)) {
+    const w = habitWeekStat(h, weekStartDS(today), today);
+    const wm = {4: ['🔥', 'avr.w4t', 'avr.w4'], 12: ['🏆', 'avr.w12t', 'avr.w12'], 26: ['🌟', 'avr.w26t', 'avr.w26'], 52: ['👑', 'avr.w52t', 'avr.w52']}[streak];
+    if(wm && w.state === 'met' && w.done === w.target && once(hid + '_w_' + streak)) {
+      showAvReaction(wm[0], t(wm[1]), t(wm[2], {av: av.name, h: h?.name}), true);
+      return;
+    }
+  }
+  const msNew = !isWeekly(h) && [3,7,14,30].includes(streak) && once(hid + '_' + streak);
 
   if(msNew && streak === 7) {
     // Hláška o štítu jen když dnešní splnění štít opravdu přidalo (při plném počtu nebo po použitém štítu ne)
@@ -12093,11 +12108,12 @@ function buildHabitMirror(hid) {
   for(let i = 6; i >= 0; i--) {
     const x = dayAt(i), ds = toDS(x), l = hLog(hid + '_' + ds);
     const off = freq.type === 'days' && !freq.days.includes(x.getDay());
-    last7 += hDone(hid, ds) ? '1' : (l?.skipped || off || isHabitPausedOn(h, ds)) ? '-' : '0';
+    last7 += hDone(hid, ds) ? '1' : (l?.skipped || off || isHabitPausedOn(h, ds) || habitWeekDay(h, ds, today) === 'rest') ? '-' : '0';
   }
   let doneDate = '';
   for(let i = 0; i < 60 && !doneDate; i++) { const ds = toDS(dayAt(i)); if(hDone(hid, ds)) doneDate = ds; }
-  const streak = doneDate ? habitStreak(hid, doneDate) : 0;
+  // Týdenní návyk (4.91): série v týdnech k dnešku (běžící nesplněný týden ji nepřeruší), příjemce pozná jednotku z freq.type
+  const streak = isWeekly(h) ? habitStreak(hid, today) : doneDate ? habitStreak(hid, doneDate) : 0;
   // Nejlepší série z načtených záznamů (stejná pravidla jako habitStreak)
   const best = calcBestStreak(h);
   const tl = hLog(hid + '_' + today);
@@ -12228,7 +12244,7 @@ function onHabitLogChanged(hid, date, wasDone, isDone) {
   const today = toDS();
   if(h && date === today && wasDone !== isDone) {
     const sid = shSid('h', hid), name = cutName(h.name, 60);
-    const s = isDone ? habitStreak(hid, today) : 0;
+    const s = isDone && !isWeekly(h) ? habitStreak(hid, today) : 0; // týdenní milník zatím neposílat (pravidla activity nemají jednotku)
     for(const gid of gids) {
       const mk = gid + '|' + sid;
       if(isDone) {
@@ -14657,7 +14673,9 @@ function sharedHabitCardHTML(gid, m) {
   else st = t('sh.notYet');
   const meta = [shFreqLabel(m.freq)];
   if(m.htype === 'count') meta.push(t('sh.goal', {n: goal}));
-  if(streak > 0 && doneDate >= yest) meta.push('🔥 ' + t('sh.streak', {n: streak}));
+  // Týdenní (4.91): série platí, jen když bylo zrcadlo zapsané tento týden (minulé týdny už byly uzavřené)
+  if(m.freq?.type === 'weekly' && streak > 0 && upd >= weekStartDS(today)) meta.push('🔥 ' + t('sh.wstreak', {n: streak}));
+  else if(m.freq?.type !== 'weekly' && streak > 0 && doneDate >= yest) meta.push('🔥 ' + t('sh.streak', {n: streak}));
   else if(doneDate) meta.push(t('sh.lastDone', {d: shFmtDs(doneDate)}));
   // last7 platí k datu zápisu → posunout o dny od té doby (chybějící dny = nesplněno)
   let last7 = typeof m.last7 === 'string' ? m.last7.slice(0, 7).padStart(7, '0') : '0000000';
