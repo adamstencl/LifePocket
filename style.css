@@ -2393,11 +2393,15 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 /* 4.90: čipy (každý den, 🔥 4 dny, 🔔 7:00) se nelámou uvnitř; dny v týdnu jen mezi dny. Dlouhé slovo (12+ znaků) raději se spojovníkem */
 .habit-streak>span:not(.hb-freq-days){white-space:nowrap}
 /* 4.91: týdenní návyky – pilulka týdne, den volna ve splněném týdnu, budoucí den, nesplněný uzavřený týden */
-.habit-week-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 10px;border-radius:12px;background:var(--card2);border:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text2)}
-.habit-week-pill.met{background:var(--green);border-color:var(--green);color:var(--on-green)}
+/* 4.92: pilulka týdne = stejný čip jako „každý den“ (velikost i styl), splněný týden zelený */
+.habit-week-pill{font-size:11px;color:var(--text3);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:2px 8px;vertical-align:middle}
+.habit-week-pill.met{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:600}
+@media(max-width:640px){.habit-week-pill{font-size:10px;padding:1px 6px}}
 .hd-day-cell.rest,.htd-dot.rest{background:transparent;color:var(--text3);opacity:.55}
 .htd-dot.future{background:transparent;box-shadow:inset 0 0 0 1px var(--border)}
 .htd-dot.future.today{box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--accent)}
+/* 4.92: den před založením návyku – neutrální (ne ×), dá se zpětně doplnit */
+.htd-dot.pre{background:transparent;border:1px dashed var(--border);opacity:.6}
 .hd-day-cell.wk-miss:not(.done){background:var(--wk-miss-bg);color:var(--text2)}
 .habit-name{-webkit-hyphens:auto;hyphens:auto;-webkit-hyphenate-limit-before:5;-webkit-hyphenate-limit-after:5;hyphenate-limit-chars:12 5 5}
 /* 4.90: úzký telefon – pilulka Splněno/Nesplněno jen opakuje kolečko (nedá se na ni kliknout), skryje se; název aspoň 7.5em (≈ 9em písma názvu 13 px), ovládání, které se nevejde, spadne na další řádek vpravo */

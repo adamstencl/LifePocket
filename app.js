@@ -2609,15 +2609,16 @@ function buildHabitCard(h,ch){
   // 7-day table
   const DAY_NAMES=dowNames();
   let thHtml='', tdHtml='';
-  // Týdenní návyk: aktuální týden po–ne (jako pilulka), jinak posledních 7 dní
-  for(let i=6;i>=0;i--){
-    const d=new Date((weekly?addDays(wMon,6):habitDay)+'T12:00:00');
-    d.setDate(d.getDate()-i);
-    const ds=toDS(d);
+  // 4.92: všechny návyky ukazují týden po–ne, ve kterém leží vybraný den (budoucí dny prázdné, neklikací)
+  const rowMon=weekly?wMon:weekStartDS(habitDay), hStart=habitStartDS(h);
+  for(let i=0;i<7;i++){
+    const ds=addDays(rowMon,i);
+    const d=new Date(ds+'T12:00:00');
     const dow=d.getDay();
     const l=hLog(h.id+'_'+ds);
-    const isFuture=weekly&&ds>todayDS;
+    const isFuture=ds>todayDS;
     const wDay=weekly?habitWeekDay(h,ds,todayDS):null;
+    const isPre=!!(hStart&&ds<hStart);                   // před založením: neutrální (ne ×)
     let active=true;
     if(freq.type==='days') active=(freq.days||[]).includes(dow);
     const isDone=l&&l.done;
@@ -2630,8 +2631,8 @@ function buildHabitCard(h,ch){
     const isFrozen=!isDone&&l&&(l.shield||l.frozen);
     const isPausedDay=!isDone&&!isSkipped&&isHabitPausedOn(h,ds);
     let cls='htd-dot';
-    if(!active) cls+=' inactive';
-    else if(isFuture) cls+=' future';
+    if(isFuture) cls+=' future';
+    else if(!active) cls+=' inactive';
     else if(isDone) cls+=' done';
     else if(isFrozen) cls+=' frozen';
     else if(isPausedDay) cls+=' paused';
@@ -2640,12 +2641,13 @@ function buildHabitCard(h,ch){
     else if(isZero) cls+=' failed';
     else if(isPartial) cls+=' partial';
     else if(wDay==='rest') cls+=' rest';
+    else if(isPre) cls+=' pre';
     else cls+=' miss';
     if(isHabitDay) cls+=' today';
 
     let inner='';
-    if(!active) inner='—';
-    else if(isFuture) inner='';
+    if(isFuture) inner='';
+    else if(!active) inner='—';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${Number(l.value)||0}</span>`:'✓';
     else if(isFrozen) inner='❄️';
     else if(isPausedDay) inner='⏸';
@@ -2654,6 +2656,7 @@ function buildHabitCard(h,ch){
     else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
     else if(isPartial) inner=`<span style="font-size:10px">${Number(l.value)||0}</span>`;
     else if(wDay==='rest') inner='·';
+    else if(isPre) inner='';
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3)">${d.getDate()}.${d.getMonth()+1}</span></th>`;
