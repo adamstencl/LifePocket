@@ -1472,7 +1472,7 @@ export default {
   'hb.today': 'Today',
   'hb.yesterday': 'Yesterday',
   'hb.tomorrow': 'Tomorrow',
-  'hb.thisWeek': '{done}/{n}× this week',
+  'hb.thisWeek': '{done}/{n} this week',
   'hb.startToday': 'Start today!',
   'hb.directTitle': 'Tap to enter a value',
   'hb.done': '✓ Done',

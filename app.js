@@ -2562,20 +2562,11 @@ function buildHabitCard(h,ch){
   const streak=habitStreak(h.id,habitDay);
   const shields=(!h.freq||h.freq.type!=='weekly')?habitShields(h):0;
 
-  // Weekly completion
-  let weeklyStatus='';
-  if(h.freq&&h.freq.type==='weekly'){
-    const hd=new Date(habitDay+'T12:00:00');
-    const dow=(hd.getDay()+6)%7;
-    const weekStart=new Date(hd); weekStart.setDate(hd.getDate()-dow);
-    let weekDone=0;
-    for(let i=0;i<7;i++){
-      const d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
-      const l=hLog(h.id+'_'+toDS(d));
-      if(l&&l.done)weekDone++;
-    }
-    weeklyStatus=tH('hb.thisWeek',{done:weekDone,n:Number(h.freq.times)||3});
-  }
+  // Týdenní návyk (4.91): pilulka týdne (splněno / cíl týdne), zelená při splněném cíli
+  const weekly=isWeekly(h), wMon=weekly?weekStartDS(habitDay):'';
+  const wStat=weekly?habitWeekStat(h,wMon):null;
+  const weekPill=wStat&&wStat.state!=='none'
+    ?`<span class="habit-week-pill${wStat.state==='met'?' met':''}">${wStat.state==='met'?'✓ ':''}${tH('hb.thisWeek',{done:wStat.done,n:wStat.target})}</span>`:'';
 
   const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
   const freqLabel=freq.type==='daily'?tH('hb.daily')
@@ -2583,9 +2574,16 @@ function buildHabitCard(h,ch){
     :freq.type==='days'?(()=>{const dn=dowNames();return (freq.days||[]).map(d=>lookupOr(dn,d,'')).filter(Boolean).join(', ');})()
     :tH('hb.daily');
 
-  // Streak badge s milníky
+  // Streak badge s milníky (týdenní: 2+ / 4+ / 12+ / 52+ týdnů)
   let streakBadge = '';
-  if(streak >= 30) {
+  if(weekly) {
+    const sl=fmtStreak(h,streak);
+    streakBadge = streak>=52?`<span class="streak-badge s-month">👑 ${sl}!</span>`
+      :streak>=12?`<span class="streak-badge s-two-week">🏆 ${sl}</span>`
+      :streak>=4?`<span class="streak-badge s-week">🔥 ${sl}</span>`
+      :streak>=2?`<span class="streak-badge s-normal">🔥 ${sl}</span>`
+      :streak>0?`<span><span class="habit-streak-fire">🔥</span> ${sl}</span>`:'';
+  } else if(streak >= 30) {
     streakBadge = `<span class="streak-badge s-month">👑 ${tNH('pl.days', streak)}!</span>`;
   } else if(streak >= 14) {
     streakBadge = `<span class="streak-badge s-two-week">🏆 ${tNH('pl.days', streak)}</span>`;
@@ -2596,20 +2594,23 @@ function buildHabitCard(h,ch){
   } else if(streak > 0) {
     streakBadge = `<span><span class="habit-streak-fire">🔥</span> ${tNH('pl.days', streak)}</span>`;
   }
-  const streakHtml=(streak>0
-    ? streakBadge
-    :(weeklyStatus?`<span>${weeklyStatus}</span>`:`<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`))
+  const streakHtml=(weekly
+    ? weekPill+streakBadge
+    : streak>0 ? streakBadge : `<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`)
     +`<span class="habit-freq-badge${freq.type==='days'?' hb-freq-days':''}">${freqLabel}</span>`; // 4.90: čipy ve vlastním <span> (nelámou se uvnitř)
 
   // 7-day table
   const DAY_NAMES=dowNames();
   let thHtml='', tdHtml='';
+  // Týdenní návyk: aktuální týden po–ne (jako pilulka), jinak posledních 7 dní
   for(let i=6;i>=0;i--){
-    const d=new Date(habitDay+'T12:00:00');
+    const d=new Date((weekly?addDays(wMon,6):habitDay)+'T12:00:00');
     d.setDate(d.getDate()-i);
     const ds=toDS(d);
     const dow=d.getDay();
     const l=hLog(h.id+'_'+ds);
+    const isFuture=weekly&&ds>todayDS;
+    const wDay=weekly?habitWeekDay(h,ds,todayDS):null;
     let active=true;
     if(freq.type==='days') active=(freq.days||[]).includes(dow);
     const isDone=l&&l.done;
@@ -2623,6 +2624,7 @@ function buildHabitCard(h,ch){
     const isPausedDay=!isDone&&!isSkipped&&isHabitPausedOn(h,ds);
     let cls='htd-dot';
     if(!active) cls+=' inactive';
+    else if(isFuture) cls+=' future';
     else if(isDone) cls+=' done';
     else if(isFrozen) cls+=' frozen';
     else if(isPausedDay) cls+=' paused';
@@ -2630,11 +2632,13 @@ function buildHabitCard(h,ch){
     else if(isFailed) cls+=' failed';
     else if(isZero) cls+=' failed';
     else if(isPartial) cls+=' partial';
+    else if(wDay==='rest') cls+=' rest';
     else cls+=' miss';
     if(isHabitDay) cls+=' today';
 
     let inner='';
     if(!active) inner='—';
+    else if(isFuture) inner='';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${Number(l.value)||0}</span>`:'✓';
     else if(isFrozen) inner='❄️';
     else if(isPausedDay) inner='⏸';
@@ -2642,10 +2646,11 @@ function buildHabitCard(h,ch){
     else if(isFailed) inner='✕';
     else if(isZero) inner=`<span style="font-size:10px;color:var(--red)">0</span>`;
     else if(isPartial) inner=`<span style="font-size:10px">${Number(l.value)||0}</span>`;
+    else if(wDay==='rest') inner='·';
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3)">${d.getDate()}.${d.getMonth()+1}</span></th>`;
-    tdHtml+=`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
+    tdHtml+=isFuture?`<td><div class="${cls}"></div></td>`:`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
   }
 
   let controlHtml='';
@@ -2724,15 +2729,11 @@ window.toggleHabitPending=()=>{
 };
 function isHabitPending(h,ds){
   if(!h||h.archived) return false;
-  if(habitDayState(h,ds)!=='miss') return false;           // splněno, přeskočeno, pauza, mimo dny, před založením, budoucnost
   const l=hLog(h.id+'_'+ds);
   if(l&&(l.done||l.failed||l.skipped)) return false;
-  if(h.freq&&h.freq.type==='weekly'){                       // týdenní cíl už splněný = nic nečeká
-    const dow=(new Date(ds+'T12:00:00').getDay()+6)%7, ws=addDays(ds,-dow);
-    let n=0; for(let i=0;i<7;i++) if(hDone(h.id,addDays(ws,i))) n++;
-    if(n>=(Number(h.freq.times)||3)) return false;
-  }
-  return true;
+  if(isWeekly(h)) return habitWeekDay(h,ds)==='open';      // týden běží a cíl ještě není splněný
+  return habitDayState(h,ds)==='miss';                     // splněno, přeskočeno, pauza, mimo dny, před založením, budoucnost
+
 }
 // ── RUTINY (4.89): návyk s chain:true navazuje na aktivní návyk nad sebou ve skupině ──
 // Rutina = souvislý úsek aktivních návyků skupiny; 1. krok bez chain, další s chain:true (u prvního návyku skupiny se ignoruje)
@@ -2765,7 +2766,8 @@ function chainNextStep(steps,ds){ return (steps||[]).find(s=>isHabitPending(s,ds
 // Hotové / dnešní kroky (přeskočené a mimo frekvenci se nepočítají, jako ve statistikách)
 function chainProgress(steps,ds){
   let done=0,total=0;
-  (steps||[]).forEach(s=>{ const st=habitDayState(s,ds); if(st==='done'){done++;total++;} else if(st==='miss') total++; });
+  // Týdenní krok (4.91) se počítá, jen když je dnes splněný nebo nevyřízený (ve splněném týdnu je neutrální)
+  (steps||[]).forEach(s=>{ const st=habitDayState(s,ds); if(st==='done'){done++;total++;} else if(isWeekly(s)?isHabitPending(s,ds):st==='miss') total++; });
   return {done,total};
 }
 const CHAIN_NAME={morning:'hb.chain.name.morning',day:'hb.chain.name.day',evening:'hb.chain.name.evening'};
@@ -7142,7 +7144,7 @@ function wtHabitSync(){
   if(_wtHbBusy.has(id)) return;
   const log=hLog(id), met=wtMl(ds)>=wtGoalOf(ds);
   let job=null;
-  if(met&&!log&&habitDayState(h,ds)==='miss') job=()=>putHabitLog({id,habitId:h.id,date:ds,done:true,failed:false,value:1,src:'water'});
+  if(met&&!log&&(habitDayState(h,ds)==='miss'||habitWeekDay(h,ds))) job=()=>putHabitLog({id,habitId:h.id,date:ds,done:true,failed:false,value:1,src:'water'});
   else if(!met&&log?.done&&log.src==='water'&&!log.manual) job=()=>delHabitLog(id);
   if(!job) return;
   _wtHbBusy.add(id);

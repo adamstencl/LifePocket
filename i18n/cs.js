@@ -1502,7 +1502,7 @@ export default {
   'hb.today': 'Dnes',
   'hb.yesterday': 'Včera',
   'hb.tomorrow': 'Zítra',
-  'hb.thisWeek': '{done}/{n}× tento týden',
+  'hb.thisWeek': '{done}/{n} tento týden',
   'hb.startToday': 'Začni dnes!',
   'hb.directTitle': 'Klepni pro přímé zadání',
   'hb.done': '✓ Splněno',
