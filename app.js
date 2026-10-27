@@ -2450,9 +2450,10 @@ function habitWeekStreak(h,ds=toDS()){
   const today=toDS(), st=habitStartDS(h);
   let mon=weekStartDS(ds), n=0;
   const cur=habitWeekStat(h,mon,today).state;
+  _hwsReach=mon;
   if(cur==='met') n++; else if(cur==='miss') return 0;
   for(let i=0;i<520;i++){
-    mon=addDays(mon,-7);
+    mon=addDays(mon,-7); _hwsReach=mon;
     const w=habitWeekStat(h,mon,today);
     if(st&&addDays(mon,6)<st&&!w.done) break;          // celý týden před založením a bez splnění
     if(w.state==='met') n++;
@@ -2460,6 +2461,7 @@ function habitWeekStreak(h,ds=toDS()){
   }
   return n;
 }
+let _hwsReach=''; // nejstarší pondělí, které poslední habitWeekStreak prošel (milník jen ze spolehlivých dat)
 // Nejlepší týdenní série z načtených záznamů (stejná pravidla jako habitWeekStreak)
 function calcBestWeekStreak(h){
   let first='';
@@ -8324,13 +8326,19 @@ function gameSync(){
   // Milník série 7/30/100/365: klíč s datem dosažení → 1× za běh série
   // Týdenní návyk (4.91): 4/12/26/52 týdnů v týdnu, kdy série dosáhne n (klíč s pondělím → 1× za týden)
   for(const h of habits){
-    if(h.archived||!hDone(h.id,today)) continue;
-    const s=habitStreak(h.id,today);
+    if(h.archived) continue;
+    // Týdenní: jen podle splněného běžícího týdne (i zpětně doplněného), bez ohledu na dnešek; historie musí být úplná
+    // nebo výpočet série nesmí sahat před okno listeneru (jinak falešný milník na okraji 60 dní)
     if(isWeekly(h)){
       const mon=weekStartDS(today);
-      if(XP.wstreak[s]&&habitWeekStat(h,mon,today).state==='met') gameAward('sw_'+h.id+'_'+s+'_'+mon,XP.wstreak[s]);
+      if(habitWeekStat(h,mon,today).state!=='met') continue;
+      const s=habitStreak(h.id,today);
+      const full=_hlOldAll||_hlOldHabits.has(h.id)||!_hlCutoff||_hwsReach>=_hlCutoff;
+      if(XP.wstreak[s]&&full) gameAward('sw_'+h.id+'_'+s+'_'+mon,XP.wstreak[s]);
       continue;
     }
+    if(!hDone(h.id,today)) continue;
+    const s=habitStreak(h.id,today);
     if(XP.streak[s]) gameAward('st_'+h.id+'_'+s+'_'+today,XP.streak[s]);
   }
   gameAfter(before,gameTotal());

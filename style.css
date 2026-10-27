@@ -1045,7 +1045,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .hd-day-cell.done{background:var(--green);color:var(--on-green)}
 .hd-day-cell.miss{background:rgba(255,255,255,0.04);color:var(--text3)}
 .hd-day-cell.inactive{background:transparent;color:var(--border);opacity:0.3}
-.hd-day-cell.empty{background:transparent}
+.hd-day-cell.empty{background:transparent;padding:0} /* 4.91: globální .empty (40px) rozbíjela mřížku měsíce na 360 px */
 .hd-day-cell.today{box-shadow:0 0 0 2px var(--accent)}
 .hd-line-chart{position:relative;height:120px;margin-bottom:4px}
 .hd-chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px}
