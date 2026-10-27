@@ -8047,7 +8047,7 @@ function coTedHTML() {
     // jen dnes na řadě; z rutiny jen její další krok (4.89)
     const td = toDS(), chm = chainMapAll();
     // počítaný návyk jen jako aktuální krok rutiny (klepnutí ho splní na cíl)
-    const hs = habits.filter(h => h && isHabitPending(h, td) && (chm.has(h.id) ? chainNextStep(chm.get(h.id), td) === h : h.type !== 'count')).slice(0, 3);
+    const hs = habits.filter(h => h && isHabitPending(h, td) && (chm.has(h.id) ? chainNextStep(chm.get(h.id), td) === h : h.type !== 'count')).sort((a, b) => isWeekly(a) - isWeekly(b)).slice(0, 3); // týdenní počkají (4.91)
     body = hs.length ? `<div class="ct-hbs">${hs.map(h => `<button type="button" class="ct-hb" data-a0="${esc(h.id)}" onclick="ctHabit(this.dataset.a0)"><span class="ct-hb-c" aria-hidden="true"></span><span>${esc(h.emoji || '⭐')} ${esc(h.name)}</span></button>`).join('')}</div>`
       : `<button type="button" class="btn-p ct-btn" data-a0="${m}" onclick="ctGo(this.dataset.a0)">${tH('ct.open')}</button>`;
   } else if (kind === 'water') {
@@ -17162,11 +17162,14 @@ function rDash(){
       const isCount=hb.type==='count';
       const val=isCount?(log?.value||0)+'/'+hb.goal:'';
       const streak=habitStreak(hb.id,today);
+      // Týdenní návyk (4.91): místo ohníčku stav týdne, splněný týden zeleně
+      const wk=isWeekly(hb)?habitWeekStat(hb,weekStartDS(today),today):null;
       return `<div class="dw-habit-row">
         <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
         <div class="dw-hname">${esc(hb.emoji)} ${esc(hb.name)}</div>
         ${val?`<div class="dw-hval">${val}</div>`:''}
-        ${streak>=30?`<div class="dw-hfire" style="color:var(--accent);font-weight:700">👑${streak}</div>`
+        ${wk?(wk.state==='none'?'':`<div class="dw-hfire"${wk.state==='met'?' style="color:var(--green);font-weight:700"':''}>${wk.state==='met'?'✓':''}${wk.done}/${wk.target}</div>`)
+         :streak>=30?`<div class="dw-hfire" style="color:var(--accent);font-weight:700">👑${streak}</div>`
          :streak>=7?`<div class="dw-hfire" style="color:var(--green);font-weight:700">🔥${streak}</div>`
          :streak>1?`<div class="dw-hfire">🔥${streak}</div>`:''}
       </div>`;
@@ -17357,7 +17360,8 @@ function rDash(){
 
   // ── WIDGET: STREAKY ──
   if(mods.includes('habits') && habits.length) {
-    const streakHabits = habits.filter(h => !h.archived).map(h => ({...h, streak: habitStreak(h.id, today)})).filter(h => h.streak >= 2).sort((a,b) => b.streak - a.streak).slice(0,4);
+    // Týdenní návyky (4.91) v týdnech, řazení podle týdny×7
+    const streakHabits = habits.filter(h => !h.archived).map(h => ({...h, streak: habitStreak(h.id, today), wk: isWeekly(h)})).filter(h => h.streak >= 2).sort((a,b) => b.streak * (b.wk ? 7 : 1) - a.streak * (a.wk ? 7 : 1)).slice(0,4);
 
     if(streakHabits.length) {
       mw.streaks = `<div class="dw" style="cursor:default">
@@ -17367,7 +17371,7 @@ function rDash(){
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:20px">${esc(h.emoji||'⭐')}</span>
               <span style="flex:1;font-size:15px;color:var(--text)">${esc(h.name)}</span>
-              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">${tH('dash.streaks.days',{n:Number(h.streak)||0})}</span>
+              <span style="background:rgba(255,140,0,.15);border:1px solid rgba(255,140,0,.3);border-radius:20px;padding:3px 10px;font-size:13px;font-weight:700;color:#ff8c00">${tH(h.wk?'dash.streaks.weeks':'dash.streaks.days',{n:Number(h.streak)||0})}</span>
             </div>`).join('')}
         </div>
       </div>`;
@@ -18396,19 +18400,19 @@ function buildChatContext(question=''){
     const done=new Set(), skip=new Set();
     habitLogs.forEach(l=>{ if(!l) return; const k=l.habitId+'|'+l.date; if(l.done) done.add(k); else if(l.skipped) skip.add(k); });
     const due=h=>{const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};return f.type!=='days'||(Array.isArray(f.days)?f.days:[]).includes(dow);};
-    const dueAll=act.filter(due);
+    // Týdenní (4.91) do „dnes x/n“ jen nevyřízený nebo dnes splněný
+    const dueAll=act.filter(h=>isWeekly(h)?(isHabitPending(h,today)||done.has(h.id+'|'+today)):due(h));
     const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>done.has(h.id+'|'+today)).length,n:dueAll.length})];
     act.slice(0,20).forEach(h=>{
       const k=h.id+'|'+today;
       const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};
-      const mark=done.has(k)?'✅':skip.has(k)?'⏭️':due(h)?'⬜':'➖';
+      const mark=done.has(k)?'✅':skip.has(k)?'⏭️':(isWeekly(h)?isHabitPending(h,today):due(h))?'⬜':'➖';
       // Streak: stejná logika jako karta (dnešní nesplněný den, pauza ani přeskočení sérii nepřeruší)
       const streak=habitStreak(h.id,today);
       let wk='';
       if(f.type==='weekly'){
-        const ws=new Date(now);ws.setDate(ws.getDate()-((now.getDay()+6)%7));
-        let c=0;for(let i=0;i<7;i++){const d=new Date(ws);d.setDate(ws.getDate()+i);if(done.has(h.id+'|'+toDS(d)))c++;}
-        wk=tA('aip.ctx.hab.week',{done:c,n:Number(f.times)||3});
+        const w=habitWeekStat(h,weekStartDS(today),today);
+        wk=tA('aip.ctx.hab.week',{done:w.done,n:w.target})+tA('aip.ctx.hab.wstreak',{n:streak});
       }
       const val=h.type==='count'?' ('+ctxNum((hLogHD(h.id,today)||{}).value)+'/'+ctxNum(h.goal)+')':'';
       const rt=/^([01]\d|2[0-3]):[0-5]\d$/.test(h.reminderTime||'')?' | 🔔 '+h.reminderTime:'';
