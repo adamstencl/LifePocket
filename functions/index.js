@@ -29,6 +29,11 @@ const AI_DEFAULT_MODEL = AI_MODEL_HAIKU45;
 const AI_EFFORTS = ['low', 'medium', 'high']; // thinking:disabled je u 5.5 povolené jen při těchto úrovních
 const AI_DEFAULT_EFFORT = 'medium';
 const AI_CONFIG_TTL_MS = 5 * 60 * 1000;
+// Globální denní strop AI pro celou appku (ochrana nákladů): config/ai.dailyCap, chybí-li = 1500.
+// Počítadlo {date: pražský den, count} v config/aiDaily (config/** je pro klienty zavřený; rateLimits ne —
+// tam by ho započítal i dailyStats). Změna stropu se projeví do 5 min (cache config/ai).
+const AI_DEFAULT_DAILY_CAP = 1500;
+const AI_GLOBAL_DOC = 'config/aiDaily';
 
 function normAiConfig(d) {
   const m = (d && typeof d.model === 'string') ? d.model.trim() : '';
@@ -36,7 +41,9 @@ function normAiConfig(d) {
   if (m && model !== m) console.warn('[LP] config/ai.model není povolený, používám výchozí model.');
   const e = (d && typeof d.effort === 'string') ? d.effort.trim().toLowerCase() : '';
   const effort = AI_EFFORTS.includes(e) ? e : AI_DEFAULT_EFFORT;
-  return {model, effort};
+  const cap = Number(d && d.dailyCap);
+  const dailyCap = (d && typeof d.dailyCap === 'number' && Number.isFinite(cap) && cap >= 0) ? Math.floor(cap) : AI_DEFAULT_DAILY_CAP;
+  return {model, effort, dailyCap};
 }
 
 // Cache v instanci na 5 min; při chybě čtení platí poslední známá (nebo výchozí) hodnota
@@ -147,23 +154,31 @@ function validateClaudeInput(data, L) {
   return {system, messages: out, maxTokens: mt};
 }
 
-// Vrácení odečteného dotazu (výpadek Anthropicu) — jen ve stejný den a nikdy pod 0
+// Vrácení odečteného dotazu (výpadek Anthropicu) — uživatelský i globální limit, jen ve stejný den a nikdy pod 0
 async function refundRate(rateRef, today) {
+  const globalRef = db.doc(AI_GLOBAL_DOC);
   try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(rateRef);
-      const d = snap.exists ? snap.data() : null;
-      if (!d || d.date !== today || !(d.count > 0)) return;
-      tx.update(rateRef, {count: FieldValue.increment(-1)});
+      const gSnap = await tx.get(globalRef);
+      for (const [ref, s] of [[rateRef, snap], [globalRef, gSnap]]) {
+        const d = s.exists ? s.data() : null;
+        if (d && d.date === today && d.count > 0) tx.update(ref, {count: FieldValue.increment(-1)});
+      }
     });
   } catch(e) { console.error('[LP] Vrácení AI limitu selhalo:', e.code || e.message); }
 }
 
-exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (request) => {
+exports.claudeProxy = onCall({cors: true, region: 'europe-west1', maxInstances: 10}, async (request) => {
   // 1. Auth check (jazyk chyb z data.lang klienta, profil se kvůli tomu nenačítá)
   const L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
+  // Účet s heslem musí mít ověřený e-mail (ochrana proti hromadně zakládaným účtům); Google je ověřený
+  const tok = request.auth.token || {};
+  if (tok.firebase && tok.firebase.sign_in_provider === 'password' && tok.email_verified !== true) {
+    throw new HttpsError('failed-precondition', tS(L, 'err.aiVerify'));
+  }
 
   // 2. Validace vstupu — před odečtem limitu, neplatný dotaz limit nespotřebuje
   const input = validateClaudeInput(request.data, L);
@@ -172,20 +187,29 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
   const claudeKey = await getClaudeKey(L);
   const aiCfg = await getAiConfig();
 
-  // 4. Rate limiting — max 50 AI volání za den (atomicky přes transakci,
-  // aby paralelní requesty nemohly limit obejít)
+  // 4. Rate limiting — max 50 AI volání za den na uživatele + globální denní strop appky
+  // (atomicky v jedné transakci, aby paralelní requesty nemohly limity obejít)
   // Den počítáme v čase Europe/Prague (limit se nuluje o naší půlnoci, ne v UTC)
   const today = pragueDS(new Date());
   const rateRef = db.doc(`rateLimits/${uid}`);
+  const globalRef = db.doc(AI_GLOBAL_DOC);
   const todayCount = await db.runTransaction(async (tx) => {
     const rateSnap = await tx.get(rateRef);
+    const gSnap = await tx.get(globalRef);
     const rateData = rateSnap.exists ? rateSnap.data() : {};
     const count = rateData.date === today ? (rateData.count || 0) : 0;
     if (count >= DAILY_LIMIT) {
       throw new HttpsError('resource-exhausted', tS(L, 'err.aiLimit', {n: DAILY_LIMIT}));
     }
+    const gData = gSnap.exists ? gSnap.data() : {};
+    const gCount = gData.date === today ? (Number(gData.count) || 0) : 0;
+    if (gCount >= aiCfg.dailyCap) {
+      console.warn('[LP] Globální denní strop AI dosažen:', aiCfg.dailyCap);
+      throw new HttpsError('resource-exhausted', tS(L, 'err.aiGlobalCap'));
+    }
     // merge: v dokumentu je i famNotify (omezení notifyFamily)
     tx.set(rateRef, {date: today, count: count + 1}, {merge: true});
+    tx.set(globalRef, {date: today, count: gCount + 1});
     return count;
   });
 
@@ -257,8 +281,9 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1'}, async (reques
       await refundRate(rateRef, today);
       throw new HttpsError('unavailable', tS(L, 'err.aiUnavail'));
     }
-    const msg = result.body?.error?.message || tS(L, 'err.aiHttp', {code: result.status});
-    throw new HttpsError('internal', msg);
+    // Text chyby Anthropicu klientovi neposíláme (interní detaily) — log jen status a typ
+    console.error('[LP] Claude API chyba, status', result.status, errType || '');
+    throw new HttpsError('internal', tS(L, 'err.aiHttp', {code: result.status}));
   }
   const parsed = parseClaudeResponse(result.body);
   // Odmítnutí bezpečnostním filtrem (HTTP 200): dotaz proběhl, do limitu se nevrací. Loguje se jen kategorie.
@@ -464,7 +489,7 @@ function reqLang(request, prof) {
 }
 
 // ── Test Push — ověření že FCM funguje ───────────────────────────────────────
-exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) => {
+exports.testPush = onCall({cors: true, region: 'europe-west1', maxInstances: 3}, async (request) => {
   let L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
@@ -477,7 +502,9 @@ exports.testPush = onCall({cors: true, region: 'europe-west1'}, async (request) 
   const PL = normLang(prof.lang);
   const {sent, lastError} = await sendPushToUser(uid, prof, tS(PL, 'test.t'), tS(PL, 'test.b'), 'test-push');
   if (sent === 0) {
-    throw new HttpsError('internal', tS(L, 'err.fcm', {err: (lastError && lastError.message) || tS(L, 'err.fcmUnknown')}));
+    // Text chyby FCM klientovi neposíláme — log jen kód
+    console.error('[LP] testPush: push neodešel, kód', (lastError && lastError.code) || '?');
+    throw new HttpsError('internal', tS(L, 'err.fcm'));
   }
   return {ok: true, sent};
 });
@@ -885,7 +912,7 @@ function gnEveningBody(byModule, L) {
 // Starší ruční upozornění (tlačítko v Nákupech): respektuje „off“ u nákupů a noční klid příjemce,
 // odesílatel smí volat nejvýš 1× za 2 min na skupinu (rateLimits/{uid}.famNotify, píše jen server)
 const FAM_NOTIFY_INTERVAL = 2 * 60000;
-exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (request) => {
+exports.notifyFamily = onCall({cors: true, region: 'europe-west1', maxInstances: 5}, async (request) => {
   let L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
@@ -1715,7 +1742,7 @@ async function deleteUserActivity(gid, uid) {
   for (const d of chs.docs) await d.ref.update(new FieldPath('p', uid), FieldValue.delete());
 }
 
-exports.deleteAccount = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
+exports.deleteAccount = onCall({cors: true, region: 'europe-west1', maxInstances: 3, timeoutSeconds: 300}, async (request) => {
   const L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
@@ -1950,7 +1977,7 @@ async function deleteOldGroup(ref) {
   }
 }
 
-exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 300}, async (request) => {
+exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', maxInstances: 3, timeoutSeconds: 300}, async (request) => {
   const L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
@@ -2144,7 +2171,7 @@ function canRestore(d, uid, former, gid) {
   return isEmptyGroup(d) && (d.createdBy === uid || former.includes(gid));
 }
 
-exports.restoreGroup = onCall({cors: true, region: 'europe-west1', timeoutSeconds: 60}, async (request) => {
+exports.restoreGroup = onCall({cors: true, region: 'europe-west1', maxInstances: 3, timeoutSeconds: 60}, async (request) => {
   const L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
