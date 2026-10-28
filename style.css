@@ -1321,11 +1321,18 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .shop-item-del:hover{color:var(--red)}
 .shop-item-fav{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;line-height:1;opacity:.6;flex-shrink:0;transition:opacity .15s}
 .shop-item-fav:active{opacity:1}
-.shop-from-recipe{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:0}
+.shop-from-recipe{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--accent2);background:rgba(224,149,74,.1);border:1px solid rgba(224,149,74,.2);border-radius:6px;padding:1px 6px;flex-shrink:1}
 /* Úzké telefony (360 px): štítek receptu a množství se zkrátí výpustkou */
 @media(max-width:380px){
   .shop-from-recipe{max-width:72px}
   .shop-item-qty{max-width:80px}
+}
+/* 4.93: 320 px – × nesmí vyjet za okraj (štítek receptu se zmenší první) */
+.shop-item-del{flex-shrink:0}
+@media(max-width:340px){
+  .shop-item{gap:6px;padding:10px}
+  .shop-from-recipe{max-width:52px}
+  .shop-item-qty{max-width:64px;padding:0 8px}
 }
 .recurring-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:3px 6px 3px 10px}
 .recurring-chip-name{background:none;border:none;font-size:12px;color:var(--text2);cursor:pointer;padding:0;font-family:'Crimson Pro',serif}
@@ -1722,7 +1729,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cl-tab-add{font-size:18px;padding:4px 10px}
 .cl-header{margin-bottom:10px}
 .cl-title-row{display:flex;justify-content:space-between;align-items:center}
-.cl-list-name{font-size:18px;font-family:'Playfair Display',serif;font-weight:700;color:var(--text)}
+.cl-list-name{min-width:0;overflow-wrap:break-word;font-size:18px;font-family:'Playfair Display',serif;font-weight:700;color:var(--text)}
 .cl-progress{font-size:13px;color:var(--text3)}
 .cl-clear-done{background:none;border:none;font-size:12px;color:var(--text3);cursor:pointer;padding:4px 0;text-decoration:underline}
 .cl-items{display:flex;flex-direction:column;gap:4px;margin-bottom:14px;min-height:40px}

@@ -67,8 +67,23 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.92';
+const APP_VERSION = '4.93';
 const CHANGELOG = [
+  { v:'4.93', items:[
+    '🔗 Obnovený krok rutiny z archivu se vrátí samostatně na konec a rutinu nerozdělí; archiv se po obnovení hned překreslí',
+    '✅ Splnění v den mimo frekvenci se v řádku týdne ukáže, týdenní návyky ve splněném týdnu už nepřipomínáme',
+    '📝 Rozepsaný zápisek v deníku se uloží i při přepnutí na jiný zápisek nebo zavření appky',
+    '🍳 „Uvařeno“ ukáže, kolik se odečte, a u surovin bez množství v g/ml nic neodečítá',
+    '👥 Pozvánka přežije otevření z Facebooku či Messengeru v prohlížeči; u starého kódu skupiny poradíme, jak získat nový',
+    '💬 Srozumitelnější hlášky, když AI nebo služba není dostupná, a odhlášení smaže osobní data z tohoto zařízení'
+  ], en:[
+    '🔗 A routine step restored from the archive comes back on its own at the end and no longer splits the routine; the archive refreshes right away',
+    '✅ Completions on off days now show in the week row; weekly habits are no longer reminded once the week is done',
+    '📝 An unsaved journal entry is saved when you switch entries or close the app',
+    '🍳 “Cooked” shows how much will be deducted and skips ingredients without an amount for g/ml stock',
+    '👥 Invites survive opening from Facebook or Messenger in the browser; an old group code tells you how to get a new one',
+    '💬 Clearer messages when the AI or a service is unavailable, and signing out clears personal data on this device'
+  ]},
   { v:'4.92', items:[
     '📅 Všechny návyky ukazují stejně týden od pondělí do neděle'
   ], en:[
@@ -1082,12 +1097,15 @@ function aiLeftNote(rem) {
   } catch (e) { return; }
   toast('⚠️ ' + tN('ai.leftToday', rem), 4000);
 }
-// quiet: bez toastu o limitu (opakovaný dotaz kvůli cizímu písmu)
+// quiet: bez toastů o limitu (opakovaný dotaz kvůli cizímu písmu, automatický souhrn chatu)
+let _aiRemaining = null; // zbývající dotazy dne podle poslední odpovědi serveru (null = nevíme)
 async function callClaudeRaw(messages, maxTokens = 500, quiet = false) {
   if (_accDeleting || _accDeleted || _accStopped) throw new Error('AI není k dispozici'); // během mazání účtu žádné AI dotazy
   try {
     const result = await claudeProxyFn({messages, maxTokens, lang: LANG}); // lang: jazyk chybových zpráv serveru
-    aiLeftNote(result?.data?.remaining);
+    const rem = result?.data?.remaining;
+    if (Number.isInteger(rem)) _aiRemaining = rem;
+    if (!quiet) aiLeftNote(rem);
     return result.data.text;
   } catch(e) {
     // Denní limit aplikace (claudeProxy vrací resource-exhausted); rate limit Anthropicu přijde jako internal
@@ -1210,8 +1228,8 @@ function aiRetryMessages(messages) {
 }
 // Volání AI s kontrolou písma: u cs/en uživatele odpověď s cizím písmem → 1 opakovaný dotaz (stojí 1 dotaz z denního limitu);
 // když nepomůže ani ten (nebo selže), cizí slova se odstraní. JSON zůstane parsovatelný (mění se jen písmena v textu).
-async function callClaude(messages, maxTokens = 500) {
-  const text = await callClaudeRaw(messages, maxTokens);
+async function callClaude(messages, maxTokens = 500, quiet = false) {
+  const text = await callClaudeRaw(messages, maxTokens, quiet);
   if (typeof text !== 'string' || !AI_LATIN_LANGS.includes(LANG)) return text;
   const allow = aiInputForeign(messages);
   if (!aiHasForeign(text, allow)) return text;
@@ -1300,6 +1318,9 @@ function userErr(e, ctx = '') {
   const msg = String(e?.message || '');
   const sp = typeof e?.error === 'string' ? e.error : ''; // SpeechRecognition
   let txt = '', expected = true;
+  const isFn = full.startsWith('functions/');
+  // Krátká srozumitelná hláška serveru (bez technických detailů, stacku a adres)
+  const srvOk = !!msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown|unavailable|deadline[ -]exceeded|resource[ -]exhausted)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg);
   const AUTH_MSGS = {
     'auth/popup-blocked': 'err.popupBlocked',
     'auth/too-many-requests': 'err.tooManyRequests',
@@ -1312,13 +1333,21 @@ function userErr(e, ctx = '') {
   else if (sp === 'audio-capture') txt = t('err.micUnavailable');
   else if (sp === 'network') txt = t('err.speechNetwork');
   else if (sp) { txt = t('err.micFailed'); expected = false; }
-  else if (navigator.onLine === false || ['unavailable', 'network-request-failed', 'deadline-exceeded'].includes(code) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
+  // Offline jen bez sítě nebo při síťové chybě; functions/unavailable a deadline-exceeded jsou výpadek služby (4.93)
+  else if (navigator.onLine === false || code === 'network-request-failed' || (!isFn && ['unavailable', 'deadline-exceeded'].includes(code)) || /Failed to fetch|NetworkError|network error|client is offline/i.test(msg))
     txt = t('err.offline');
-  else if (full === 'functions/resource-exhausted') txt = t('err.aiLimit');
-  // Proxy odmítla dotaz (hláška ze serveru v jazyce uživatele, posíláme lang); není to chyba appky, nelogovat
-  else if (full === 'functions/failed-precondition') txt = msg.slice(0, 200) || t('err.aiRefused');
-  else if (full.startsWith('functions/') && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
+  // Server posílá hlášku v jazyce uživatele (osobní limit AI, celkový denní strop, limit upozornění…); fallback osobní limit AI
+  // Celkový denní strop AI (details.reason 'globalCap') ≠ osobní limit
+  else if (full === 'functions/resource-exhausted') txt = e?.details?.reason === 'globalCap' ? t('err.aiGlobalCap') : srvOk ? msg : (!ctx || aiErrCtx(ctx)) ? t('err.aiLimit') : t('err.busy');
+  // Proxy odmítla dotaz nebo chce ověřený e-mail (hláška ze serveru v jazyce uživatele, posíláme lang); není to chyba appky, nelogovat
+  else if (full === 'functions/failed-precondition') {
+    txt = msg.slice(0, 200) || t('err.aiRefused');
+    // Neověřený e-mail (4.93): znovu ukázat lištu s tlačítkem „Poslat znovu“
+    try { if ((!ctx || aiErrCtx(ctx)) && needsVerify()) { _verifyHidden = false; renderVerifyUi(); } } catch (_) {}
+  }
+  else if (isFn && /rate.?limit|overloaded|too many requests|\b(429|529)\b/i.test(msg))
     txt = t('err.aiBusy');
+  else if (isFn && ['unavailable', 'deadline-exceeded'].includes(code)) txt = srvOk ? msg : t('err.svcUnavailable');
   else if (code === 'resource-exhausted') txt = t('err.busy');
   else if (code === 'permission-denied') txt = t('err.permission');
   else if (code === 'unauthenticated') txt = t('err.unauthenticated');
@@ -1327,7 +1356,7 @@ function userErr(e, ctx = '') {
   else if (/\bAI\b|Claude/.test(msg) || (aiErrCtx(ctx) && full.startsWith('functions/') && ['internal', 'not-found', 'unknown'].includes(code)))
     { txt = t('err.aiUnavailable'); expected = false; }
   // 'internal' nikdy: může nést surový text z API (revize 4.84)
-  else if (full.startsWith('functions/') && code !== 'internal' && msg && msg.length <= 200 && !/^(internal|not[ -]found|unknown)$/i.test(msg) && !/Error\b|\bat |https?:|[{}<>]/.test(msg))
+  else if (isFn && code !== 'internal' && srvOk)
     { txt = msg; expected = false; }
   else { txt = t('err.generic'); expected = false; }
   try {
@@ -1427,6 +1456,14 @@ function renderVerifyUi(){
   if(on&&wait>0) _verifyTimer=setTimeout(renderVerifyUi,wait+50);
 }
 window.hideVerifyNote=()=>{ _verifyHidden=true; renderVerifyUi(); };
+// E-maily Firebase s návratem do appky (4.93); nepovolená adresa v konzoli → znovu bez ní, ať odeslání nespadne
+const AUTH_MAIL_ACS={url:'https://lifepocket.app/'};
+async function authMailRetry(fn){
+  try{ return await fn(AUTH_MAIL_ACS); }
+  catch(e){ if(e?.code!=='auth/unauthorized-continue-uri'&&e?.code!=='auth/invalid-continue-uri') throw e; return fn(undefined); }
+}
+const sendVerifyMail=u=>authMailRetry(acs=>sendEmailVerification(u,acs));
+const sendResetMail=email=>authMailRetry(acs=>sendPasswordResetEmail(auth,email,acs));
 window.resendVerify=async()=>{
   const u=CU;
   if(!needsVerify()){ renderVerifyUi(); return; }
@@ -1434,7 +1471,7 @@ window.resendVerify=async()=>{
   if(left>0){ toast(t('auth.verifyWait',{s:left}),3000); return; }
   _verifySentAt=Date.now(); renderVerifyUi(); // zámek i během odesílání
   try{
-    await sendEmailVerification(u);
+    await sendVerifyMail(u);
     if(CU===u){ _verifyUnsent=false; toast(t('auth.verifySent'),6000); }
   }catch(e){
     if(CU!==u) return; // mezitím odhlášen: stav i hláška patří jinému účtu
@@ -1452,6 +1489,8 @@ async function refreshVerify(force){
     try{ await u.reload(); }catch(e){ console.warn('[LP] auth reload:',e?.code||e?.name); }
   }
   if(CU!==u) return;
+  // Právě ověřeno (4.93): nový ID token s email_verified, ať AI (claudeProxy) funguje hned
+  if(!needsVerify()){ try{ await u.getIdToken(true); }catch(e){ console.warn('[LP] obnova tokenu:',e?.code||e?.name); } if(CU!==u) return; }
   const was=!!document.getElementById('verify-note')?.innerHTML;
   renderVerifyUi();
   if(was&&!needsVerify()) toast(t('auth.verifyDone'),4000);
@@ -1558,7 +1597,7 @@ function showLoadError(on, msg){
 }
 window.retryLoad=()=>{ if(CU) startSession(CU); else location.reload(); };
 // Odhlášení z chyby načtení (4.84): profil se nenačetl, nic nezapisovat
-window.loadErrLogout=async()=>{ try{ await signOut(auth); }catch(e){} clearUserSessionState(); await clearFsCache(); location.reload(); };
+window.loadErrLogout=async()=>{ try{ await signOut(auth); }catch(e){} clearUserSessionState(); clearLocalPersonalOnLogout(); await clearFsCache(); location.reload(); };
 // Po návratu signálu zkus načíst automaticky (jen když visí hláška o chybě)
 window.addEventListener('online',()=>{
   if(CU&&document.getElementById('load-err')?.style.display==='flex'){ startSession(CU); return; }
@@ -1599,7 +1638,10 @@ const busyGroups=()=>_setMainBusy||_restoreBusy||_rotatingGids.size>0||(familyId
 // Skupina na serveru existuje? null = nevíme (offline, chyba, jen cache)
 async function groupExistsSrv(gid){
   try{ const s=await getDoc(doc(db,'families',gid)); return s.metadata.fromCache?null:s.exists(); }
-  catch(e){ console.warn('[LP] kontrola skupiny:',e?.code||e?.name); return null; }
+  catch(e){
+    if(e?.code==='permission-denied') return true; // 4.93: stará skupina (WORD-NNNN) existuje, jen v ní už nejsem
+    console.warn('[LP] kontrola skupiny:',e?.code||e?.name); return null;
+  }
 }
 async function syncGroupsFromProfile(fresh){
   if(busyGroups()) return; // probíhá vlastní přepnutí / odchod / obnova / změna kódu
@@ -1708,6 +1750,13 @@ function claimLocalDataOwner(uid){
   }catch(e){}
 }
 
+// Výslovné odhlášení (4.93): smazat osobní lokální klíče i datované klíče. Zůstává lp_owner_uid, lp_device_id,
+// lp_theme, lp_tour_done (nejsou v seznamu) a nepřevedená starší data (lp_pantry, lp_checklists), ať se migrace neztratí
+const LOCAL_KEEP_ON_LOGOUT = ['lp_pantry','lp_checklists'];
+function clearLocalPersonalOnLogout(){
+  LOCAL_PERSONAL_KEYS.forEach(k=>{ if(LOCAL_KEEP_ON_LOGOUT.includes(k)) return; try{localStorage.removeItem(k);}catch(e){} });
+  cleanDatedLocalKeys(0);
+}
 // Při odhlášení vyčistí osobní a rodinná data v paměti (localStorage zůstává, patří tomuto zařízení)
 function clearUserSessionState(){
   try{
@@ -1756,7 +1805,7 @@ if('serviceWorker' in navigator){
   });
 }
 window.ss=ss; // volá se z inline onclick v index.html (app.js je modul)
-function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return'🔴 Dnes!';if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
+function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.round((d-new Date())/86400000),s=fmtDate(d,'dm');if(df<0)return`⚠️ ${s}`;if(df===0)return t('date.todayDue');if(df<=7)return`🟠 ${s}`;return`📅 ${s}`;}
 // Kopie profilu bez push tokenů — celoprofilové zápisy (merge) nesmí přepsat tokeny jiných zařízení zastaralou kopií
 // Bez tokenů a lastSeen: celoprofilový zápis nesmí přepsat novější hodnotu (lastSeen píše jen touchLastSeen/onboarding)
 // groupNotifSent (kurzory) píše jen server, groupFeedSeen jen markGroupFeedSeen (přesné pole) → stará kopie je nesmí vrátit
@@ -1926,11 +1975,16 @@ function journalFlush(){
   const text=document.getElementById('j-text')?.value.trim()||'';
   if(entryDirty&&(curEntryId||title||text)) window.saveEntry({auto:true});
 }
+// 4.93: autosave je jen po 30 s → při skrytí a zavření appky rozepsaný zápisek hned uložit
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'&&CU) journalFlush(); });
+window.addEventListener('pagehide',()=>{ if(CU) journalFlush(); });
 
 // Tlačítko ← Zpět: přes historii (popstate zavře zápisek), jinak rovnou
 window.journalBack=()=>{ if(history.state?.id==='j-entry') history.back(); else window.closeEntry(); };
 
 window.newEntry=()=>{
+  journalFlush(); // 4.93: rozepsaný zápisek se neztratí (saveEntry čte pole synchronně, než se vymažou)
+  _jSess++; // fotka z komprese nesmí přejít do nového zápisku
   curEntryId=null; entryMood=''; entryDirty=false; curEntryCreatedAt=null;
   curEntryPhoto = null;
   const p = document.getElementById('j-photo-preview');
@@ -1950,6 +2004,8 @@ window.newEntry=()=>{
 window.openEntry=(id)=>{
   const e=entries.find(x=>x.id===id);
   if(!e)return;
+  if(id===curEntryId&&entryDirty&&journalEntryOpen()) return; // týž rozepsaný zápisek: nepřepsat pole uloženou verzí (4.93)
+  if(id!==curEntryId){ journalFlush(); _jSess++; } // jiný zápisek: rozepsaný uložit, fotka z komprese k němu nepřejde
   curEntryId=id; entryMood=e.mood||''; entryDirty=false; curEntryCreatedAt=e.createdAt||null;
   const jt=document.getElementById('j-title'); if(jt) jt.value=e.title||'';
   const jx=document.getElementById('j-text'); if(jx) jx.value=e.text||'';
@@ -2636,9 +2692,11 @@ function buildHabitCard(h,ch){
     const isFrozen=!isDone&&l&&(l.shield||l.frozen);
     const isPausedDay=!isDone&&!isSkipped&&isHabitPausedOn(h,ds);
     let cls='htd-dot';
+    // 4.93: splnění/nesplnění i v den mimo frekvenci (zápis z jiného dne) se ukáže, ne „—“
     if(isFuture) cls+=' future';
-    else if(!active) cls+=' inactive';
     else if(isDone) cls+=' done';
+    else if(isFailed&&!active) cls+=' failed';
+    else if(!active) cls+=' inactive';
     else if(isFrozen) cls+=' frozen';
     else if(isPausedDay) cls+=' paused';
     else if(isSkipped) cls+=' skipped';
@@ -2652,8 +2710,9 @@ function buildHabitCard(h,ch){
 
     let inner='';
     if(isFuture) inner='';
-    else if(!active) inner='—';
     else if(isDone) inner=h.type==='count'?`<span style="font-size:10px">${Number(l.value)||0}</span>`:'✓';
+    else if(isFailed&&!active) inner='✕';
+    else if(!active) inner='—';
     else if(isFrozen) inner='❄️';
     else if(isPausedDay) inner='⏸';
     else if(isSkipped) inner='⏭';
@@ -3021,6 +3080,7 @@ function chainNewHead(step){
 function renderHabits(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   renderSharedHabits(); // sekce „Sdíleno ve skupině“ nezávisle na vlastních návycích
+  archSync(); // otevřený archiv po archivaci/obnovení (4.93)
   if(habitViewMonth){ renderHabitMonth(); return; } // měsíční pohled: snapshot ho nesmí přepsat denním
   const lbl=document.getElementById('habit-day-lbl');
   const list=document.getElementById('habits-list');
@@ -3587,10 +3647,13 @@ window.toggleHabitDay=async(hid,date)=>{
   } else if(curState==='failed'){
     await hbClearLog(hid,date);
   } else {
+    const isToday=date===toDS(); // reakce jako toggleHabit jen za dnešek (4.93)
+    if(isToday) xpPop(hid, XP.habit);
     installUnlock('habits');
     const w=putHabitLog({id:logId,habitId:hid,date,done:true,failed:false,value:1});
     chainAfter(hid,date,'done'); // jen dnes (4.89)
     await w;
+    if(isToday){ checkAvatarReactions(hid, date, true); notifAskSoon('habit'); }
   }
   renderHabits();
 };
@@ -3782,10 +3845,11 @@ window.archiveHabit = async (id) => {
   const msg = isArchived ? t('hb.restoreQ') : t('hb.archiveQ');
   if (!confirm(msg)) return;
   const steps = isArchived ? null : chainOf(h); // 1. krok rutiny → nový 1. krok bez připomínky (4.89)
-  // Obnovený návyk se vrací samostatně (4.89): na jeho místě už může být jiná rutina
-  await updateDoc(doc(db, 'users', CU.uid, 'habits', id), isArchived ? { archived: false, chain: false } : { archived: true });
+  // Obnovený návyk se vrací samostatně na konec skupiny (4.93): na původním místě by rozdělil rutinu, která ho obtékala
+  const order = isArchived ? chainGroupList(h.group || 'day').reduce((m, x) => Math.max(m, x.order || 0), -1) + 1 : 0;
+  await updateDoc(doc(db, 'users', CU.uid, 'habits', id), isArchived ? { archived: false, chain: false, order } : { archived: true });
   h.archived = !isArchived;
-  if (isArchived) h.chain = false;
+  if (isArchived) { h.chain = false; h.order = order; }
   syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
   toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
@@ -3878,6 +3942,12 @@ window.toggleArchivedHabits = () => {
   renderArchivedHabits();
 };
 
+// Otevřený archiv drží krok se seznamem (4.93); po obnovení posledního návyku se zavře
+function archSync() {
+  if (!_showArchived) return;
+  if (habits.some(h => h.archived)) { renderArchivedHabits(); return; }
+  window.toggleArchivedHabits();
+}
 function renderArchivedHabits() {
   const list = document.getElementById('habits-archived-list');
   const cnt = document.getElementById('arch-count');
@@ -3931,7 +4001,7 @@ const okEvTime=t=>/^([01]\d|2[0-3]):[0-5]\d$/.test(t||'');
 function subEvents(){
   createFireSub('events',
     collection(db,'users',CU.uid,'events'),
-    snap=>{ events=snap.docs.map(d=>({id:d.id,...d.data()})); renderCal(); }
+    snap=>{ events=snap.docs.map(d=>({id:d.id,...d.data()})).filter(evOk); renderCal(); }
   );
 }
 
@@ -4940,7 +5010,7 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLangLocal();await clearFsCache();location.reload();};
+window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();};
 // Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování).
 // Příznak lp_fs_clear zůstane, dokud mazání neprojde → další start bez přihlášení to zkusí znovu (viz onAuthStateChanged).
 // Po terminate je db nepoužitelná: volající vždy končí přechodem na jinou stránku / reloadem. Nejvýš 2,5 s.
@@ -5371,7 +5441,7 @@ window.doEmailRegister=async()=>{
     const cred=await createUserWithEmailAndPassword(auth,email,pass);
     // Účet už existuje a uživatel je přihlášený: chyba ověřovacího e-mailu registraci neruší (poslat znovu je v appce)
     // Stav ověření jen dokud je přihlášený tento účet (4.77)
-    try{ await sendEmailVerification(cred.user); if(CU?.uid===cred.user.uid){ _verifySentAt=Date.now(); renderVerifyUi(); } }
+    try{ await sendVerifyMail(cred.user); if(CU?.uid===cred.user.uid){ _verifySentAt=Date.now(); renderVerifyUi(); } }
     catch(ve){ console.warn('[LP] verify e-mail:',ve?.code||ve?.name); if(CU?.uid===cred.user.uid){ _verifyUnsent=true; renderVerifyUi(); } }
   }catch(ex){
     b.disabled=false;b.textContent=t('auth.createAccount');
@@ -5405,7 +5475,7 @@ window.doPasswordReset=async()=>{
     _resetOkT=setTimeout(clearLoginOk,12000);
   };
   try{
-    await sendPasswordResetEmail(auth,email);
+    await sendResetMail(email);
     ok();
   }catch(ex){
     if(ex?.code==='auth/user-not-found') ok();
@@ -5718,6 +5788,7 @@ window.addEventListener('pagehide', () => { if(_chatDirty && CU) persistChat(); 
 const SUMMARY_MAX_MSGS = 40, SUMMARY_MAX_CHARS = 30000;
 async function generateChatSummary() {
   if(chatH.length < 10) return;
+  if(Number.isInteger(_aiRemaining) && _aiRemaining <= 3) return; // 4.93: poslední dotazy dne nechat uživateli
   try {
     const lines = [];
     let chars = 0;
@@ -5733,7 +5804,7 @@ async function generateChatSummary() {
     const summary = await callClaude([
       {role:'system', content:tA('aip.sum.sys')},
       {role:'user', content:prev + tA('aip.sum.conv', {s: conversation})}
-    ], 400);
+    ], 400, true); // tiše: automatický souhrn nesmí hlásit limit
     if(summary){
       chatMemorySummary = summary;
       await setDoc(doc(db,'users',CU.uid,'chatMemory','main'), {
@@ -5742,7 +5813,7 @@ async function generateChatSummary() {
         updatedAt: Date.now()
       });
     }
-  } catch(e){ console.warn('generateChatSummary:', e); }
+  } catch(e){ console.warn('generateChatSummary:', e?.code || e?.name); }
 }
 
 function rAvPage(){
@@ -6456,6 +6527,11 @@ function isHabitDueToday(h, today, dow) {
   if (freq.type === 'days') return (Array.isArray(freq.days) ? freq.days : []).includes(dow);
   return true;
 }
+// Klientské připomínky a souhrny „dnes“ (4.93): týdenní návyk jen v běžícím nesplněném týdnu bez dnešního zápisu (jako habitsDue)
+function isHabitRemindDue(h, today, dow) {
+  if (!isHabitDueToday(h, today, dow)) return false;
+  return !isWeekly(h) || isHabitPending(h, today);
+}
 
 // Push ze serveru, když je appka otevřená v popředí: SDK ho samo nezobrazí, ukážeme ho se
 // stejným tagem a akcemi jako SW (lokální plánování těchto typů je s push tokenem vypnuté)
@@ -6615,7 +6691,7 @@ function checkPerHabitReminders() {
   const av = AVS.find(a => a.id === prof?.avatarId);
 
   habits.forEach(h => {
-    if (!h.reminderTime || !isHabitDueToday(h, today, dow)) return;
+    if (!h.reminderTime || !isHabitRemindDue(h, today, dow)) return;
     const [rh, rm] = h.reminderTime.split(':').map(Number);
     if (isNaN(rh) || isNaN(rm)) return;
     const targetMin = rh * 60 + rm;
@@ -6652,7 +6728,7 @@ function sendMorningNotif() {
     return ev.date === today;
   });
   const todayDow = new Date().getDay();
-  const habitCount = hasMod('habits') ? habits.filter(h => isHabitDueToday(h, today, todayDow)).length : 0;
+  const habitCount = hasMod('habits') ? habits.filter(h => isHabitRemindDue(h, today, todayDow)).length : 0;
   if (!habitCount) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
   let body = tN('ln.morningHabits', habitCount);
   if (todayEvents.length > 0) {
@@ -6666,7 +6742,7 @@ function sendEveningNotif() {
   if (hasPushToken()) return; // s push tokenem posílá server
   const today = toDS();
   if (!hasMod('habits')) return;
-  const due = habits.filter(h => isHabitDueToday(h, today, new Date().getDay()));
+  const due = habits.filter(h => isHabitRemindDue(h, today, new Date().getDay()));
   const done = due.filter(h => hDone(h.id,today)).length;
   const total = due.length;
   if (total === 0) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
@@ -9595,6 +9671,8 @@ function isCalShared() {
          extraGroupIds.some(gid => !!(extraGroupsData[gid]?.shareCal));
 }
 let familyEvents = []; // primary group cal events
+// 4.93: událost bez platného data (YYYY-MM-DD) se vynechá, jeden vadný zápis nesmí shodit kalendář
+const evOk = e => typeof e?.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(e.date);
 let extraGroupIds = []; // additional group IDs
 let extraGroupsData = {}; // { gid: groupData }
 let extraGroupEvents = {}; // { gid: events[] }
@@ -9728,19 +9806,25 @@ function familyCodeVariants(code) {
   return out.filter(c => c !== code && FAMILY_CODE_RE.test(c)).slice(0, FAMILY_CODE_MAX_VARIANTS);
 }
 // Najde skupinu podle kódu; fuzzy = zkusí i záměnné znaky (jen ruční zadání). Vrací {code, snap} nebo null.
+// 4.93: starou skupinu (WORD-NNNN) pravidla cizím nedají přečíst (permission-denied) → {code, denied:true} = kód už neplatí
+const famDenied = e => e?.code === 'permission-denied';
 async function findFamilyByCode(code, fuzzy) {
+  let denied = null;
   if(okFamilyCode(code)) {
-    const s = await getDoc(doc(db,'families',code));
-    if(s.exists()) return {code, snap: s};
+    try {
+      const s = await getDoc(doc(db,'families',code));
+      if(s.exists()) return {code, snap: s};
+    } catch(e) { if(!famDenied(e)) throw e; denied = {code, denied: true}; }
   }
-  if(!fuzzy) return null;
+  if(!fuzzy) return denied;
   const vars = familyCodeVariants(code);
   for(let i = 0; i < vars.length; i += 8) {
-    const res = await Promise.all(vars.slice(i, i + 8).map(c => getDoc(doc(db,'families',c)).then(s => s.exists() ? {code: c, snap: s} : null)));
+    const res = await Promise.all(vars.slice(i, i + 8).map(c => getDoc(doc(db,'families',c)).then(s => s.exists() ? {code: c, snap: s} : null)
+      .catch(e => { if(!famDenied(e)) throw e; return null; }))); // stará cizí skupina podobného kódu se nenabízí
     const hit = res.find(Boolean);
     if(hit) return hit;
   }
-  return null;
+  return denied;
 }
 // Promise s časovým limitem (chyba s kódem deadline-exceeded); původní operace běží dál
 function withTimeout(p, ms) {
@@ -9818,6 +9902,7 @@ window.joinFamily = async (codeArg) => {
     // Z odkazu (codeArg) = nejspíš změněný kód skupiny; z formuláře spíš překlep → zkusit záměnné znaky
     const hit = await findFamilyByCode(typed, !fromLink);
     if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
+    if(hit.denied) { toast(t('grp.codeOld'), 8000); return false; }
     code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(code === familyId || extraGroupIds.includes(code)) { toast(t('grp.already')); return false; }
@@ -10464,17 +10549,29 @@ window.copySupportAccount=async()=>{
 };
 
 // ── Pozvánka do skupiny odkazem (?join=WORD-XXXXXX, starší WORD-NNNN) ─────────
-// Při startu (i před přihlášením) se kód z URL ověří, uloží i s časem a z adresy se smaže.
+// Při startu (i před přihlášením) se kód z URL ověří, uloží i s časem a z adresy se smaže (ve vestavěném prohlížeči až po vyřízení).
 // Po přihlášení se appka zeptá; připojení se děje jen po kliknutí na „Připojit se“.
 const PENDING_JOIN_KEY = 'lp_pending_join';
 const PENDING_JOIN_TTL = 7*24*3600*1000; // starší pozvánka se zahodí
+// Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
+// Ne v oficiální appce z Google Play (TWA): její záložní WebView má v UA také „; wv)“
+const IN_APP_BROWSER=!IS_TWA&&/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
+// Odstranit ?join= z adresy (po převzetí nebo vyřízení pozvánky)
+function stripJoinParam() {
+  try {
+    const u = new URL(location.href);
+    if(!u.searchParams.has('join')) return;
+    u.searchParams.delete('join');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch(e) {}
+}
 function capturePendingJoin() {
   try {
     const u = new URL(location.href);
     if(!u.searchParams.has('join')) return;
     const code = normFamilyCode(String(u.searchParams.get('join') ?? '').slice(0,40));
-    u.searchParams.delete('join');
-    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    // Ve vestavěném prohlížeči (4.93) odkaz nechat: „Otevřít v Chrome/Safari“ z nabídky převezme adresu i s pozvánkou
+    if(!IN_APP_BROWSER) stripJoinParam();
     if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({code, ts: Date.now()}));
   } catch(e) {}
 }
@@ -10514,9 +10611,6 @@ function initLoginScreen(){
   document.documentElement.classList.remove('lp-boot'); // tlačítka přihlášení už fungují
   initInAppBrowser();
 }
-// Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
-// Ne v oficiální appce z Google Play (TWA): její záložní WebView má v UA také „; wv)“
-const IN_APP_BROWSER=!IS_TWA&&/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
 function inAppLink(){
   const inv=readPendingJoin();
   return location.origin+'/'+(inv?'?join='+encodeURIComponent(inv.code):'');
@@ -10545,7 +10639,7 @@ window.copyInAppLink=()=>{
   Promise.resolve().then(()=>navigator.clipboard.writeText(url)).then(()=>toast(t('landing.inAppCopied'))).catch(()=>prompt(t('landing.inAppCopy'),url));
 };
 initLoginScreen();
-function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} }
+function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} stripJoinParam(); }
 // Vrátí platnou nevypršelou pozvánku {code, ts}, jinak ji smaže a vrátí null
 function readPendingJoin() {
   try {
@@ -10605,7 +10699,14 @@ async function checkPendingJoin() {
     if(p.code === familyId || p.code === prof.familyId || (prof.extraGroupIds||[]).includes(p.code) || extraGroupIds.includes(p.code)) {
       clearPendingJoin(); toast(t('grp.already')); return;
     }
-    const snap = await getDoc(doc(db,'families',p.code));
+    let snap;
+    try { snap = await getDoc(doc(db,'families',p.code)); }
+    catch(e) {
+      if(!famDenied(e)) throw e;
+      // Stará skupina (WORD-NNNN) cizím nečitelná → kód už neplatí (4.93)
+      if(CU && readPendingJoin()) { clearPendingJoin(); toast(t('grp.codeOld'), 8000); }
+      return;
+    }
     if(!CU || !readPendingJoin()) return;
     if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); shown = true; return; }
     const d = snap.data() || {};
@@ -10661,7 +10762,7 @@ window.toggleFamilyModule = async (key, gid = null) => {
   if(gid && key === 'shareCal') {
     if(newVal && !unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap => {
-        extraGroupEvents[gid] = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
+        extraGroupEvents[gid] = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid})).filter(evOk);
         renderCal();
       }, familyListenErr);
     } else if(!newVal && unsubExtraGroupCals[gid]) {
@@ -10721,6 +10822,7 @@ window.joinExtraGroup = async (codeArg) => {
   try {
     const hit = await findFamilyByCode(typed, !fromLink);
     if(!hit) { toast(fromLink ? t('grp.inviteGone') : t('grp.notFound', {code: typed}), 6000); return false; }
+    if(hit.denied) { toast(t('grp.codeOld'), 8000); return false; }
     code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(extraGroupIds.includes(code) || code === familyId) { toast(t('grp.already')); return false; }
@@ -10798,11 +10900,18 @@ async function dropExtraGroupLocal(gid) {
 async function clearProfileFamilyIdIf(fid) {
   const ref = doc(db,'users',CU.uid,'profile','main');
   const fref = doc(db,'families',fid);
+  // Starou skupinu (WORD-NNNN) ne-člen nepřečte (4.93): permission-denied = nejsem člen → transakce jen nad profilem
+  let denied = false;
+  if(FAMILY_CODE_LEGACY_RE.test(fid)) {
+    try { await getDoc(fref); } catch(e) { if(!famDenied(e)) throw e; denied = true; }
+  }
   return runTransaction(db, async tx => {
     const ps = await tx.get(ref);
-    const fs = await tx.get(fref);
     if(!ps.exists() || ps.data().familyId !== fid) return false;
-    if(fs.exists() && fs.data().members?.[CU.uid]) return false;
+    if(!denied) {
+      const fs = await tx.get(fref);
+      if(fs.exists() && fs.data().members?.[CU.uid]) return false;
+    }
     tx.update(ref, {familyId: deleteField()});
     return true;
   });
@@ -11020,12 +11129,7 @@ function subscribeExtraGroup(gid) {
     // Smazaný dokument: mohl se změnit kód skupiny → profil znovu načíst
     if (!snap.exists()) { checkGroupGone(snap, gid); return; }
     // Byl jsem ze skupiny odebrán → uklidit profil i zobrazení
-    if (isRemovedFromGroup(snap, gid)) {
-      dropMyMirrorsAfterRemoval(gid);
-      dropExtraGroupLocal(gid).catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
-      toast(t('grp.removed'));
-      return;
-    }
+    if (isRemovedFromGroup(snap, gid)) { extraGroupRemoved(gid); return; }
     const prevShop = !!extraGroupsData[gid]?.shareShop, prevLbl = extraGroupsData[gid] && grpLabel(gid);
     const prevMeal = !!extraGroupsData[gid]?.shareMeal, prevCheck = extraGroupsData[gid] ? extraGroupsData[gid].shareChecklist !== false : null;
     extraGroupsData[gid] = snap.data();
@@ -11051,7 +11155,7 @@ function subscribeExtraGroup(gid) {
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
       unsubExtraGroupCals[gid] = onSnapshot(collection(db,'families',gid,'events'), snap2 => {
-        extraGroupEvents[gid] = snap2.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid}));
+        extraGroupEvents[gid] = snap2.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:gid})).filter(evOk);
         renderCal();
       }, familyListenErr);
     } else if (!extraGroupsData[gid]?.shareCal && unsubExtraGroupCals[gid]) {
@@ -11060,7 +11164,30 @@ function subscribeExtraGroup(gid) {
       delete extraGroupEvents[gid]; renderCal();
     }
     renderFamilySettings();
-  }, snapErr('groupDoc'));
+  }, e => { if (groupDeniedGone(e, gid)) extraGroupRemoved(gid); else snapErr('groupDoc')(e); });
+}
+// Odebrání z vedlejší skupiny (snapshot bez mě nebo permission-denied u staré skupiny)
+function extraGroupRemoved(gid) {
+  if (!CU || !extraGroupIds.includes(gid)) return;
+  dropMyMirrorsAfterRemoval(gid);
+  dropExtraGroupLocal(gid).catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
+  toast(t('grp.removed'));
+}
+// 4.93: odebraný člen staré skupiny (WORD-NNNN) dostane místo snapshotu permission-denied (pravidla) → „už nejsi členem“.
+// Jen permission-denied online u starého kódu, ne síťové chyby; ne při vlastním odchodu, změně kódu ani bez přihlášení.
+function groupDeniedGone(e, gid) {
+  return !!CU && famDenied(e) && navigator.onLine !== false && FAMILY_CODE_LEGACY_RE.test(gid) && !_leavingGids.has(gid) && !_rotatingGids.has(gid);
+}
+// Odebrání z hlavní skupiny; starý listener (lokálně už jiná skupina) nesmí sahat na nový stav ani profil
+function mainGroupRemoved(fid) {
+  if(!CU || familyId !== fid) return;
+  dropMyMirrorsAfterRemoval(fid);
+  resetFamilyLocal();
+  if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
+  clearProfileFamilyIdIf(fid)
+    .catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
+  renderAfterFamilyChange();
+  toast(t('grp.removed'));
 }
 
 function subscribeFamily() {
@@ -11075,18 +11202,7 @@ function subscribeFamily() {
     // Smazaný dokument: mohl se změnit kód skupiny → profil znovu načíst (jen aktuální listener)
     if(!snap.exists()) { if(familyId === fid) checkGroupGone(snap, fid); return; }
     // Byl jsem ze skupiny odebrán → smazat familyId z vlastního profilu a nezobrazovat ji
-    if(isRemovedFromGroup(snap, fid)) {
-      // Starý listener (lokálně už jiná skupina) nesmí sahat na nový stav ani profil
-      if(familyId !== fid) return;
-      dropMyMirrorsAfterRemoval(fid);
-      resetFamilyLocal();
-      if(prof.familyId === fid) { const newProf = {...prof}; delete newProf.familyId; prof = newProf; }
-      clearProfileFamilyIdIf(fid)
-        .catch(e => console.warn('úklid skupiny selhal', e?.code || e?.name));
-      renderAfterFamilyChange();
-      toast(t('grp.removed'));
-      return;
-    }
+    if(isRemovedFromGroup(snap, fid)) { mainGroupRemoved(fid); return; }
     const prevShop = !!familyData?.shareShop, prevLbl = familyData && grpLabel(fid);
     const prevMeal = !!familyData?.shareMeal, prevCheck = familyData ? familyData.shareChecklist !== false : null;
     familyData = snap.data();
@@ -11112,7 +11228,7 @@ function subscribeFamily() {
     if(familyData.shareCal) subscribeSharedCal();
     if(familyData.shareMeal) subscribeSharedMeal();
     if(familyData.shareChecklist!==false) subscribeSharedChecklist();
-  }, snapErr('familyDoc'));
+  }, e => { if(groupDeniedGone(e, fid)) mainGroupRemoved(fid); else snapErr('familyDoc')(e); });
 }
 
 // Chyba listeneru sdílených dat (typicky po odebrání ze skupiny) – jen tichý log, bez toastu a bez dat
@@ -11125,7 +11241,7 @@ function subscribeSharedCal() {
   if(unsubFamilyCal) return;
   const fid = familyId;
   unsubFamilyCal = onSnapshot(collection(db,'families',fid,'events'), snap => {
-    familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:fid}));
+    familyEvents = snap.docs.map(d=>({id:d.id,...d.data(),shared:true,groupId:fid})).filter(evOk);
     // Sloučit s osobními eventi
     renderCal();
   }, familyListenErr);
@@ -17768,8 +17884,10 @@ window.togSubDone=async(gid,sid)=>{
   if(!s)return;
   s.done=!s.done;
   if(s.done) gameAward('sg_'+sid, XP.sub);
-  await updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done});
-  await updateGoalProgress(gid);
+  // 4.93: optimisticky (vzor saveSubGImpl) – překreslit hned, zápis nečekat (offline by visel)
+  const sgErr=e=>toast(t('common.saveFailed',{err:userErr(e,'goal')}));
+  updateDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),{done:s.done}).catch(sgErr);
+  updateGoalProgress(gid).catch(sgErr);
   syncShared('g',gid);
   rGoals();
 };
@@ -17793,20 +17911,21 @@ window.addTask=async(gid,sid)=>{
   if(!sg)return;
   const task={id:genId(),name:nm,done:false};
   sg.tasks=[...(sg.tasks||[]),task];
-  await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
+  // 4.93: optimisticky – pole vymazat a překreslit před zápisem, zápis nečekat
   inp.value='';
   rGoals();
+  setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'goal')})));
 };
 
 window.togTask=async(gid,sid,tid)=>{
   const sg=subs[gid]?.find(s=>s.id===sid);
   if(!sg)return;
-  const t=sg.tasks?.find(x=>x.id===tid);
-  if(!t)return;
-  t.done=!t.done;
-  if(t.done) gameAward('tk_'+tid, XP.task);
-  await setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg);
-  rGoals();
+  const tk=sg.tasks?.find(x=>x.id===tid);
+  if(!tk)return;
+  tk.done=!tk.done;
+  if(tk.done) gameAward('tk_'+tid, XP.task);
+  rGoals(); // 4.93: optimisticky, zápis nečekat
+  setDoc(doc(db,'users',CU.uid,'goals',gid,'subgoals',sid),sg).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'goal')})));
 };
 
 window.delTask=async(gid,sid,tid)=>{
@@ -18975,11 +19094,18 @@ function subShop(){
 }
 
 // ── SHOPPING ──────────────────────────────────────────
+// 4.93: rozepsané pole v položce (množství, kategorie) překreslení nesmaže – snapshot od jiného člena počká na opuštění pole
+let _shopDeferred=false;
+function shopEditing(list){ const a=document.activeElement; return !!(a&&list.contains(a)&&a.closest('.shop-item')&&/^(INPUT|SELECT)$/.test(a.tagName)); }
 function renderShop(){
   ctSync(); // karta „Co teď“ na Domů (4.72)
   const list=document.getElementById('shop-list');
   const empty=document.getElementById('shop-empty');
   if(!list||!empty)return;
+  if(shopEditing(list)){
+    if(!_shopDeferred){ _shopDeferred=true; list.addEventListener('focusout',()=>setTimeout(()=>{ _shopDeferred=false; renderShop(); },0),{once:true}); }
+    return;
+  }
   shopViewCheck();
   if(_recShopWait) checkRecurringShop(); // odložené pravidelné přidání (např. skupina po úklidu)
   const gid = shopGid(), isShared = !!gid;
@@ -19471,14 +19597,15 @@ function subRecurringShop() {
 
 // Start: cíl (zobrazený seznam) a jeho položky ještě nemusí být načtené → přidání odložit,
 // jinak by šlo do špatného seznamu nebo by kontrola duplicit proběhla proti prázdnému seznamu
+// 4.93: pravidelné položky jdou pevně do domovského seznamu (hlavní skupina se sdílenými nákupy, jinak Moje),
+// ne do právě zobrazené skupiny. undefined = hlavní skupina se ještě načítá (cíl není jistý).
+function recShopGid() {
+  if(prof?.familyId && !familyData) return undefined;
+  return shopHomeGid();
+}
 function recShopReady() {
-  const v = shopViewStored();
-  const pf = prof?.familyId;
-  if(v && (v === pf || (prof?.extraGroupIds || []).includes(v)) && !groupDataOf(v)) return false;
-  const g = shopGid();
-  // Hlavní skupina se načítá: cíl je jistý jen u Moje ('') nebo u načtené vybrané skupiny,
-  // jinak (výchozí volba, skupina už nákupy nesdílí → náhradní výchozí) závisí na hlavní skupině
-  if(pf && !familyData && v !== '' && !(v && g === v)) return false;
+  const g = recShopGid();
+  if(g === undefined) return false;
   if(g && !shopGrp[g]?.loaded) { subscribeGroupShop(g); return false; }
   if(!g && !shopItemsLoaded) return false; // osobní seznam ještě nedorazil (kontrola duplicit)
   return true;
@@ -19526,6 +19653,8 @@ function checkRecurringShop() {
   const uid = CU.uid;
   recurringShopItems.forEach(async item => {
     if (!due(item) || _recShopBusy.has(item.id)) return;
+    const fid = recShopGid(); // cíl před zápisem lastAdded (recShopReady ho už ověřil)
+    if (fid === undefined) return;
     _recShopBusy.add(item.id);
     try {
       // 4.75: lastAdded se „zamkne“ transakcí na serveru (offline selže → nic se nepřidá); zastaralá trvalá cache
@@ -19545,8 +19674,7 @@ function checkRecurringShop() {
       _recRetry.n = 0; // spojení funguje → další výpadek zase smí zkusit znovu
       item.lastAdded = todayISO;
       if (!fresh || CU?.uid !== uid) return;
-      const fid = shopGid();
-      const alreadyIn = activeShopItems().some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
+      const alreadyIn = shopItemsOf(fid).some(s=>s.name.toLowerCase()===item.name.toLowerCase()&&!s.done);
       if (!alreadyIn) {
         const si = {name:item.name, category:item.category||'Ostatní', qty:item.qty||'', done:false, fromRecurring:true, addedAt:new Date().toISOString(), ...shopBy(fid)};
         // lastAdded už je zapsané → při chybě dát vědět, jinak by položka do příště chyběla
@@ -20648,7 +20776,7 @@ function buildPantryHtml(gid) {
           </div>
           <div class="pantry-item-qty">
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.lessName',{name:item.name})}" onclick="changePantryQty(this.dataset.a0, -1, this.dataset.a1)">−</button>
-            <span class="pantry-qty-val">${pantryQty(item)} ${esc(item.unit ? unitLabel(item.unit) : '')}</span>
+            <span class="pantry-qty-val">${esc(fmtNum(Math.round(pantryQty(item)*1000)/1000))} ${esc(item.unit ? unitLabel(item.unit) : '')}</span>
             <button class="pantry-qty-btn" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.moreName',{name:item.name})}" onclick="changePantryQty(this.dataset.a0, 1, this.dataset.a1)">+</button>
             <button class="pantry-item-del" data-a0="${esc(item.id)}" data-a1="${g}" aria-label="${tH('a11y.delName',{name:item.name})}" onclick="deletePantryItem(this.dataset.a0, this.dataset.a1)">🗑</button>
           </div>
@@ -21015,13 +21143,45 @@ function pantryMatch(items, ingName) {
   }
   return best;
 }
+// Odečet suroviny v jednotce zásoby (4.93); null = neodečítat. Prázdné, nečíselné nebo nepřevoditelné množství
+// u zásoby v g/kg/ml/l nic neodečte, 1 ks jen u zásob v kusech (a jiných jednotkách).
+const PANTRY_MEASURED = ['g','kg','ml','l'];
+function pantryDeductAmt(qty, unit) {
+  const pu = pantryUnitKey(unit), measured = PANTRY_MEASURED.includes(pu);
+  const raw = String(qty ?? '').trim();
+  if (!/[\d½¼¾]/.test(raw)) return measured ? null : 1;
+  const {amount, unit: iu} = parseIngQty(raw);
+  if (!(amount > 0)) return null; // nulové množství („0 g“) nic neodečítá
+  if (iu === pu) return amount;
+  const c = convertUnits(amount, iu, pu);
+  if (c !== null) return c;
+  return measured ? null : 1;
+}
+// Plán odečtu: [{ing, item, d}] pro suroviny se zásobou; d = skutečný odečet (null = neodečte se).
+// Stejná zásoba z více surovin ubírá ze zbytku (snapshot se nemění).
+function pantryDeductPlan(items, ingredients) {
+  const left = new Map(), out = [];
+  for (const ing of ingredients) {
+    const item = pantryMatch(items, ing.name);
+    if (!item) continue;
+    const have = left.has(item.id) ? left.get(item.id) : pantryQty(item);
+    const want = pantryDeductAmt(ing.qty, item.unit);
+    let d = null;
+    if (want !== null && have > 0) {
+      d = Math.round(Math.min(want, have) * 1000) / 1000;
+      left.set(item.id, Math.round((have - d) * 1000) / 1000);
+    }
+    out.push({ing, item, d: d > 0 ? d : null});
+  }
+  return out;
+}
 // Nabídka odečtu: ze zobrazených zásob (Moje / skupina), cíl se zachytí při nabídce
 function offerPantryDeduct(ingredients) {
   const gid = pantryGid(), items = pantryItemsOf(gid);
   if (!items.length || !ingredients?.length) return false;
   // ingredients může být pole objektů {name,qty} nebo pole stringů
   const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i).filter(i => i && typeof i.name === 'string');
-  const matches = normalized.filter(ing => pantryMatch(items, ing.name));
+  const matches = pantryDeductPlan(items, normalized);
   if (!matches.length) return false;
 
   document.getElementById('pantry-deduct-modal')?.remove();
@@ -21032,7 +21192,7 @@ function offerPantryDeduct(ingredients) {
     <h3 style="margin:0 0 8px;font-family:'Playfair Display',serif">${tH('pantry.deductTitle')}</h3>
     <p style="font-size:13px;color:var(--text3);margin:0 0 12px">${tH('pantry.deductText')}${pantryGroups().length ? ' ' + tH('pantry.inWhere', {name: grpMineLabel(gid)}) : ''}</p>
     <div style="max-height:200px;overflow-y:auto;margin-bottom:14px">
-      ${matches.slice(0,10).map(ing=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2)">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</div>`).join('')}
+      ${matches.slice(0,10).map(({ing,item,d})=>`<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text2);display:flex;gap:8px;justify-content:space-between"><span style="min-width:0;overflow-wrap:anywhere">${esc(ing.name)}${ing.qty?` <span style="color:var(--text3)">${esc(ing.qty)}</span>`:''}</span><span style="flex-shrink:0;color:${d?'var(--text2)':'var(--text3)'}">${d?'−'+esc(fmtNum(d))+' '+esc(unitLabel(pantryUnitKey(item.unit))):tH('pantry.noDeduct')}</span></div>`).join('')}
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn-sv" style="flex:1" data-a0="${esc(JSON.stringify(normalized))}" data-a1="${esc(gid || '')}" onclick="deductPantryIngredients(JSON.parse(this.dataset.a0), this.dataset.a1);document.getElementById('pantry-deduct-modal').remove()">${tH('pantry.deduct')}</button>
@@ -21049,25 +21209,11 @@ window.deductPantryIngredients = async function(ingredients, gidArg) {
   const normalized = ingredients.map(i => typeof i==='string' ? {name:i,qty:''} : i).filter(i => i && typeof i.name === 'string');
   const items = pantryItemsOf(gid);
   let matched = 0, firstName = '';
-  const left = new Map(); // id → zbývající množství (snapshot se nemění)
   const changed = new Map(); // id → celkový odečet (stejná zásoba z více surovin se zapíše jednou)
-  for (const ing of normalized) {
-    const pantryItem = pantryMatch(items, ing.name);
-    const have = pantryItem ? (left.has(pantryItem.id) ? left.get(pantryItem.id) : pantryQty(pantryItem)) : 0;
-    if (!pantryItem || !(have > 0)) continue;
-    const {amount: ingAmt, unit: ingUnit} = parseIngQty(ing.qty);
-    if (!(ingAmt > 0)) continue; // nulové množství („0 g“) nic neodečítá
-    const pantryUnit = (pantryItem.unit||'ks').toLowerCase();
-    let deduct = ingAmt;
-    if (ingUnit !== pantryUnit) {
-      const converted = convertUnits(ingAmt, ingUnit, pantryUnit);
-      if (converted === null) { deduct = 1; } // nekompatibilní — odečti 1
-      else { deduct = converted; }
-    }
-    const d = Math.round(Math.min(deduct, have) * 1000) / 1000;
-    left.set(pantryItem.id, Math.round((have - d) * 1000) / 1000);
-    changed.set(pantryItem.id, Math.round(((changed.get(pantryItem.id) || 0) + d) * 1000) / 1000);
-    if (!matched) firstName = pantryItem.name || '';
+  for (const {item, d} of pantryDeductPlan(items, normalized)) {
+    if (!d) continue; // neodečítá se (4.93)
+    changed.set(item.id, Math.round(((changed.get(item.id) || 0) + d) * 1000) / 1000);
+    if (!matched) firstName = item.name || '';
     matched++;
   }
   if (changed.size) {
