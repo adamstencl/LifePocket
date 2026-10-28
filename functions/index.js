@@ -993,6 +993,31 @@ function isHabitDueToday(habit, today, dow) {
   if (freq.type === 'days') return (Array.isArray(freq.days) ? freq.days : []).includes(dow);
   return true;
 }
+// Týdenní návyk („3× týdně“): žádný konkrétní den není povinný → nepatří do ranního a večerního shrnutí
+// (jako habitsDue v app.js); připomínka jen dokud není splněn týdenní cíl (weekHabitMet)
+const isWeeklyHabit = (habit) => !!(habit && habit.freq && typeof habit.freq === 'object' && habit.freq.type === 'weekly');
+const weekTimesS = (habit) => Math.min(7, Math.max(1, Math.round(Number(habit.freq.times)) || 3));
+// Dny od pondělí do dneška (YYYY-MM-DD) v zóně uživatele; dow = den v týdnu dneška (0 = neděle)
+function weekDaysToToday(today, dow) {
+  const base = Date.parse(today + 'T12:00:00Z');
+  const back = (dow + 6) % 7;
+  const out = [];
+  for (let i = back; i >= 0; i--) out.push(ymdUTC(new Date(base - i * 86400000)));
+  return out;
+}
+// Logy týdne podle ID (`${hid}_${den}`, max. 7 čtení jedním getAll, bez složeného indexu). Vrací {met, todayMarked}.
+async function weekHabitState(uid, habitDoc, today, dow) {
+  const days = weekDaysToToday(today, dow);
+  const snaps = await db.getAll(...days.map(ds => db.doc(`users/${uid}/habitLogs/${habitDoc.id}_${ds}`)));
+  let done = 0, todayMarked = false;
+  snaps.forEach((sn, i) => {
+    const d = sn.exists ? (sn.data() || {}) : null;
+    if (!d) return;
+    if (d.done) done++;
+    if (days[i] === today && (d.done || d.failed || d.skipped)) todayMarked = true;
+  });
+  return {met: done >= weekTimesS(habitDoc.data()), todayMarked};
+}
 
 // Upozornění na události s časem hodinu předem (S4). Počítá se z absolutních okamžiků, ne z minut dne:
 // začátek události (datum + čas v zóně uživatele → okamžik) musí ležet EV_LEAD_MIN až EV_LEAD_MAX minut
@@ -1393,9 +1418,12 @@ exports.sendScheduledNotifications = onSchedule(
         // a jen když má na dnes aspoň jeden návyk (prázdné varianty se neposílají)
         const habitsOn = Array.isArray(prof.modules) ? prof.modules.includes('habits') : true;
 
+        // Shrnutí počítají jen denní návyky a návyky na konkrétní dny (týdenní ne, viz isWeeklyHabit)
+        const getDigestHabits = async () => (await getDueHabits()).filter(d => !isWeeklyHabit(d.data()));
+
         // ── Ranní notifikace ──
         if (habitsOn && ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
-          const total = (await getDueHabits()).length;
+          const total = (await getDigestHabits()).length;
           if (total > 0) {
             try { await push(tS(L, 'morning.t', {name: nickname}), tS(L, 'morning.b', {n: total}), 'morning', {data: {open: 'habits'}}); }
             catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
@@ -1406,7 +1434,7 @@ exports.sendScheduledNotifications = onSchedule(
         if (habitsOn && ns.eveningDigest !== false) {
           const eveningTime = ns.evening || '21:00';
           if (isTimeMatch(h, m, eveningTime)) {
-            const dueDocs = await getDueHabits();
+            const dueDocs = await getDigestHabits();
             const total = dueDocs.length;
             if (total > 0) {
               const dueIds = new Set(dueDocs.map(d => d.id));
@@ -1438,11 +1466,17 @@ exports.sendScheduledNotifications = onSchedule(
             if (!habit.reminderTime) continue;
             if (!isTimeMatch(h, m, habit.reminderTime)) continue;
             if (waterHabitSkip(prof, habitDoc.id, today)) continue; // propojený s pitným režimem (4.67)
-            // ID logu = ID dokumentu návyku (pole habit.id v datech není)
-            const logId = `${habitDoc.id}_${today}`;
-            const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
-            // Den už označený (splněno, nesplněno i přeskočeno) → nepřipomínat (4.80)
-            if (logSnap.exists) { const ld = logSnap.data() || {}; if (ld.done || ld.failed || ld.skipped) continue; }
+            if (isWeeklyHabit(habit)) {
+              // Týdenní: splněný týdenní cíl nebo dnes označený den → nepřipomínat (4.80)
+              const ws = await weekHabitState(uid, habitDoc, today, dow);
+              if (ws.met || ws.todayMarked) continue;
+            } else {
+              // ID logu = ID dokumentu návyku (pole habit.id v datech není)
+              const logId = `${habitDoc.id}_${today}`;
+              const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
+              // Den už označený (splněno, nesplněno i přeskočeno) → nepřipomínat (4.80)
+              if (logSnap.exists) { const ld = logSnap.data() || {}; if (ld.done || ld.failed || ld.skipped) continue; }
+            }
             try {
               await push(
                 `${habit.emoji || '🔔'} ${habit.name}`,
