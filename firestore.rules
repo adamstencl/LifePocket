@@ -34,9 +34,12 @@ service cloud.firestore {
 
     // Rodinná skupina — hlavní dokument
     match /families/{familyId} {
-      // Get konkrétního dokumentu: každý přihlášený — kód skupiny je ID
-      // dokumentu a funguje jako tajemství (potřebné pro join-by-code)
-      allow get: if request.auth != null;
+      // Get konkrétního dokumentu: kód skupiny je ID dokumentu a funguje jako tajemství (join-by-code).
+      // Ne-člen jen u nového formátu WORD-XXXXXX (starý WORD-NNNN = 10 000 kombinací na slovo, jde uhodnout);
+      // u starých skupin jen členové. Neexistující dokument (resource == null) smí číst každý přihlášený:
+      // klient tak pozná smazanou skupinu a změnu kódu (rotateGroupCode) — prozradí jen, že kód neexistuje.
+      allow get: if request.auth != null
+        && (isNewGroupCode(familyId) || resource == null || request.auth.uid in resource.data.members);
       // List celé kolekce: nikdo — jinak by šla vypsat jména členů všech rodin
       allow list: if false;
       // Vytvoření: přihlášený uživatel, který je v members,
@@ -64,6 +67,10 @@ service cloud.firestore {
         && (isFamilyAdmin() || isFamilyMemberUpdate() || isSelfJoin());
       allow delete: if false;
 
+      // Nový formát kódu (stejná abeceda jako create, slovo libovolné A–Z, viz FAMILY_CODE_ALPHABET v app.js)
+      function isNewGroupCode(fid) {
+        return fid.matches('^[A-Z]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$');
+      }
       function membersDiff() {
         return request.resource.data.members.diff(resource.data.members);
       }
@@ -86,9 +93,11 @@ service cloud.firestore {
                   && request.resource.data.members[request.auth.uid].get('joinedAt', '') == resource.data.members[request.auth.uid].get('joinedAt', '')
                   && request.resource.data.members[request.auth.uid].get('name', '').size() <= 40));
       }
-      // Join: ne-člen přidá jen sebe, s rolí 'member' a jen poli, která posílá klient
+      // Join: ne-člen přidá jen sebe, s rolí 'member' a jen poli, která posílá klient;
+      // jen do skupiny s novým formátem kódu (ke staré skupině se už nikdo nový nepřipojí)
       function isSelfJoin() {
-        return !(request.auth.uid in resource.data.members)
+        return isNewGroupCode(familyId)
+          && !(request.auth.uid in resource.data.members)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
           && membersDiff().addedKeys().hasOnly([request.auth.uid])
           && membersDiff().addedKeys().size() == 1
