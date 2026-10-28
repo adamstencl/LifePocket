@@ -75,14 +75,16 @@ const CHANGELOG = [
     '📝 Rozepsaný zápisek v deníku se uloží i při přepnutí na jiný zápisek nebo zavření appky',
     '🍳 „Uvařeno“ ukáže, kolik se odečte, a u surovin bez množství v g/ml nic neodečítá',
     '👥 Pozvánka přežije otevření z Facebooku či Messengeru v prohlížeči; u starého kódu skupiny poradíme, jak získat nový',
-    '💬 Srozumitelnější hlášky, když AI nebo služba není dostupná, a odhlášení smaže osobní data z tohoto zařízení'
+    '💬 Srozumitelnější hlášky, když AI nebo služba není dostupná, a odhlášení smaže osobní data z tohoto zařízení',
+    '🛒 Pravidelné nákupy se přidávají do hlavního (domovského) seznamu, ne do právě otevřené skupiny'
   ], en:[
     '🔗 A routine step restored from the archive comes back on its own at the end and no longer splits the routine; the archive refreshes right away',
     '✅ Completions on off days now show in the week row; weekly habits are no longer reminded once the week is done',
     '📝 An unsaved journal entry is saved when you switch entries or close the app',
     '🍳 “Cooked” shows how much will be deducted and skips ingredients without an amount for g/ml stock',
     '👥 Invites survive opening from Facebook or Messenger in the browser; an old group code tells you how to get a new one',
-    '💬 Clearer messages when the AI or a service is unavailable, and signing out clears personal data on this device'
+    '💬 Clearer messages when the AI or a service is unavailable, and signing out clears personal data on this device',
+    '🛒 Recurring shopping items are added to your main (home) list, not to the group you have open'
   ]},
   { v:'4.92', items:[
     '📅 Všechny návyky ukazují stejně týden od pondělí do neděle'
@@ -1971,6 +1973,7 @@ window.closeEntry=()=>{
 
 // Před novým zápiskem z prázdného stavu / karty Co teď: rozepsaný neuložený zápisek tiše uložit (jako closeEntry)
 function journalFlush(){
+  if(document.getElementById('j-edit-area')?.style.display==='none') return; // zavřený editor (smazaný/zavřený zápisek) nic neukládá
   const title=document.getElementById('j-title')?.value.trim()||'';
   const text=document.getElementById('j-text')?.value.trim()||'';
   if(entryDirty&&(curEntryId||title||text)) window.saveEntry({auto:true});
@@ -2081,7 +2084,9 @@ window.deleteEntry=async()=>{
     unshareAll('n',curEntryId); // zrcadla ve skupinách pryč dřív, než poznámka zmizí
     await deleteDoc(doc(db,'users',CU.uid,'entries',curEntryId));
     entries=entries.filter(e=>e.id!==curEntryId);
-    curEntryId=null; entryMood='';
+    curEntryId=null; entryMood=''; entryDirty=false; curEntryPhoto=null; // 4.93: flush při skrytí appky ho nesmí vrátit
+    const jt=document.getElementById('j-title'); if(jt) jt.value='';
+    const jx=document.getElementById('j-text'); if(jx) jx.value='';
     document.getElementById('j-edit-area').style.display='none';
     document.getElementById('j-empty').style.display='flex';
     setJournalOpen(false);
@@ -10571,7 +10576,8 @@ function capturePendingJoin() {
     if(!u.searchParams.has('join')) return;
     const code = normFamilyCode(String(u.searchParams.get('join') ?? '').slice(0,40));
     // Ve vestavěném prohlížeči (4.93) odkaz nechat: „Otevřít v Chrome/Safari“ z nabídky převezme adresu i s pozvánkou
-    if(!IN_APP_BROWSER) stripJoinParam();
+    // Neplatný kód z adresy pryč vždy (4.93)
+    if(!IN_APP_BROWSER || !okFamilyCode(code)) stripJoinParam();
     if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({code, ts: Date.now()}));
   } catch(e) {}
 }
@@ -10649,7 +10655,7 @@ function readPendingJoin() {
     const age = Date.now() - Number(p?.ts);
     if(p && okFamilyCode(p.code) && age >= -60000 && age < PENDING_JOIN_TTL) return {code: p.code, ts: p.ts};
   } catch(e) {}
-  clearPendingJoin();
+  clearPendingJoin(); // vypršelá / neplatná pozvánka: smaže i ?join= z adresy (stripJoinParam)
   return null;
 }
 function closeJoinInviteModal() { document.getElementById('join-invite-modal')?.remove(); }
