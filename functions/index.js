@@ -1537,8 +1537,10 @@ exports.sendScheduledNotifications = onSchedule(
         const evWin = evWinFor(zn.tz); // intervaly časů (přes půlnoc dva) → obvykle 1 dotaz na kolekci
         const evGroups = [await loadTimedEvents(`users/${uid}/events`, evWin)];
         const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
-        // Mazlíček (4.94): jeden dotaz type=='vet' na kalendář a den (jen v ranním běhu, jako narozeniny)
-        const vetGroups = bdayRun ? [await loadVet(`users/${uid}/events`)] : [];
+        // Mazlíček (4.94): jeden dotaz type=='vet' na kalendář a den (jen v ranním běhu, jako narozeniny);
+        // osobní kalendář jen se zapnutým modulem, skupinové vždy (sdíleného mazlíčka vidí celá skupina)
+        const petsOn = Array.isArray(prof.modules) && prof.modules.includes('pets');
+        const vetGroups = bdayRun && petsOn ? [await loadVet(`users/${uid}/events`)] : [];
         // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
         for (const fid of calGroupIds(prof)) {
           try {
@@ -1575,6 +1577,8 @@ exports.sendScheduledNotifications = onSchedule(
           if (ev.type !== 'vet' || typeof ev.date !== 'string' || typeof ev.name !== 'string' || ev.repeat === 'yes') continue;
           const when = ev.date === today ? 'day0' : ev.date === zn.tmrw ? 'day1' : null;
           if (!when || ev.remind !== when) continue;
+          // Ranní upozornění v den, kdy ve stejném běhu přijde hodinová připomínka (ráno + čas v okně) → jen jedna notifikace
+          if (when === 'day0' && typeof ev.time === 'string' && evWin.slots.get(ev.time)?.has(ev.date)) continue;
           const vv = {name: nickname, ev: ev.name};
           const title = ev.care === 'food' ? tS(L, 'pet.food.t', vv) : when === 'day1' ? tS(L, 'pet.tmrw.t', vv) : tS(L, 'pet.today.t', vv);
           const body = ev.care === 'food' ? tS(L, 'pet.food.b', vv) : when === 'day1' ? tS(L, 'pet.tmrw.b', vv) : tS(L, 'pet.today.b', vv);
