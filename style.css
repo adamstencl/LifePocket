@@ -2487,3 +2487,91 @@ body.chn-on .toast{bottom:calc(144px + var(--chn-h,64px))}
   .habit-card.hb-in-chain::before{left:-7px}
   .hb-chain-head{margin-left:8px}
 }
+
+/* ── Mazlíček (4.94, docs/NAVRH-MAZLICEK.md §4.9) ── */
+/* Varovná barva s kontrastem ≥ 4,5:1 na --card ve všech tématech (--accent2 na sunshine nestačí) */
+:root,[data-theme="dark-gold"]{--pet-warn:#f0a050}
+[data-theme="sunshine"]{--pet-warn:#9a4a10}
+[data-theme="tangerine"]{--pet-warn:#963400}
+.pet-add-btn{min-width:44px;min-height:44px;border-radius:12px;border:1.5px solid var(--border2);background:var(--card);color:var(--text);font-size:22px;line-height:1;cursor:pointer}
+.pet-sec{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px}
+.pet-sec>.dw-title{margin-bottom:6px}
+.pet-muted{font-size:15px;color:var(--text3);margin:6px 0}
+.pet-note{font-size:14px;color:var(--text2);margin:10px 0 0}
+.pet-hint{font-size:14px;color:var(--text2);margin:4px 0 10px}
+.pet-wide{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:10px;box-sizing:border-box;text-decoration:none}
+.pet-empty{text-align:center;padding:24px 0}
+.pet-empty-em{font-size:64px;line-height:1}
+.pet-empty-t{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:var(--text);margin:12px 0 6px}
+.pet-empty-d{font-size:15px;color:var(--text2);margin:0 auto 18px;max-width:300px}
+.pet-switch{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.pet-switch::-webkit-scrollbar{display:none}
+.pet-pill{flex-shrink:0;min-height:44px;padding:0 16px;border-radius:22px;border:1.5px solid var(--border2);background:var(--card);color:var(--text);font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.pet-pill[aria-current="true"]{border-color:var(--accent);background:var(--card2)}
+.pet-hero{display:flex;gap:14px;align-items:center}
+.pet-hero-main{flex:1;min-width:0}
+.pet-av{width:56px;height:56px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0}
+.pet-name{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:var(--text);overflow-wrap:anywhere}
+.pet-sub{font-size:15px;color:var(--text2);overflow-wrap:anywhere}
+.pet-icon-btn{min-width:44px;min-height:44px;border:none;border-radius:12px;background:transparent;font-size:18px;cursor:pointer;color:var(--text2);flex-shrink:0}
+.pet-icon-btn--sm{min-width:36px;min-height:36px;font-size:15px;vertical-align:middle}
+.pet-allergy{margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--card2);border-left:3px solid var(--red);font-size:15px;color:var(--text);overflow-wrap:anywhere}
+.pet-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 0;border-bottom:1px solid var(--border)}
+.pet-row-em{font-size:24px;width:32px;text-align:center;flex-shrink:0}
+.pet-row-main{flex:1;min-width:0;min-height:44px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer}
+.pet-row-n{font-size:16px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+.pet-row-d{font-size:14px;color:var(--text2)}
+.pet-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.pet-due--late .pet-dot,.pet-due--now .pet-dot{background:var(--red)}
+.pet-due--tmrw .pet-dot,.pet-due--soon .pet-dot{background:var(--pet-warn)}
+.pet-due--ok .pet-dot{background:var(--green)}
+.pet-due--late .pet-row-d,.pet-due--now .pet-row-d,.pet-due--tmrw .pet-row-d{color:var(--text);font-weight:700}
+.pet-done{min-height:44px;min-width:88px;border-radius:12px;border:1.5px solid var(--green);background:transparent;color:var(--text);font:inherit;font-size:15px;font-weight:700;cursor:pointer;flex-shrink:0}
+.pet-done:active{transform:scale(.96)}
+.pet-food-bar{height:8px;border-radius:4px;background:var(--card2);overflow:hidden;margin:8px 0}
+.pet-food-fill{height:100%;background:var(--green);transition:width .4s}
+.pet-food--warn .pet-food-fill{background:var(--pet-warn)}
+.pet-food--out .pet-food-fill{background:var(--red)}
+.pet-food-left{font-size:15px;font-weight:700;color:var(--text);margin-top:4px}
+.pet-food--warn .pet-food-left{color:var(--pet-warn)}
+.pet-food--out .pet-food-left{color:var(--red)}
+.pet-btn2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.pet-btn2 button{min-height:48px;padding:6px 8px;font-size:15px}
+.pet-link{display:flex;align-items:center;gap:6px;min-height:44px;width:100%;padding:0;margin-top:6px;background:none;border:none;color:var(--text2);font:inherit;font-size:15px;text-align:left;cursor:pointer}
+.pet-del{color:var(--red);justify-content:center;margin-top:10px}
+.pet-del-btn{color:var(--red)}
+.pet-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pet-tile{min-height:76px;border-radius:14px;border:1.5px solid var(--border2);background:var(--card);color:var(--text);font:inherit;font-size:15px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;padding:6px 4px}
+.pet-tile--lg{min-height:88px}
+.pet-tile .em{font-size:28px;line-height:1}
+.pet-tile--lg .em{font-size:32px}
+.pet-tile:focus-visible,.pet-pill:focus-visible,.pet-done:focus-visible,.pet-row-main:focus-visible,.pet-link:focus-visible,.pet-icon-btn:focus-visible,.pet-em-btn:focus-visible,.pet-dw-cart:focus-visible,.pet-add-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.pet-det{border-top:1px solid var(--border);padding:4px 0}
+.pet-det:first-child{border-top:none}
+.pet-det summary{min-height:44px;display:flex;align-items:center;font-size:16px;font-weight:600;color:var(--text);cursor:pointer}
+.pet-det-b{padding:0 0 8px}
+.pet-kv{display:flex;gap:12px;padding:6px 0;font-size:15px;align-items:center}
+.pet-kv-l{flex:0 0 38%;color:var(--text3)}
+.pet-kv-v{flex:1;min-width:0;color:var(--text);overflow-wrap:anywhere}
+.pet-kv-v a{color:var(--accent-text)}
+.pet-pre{white-space:pre-line}
+.pet-modal .seg{margin-bottom:12px}
+.pet-ems{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pet-em-btn{min-width:44px;min-height:44px;border-radius:12px;border:1.5px solid var(--border2);background:var(--card2);font-size:22px;cursor:pointer}
+.pet-em-btn[aria-pressed="true"]{border-color:var(--accent)}
+.pet-subt{font-size:13px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px}
+.pet-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pet-chips .ev-type-btn{min-height:44px}
+.pet-custom{display:flex;gap:8px;margin-top:8px}
+.pet-custom input{width:72px;flex:none}
+.pet-custom select{flex:1}
+.pet-plan-row{padding:8px 0;border-bottom:1px solid var(--border)}
+.pet-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:15px;color:var(--text);cursor:pointer}
+.pet-check input{width:24px;height:24px;flex-shrink:0;accent-color:var(--accent)}
+.pet-plan-d{display:flex;align-items:center;gap:10px;padding-left:32px;font-size:14px;color:var(--text2)}
+.pet-plan-d .finp{flex:1;min-width:0}
+.pet-dw-row{display:flex;align-items:center;gap:8px;min-height:32px;font-size:15px;color:var(--text)}
+.pet-dw-t{flex:1;min-width:0;overflow-wrap:anywhere}
+.pet-dw-cart{min-width:44px;min-height:44px;border-radius:12px;border:1.5px solid var(--border2);background:var(--card2);font-size:18px;cursor:pointer;flex-shrink:0}
+@media (prefers-reduced-motion:reduce){.pet-food-fill{transition:none}.pet-done:active{transform:none}}
+@media (max-width:380px){.pet-btn2{grid-template-columns:1fr}.pet-kv-l{flex-basis:42%}}

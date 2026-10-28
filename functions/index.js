@@ -343,7 +343,7 @@ function zoneNow(tz, date = new Date()) {
   return {
     wall, h: wall.getHours(), m: wall.getMinutes(),
     today: ymd(wall), dow: wall.getDay(), // den v týdnu v zóně uživatele (0 = neděle)
-    tmrwMD: ymd(tmrw).slice(5), tz: zone,
+    tmrwMD: ymd(tmrw).slice(5), tmrw: ymd(tmrw), tz: zone,
   };
 }
 
@@ -1115,6 +1115,10 @@ async function loadTimedEvents(path, win) {
 async function loadBirthdays(path) {
   return (await db.collection(path).where('type', '==', 'birthday').get()).docs;
 }
+// Mazlíček (4.94): termíny péče a granulí (typ vet), čte se jen v ranním běhu uživatele
+async function loadVet(path) {
+  return (await db.collection(path).where('type', '==', 'vet').get()).docs;
+}
 
 const CRON_BATCH = 20;
 
@@ -1533,6 +1537,8 @@ exports.sendScheduledNotifications = onSchedule(
         const evWin = evWinFor(zn.tz); // intervaly časů (přes půlnoc dva) → obvykle 1 dotaz na kolekci
         const evGroups = [await loadTimedEvents(`users/${uid}/events`, evWin)];
         const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
+        // Mazlíček (4.94): jeden dotaz type=='vet' na kalendář a den (jen v ranním běhu, jako narozeniny)
+        const vetGroups = bdayRun ? [await loadVet(`users/${uid}/events`)] : [];
         // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
         for (const fid of calGroupIds(prof)) {
           try {
@@ -1543,6 +1549,7 @@ exports.sendScheduledNotifications = onSchedule(
             if (fam && fam.members?.[uid] && fam.shareCal) {
               if (evWin.ranges.length) evGroups.push(await lazy(fe, `events|${evWin.key}`, () => loadTimedEvents(`families/${fid}/events`, evWin)));
               if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
+              if (bdayRun) vetGroups.push(await lazy(fe, 'vet', () => loadVet(`families/${fid}/events`)));
             }
           } catch(e) { /* skupina nemusí existovat */ }
         }
@@ -1559,6 +1566,21 @@ exports.sendScheduledNotifications = onSchedule(
             try { await push(tS(L, 'bday.tmrw.t'), tS(L, 'bday.tmrw.b', {who: ev.name}), `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}}); }
             catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
           }
+        }
+
+        // Mazlíček (4.94) — ráno: péče s remind 'day1' den předem, 'day0' v den; granule (care 'food') v den upozornění.
+        // Událost s časem dostane navíc připomínku hodinu předem (smyčka níže). tag shodný s data.tag (sendPushToUser).
+        for (const evDoc of vetGroups.flat()) {
+          const ev = evDoc.data();
+          if (ev.type !== 'vet' || typeof ev.date !== 'string' || typeof ev.name !== 'string' || ev.repeat === 'yes') continue;
+          const when = ev.date === today ? 'day0' : ev.date === zn.tmrw ? 'day1' : null;
+          if (!when || ev.remind !== when) continue;
+          const vv = {name: nickname, ev: ev.name};
+          const title = ev.care === 'food' ? tS(L, 'pet.food.t', vv) : when === 'day1' ? tS(L, 'pet.tmrw.t', vv) : tS(L, 'pet.today.t', vv);
+          const body = ev.care === 'food' ? tS(L, 'pet.food.b', vv) : when === 'day1' ? tS(L, 'pet.tmrw.b', vv) : tS(L, 'pet.today.b', vv);
+          const petId = typeof ev.petId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(ev.petId) ? ev.petId : '';
+          try { await push(title, body, `vet-${evDoc.id}-${ev.date}`, {data: {open: 'pets', id: petId}}); }
+          catch(e) { console.error(`[LP] pet push:`, e.message); }
         }
 
         // Události s časem — hodinu předem. Typy s časem shodně s klientem (app.js evHasTime): všechny kromě

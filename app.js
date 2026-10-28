@@ -67,8 +67,21 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.93';
+const APP_VERSION = '4.94';
 const CHANGELOG = [
+  { v:'4.94', items:[
+    '🐾 Nový modul Mazlíček: karta psa, kočky i dalších zvířat s údaji, čipem a kontaktem na veterinu (tlačítko Zavolat)',
+    '💉 Plán péče (očkování, odčervení, klíšťata) s opakováním: termín je v kalendáři, ráno přijde připomínka a po „Hotovo“ se posune',
+    '🥣 Granule: appka spočítá, kdy dojdou, včas upozorní a jedním klepnutím je přidá do nákupu',
+    '🚆 Na cestu: připravené seznamy věcí pro vlak, auto a túru podle druhu zvířete',
+    '🏠 Společného mazlíčka můžeš sdílet se skupinou, péči pak vidí a odškrtává celá rodina'
+  ], en:[
+    '🐾 New Pets module: a card for your dog, cat or other animal with details, microchip and vet contact (Call button)',
+    '💉 Care plan (vaccinations, deworming, ticks) with repeats: the date is in your calendar, a morning reminder arrives and “Done” moves it on',
+    '🥣 Pet food: the app works out when it runs out, warns you in time and adds it to shopping with one tap',
+    '🚆 Travel: ready-made packing lists for the train, car and hikes by type of animal',
+    '🏠 Share a family pet with your group so everyone can see and tick off the care'
+  ]},
   { v:'4.93', items:[
     '🔗 Obnovený krok rutiny z archivu se vrátí samostatně na konec a rutinu nerozdělí; archiv se po obnovení hned překreslí',
     '✅ Splnění v den mimo frekvenci se v řádku týdne ukáže, týdenní návyky ve splněném týdnu už nepřipomínáme',
@@ -1041,6 +1054,7 @@ const MODS=[
   {id:'shopping',emoji:'🧺'},
   {id:'mealplan',emoji:'🥗'},
   {id:'checklist',emoji:'✅'},
+  {id:'pets',emoji:'🐾'},
 ];
 // Onboarding (4.60): moduly určuje jen šablona, parťák je jen vzhled a styl řeči.
 // Bez šablony („Vlastní výběr“) tyto moduly; doporučený parťák podle šablony.
@@ -1704,6 +1718,7 @@ onAuthStateChanged(auth,async u=>{
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
     unsubAllGroupMeals(); mealViewSel=undefined; unsubAllGroupChecks();
+    unsubAllGroupPets(); pets=[]; _petsReady=false; petSel=undefined; // Mazlíček (4.94)
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
     unsub=null; unsubHabits=null; unsubLogs=null;
@@ -1721,7 +1736,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -3982,13 +3997,16 @@ let editingEventId = null;
 let editingEventGid = null; // skupina upravované sdílené události (zachycená při otevření), null = osobní
 let calFilter='all';
 
-const EV_ICONS={birthday:'🎂',event:'📌'};
-const EV_LABELS={birthday:'cal.type.birthday',event:'cal.type.event'}; // klíče i18n
+const EV_ICONS={birthday:'🎂',event:'📌',vet:'🩺'};
+const EV_LABELS={birthday:'cal.type.birthday',event:'cal.type.event',vet:'cal.type.vet'}; // klíče i18n
+// Veterina (4.94): zrcadlo péče o mazlíčka, ikona podle druhu péče (💉 🪱 🛡️ 🥣) uložená v události
+const VET_EMS=['🩺','💉','🪱','🛡️','🥣'];
 // Vrátí ikonu i pro vlastní typy (hasOwnProperty kvůli prototypovým vlastnostem jako 'constructor')
 // ev (nepovinné): sdílená událost s vlastním typem jiného člena nese typeEmoji/typeLabel (4.81)
-function getEvIcon(type,ev){return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||(typeof ev?.typeEmoji==='string'&&ev.typeEmoji)||'📌';}
+function getEvIcon(type,ev){if(type==='vet')return VET_EMS.includes(ev?.typeEmoji)?ev.typeEmoji:EV_ICONS.vet;return Object.prototype.hasOwnProperty.call(EV_ICONS,type)?EV_ICONS[type]:((prof.customEvTypes||[]).find(t=>t.key===type)?.emoji)||(typeof ev?.typeEmoji==='string'&&ev.typeEmoji)||'📌';}
 // Vrátí popisek i pro vlastní typy
 function getEvLabel(type,ev){
+  if(type==='vet'&&ev?.care==='food') return t('mod.pets'); // granule: „Mazlíček“, péče: „Veterina“
   if(Object.prototype.hasOwnProperty.call(EV_LABELS,type)) return t(EV_LABELS[type]);
   const own=(prof.customEvTypes||[]).find(x=>x.key===type)?.label;
   if(own) return own;
@@ -4601,6 +4619,8 @@ window.addEventForDay = (ds) => {
 };
 
 window.openEditEvent = function(ev) {
+  // Péče o mazlíčka (4.94): zdroj pravdy je mazlíček, úprava v kalendáři by se rozešla s plánem
+  if(ev?.type === 'vet' && ev.petId) { openPetFromEvent(ev); return; }
   editingEventId = ev.id;
   editingEventGid = ev.shared ? (ev.groupId || familyId || null) : null;
   document.getElementById('ev-name-inp').value = ev.name || '';
@@ -4756,7 +4776,7 @@ async function saveEventImpl(){
     evUpdate.time = time || deleteField();
     evUpdate.dateEnd = dateEnd || deleteField();
     if(tMeta) Object.assign(evUpdate, tMeta);
-    else if(!String(selEvType_val).startsWith('c_')) { evUpdate.typeLabel = deleteField(); evUpdate.typeEmoji = deleteField(); } // cizí vlastní typ: ponechat
+    else if(!String(selEvType_val).startsWith('c_') && selEvType_val !== 'vet') { evUpdate.typeLabel = deleteField(); evUpdate.typeEmoji = deleteField(); } // cizí vlastní typ a veterina: ponechat
     // Zápis bez čekání (offline by visel), chyba jen toastem
     const evErr = e => toast('⚠️ '+userErr(e,'událost'));
     if(editGroupId) {
@@ -4785,7 +4805,17 @@ async function saveEventImpl(){
 }
 
 window.delEvent=async(id)=>{
-  if(!CU||!confirm(t('cal.delQ')))return;
+  if(!CU)return;
+  // Péče o mazlíčka (4.94): smaže se i z plánu péče (jinak by se událost po dalším Hotovo vrátila)
+  const pev=[...events,...getAllFamilyEvents()].find(e=>e.id===id&&e.type==='vet'&&e.petId);
+  const pp=pev&&petFind(pev.petId);
+  if(pp&&(pev.care==='food'||pp.care[pev.careId])){
+    if(!confirm(t('pet.delEvQ',{care:pev.name})))return;
+    petCareRemove(pp,pev.care==='food'?'food':pev.careId);
+    toast(t('cal.deleted'));
+    return;
+  }
+  if(!confirm(t('cal.delQ')))return;
   const allGids = [familyId, ...extraGroupIds].filter(Boolean);
   // Sdílená událost: do aktivity jen její skupina (maže se naslepo ve všech)
   const famEv = getAllFamilyEvents().find(e => e.id === id);
@@ -5043,7 +5073,7 @@ function retryFsClear(startup){
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
 // Popisek kolekce: klíč exp.col.<název kolekce>
 const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats','pantry',
-  'savedRecipes','foodLogs','healthLogs','checklists','chatMemory','aiReports','feedback','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
+  'savedRecipes','foodLogs','healthLogs','checklists','pets','chatMemory','aiReports','feedback','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
   if (v === null || v === undefined || typeof v !== 'object') return v;
@@ -5244,7 +5274,7 @@ function stopSessionActivity() {
   destroyAllFireSubs();
   clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv = null; clearTimeout(_foodDayTimer);
   [unsub, unsubHabits, unsubLogs, unsubFamily, unsubFamilyCal].forEach(u => { if (u) u(); });
-  unsubAllGroupShops(); unsubAllGroupMeals(); unsubAllGroupChecks();
+  unsubAllGroupShops(); unsubAllGroupMeals(); unsubAllGroupChecks(); unsubAllGroupPets();
   Object.values(unsubExtraGroupDocs).forEach(u => u && u());
   Object.values(unsubExtraGroupCals).forEach(u => u && u());
   unsub = null; unsubHabits = null; unsubLogs = null;
@@ -9952,6 +9982,7 @@ function resetFamilyLocal() {
   unsubGroupShop(familyId); // nákupy staré hlavní skupiny
   unsubGroupPantry(familyId); // zásoby (4.70)
   unsubGroupMeal(familyId); unsubGroupCheck(familyId); // jídelníček a checklisty (4.53)
+  unsubGroupPets(familyId); // mazlíčci (4.94)
   familyId = null; familyData = null;
   familyEvents = [];
   if(unsubFamily) { unsubFamily(); unsubFamily=null; }
@@ -9959,7 +9990,7 @@ function resetFamilyLocal() {
 }
 // Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
 function renderAfterFamilyChange() {
-  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist(); renderPantry();
+  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh();
 }
 
 // ── Karta „Pozvat rodinu“ v Nákupech a Kalendáři ──
@@ -10078,9 +10109,10 @@ function leaveSetStatus(txt, isErr) {
 }
 window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById('m-leavegrp')?.remove(); };
 // Popis kopie u vedlejší skupiny podle toho, co sdílí (kalendář, nákupy a s nimi zásoby, jídelníček, checklisty)
-function leaveCopyText(gData) {
+function leaveCopyText(gData, gid) {
   const parts = [gData?.shareCal && t('grp.leave.cpCal'), gData?.shareShop && t('grp.leave.cpShop'), gData?.shareShop && t('grp.leave.cpPantry'),
-    gData?.shareMeal && t('grp.leave.cpMeal'), gData?.shareChecklist !== false && t('grp.leave.cpCheck')].filter(Boolean);
+    gData?.shareMeal && t('grp.leave.cpMeal'), gData?.shareChecklist !== false && t('grp.leave.cpCheck'),
+    !!petGrp[gid]?.pets.length && t('grp.leave.cpPets')].filter(Boolean); // mazlíčci (4.94)
   return parts.length ? t('grp.leave.optAllList', {list: parts.join(', ')}) : t('grp.leave.optAllNone');
 }
 function openLeaveGroup(gid) {
@@ -10104,7 +10136,7 @@ function openLeaveGroup(gid) {
       ? `<b style="color:var(--red)">${tH('grp.leave.last')}</b> ${tH('grp.leave.lastRestore')}`
       : tH('grp.leave.info')}</div>
     <div style="font-size:14px;font-weight:600;margin-bottom:8px">${tH('grp.leave.keepQ')}</div>
-    ${opt('all', tH('grp.leave.optAll'), (isMain ? tH('grp.leave.optAllD') : esc(leaveCopyText(gData))), true)}
+    ${opt('all', tH('grp.leave.optAll'), (isMain ? tH('grp.leave.optAllD') : esc(leaveCopyText(gData, gid))), true)}
     ${opt('mine', tH('grp.leave.optMine'), tH('grp.leave.optMineD', {g: prof?.gender}), false)}
     ${opt('none', tH('grp.leave.optNone'), '', false)}
     ${last ? `<label style="display:block;font-size:14px;margin:10px 0 4px;color:var(--red)">${tH('grp.leave.typeLabel', {word})}</label>
@@ -10175,7 +10207,7 @@ async function copyGroupToPersonal(gid, mode) {
     const sn = await getDocs(collection(db,'families',gid,'events'));
     sn.docs.forEach(d => {
       const e = d.data() || {};
-      if(!mine(e) || !e.name || !e.date) return;
+      if(!mine(e) || !e.name || !e.date || d.id.startsWith('pet_')) return; // zrcadla péče o mazlíčka vzniknou z kopie mazlíčka
       const {shared, groupId, ...ev} = e;
       writes.push([doc(collection(db,'users',uid,'events')), {...ev, copiedFrom: src}]);
     });
@@ -10209,6 +10241,18 @@ async function copyGroupToPersonal(gid, mode) {
       writes.push([doc(db,'users',uid,'checklists',id), {id, name: cutName(l.name, 60) || src, items, shared: false, createdAt: Date.now(), copiedFrom: src}]);
     });
   }
+  // Mazlíčci (4.94, bez příznaku skupiny): 'mine' jen moji (owner), 'all' všichni; nové ID, zrcadla v kalendáři po zápisu
+  const petCopies = [];
+  {
+    const sn = await getDocs(collection(db,'families',gid,'pets'));
+    sn.docs.forEach(d => {
+      const pn = petNorm(d.data(), d.id, null);
+      if(!pn || (mode !== 'all' && pn.owner !== uid)) return;
+      const id = genId(), data = {...petDataOut(pn, uid), copiedFrom: src};
+      writes.push([doc(db,'users',uid,'pets',id), data]);
+      petCopies.push({...pn, id, _gid: null});
+    });
+  }
   // Zápis po dávkách (limit 500 operací); čeká na potvrzení serveru
   for(let i = 0; i < writes.length; i += 400) {
     const b = writeBatch(db);
@@ -10216,6 +10260,7 @@ async function copyGroupToPersonal(gid, mode) {
     await b.commit();
   }
   n += writes.length;
+  petCopies.forEach(petSyncAll);
   if(mode === 'all') {
     // Jídelníček: doplní jen prázdná políčka osobního plánu (vlastní plán se nepřepíše)
     if(gData.shareMeal) {
@@ -10889,13 +10934,13 @@ function forgetExtraGroupLocal(gid) {
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
-  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid); unsubGroupPantry(gid);
+  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid); unsubGroupPantry(gid); unsubGroupPets(gid);
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
 }
 // Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
 async function dropExtraGroupLocal(gid) {
   forgetExtraGroupLocal(gid);
-  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); renderPantry(); // i přepínače seznamů a plánů
+  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh(); // i přepínače seznamů a plánů
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
 }
@@ -11157,6 +11202,7 @@ function subscribeExtraGroup(gid) {
     if (xd.shareCal && prevLbl && prevLbl !== grpLabel(gid)) renderCal(); // emoji skupiny u událostí
     if (!_gfUnsub[gid]) startGroupUnread(gid);
     startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
+    ensurePetSubs(); // mazlíčci skupiny (4.94), jen se zapnutým modulem
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
@@ -11226,6 +11272,7 @@ function subscribeFamily() {
     if(familyData.shareCal && prevLbl && prevLbl !== grpLabel(fid)) renderCal(); // emoji skupiny u událostí
     if(!_gfUnsub[fid]) startGroupUnread(fid);
     startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
+    ensurePetSubs(); // mazlíčci skupiny (4.94), jen se zapnutým modulem
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     renderFamilySettings();
     renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
@@ -15385,7 +15432,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -15411,6 +15458,8 @@ async function consumePendingOpen() {
     // Kalendář z notifikace i při vypnutém modulu: osobní události dotáhnout, ať obrazovka neukazuje prázdný kalendář
     if(p.open === 'cal') { if(!_fireSubs['events']) subEvents(); window.sp('calendar'); return; }
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
+    // Mazlíček (4.94): péče / granule z ranního upozornění (i při vypnutém modulu – data se dotáhnou)
+    if(p.open === 'pets') { if(!_fireSubs['pets']) subPets(); if(p.id && PET_ID_RE.test(p.id)) petSelSave(p.id); window.sp('pets'); return; }
     // Výzva měsíce (4.63): detail výzvy z notifikace (seznam se načte, pokud ještě není)
     if(p.open === 'pc') { window.sp('dashboard'); await pcLoad(!pcList.length); if(CU) window.pcOpen(p.id && PC_ID_RE.test(p.id) ? p.id : ''); return; }
     // Návyky: počkat na první data (nejvýš 8 s), pak detail návyku, jinak seznam
@@ -16659,6 +16708,723 @@ window.deleteChecklist = async function(id) {
 };
 
 
+// ════════════════════════════════════════════════════════════
+// 🐾  MAZLÍČEK (4.94, docs/NAVRH-MAZLICEK.md)
+// ════════════════════════════════════════════════════════════
+// Mazlíček leží buď u mě (users/{uid}/pets), nebo ve skupině (families/{gid}/pets) – sdílení = přesun.
+// Zdroj pravdy je dokument mazlíčka; v kalendáři je jen nejbližší termín (zrcadlo pet_{petId}_{careId|food}, typ vet).
+// Pravidla Firestore beze změny: historie péče v dokumentu (pole log), aktivita skupiny jen jako cal / shop / check.
+let pets = [], _petsReady = false;
+const petGrp = {}; // gid → {pets, ready, unsub, err}
+let petSel; // id vybraného mazlíčka (undefined = nenačteno z lp_pet_sel)
+const PET_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const PET_KINDS = ['dog', 'cat', 'other'];
+const PET_KIND_EM = {dog: '🐕', cat: '🐈', other: '🐾'};
+const PET_OTHER_EM = ['🐇', '🐹', '🐦', '🐠', '🐢', '🦎', '🐾'];
+const PET_CARE_KINDS = ['vacc', 'worm', 'para', 'visit', 'other'];
+const PET_CARE_EM = {vacc: '💉', worm: '🪱', para: '🛡️', visit: '🩺', other: '🩺'};
+const PET_CHIP_EM = {...PET_CARE_EM, other: '✏️'}; // výběr druhu péče (v kalendáři zůstává 🩺)
+const PET_REMINDS = ['day1', 'day0', 'none'];
+const PET_UNITS = ['d', 'w', 'm', 'y'];
+// Výchozí plán podle druhu (název z i18n; u kočky „Blechy“)
+const PET_CARE_PRESETS = {
+  dog: [{kind: 'vacc', every: {n: 1, u: 'y'}}, {kind: 'worm', every: {n: 3, u: 'm'}}, {kind: 'para', every: {n: 1, u: 'm'}}],
+  cat: [{kind: 'vacc', every: {n: 1, u: 'y'}}, {kind: 'worm', every: {n: 3, u: 'm'}}, {kind: 'para', every: {n: 1, u: 'm'}, nk: 'pet.care.paraCat'}],
+  other: [{kind: 'visit', every: {n: 1, u: 'y'}}],
+};
+// Připomenutí: prohlídka a očkování den předem, domácí péče ráno v den
+const petRemDef = k => (k === 'vacc' || k === 'visit') ? 'day1' : 'day0';
+// Opakování v seg: ne / měsíc / 3 měsíce / rok / jinak
+const PET_EVERY_OPTS = {none: null, m1: {n: 1, u: 'm'}, m3: {n: 3, u: 'm'}, y1: {n: 1, u: 'y'}};
+// Šablony na cestu: počet položek pet.pack.<trip>.<kind>.<1..n>; vlak a auto u psa a kočky navíc pas
+const PET_TRIPS = [['train', '🚆'], ['car', '🚗'], ['hike', '🥾']];
+const PET_PACK_N = {train: {dog: 9, cat: 8, other: 5}, car: {dog: 8, cat: 6, other: 3}, hike: {dog: 8, cat: 5, other: 3}};
+const PET_LOG_MAX = 30;
+const petErr = e => toast('⚠️ ' + userErr(e, 'pets'));
+
+// ── Výpočty (čisté funkce, simulace v testech) ──
+// Dny mezi dvěma daty YYYY-MM-DD (poledne místního času, změna času nevadí)
+function petDays(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
+// Přičte měsíce s ořezem na konec měsíce (31. 1. + 1 měsíc = 28./29. 2.)
+function petAddMonths(ds, n) {
+  const [y, m, d] = ds.split('-').map(Number);
+  const x = new Date(y, m - 1 + n, 1, 12);
+  x.setDate(Math.min(d, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate()));
+  return toDS(x);
+}
+// Další termín od skutečného data provedení; every null = jednorázově
+function petAddInterval(ds, every) {
+  if(!isDS(ds) || !every) return null;
+  const n = every.n;
+  if(every.u === 'd') return addDays(ds, n);
+  if(every.u === 'w') return addDays(ds, 7 * n);
+  if(every.u === 'm') return petAddMonths(ds, n);
+  if(every.u === 'y') return petAddMonths(ds, 12 * n);
+  return null;
+}
+// Granule: runOut = první den bez granulí, left = dní do runOut, pct = zbytek aktuálního balení, evDate = den upozornění
+function petFoodCalc(f, today = toDS()) {
+  if(!f || !(f.packKg > 0) || !(f.dailyG > 0) || !isDS(f.openedAt)) return null;
+  const perPack = f.packKg * 1000 / f.dailyG;
+  const runOut = addDays(f.openedAt, Math.floor(perPack * (1 + (f.spare || 0))));
+  const left = petDays(today, runOut);
+  const pct = left <= 0 ? 0 : Math.max(0, Math.min(1, (perPack - petDays(f.openedAt, today)) / perPack));
+  const state = left <= 0 ? 'out' : left <= f.warnDays ? 'warn' : 'ok';
+  const ev = addDays(runOut, -f.warnDays);
+  return {perPack, runOut, left, pct, state, evDate: ev < today ? today : ev};
+}
+// Věk: pod rok v měsících, jinak v letech; neplatné nebo budoucí datum = ''
+function petAge(birth, today = toDS()) {
+  if(!isDS(birth) || birth > today) return '';
+  const [by, bm, bd] = birth.split('-').map(Number), [ty, tm, td] = today.split('-').map(Number);
+  const months = (ty - by) * 12 + (tm - bm) - (td < bd ? 1 : 0);
+  return months < 12 ? tN('pet.age.m', Math.max(0, months)) : tN('pet.age.y', Math.floor(months / 12));
+}
+
+// ── Data: kontrola tvaru (dokument skupiny smí psát každý člen) ──
+function petStr(v, max) { return cutName(typeof v === 'string' ? v : '', max); }
+function petNum(v, min, max) { const n = Number(v); return Number.isFinite(n) && n >= min && n <= max ? n : null; }
+function petEvery(e) {
+  if(!e || typeof e !== 'object') return null;
+  const n = Number(e.n);
+  return Number.isInteger(n) && n >= 1 && n <= 60 && PET_UNITS.includes(e.u) ? {n, u: e.u} : null;
+}
+function petNorm(r, id, gid) {
+  if(!r || typeof r !== 'object' || !PET_ID_RE.test(id)) return null;
+  const kind = PET_KINDS.includes(r.kind) ? r.kind : 'other';
+  const ems = kind === 'other' ? PET_OTHER_EM : [PET_KIND_EM[kind]];
+  const care = {};
+  if(r.care && typeof r.care === 'object') for(const [cid, c] of Object.entries(r.care)) {
+    if(!PET_ID_RE.test(cid) || !c || typeof c !== 'object' || !isDS(c.next)) continue;
+    const ck = PET_CARE_KINDS.includes(c.kind) ? c.kind : 'other';
+    care[cid] = {kind: ck, name: petStr(c.name, 40) || t('pet.care.' + ck), every: petEvery(c.every), next: c.next,
+      time: okEvTime(c.time) ? c.time : null, remind: PET_REMINDS.includes(c.remind) ? c.remind : petRemDef(ck), last: isDS(c.last) ? c.last : null};
+  }
+  const log = (Array.isArray(r.log) ? r.log : []).filter(l => l && typeof l === 'object' && isDS(l.d)).slice(-PET_LOG_MAX)
+    .map(l => ({id: petStr(l.id, 20), d: l.d, kind: PET_CARE_KINDS.includes(l.kind) ? l.kind : 'other', name: petStr(l.name, 40), by: petStr(l.by, 128)}));
+  let food = null;
+  const f = r.food;
+  if(f && typeof f === 'object') {
+    const packKg = petNum(f.packKg, 0.1, 50), dailyG = petNum(f.dailyG, 1, 5000);
+    if(packKg && dailyG && isDS(f.openedAt)) food = {name: petStr(f.name, 60), packKg, dailyG, openedAt: f.openedAt,
+      spare: Number.isInteger(f.spare) && f.spare >= 0 && f.spare <= 20 ? f.spare : 0,
+      warnDays: Number.isInteger(f.warnDays) && f.warnDays >= 1 && f.warnDays <= 30 ? f.warnDays : 5, inShopAt: isDS(f.inShopAt) ? f.inShopAt : null};
+  }
+  const v = r.vet && typeof r.vet === 'object' ? r.vet : {};
+  return {id, _gid: gid || null, name: petStr(r.name, 40) || t('pet.kind.' + kind), kind, emoji: ems.includes(r.emoji) ? r.emoji : ems[0],
+    breed: petStr(r.breed, 60), birth: isDS(r.birth) ? r.birth : '', weight: petNum(r.weight, 0.05, 150), weightAt: isDS(r.weightAt) ? r.weightAt : null,
+    chip: petStr(r.chip, 20), vet: {name: petStr(v.name, 80), phone: petStr(v.phone, 80), addr: petStr(v.addr, 80)},
+    allergies: petStr(r.allergies, 200), notes: petStr(r.notes, 1000), care, log, food,
+    owner: typeof r.owner === 'string' ? r.owner : '', order: Number.isFinite(r.order) ? r.order : 0, createdAt: Number.isFinite(r.createdAt) ? r.createdAt : 0};
+}
+// Dokument k zápisu (přesun do skupiny a zpět)
+function petDataOut(p, owner) {
+  return {name: p.name, kind: p.kind, emoji: p.emoji, breed: p.breed, birth: p.birth, weight: p.weight, weightAt: p.weightAt, chip: p.chip,
+    vet: {...p.vet}, allergies: p.allergies, notes: p.notes, care: JSON.parse(JSON.stringify(p.care)), log: p.log.map(l => ({...l})),
+    food: p.food ? {...p.food} : null, owner: owner || p.owner || CU.uid, order: p.order, createdAt: p.createdAt || Date.now(), updatedAt: Date.now()};
+}
+
+// ── Listenery ──
+function subPets() {
+  if(!CU) return;
+  createFireSub('pets', collection(db, 'users', CU.uid, 'pets'), snap => {
+    pets = snap.docs.map(d => petNorm(d.data(), d.id, null)).filter(Boolean);
+    _petsReady = true;
+    petRefresh();
+  });
+  ensurePetSubs();
+}
+// Mazlíčci všech mých skupin (listener drží do odchodu ze skupiny nebo odhlášení)
+function ensurePetSubs() { if(CU && _fireSubs['pets']) myGroupIds().forEach(subscribeGroupPets); }
+function subscribeGroupPets(gid) {
+  if(!gid || !CU || grpSubBlocked(petGrp[gid])) return;
+  const e = petGrp[gid] = {pets: [], ready: false, unsub: null};
+  e.unsub = onSnapshot(collection(db, 'families', gid, 'pets'), snap => {
+    if(petGrp[gid] !== e) return;
+    e.pets = snap.docs.map(d => petNorm(d.data(), d.id, gid)).filter(Boolean);
+    e.ready = true; e.err = 0;
+    petRefresh();
+  }, err => {
+    familyListenErr(err);
+    if(petGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.ready = false; e.pets = []; e.err = Date.now();
+  });
+}
+// Bez překreslení (volá se před vynulováním skupiny); překreslí renderAfterFamilyChange
+function unsubGroupPets(gid) { const e = petGrp[gid]; if(e?.unsub) e.unsub(); delete petGrp[gid]; }
+function unsubAllGroupPets() { Object.keys(petGrp).forEach(g => { const e = petGrp[g]; if(e?.unsub) e.unsub(); delete petGrp[g]; }); }
+// Osobní + skupinoví (kopie ve skupině má přednost při krátkém souběhu během přesunu)
+function allPets() {
+  const m = new Map();
+  pets.forEach(p => m.set(p.id, p));
+  myGroupIds().forEach(g => (petGrp[g]?.pets || []).forEach(p => m.set(p.id, p)));
+  return [...m.values()].sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
+}
+function petFind(id) { return allPets().find(p => p.id === id) || null; }
+function petSelGet() {
+  if(petSel === undefined) { const v = lsGet('lp_pet_sel', null); petSel = v && v.u === CU?.uid && typeof v.id === 'string' ? v.id : null; }
+  return petSel;
+}
+function petSelSave(id) { petSel = id; lsSave('lp_pet_sel', {u: CU?.uid, id}); }
+function petCur(all = allPets()) { const s = petSelGet(); return all.find(p => p.id === s) || all[0] || null; }
+function petRef(p) { return p._gid ? doc(db, 'families', p._gid, 'pets', p.id) : doc(db, 'users', CU.uid, 'pets', p.id); }
+function petEvRef(p, cid) { const id = 'pet_' + p.id + '_' + cid; return p._gid ? doc(db, 'families', p._gid, 'events', id) : doc(db, 'users', CU.uid, 'events', id); }
+// Mazat a vracet ze skupiny smí vlastník a správce skupiny (pravidla to nehlídají, jen klient)
+function petIsAdmin(gid) { return !!gid && groupDataOf(gid)?.members?.[CU?.uid]?.role === 'admin'; }
+function petCanManage(p) { return !p._gid || p.owner === CU?.uid || petIsAdmin(p._gid); }
+function petRefresh() {
+  if(document.getElementById('p-pets')?.classList.contains('active')) renderPets();
+  const dw = document.getElementById('pet-dash');
+  if(dw) dw.innerHTML = petsWidgetHTML();
+  // Karta ještě není (data dorazila po vykreslení Domů): jednou překreslit, ne u schované karty a v prvních 14 dnech jednoduchého režimu
+  else if(hasMod('pets') && allPets().length && !dashLayout().hidden.includes('pets') && !(isSimple() && simpleDash())
+    && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+}
+
+// ── Zrcadlo v kalendáři (deterministické ID → idempotentní zápis, mazání bez uloženého evId) ──
+function petEvSync(p, cid) {
+  if(!CU || !p?.id) return;
+  const ref = petEvRef(p, cid);
+  let ev = null;
+  if(cid === 'food') {
+    const fc = petFoodCalc(p.food);
+    if(fc) ev = {name: t('pet.food.ev', {name: p.name}), date: fc.evDate, care: 'food', typeEmoji: '🥣', remind: 'day0', time: null};
+  } else {
+    const c = p.care?.[cid];
+    if(c) ev = {name: c.name + ' – ' + p.name, date: c.next, care: c.kind, careId: cid, typeEmoji: PET_CARE_EM[c.kind] || '🩺', remind: c.remind, time: c.time};
+  }
+  if(!ev) { deleteDoc(ref).catch(() => {}); return; }
+  const data = {name: cutName(ev.name, 80), date: ev.date, repeat: 'no', type: 'vet', typeLabel: t('cal.type.vet'), typeEmoji: ev.typeEmoji,
+    petId: p.id, care: ev.care, remind: ev.remind, time: ev.time || deleteField(), addedBy: CU.uid, createdAt: new Date().toISOString()};
+  if(ev.careId) data.careId = ev.careId;
+  setDoc(ref, data, {merge: true}).catch(e => console.warn('[LP] zrcadlo pets:', e?.code || e?.name));
+}
+function petSyncAll(p) { Object.keys(p.care || {}).forEach(cid => petEvSync(p, cid)); petEvSync(p, 'food'); }
+function petMirrorsDel(p) { [...Object.keys(p.care || {}), 'food'].forEach(cid => deleteDoc(petEvRef(p, cid)).catch(() => {})); }
+// Odebrání položky plánu (i z kalendáře): péče z mapy, granule = food null
+function petCareRemove(p, cid) {
+  const upd = {updatedAt: Date.now()};
+  if(cid === 'food') upd.food = null; else upd['care.' + cid] = deleteField();
+  updateDoc(petRef(p), upd).catch(petErr);
+  deleteDoc(petEvRef(p, cid)).catch(() => {});
+}
+// Událost z kalendáře: úprava vede do Mazlíčka (zdroj pravdy), ne do formuláře události
+function openPetFromEvent(ev) {
+  if(CU && !_fireSubs['pets']) subPets();
+  ensurePetSubs();
+  if(typeof ev.petId === 'string' && PET_ID_RE.test(ev.petId)) petSelSave(ev.petId);
+  window.sp('pets');
+  const p = petFind(ev.petId);
+  if(!p) return;
+  if(ev.care === 'food') window.petFoodEdit();
+  else if(typeof ev.careId === 'string' && p.care[ev.careId]) window.petCareEdit(ev.careId);
+}
+
+// ── Texty stavu ──
+function petEveryLabel(e) { return e ? tN('pet.ev.' + e.u, e.n) : t('pet.ev.once'); }
+// {cls, txt}: late / now (dnes) / tmrw / soon (2–7 dní) / ok
+function petDue(next, today = toDS()) {
+  const n = petDays(today, next);
+  if(n < 0) return {cls: 'late', n, txt: tN('pet.due.late', -n)};
+  if(n === 0) return {cls: 'now', n, txt: t('pet.due.today')};
+  if(n === 1) return {cls: 'tmrw', n, txt: t('pet.due.tmrw')};
+  if(n <= 7) return {cls: 'soon', n, txt: tN('pet.due.in', n) + ' · ' + fmtDate(next, 'dm')};
+  return {cls: 'ok', n, txt: fmtDate(next, 'dm')};
+}
+function petCareSorted(p) { return Object.entries(p.care).sort((a, b) => a[1].next.localeCompare(b[1].next)); }
+
+// ── Stránka ──
+const _petDetOpen = new Set();
+window.petDet = el => { const k = el?.dataset?.a0; if(k) { if(el.open) _petDetOpen.add(k); else _petDetOpen.delete(k); } };
+window.petSelect = id => { if(!petFind(id)) return; petSelSave(id); renderPets(); };
+function renderPets() {
+  const box = document.getElementById('pets-content');
+  if(!box) return;
+  if(CU && !_fireSubs['pets']) subPets();
+  ensurePetSubs();
+  const all = allPets(), today = toDS();
+  const addTop = document.getElementById('pet-add-top');
+  if(addTop) addTop.hidden = !all.length;
+  if(!all.length) {
+    box.innerHTML = !_petsReady ? '<p class="pet-muted">' + tH('pet.loading') + '</p>'
+      : '<div class="pet-empty"><div class="pet-empty-em" aria-hidden="true">🐾</div><p class="pet-empty-t">' + tH('pet.empty.t') + '</p>'
+        + '<p class="pet-empty-d">' + tH('pet.empty.d') + '</p><div class="pet-tiles">'
+        + PET_KINDS.map(k => '<button type="button" class="pet-tile pet-tile--lg" data-a0="' + k + '" onclick="petNew(this.dataset.a0)"><span class="em" aria-hidden="true">' + PET_KIND_EM[k] + '</span>' + tH('pet.kind.' + k) + '</button>').join('')
+        + '</div></div>';
+    return;
+  }
+  const p = petCur(all);
+  let h = '';
+  if(all.length > 1) h += '<div class="pet-switch">' + all.map(x => '<button type="button" class="pet-pill" data-a0="' + esc(x.id) + '" aria-current="' + (x.id === p.id) + '" onclick="petSelect(this.dataset.a0)"><span aria-hidden="true">' + esc(x.emoji) + '</span> ' + esc(x.name) + '</button>').join('') + '</div>';
+  // Karta
+  const sub1 = [t('pet.kind.' + p.kind), p.breed, petAge(p.birth, today)].filter(Boolean).map(esc).join(' · ');
+  const sub2 = [p.weight != null ? esc(fmtNum(p.weight) + ' kg') : '', p._gid ? esc(grpLabel(p._gid)) : ''].filter(Boolean).join(' · ');
+  const tel = p.vet.phone.replace(/[^\d+]/g, '');
+  h += '<div class="pet-sec"><div class="pet-hero"><div class="pet-av" aria-hidden="true">' + esc(p.emoji) + '</div><div class="pet-hero-main">'
+    + '<div class="pet-name">' + esc(p.name) + '</div>' + (sub1 ? '<div class="pet-sub">' + sub1 + '</div>' : '') + (sub2 ? '<div class="pet-sub">' + sub2 + '</div>' : '')
+    + '</div><button type="button" class="pet-icon-btn" onclick="petEdit()" aria-label="' + tH('a11y.editName', {name: p.name}) + '">✏️</button></div>'
+    + (p.allergies ? '<div class="pet-allergy">⚠️ ' + tH('pet.allergy', {a: p.allergies}) + '</div>' : '')
+    + (tel ? '<a class="btn-s pet-wide pet-call" href="tel:' + esc(tel) + '">' + tH('pet.vet.call') + '</a>' : '')
+    + (p._gid && !groupModShared(p._gid, 'cal') ? '<p class="pet-note">' + tH('pet.grpNoCal') + '</p>' : '')
+    + '</div>';
+  // Péče
+  const care = petCareSorted(p);
+  h += '<div class="pet-sec"><div class="dw-title">' + tH('pet.sec.care') + '</div>'
+    + (care.length ? care.map(([cid, c]) => {
+      const d = petDue(c.next, today);
+      const det = d.txt + (c.time ? ' · ' + c.time : '') + ' · ' + petEveryLabel(c.every);
+      return '<div class="pet-row pet-due--' + d.cls + '"><div class="pet-row-em" aria-hidden="true">' + (PET_CARE_EM[c.kind] || '🩺') + '</div>'
+        + '<button type="button" class="pet-row-main" data-a0="' + esc(cid) + '" onclick="petCareEdit(this.dataset.a0)" aria-label="' + tH('a11y.editName', {name: c.name}) + '">'
+        + '<span class="pet-row-n">' + esc(c.name) + '</span><span class="pet-row-d"><span class="pet-dot" aria-hidden="true"></span>' + esc(det) + '</span></button>'
+        + '<button type="button" class="pet-done" data-a0="' + esc(cid) + '" aria-label="' + tH('pet.doneAria', {name: c.name + ' – ' + p.name}) + '" onclick="petDone(this.dataset.a0)">' + tH('pet.done') + '</button></div>';
+    }).join('') : '<p class="pet-muted">' + tH('pet.care.none') + '</p>')
+    + '<button type="button" class="btn-s pet-wide" onclick="petCareNew()">' + tH('pet.care.add') + '</button></div>';
+  // Granule
+  h += '<div class="pet-sec"><div class="dw-title">' + tH('pet.food.t') + '</div>';
+  const fc = petFoodCalc(p.food, today);
+  if(fc) {
+    const f = p.food, warn = fc.state !== 'ok', inShop = !!f.inShopAt;
+    h += '<div class="pet-food pet-food--' + fc.state + '"><div class="pet-sub">' + esc(f.name || t('pet.food.def')) + ' · ' + esc(fmtNum(f.packKg)) + ' kg · ' + tH('pet.food.daily', {g: f.dailyG}) + '</div>'
+      + '<div class="pet-food-bar" aria-hidden="true"><div class="pet-food-fill" style="width:' + Math.round(fc.pct * 100) + '%"></div></div>'
+      + '<div class="pet-sub">' + tH('pet.food.until', {date: fmtDate(addDays(fc.runOut, -1), 'dM')}) + (f.spare ? ' · ' + tNH('pet.food.spare', f.spare) : '') + '</div>'
+      + '<div class="pet-food-left">' + (fc.state === 'out' ? tH('pet.food.out') : fc.state === 'warn' ? tNH('pet.food.warn', fc.left) : tNH('pet.food.left', fc.left)) + '</div>'
+      + '<div class="pet-btn2"><button type="button" class="' + (warn && !inShop ? 'btn-p' : 'btn-s') + '" data-a0="' + esc(p.id) + '" onclick="petAddFood(this.dataset.a0)">' + tH(inShop ? 'pet.food.inShop' : 'pet.food.add') + '</button>'
+      + '<button type="button" class="btn-s" onclick="petFoodNewPack()">' + tH('pet.food.newPack') + '</button></div>'
+      + '<button type="button" class="pet-link" onclick="petFoodEdit()">' + tNH('pet.food.warnRow', f.warnDays) + ' <span aria-hidden="true">›</span></button></div>';
+  } else {
+    h += '<p class="pet-muted">' + tH('pet.food.offD') + '</p><button type="button" class="btn-s pet-wide" onclick="petFoodEdit()">' + tH('pet.food.on') + '</button>';
+  }
+  h += '</div>';
+  // Na cestu
+  h += '<div class="pet-sec"><div class="dw-title">' + tH('pet.sec.trip') + '</div><div class="pet-tiles">'
+    + PET_TRIPS.map(([k, em]) => '<button type="button" class="pet-tile" data-a0="' + k + '" onclick="petTrip(this.dataset.a0)"><span class="em" aria-hidden="true">' + em + '</span>' + tH('pet.trip.' + k) + '</button>').join('')
+    + '</div></div>';
+  // Údaje a historie
+  const row = (lbl, val) => val ? '<div class="pet-kv"><span class="pet-kv-l">' + tH(lbl) + '</span><span class="pet-kv-v">' + val + '</span></div>' : '';
+  const info = row('pet.f.chip', p.chip ? esc(p.chip) + ' <button type="button" class="pet-icon-btn pet-icon-btn--sm" data-a0="' + esc(p.chip) + '" onclick="petCopy(this.dataset.a0)" aria-label="' + tH('pet.chipCopy') + '">📋</button>' : '')
+    + row('pet.f.birth', p.birth ? esc(fmtDate(p.birth, 'dmy')) : '')
+    + row('pet.f.weight', p.weight != null ? esc(fmtNum(p.weight) + ' kg') + (p.weightAt ? ' <span class="pet-muted">(' + esc(fmtDate(p.weightAt, 'dmy')) + ')</span>' : '') : '')
+    + row('pet.f.vet', esc(p.vet.name))
+    + row('pet.f.phone', tel ? '<a href="tel:' + esc(tel) + '">' + esc(p.vet.phone) + '</a>' : '')
+    + row('pet.f.addr', p.vet.addr ? '<a href="https://www.google.com/maps/search/?api=1&amp;query=' + esc(encodeURIComponent(p.vet.addr)) + '" target="_blank" rel="noopener">' + esc(p.vet.addr) + '</a>' : '')
+    + row('pet.f.notes', p.notes ? '<span class="pet-pre">' + esc(p.notes) + '</span>' : '');
+  const hist = [...p.log].reverse().map(l => '<div class="pet-kv"><span class="pet-kv-l">' + esc(fmtDate(l.d, 'dmy')) + '</span><span class="pet-kv-v"><span aria-hidden="true">' + (PET_CARE_EM[l.kind] || '🩺') + '</span> ' + esc(l.name) + '</span></div>').join('');
+  const det = (k, title, body) => '<details class="pet-det" data-a0="' + k + '" ontoggle="petDet(this)"' + (_petDetOpen.has(k) ? ' open' : '') + '><summary>' + tH(title) + '</summary><div class="pet-det-b">' + body + '</div></details>';
+  h += '<div class="pet-sec">' + det('info', 'pet.det.info', info || '<p class="pet-muted">' + tH('pet.det.infoNone') + '</p>')
+    + det('hist', 'pet.det.hist', hist || '<p class="pet-muted">' + tH('pet.det.histNone') + '</p>');
+  // Sdílení se skupinou
+  if(p._gid) h += '<p class="pet-note">' + tH('pet.sharedIn', {to: grpLabel(p._gid)}) + '</p>'
+    + (petCanManage(p) ? '<button type="button" class="pet-link pet-share-btn" onclick="petUnshare()">' + tH('pet.unshare') + '</button>' : '');
+  else if(myGroupIds().length) h += '<button type="button" class="pet-link pet-share-btn" onclick="petShare()">' + tH('pet.share') + '</button>';
+  h += '</div>';
+  box.innerHTML = h;
+}
+
+// ── Okna (sheet přes mountGroupSheet: Esc, klik vedle a Zpět je zavřou) ──
+function petSheet(id, inner, label) {
+  document.getElementById(id)?.remove();
+  const m = document.createElement('div');
+  m.id = id; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal pet-modal" role="dialog" aria-modal="true" aria-label="' + esc(label) + '">' + inner + '</div>';
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => (opener?.isConnected ? opener : null));
+  return m;
+}
+const petClose = id => document.getElementById(id)?.remove();
+window.petClose = petClose;
+const petVal = id => String(document.getElementById(id)?.value ?? '');
+const petSegHTML = (opts, cur, fn, aria) => '<div class="seg seg--block pet-seg" role="group" aria-label="' + esc(aria) + '">'
+  + opts.map(([v, lbl]) => '<button type="button" class="seg-btn' + (v === cur ? ' active' : '') + '" data-a0="' + v + '" aria-pressed="' + (v === cur) + '" onclick="' + fn + '(this.dataset.a0)">' + lbl + '</button>').join('') + '</div>';
+function petSegMark(wrapSel, v) {
+  document.querySelectorAll(wrapSel + ' .seg-btn').forEach(b => { const on = b.dataset.a0 === v; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+}
+
+// Formulář mazlíčka (#m-pet)
+let _petForm = null;
+window.petNew = kind => petFormOpen(null, PET_KINDS.includes(kind) ? kind : 'dog');
+window.petEdit = () => { const p = petCur(); if(p) petFormOpen(p); };
+function petFormOpen(p, kind) {
+  kind = p ? p.kind : kind;
+  _petForm = {id: p?.id || null, kind, emoji: p?.emoji || PET_KIND_EM[kind]};
+  const fld = (id, lbl, val, attrs = '') => '<div class="fg"><label class="flbl" for="' + id + '">' + tH(lbl) + '</label><input class="finp" id="' + id + '" value="' + esc(val || '') + '" autocomplete="off" ' + attrs + '></div>';
+  const inner = '<div class="mtitle"><span id="pf-em" aria-hidden="true">' + esc(_petForm.emoji) + '</span> ' + tH(p ? 'pet.form.edit' : 'pet.form.new') + '</div>'
+    + petSegHTML(PET_KINDS.map(k => [k, PET_KIND_EM[k] + ' ' + tH('pet.kind.' + k)]), kind, 'petFormKind', t('pet.f.kind'))
+    + '<div class="pet-ems" id="pf-ems"' + (kind === 'other' ? '' : ' hidden') + ' role="group" aria-label="' + tH('pet.f.emoji') + '">'
+    + PET_OTHER_EM.map(e => '<button type="button" class="pet-em-btn" data-a0="' + e + '" aria-pressed="' + (e === _petForm.emoji) + '" onclick="petFormEm(this.dataset.a0)">' + e + '</button>').join('') + '</div>'
+    + fld('pf-name', 'pet.f.name', p?.name, 'maxlength="40" enterkeyhint="next" required')
+    + fld('pf-breed', 'pet.f.breed', p?.breed, 'maxlength="60" enterkeyhint="next"')
+    + '<div class="fg"><label class="flbl" for="pf-birth">' + tH('pet.f.birth') + '</label><input class="finp" type="date" id="pf-birth" max="' + toDS() + '" value="' + esc(p?.birth || '') + '"><div class="pet-hint">' + tH('pet.f.birthHint') + '</div></div>'
+    + fld('pf-weight', 'pet.f.weightKg', p?.weight != null ? String(p.weight).replace('.', LANG === 'cs' ? ',' : '.') : '', 'inputmode="decimal" maxlength="7"')
+    + fld('pf-chip', 'pet.f.chip', p?.chip, 'inputmode="numeric" maxlength="20"')
+    + '<div class="pet-subt">' + tH('pet.f.vetSec') + '</div>'
+    + fld('pf-vname', 'pet.f.vetName', p?.vet.name, 'maxlength="80"')
+    + fld('pf-vphone', 'pet.f.phone', p?.vet.phone, 'type="tel" maxlength="80"')
+    + fld('pf-vaddr', 'pet.f.addr', p?.vet.addr, 'maxlength="80"')
+    + '<div class="pet-subt">' + tH('pet.f.healthSec') + '</div>'
+    + fld('pf-allergy', 'pet.f.allergy', p?.allergies, 'maxlength="200"')
+    + '<div class="fg"><label class="flbl" for="pf-notes">' + tH('pet.f.notes') + '</label><textarea class="finp" id="pf-notes" rows="3" maxlength="1000">' + esc(p?.notes || '') + '</textarea></div>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="petClose(\'m-pet\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="petSave()">' + tH('common.save') + '</button></div>'
+    + (p && petCanManage(p) ? '<button type="button" class="pet-link pet-del" onclick="petDelete()">🗑️ ' + tH('pet.del') + '</button>' : '');
+  petSheet('m-pet', inner, t(p ? 'pet.form.edit' : 'pet.form.new'));
+  setTimeout(() => document.getElementById('pf-name')?.focus(), 100);
+}
+window.petFormKind = k => {
+  if(!_petForm || !PET_KINDS.includes(k)) return;
+  _petForm.kind = k;
+  _petForm.emoji = k === 'other' ? (PET_OTHER_EM.includes(_petForm.emoji) ? _petForm.emoji : '🐾') : PET_KIND_EM[k];
+  petSegMark('#m-pet .pet-seg', k);
+  const ems = document.getElementById('pf-ems'); if(ems) ems.hidden = k !== 'other';
+  window.petFormEm(_petForm.emoji);
+};
+window.petFormEm = e => {
+  if(!_petForm) return;
+  const ok = _petForm.kind === 'other' ? PET_OTHER_EM.includes(e) : e === PET_KIND_EM[_petForm.kind];
+  if(!ok) return;
+  _petForm.emoji = e;
+  const el = document.getElementById('pf-em'); if(el) el.textContent = e;
+  document.querySelectorAll('#pf-ems .pet-em-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.a0 === e)));
+};
+window.petSave = () => {
+  if(!CU || !_petForm) return;
+  const f = _petForm, name = cutName(petVal('pf-name'), 40);
+  if(!name) { toast(t('common.nameReq')); document.getElementById('pf-name')?.focus(); return; }
+  const wRaw = petVal('pf-weight').trim().replace(',', '.');
+  const w = wRaw ? petNum(wRaw, 0.05, 150) : null;
+  if(wRaw && w === null) { toast(t('pet.f.weightBad')); document.getElementById('pf-weight')?.focus(); return; }
+  const birth = petVal('pf-birth');
+  const data = {name, kind: f.kind, emoji: f.emoji, breed: cutName(petVal('pf-breed'), 60), birth: isDS(birth) && birth <= toDS() ? birth : '',
+    weight: w === null ? null : Math.round(w * 100) / 100, chip: cutName(petVal('pf-chip').replace(/\s+/g, ''), 20),
+    vet: {name: cutName(petVal('pf-vname'), 80), phone: cutName(petVal('pf-vphone'), 80), addr: cutName(petVal('pf-vaddr'), 80)},
+    allergies: cutName(petVal('pf-allergy'), 200), notes: cutName(petVal('pf-notes'), 1000), updatedAt: Date.now()};
+  if(f.id) {
+    const old = petFind(f.id);
+    if(!old) { petClose('m-pet'); return; }
+    if(data.weight !== old.weight) data.weightAt = data.weight === null ? null : toDS();
+    updateDoc(petRef(old), data).catch(petErr);
+    if(data.name !== old.name) petSyncAll({...old, name: data.name}); // název v událostech kalendáře
+    petClose('m-pet');
+    toast(t('pet.saved'));
+    return;
+  }
+  const id = genId();
+  const np = {...data, weightAt: data.weight === null ? null : toDS(), care: {}, log: [], food: null, owner: CU.uid, order: allPets().length, createdAt: Date.now()};
+  setDoc(doc(db, 'users', CU.uid, 'pets', id), np).catch(petErr);
+  petSelSave(id);
+  petClose('m-pet');
+  petPlanOpen(petNorm(np, id, null));
+};
+window.petDelete = () => {
+  const p = _petForm?.id ? petFind(_petForm.id) : null;
+  if(!p || !petCanManage(p) || !confirm(t('pet.delQ', {name: p.name}))) return;
+  petMirrorsDel(p);
+  deleteDoc(petRef(p)).catch(petErr);
+  if(p._gid) logGroupActivity(p._gid, 'cal', 'del', gaTitle(p.name));
+  petClose('m-pet');
+  toast(t('pet.deleted', {name: p.name}));
+};
+
+// Plán péče po založení (#m-petplan)
+let _petPlan = null;
+function petPlanOpen(p) {
+  if(!p) return;
+  const pre = PET_CARE_PRESETS[p.kind] || PET_CARE_PRESETS.other;
+  _petPlan = {p, pre};
+  const inner = '<div class="mtitle">' + tH('pet.plan.t') + '</div><p class="pet-hint">' + esc(p.emoji + ' ' + p.name) + ' · ' + tH('pet.plan.d') + '</p>'
+    + pre.map((c, i) => '<div class="pet-plan-row"><label class="pet-check"><input type="checkbox" id="pp-c' + i + '" checked> <span aria-hidden="true">' + PET_CARE_EM[c.kind] + '</span> '
+      + tH(c.nk || 'pet.care.' + c.kind) + ' · ' + esc(petEveryLabel(c.every)) + '</label>'
+      + '<label class="pet-plan-d"><span>' + tH('pet.plan.next') + '</span><input class="finp" type="date" id="pp-d' + i + '"></label></div>').join('')
+    + '<div class="pet-plan-row"><label class="pet-check"><input type="checkbox" id="pp-food" onchange="petPlanFood(this.checked)"> <span aria-hidden="true">🥣</span> ' + tH('pet.plan.food') + '</label>'
+    + '<div id="pp-food-f" hidden><div class="frow"><div class="fg"><label class="flbl" for="pp-pack">' + tH('pet.food.packKg') + '</label><input class="finp" id="pp-pack" inputmode="decimal" maxlength="5"></div>'
+    + '<div class="fg"><label class="flbl" for="pp-daily">' + tH('pet.food.dailyG') + '</label><input class="finp" id="pp-daily" inputmode="numeric" maxlength="4"></div></div></div></div>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="petClose(\'m-petplan\')">' + tH('pet.plan.later') + '</button><button type="button" class="btn-p" onclick="petPlanSave()">' + tH('pet.plan.save') + '</button></div>';
+  petSheet('m-petplan', inner, t('pet.plan.t'));
+}
+window.petPlanFood = on => { const f = document.getElementById('pp-food-f'); if(f) f.hidden = !on; if(on) document.getElementById('pp-pack')?.focus(); };
+function petFoodFrom(packRaw, dailyRaw) {
+  const packKg = petNum(String(packRaw).trim().replace(',', '.'), 0.1, 50), dailyG = petNum(String(dailyRaw).trim().replace(',', '.'), 1, 5000);
+  return packKg && dailyG ? {packKg: Math.round(packKg * 100) / 100, dailyG: Math.round(dailyG)} : null;
+}
+window.petPlanSave = () => {
+  const pl = _petPlan;
+  if(!CU || !pl) return;
+  const p = petFind(pl.p.id) || pl.p, upd = {updatedAt: Date.now()}, np = {...p, care: {...p.care}};
+  pl.pre.forEach((c, i) => {
+    const d = petVal('pp-d' + i);
+    if(!document.getElementById('pp-c' + i)?.checked || !isDS(d)) return;
+    const cid = genId();
+    np.care[cid] = upd['care.' + cid] = {kind: c.kind, name: t(c.nk || 'pet.care.' + c.kind), every: {...c.every}, next: d, time: null, remind: petRemDef(c.kind), last: null};
+  });
+  if(document.getElementById('pp-food')?.checked) {
+    const fd = petFoodFrom(petVal('pp-pack'), petVal('pp-daily'));
+    if(!fd) { toast(t('pet.food.bad')); return; }
+    np.food = upd.food = {name: t('pet.food.def'), ...fd, openedAt: toDS(), spare: 0, warnDays: 5, inShopAt: null};
+  }
+  petClose('m-petplan');
+  if(Object.keys(upd).length < 2) return;
+  updateDoc(petRef(p), upd).catch(petErr);
+  petSyncAll(np);
+  toast(t('pet.plan.saved'));
+  notifAskSoon('event');
+};
+
+// Péče: přidat / upravit (#m-petcare)
+let _petCare = null;
+window.petCareNew = () => petCareOpen(null);
+window.petCareEdit = cid => petCareOpen(cid);
+function petCareOpen(cid) {
+  const p = petCur();
+  if(!p) return;
+  const c = cid ? p.care[cid] : null;
+  if(cid && !c) return;
+  const kind = c?.kind || 'vacc';
+  const ev = c ? c.every : {n: 1, u: 'y'};
+  const evKey = Object.keys(PET_EVERY_OPTS).find(k => JSON.stringify(PET_EVERY_OPTS[k]) === JSON.stringify(ev)) || 'custom';
+  _petCare = {pid: p.id, cid: cid || null, kind, every: evKey, remind: c?.remind || petRemDef(kind), autoName: !c};
+  const inner = '<div class="mtitle">' + esc(p.emoji) + ' ' + tH(c ? 'pet.care.edit' : 'pet.care.new') + '</div>'
+    + '<div class="fg"><div class="flbl">' + tH('pet.care.what') + '</div><div class="pet-chips" id="pc-kinds">'
+    + PET_CARE_KINDS.map(k => '<button type="button" class="ev-type-btn' + (k === kind ? ' sel' : '') + '" data-a0="' + k + '" aria-pressed="' + (k === kind) + '" onclick="petCareKind(this.dataset.a0)">' + PET_CHIP_EM[k] + ' ' + tH('pet.care.' + k) + '</button>').join('') + '</div></div>'
+    + '<div class="fg"><label class="flbl" for="pc-name">' + tH('pet.care.name') + '</label><input class="finp" id="pc-name" maxlength="40" autocomplete="off" value="' + esc(c?.name || t('pet.care.' + kind)) + '" oninput="petCareNameIn()"></div>'
+    + '<div class="frow"><div class="fg"><label class="flbl" for="pc-next">' + tH('pet.care.next') + '</label><input class="finp" type="date" id="pc-next" value="' + esc(c?.next || '') + '"></div>'
+    + '<div class="fg"><label class="flbl" for="pc-time">' + tH('cal.f.time') + '</label><input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="pc-time" value="' + esc(c?.time || '') + '"></div></div>'
+    + '<div class="pet-hint">' + tH('pet.care.timeHint') + '</div>'
+    + '<div class="fg"><div class="flbl">' + tH('pet.care.repeat') + '</div><div id="pc-every">' + petSegHTML([['none', tH('pet.rep.none')], ['m1', tH('pet.rep.m1')], ['m3', tH('pet.rep.m3')], ['y1', tH('pet.rep.y1')], ['custom', tH('pet.rep.custom')]], evKey, 'petCareEvery', t('pet.care.repeat')) + '</div>'
+    + '<div class="pet-custom" id="pc-custom"' + (evKey === 'custom' ? '' : ' hidden') + '><input class="finp" id="pc-n" inputmode="numeric" maxlength="2" aria-label="' + tH('pet.rep.n') + '" value="' + (evKey === 'custom' && ev ? ev.n : 2) + '">'
+    + '<select class="finp" id="pc-u" aria-label="' + tH('pet.rep.unit') + '">' + PET_UNITS.map(u => '<option value="' + u + '"' + ((evKey === 'custom' && ev ? ev.u : 'w') === u ? ' selected' : '') + '>' + tH('pet.unit.' + u) + '</option>').join('') + '</select></div></div>'
+    + '<div class="fg"><div class="flbl">' + tH('pet.care.remind') + '</div><div id="pc-rem">' + petSegHTML([['day1', tH('pet.rem.day1')], ['day0', tH('pet.rem.day0')], ['none', tH('pet.rem.none')]], _petCare.remind, 'petCareRem', t('pet.care.remind')) + '</div></div>'
+    + '<div class="macts">' + (c ? '<button type="button" class="btn-s pet-del-btn" onclick="petCareDel()">' + tH('pet.care.del') + '</button>' : '')
+    + '<button type="button" class="btn-s" onclick="petClose(\'m-petcare\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="petCareSave()">' + tH('common.save') + '</button></div>';
+  petSheet('m-petcare', inner, t(c ? 'pet.care.edit' : 'pet.care.new'));
+}
+window.petCareKind = k => {
+  if(!_petCare || !PET_CARE_KINDS.includes(k)) return;
+  const prev = _petCare.kind;
+  _petCare.kind = k;
+  document.querySelectorAll('#pc-kinds .ev-type-btn').forEach(b => { const on = b.dataset.a0 === k; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', String(on)); });
+  const n = document.getElementById('pc-name');
+  if(n && (_petCare.autoName || n.value.trim() === t('pet.care.' + prev))) { n.value = t('pet.care.' + k); _petCare.autoName = true; }
+  if(!_petCare.cid) { _petCare.remind = petRemDef(k); petSegMark('#pc-rem', _petCare.remind); }
+};
+window.petCareNameIn = () => { if(_petCare) _petCare.autoName = false; };
+window.petCareEvery = v => {
+  if(!_petCare || !(Object.prototype.hasOwnProperty.call(PET_EVERY_OPTS, v) || v === 'custom')) return;
+  _petCare.every = v;
+  petSegMark('#pc-every', v);
+  const cu = document.getElementById('pc-custom'); if(cu) cu.hidden = v !== 'custom';
+};
+window.petCareRem = v => { if(_petCare && PET_REMINDS.includes(v)) { _petCare.remind = v; petSegMark('#pc-rem', v); } };
+window.petCareSave = () => {
+  const s = _petCare, p = s ? petFind(s.pid) : null;
+  if(!CU || !p) { petClose('m-petcare'); return; }
+  const name = cutName(petVal('pc-name'), 40) || t('pet.care.' + s.kind), next = petVal('pc-next'), tm = petVal('pc-time');
+  if(!isDS(next)) { toast(t('cal.dateReq')); document.getElementById('pc-next')?.focus(); return; }
+  let every = PET_EVERY_OPTS[s.every] ?? null;
+  if(s.every === 'custom') {
+    every = petEvery({n: Number(petVal('pc-n')), u: petVal('pc-u')});
+    if(!every) { toast(t('pet.rep.bad')); document.getElementById('pc-n')?.focus(); return; }
+  }
+  const cid = s.cid || genId(), old = s.cid ? p.care[s.cid] : null;
+  const c = {kind: s.kind, name, every: every ? {...every} : null, next, time: okEvTime(tm) ? tm : null, remind: s.remind, last: old?.last || null};
+  updateDoc(petRef(p), {['care.' + cid]: c, updatedAt: Date.now()}).catch(petErr);
+  petEvSync({...p, care: {...p.care, [cid]: c}}, cid);
+  if(p._gid && !old) logGroupActivity(p._gid, 'cal', 'add', gaTitle(name + ' – ' + p.name, fmtDate(next, 'dm')), 1, {ref: next});
+  petClose('m-petcare');
+  toast(t(old ? 'pet.care.saved' : 'pet.care.added', {care: name}));
+  if(c.remind !== 'none' || c.time) notifAskSoon('event');
+};
+window.petCareDel = () => {
+  const s = _petCare, p = s ? petFind(s.pid) : null, c = p && s.cid ? p.care[s.cid] : null;
+  if(!c || !confirm(t('pet.care.delQ', {care: c.name}))) return;
+  petCareRemove(p, s.cid);
+  if(p._gid) logGroupActivity(p._gid, 'cal', 'del', gaTitle(c.name + ' – ' + p.name));
+  petClose('m-petcare');
+};
+
+// Hotovo (#m-petdone): záznam do historie, posun termínu od skutečného data
+let _petDone = null;
+window.petDone = cid => {
+  const p = petCur(), c = p?.care[cid];
+  if(!c) return;
+  _petDone = {pid: p.id, cid};
+  const today = toDS();
+  const inner = '<div class="mtitle"><span aria-hidden="true">' + (PET_CARE_EM[c.kind] || '🩺') + '</span> ' + esc(c.name + ' – ' + p.name) + '</div>'
+    + '<div class="fg"><label class="flbl" for="pd-date">' + tH('pet.done.when') + '</label><input class="finp" type="date" id="pd-date" max="' + today + '" value="' + today + '" oninput="petDonePrev()" onchange="petDonePrev()"></div>'
+    + '<p class="pet-hint" id="pd-next" aria-live="polite"></p>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="petClose(\'m-petdone\')">' + tH('pet.back') + '</button><button type="button" class="btn-p" onclick="petDoneSave()">' + tH('pet.done.save') + '</button></div>';
+  petSheet('m-petdone', inner, c.name);
+  window.petDonePrev();
+};
+window.petDonePrev = () => {
+  const p = _petDone ? petFind(_petDone.pid) : null, c = p?.care[_petDone.cid], el = document.getElementById('pd-next');
+  if(!c || !el) return;
+  const nx = petAddInterval(petVal('pd-date'), c.every);
+  el.textContent = c.every ? (nx ? t('pet.done.next', {date: fmtDate(nx, 'dmy'), every: petEveryLabel(c.every)}) : '') : t('pet.done.once');
+};
+window.petDoneSave = () => {
+  const s = _petDone, p = s ? petFind(s.pid) : null, c = p?.care[s.cid];
+  if(!CU || !c) { petClose('m-petdone'); return; }
+  const d = petVal('pd-date');
+  if(!isDS(d) || d > toDS()) { toast(t('cal.dateReq')); return; }
+  const nx = petAddInterval(d, c.every);
+  const entry = {id: genId(), d, kind: c.kind, name: c.name, by: CU.uid};
+  const upd = {updatedAt: Date.now()};
+  if(nx) { upd['care.' + s.cid + '.last'] = d; upd['care.' + s.cid + '.next'] = nx; }
+  else upd['care.' + s.cid] = deleteField();
+  // Historie: arrayUnion (souběh dvou zařízení), ořez na posledních 30 jen při plné historii
+  upd.log = p.log.length >= PET_LOG_MAX ? [...p.log.slice(-(PET_LOG_MAX - 1)), entry] : arrayUnion(entry);
+  updateDoc(petRef(p), upd).catch(petErr);
+  const care = {...p.care};
+  if(nx) care[s.cid] = {...c, last: d, next: nx}; else delete care[s.cid];
+  petEvSync({...p, care}, s.cid);
+  if(p._gid) logGroupActivity(p._gid, 'cal', 'add', gaTitle(c.name + ' – ' + p.name, nx ? fmtDate(nx, 'dm') : ''), 1, nx ? {ref: nx} : null);
+  petClose('m-petdone');
+  try { navigator.vibrate?.(12); } catch(e) {}
+  toast(nx ? t('pet.done.toast', {care: c.name, date: fmtDate(nx, 'dm')}) : t('pet.done.toastOnce', {care: c.name}), 3500);
+};
+
+// Granule: nastavení (#m-petfood), nové balení, do nákupu
+window.petFoodEdit = () => {
+  const p = petCur();
+  if(!p) return;
+  const f = p.food, num = v => v == null ? '' : String(v).replace('.', LANG === 'cs' ? ',' : '.');
+  const inner = '<div class="mtitle">🥣 ' + tH('pet.food.t') + ' – ' + esc(p.name) + '</div>'
+    + '<div class="fg"><label class="flbl" for="pfd-name">' + tH('pet.food.name') + '</label><input class="finp" id="pfd-name" maxlength="60" autocomplete="off" value="' + esc(f?.name || t('pet.food.def')) + '"></div>'
+    + '<div class="frow"><div class="fg"><label class="flbl" for="pfd-pack">' + tH('pet.food.packKg') + '</label><input class="finp" id="pfd-pack" inputmode="decimal" maxlength="5" value="' + esc(num(f?.packKg)) + '"></div>'
+    + '<div class="fg"><label class="flbl" for="pfd-daily">' + tH('pet.food.dailyG') + '</label><input class="finp" id="pfd-daily" inputmode="numeric" maxlength="4" value="' + esc(num(f?.dailyG)) + '"></div></div>'
+    + '<div class="frow"><div class="fg"><label class="flbl" for="pfd-open">' + tH('pet.food.opened') + '</label><input class="finp" type="date" id="pfd-open" max="' + toDS() + '" value="' + esc(f?.openedAt || toDS()) + '"></div>'
+    + '<div class="fg"><label class="flbl" for="pfd-spare">' + tH('pet.food.spareF') + '</label><input class="finp" id="pfd-spare" inputmode="numeric" maxlength="2" value="' + (f?.spare || 0) + '"></div></div>'
+    + '<div class="fg"><label class="flbl" for="pfd-warn">' + tH('pet.food.warnF') + '</label><input class="finp" id="pfd-warn" inputmode="numeric" maxlength="2" value="' + (f?.warnDays || 5) + '"></div>'
+    + '<div class="macts">' + (f ? '<button type="button" class="btn-s pet-del-btn" onclick="petFoodStop()">' + tH('pet.food.stop') + '</button>' : '')
+    + '<button type="button" class="btn-s" onclick="petClose(\'m-petfood\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="petFoodSave()">' + tH('common.save') + '</button></div>';
+  petSheet('m-petfood', inner, t('pet.food.t')).dataset.pid = p.id;
+};
+window.petFoodSave = () => {
+  const p = petFind(document.getElementById('m-petfood')?.dataset.pid || '');
+  if(!CU || !p) { petClose('m-petfood'); return; }
+  const fd = petFoodFrom(petVal('pfd-pack'), petVal('pfd-daily'));
+  const op = petVal('pfd-open'), spare = Number(petVal('pfd-spare') || 0), warn = Number(petVal('pfd-warn') || 5);
+  if(!fd || !isDS(op) || op > toDS() || !Number.isInteger(spare) || spare < 0 || spare > 20 || !Number.isInteger(warn) || warn < 1 || warn > 30) { toast(t('pet.food.bad')); return; }
+  const food = {name: cutName(petVal('pfd-name'), 60) || t('pet.food.def'), ...fd, openedAt: op, spare, warnDays: warn, inShopAt: p.food?.inShopAt || null};
+  updateDoc(petRef(p), {food, updatedAt: Date.now()}).catch(petErr);
+  petEvSync({...p, food}, 'food');
+  petClose('m-petfood');
+  toast(t('pet.saved'));
+};
+window.petFoodStop = () => {
+  const p = petFind(document.getElementById('m-petfood')?.dataset.pid || '');
+  if(!p || !confirm(t('pet.food.stopQ'))) return;
+  petCareRemove(p, 'food');
+  petClose('m-petfood');
+};
+window.petFoodNewPack = () => {
+  const p = petCur();
+  if(!CU || !p?.food) return;
+  const food = {...p.food, openedAt: toDS(), spare: Math.max(0, p.food.spare - 1), inShopAt: null};
+  updateDoc(petRef(p), {'food.openedAt': food.openedAt, 'food.spare': food.spare, 'food.inShopAt': null, updatedAt: Date.now()}).catch(petErr);
+  petEvSync({...p, food}, 'food');
+  toast(t('pet.food.newDone'));
+};
+// Do nákupu: mazlíček ve skupině se sdílenými Nákupy → seznam skupiny, jinak zobrazený seznam (jako jinde v appce)
+window.petAddFood = id => {
+  const p = petFind(id);
+  if(!CU || !p?.food) return;
+  const target = p._gid && groupModShared(p._gid, 'shop') ? p._gid : shopGid();
+  const name = p.food.name || t('pet.food.def'), key = name.trim().toLowerCase();
+  if(shopItemsOf(target).some(i => i && !i.done && String(i.name || '').trim().toLowerCase() === key)) { toast(t('pet.food.already')); return; }
+  addShopEntry({name, category: SHOP_CATS[SHOP_CATS.length - 1], qty: '1× ' + fmtNum(p.food.packKg) + ' kg', gid: target})
+    .catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
+  updateDoc(petRef(p), {'food.inShopAt': toDS()}).catch(petErr);
+  toast(t('pet.food.added', {to: shopToSfx(target)}));
+};
+
+// Na cestu: šablona → běžný checklist (ve skupině se sdílenými checklisty rovnou sdílený do ní)
+window.petTrip = async trip => {
+  const p = petCur(), n = PET_PACK_N[trip]?.[p?.kind];
+  if(!CU || !p || !n) return;
+  const texts = [];
+  for(let i = 1; i <= n; i++) texts.push(t('pet.pack.' + trip + '.' + p.kind + '.' + i));
+  if((trip === 'train' || trip === 'car') && p.kind !== 'other') texts.push(t('pet.pack.passport'));
+  const em = PET_TRIPS.find(x => x[0] === trip)[1];
+  const gid = p._gid && groupModShared(p._gid, 'check') ? p._gid : null;
+  const list = {id: genId(), name: cutName(em + ' ' + t('pet.trip.' + trip) + ' – ' + p.name, 60), items: texts.map(text => ({id: genId(), text, done: false})),
+    shared: !!gid, createdAt: Date.now(), fromPet: p.id, clMerged53: true};
+  if(gid) list.sharedGid = gid;
+  setDoc(doc(db, 'users', CU.uid, 'checklists', list.id), list).catch(clSaveErr);
+  if(gid) {
+    setDoc(doc(db, 'families', gid, 'checklists', list.id), {name: list.name, items: list.items, updatedAt: Date.now(), owner: CU.uid, createdBy: CU.uid}).catch(petErr);
+    logGroupActivity(gid, 'check', 'share', list.name);
+  }
+  if(!hasMod('checklist') && !(await nudgeModOn('checklist'))) return;
+  activeChecklist = list.id;
+  window.sp('checklist');
+  toast(gid ? t('pet.trip.madeGrp', {to: grpLabel(gid)}) : t('pet.trip.made'), 4000);
+};
+window.petCopy = txt => {
+  try { navigator.clipboard.writeText(String(txt)).then(() => toast(t('pet.copied')), () => toast(t('pet.copyFail'))); }
+  catch(e) { toast(t('pet.copyFail')); }
+};
+
+// Sdílení: jen do skupiny se sdíleným kalendářem (jinak by se ztratily připomínky); přesun, žádné dvě kopie
+window.petShare = () => {
+  const p = petCur();
+  if(!CU || !p || p._gid) return;
+  const gs = myGroupIds().filter(g => groupModShared(g, 'cal'));
+  if(!gs.length) { toast(t('pet.shareNoCal'), 5000); return; }
+  const go = g => { if(confirm(t('pet.shareQ', {name: p.name, to: grpLabel(g)}))) petShareTo(p.id, g); };
+  if(gs.length === 1) go(gs[0]);
+  else openGrpChoiceSheet({opts: gs, cur: '', label: grpLabel, aria: t('pet.shareTo'), focusSel: '.pet-share-btn', onPick: go});
+};
+async function petShareTo(id, gid) {
+  const p = petFind(id);
+  if(!CU || !p || p._gid || !groupModShared(gid, 'cal')) return;
+  if(navigator.onLine === false) { toast(t('pet.offline')); return; }
+  const uid = CU.uid;
+  try { await setDoc(doc(db, 'families', gid, 'pets', p.id), petDataOut(p)); }
+  catch(e) { petErr(e); return; }
+  petMirrorsDel(p);
+  petSyncAll({...p, _gid: gid});
+  deleteDoc(doc(db, 'users', uid, 'pets', p.id)).catch(petErr);
+  logGroupActivity(gid, 'cal', 'add', gaTitle(p.emoji + ' ' + p.name));
+  toast(t('pet.shared', {em: p.emoji, name: p.name, to: grpLabel(gid)}), 4000);
+}
+window.petUnshare = async () => {
+  const p = petCur();
+  if(!CU || !p?._gid || !petCanManage(p)) return;
+  const gid = p._gid;
+  if(!confirm(t('pet.unshareQ', {name: p.name, to: grpLabel(gid)}))) return;
+  if(navigator.onLine === false) { toast(t('pet.offline')); return; }
+  const uid = CU.uid;
+  try { await setDoc(doc(db, 'users', uid, 'pets', p.id), petDataOut(p, uid)); }
+  catch(e) { petErr(e); return; }
+  petMirrorsDel(p);
+  petSyncAll({...p, _gid: null});
+  deleteDoc(doc(db, 'families', gid, 'pets', p.id)).catch(petErr);
+  logGroupActivity(gid, 'cal', 'del', gaTitle(p.emoji + ' ' + p.name));
+  toast(t('pet.unshared', {name: p.name}), 4000);
+};
+
+// ── Karta na Domů ──
+function petsWidgetHTML() {
+  const all = allPets();
+  if(!all.length) return '';
+  const today = toDS(), rows = [];
+  let next = null;
+  for(const p of all) {
+    for(const [, c] of Object.entries(p.care)) {
+      const d = petDue(c.next, today);
+      if(d.n <= 14) rows.push({p, n: d.n, em: PET_CARE_EM[c.kind] || '🩺', txt: c.name + ' · ' + d.txt});
+      else if(!next || c.next < next.c.next) next = {p, c};
+    }
+    const fc = petFoodCalc(p.food, today);
+    if(fc && fc.state !== 'ok') rows.push({p, n: fc.left - p.food.warnDays, em: '🥣', food: true, txt: fc.state === 'out' ? t('pet.dash.foodOut') : tN('pet.dash.food', fc.left)});
+  }
+  rows.sort((a, b) => a.n - b.n);
+  const body = rows.length ? rows.slice(0, 3).map(r => '<div class="pet-dw-row"><span class="pet-dw-t"><span aria-hidden="true">' + esc(r.p.emoji) + '</span> ' + esc(r.p.name) + ' · <span aria-hidden="true">' + r.em + '</span> ' + esc(r.txt) + '</span>'
+      + (r.food && !r.p.food.inShopAt ? '<button type="button" class="pet-dw-cart" data-a0="' + esc(r.p.id) + '" aria-label="' + tH('pet.food.add') + '" onclick="event.stopPropagation();petAddFood(this.dataset.a0)">🛒</button>' : '') + '</div>').join('')
+    : '<div class="pet-dw-row"><span class="pet-dw-t">✓ ' + tH('pet.dash.ok') + (next ? ' · ' + tH('pet.dash.next') + ' <span aria-hidden="true">' + (PET_CARE_EM[next.c.kind] || '🩺') + '</span> ' + esc(next.c.name + ' ' + fmtDate(next.c.next, 'dm')) : '') + '</span></div>';
+  return '<div class="dw" onclick="sp(\'pets\')"><div class="dw-head"><div class="dw-title">🐾 ' + tH('dash.card.pets') + '</div><div class="dw-arrow">→</div></div>' + body + '</div>';
+}
+
 let _weeklyReportIv=null;
 async function initApp(){
   // Init history state pro Android back button
@@ -16708,6 +17474,7 @@ function subModules(){
   const on=id=>hasMod(id), any=(...ids)=>ids.some(on);
   subWater(); // sám hlídá waterOn()
   if(on('checklist')&&!_fireSubs['checklist']) subChecklist();
+  if(on('pets')&&!_fireSubs['pets']) subPets(); // Mazlíček (4.94)
   if(on('calendar')&&!_fireSubs['events']) subEvents();
   if(on('journal')&&!_fireSubs['entries']) subEntries();
   // Nákupy plní i vaření, jídelníček a parťák (suroviny receptu do seznamu, kontrola duplicit)
@@ -16724,7 +17491,7 @@ function buildNav(){
   const showRex=(prof.modules||[]).includes('rex');
   const home={id:'dashboard',emoji:'🏠',label:t('nav.home')};
   const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
-  const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist'];
+  const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist','pets'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
   const settings={id:'settings',emoji:'🔧',label:t('nav.settings')};
   let all;
@@ -16753,7 +17520,7 @@ function buildNav(){
 // Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
 const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','water']};
 // Kategorie modulů v panelu Více (4.72)
-const MORE_CATS=[{id:'home',mods:['shopping','mealplan','cooking','checklist']},{id:'me',mods:['habits','water','goals','journal']},{id:'time',mods:['calendar']}];
+const MORE_CATS=[{id:'home',mods:['shopping','mealplan','cooking','checklist','pets']},{id:'me',mods:['habits','water','goals','journal']},{id:'time',mods:['calendar']}];
 let _bnMore=[];
 const bnmTile=p=>`<button type="button" class="bn-more-item" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bn-more-lbl">${esc(p.label)}</span></button>`;
 function renderBnMore(){
@@ -16847,6 +17614,7 @@ window.sp=id=>{
   if(id==='journal'){renderEntryList();}
   if(id==='dashboard')rDash();
   if(id==='checklist'){ensureCheckSubs();renderChecklist();}
+  if(id==='pets')renderPets();
   if(id==='cooking'){initPantry();refreshCookChipFade();}
 };
 
@@ -17038,7 +17806,7 @@ function simpleModOrder(){
 // ── Přizpůsobení Domů (4.86): prof.dashLayout = {order, hidden} v users/{uid}/profile/main ──
 // Bez úprav pole neexistuje (platí výchozí pořadí). Pevné pásmo (Začínáme, nabídky, souhrn) se neupravuje.
 const DASH_CARDS=[{id:'focus',em:'🎯'},{id:'water',em:'💧'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},{id:'energy',em:'⭐'},{id:'quote',em:'💬'},
-  {id:'habits',em:'🔥'},{id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},
+  {id:'habits',em:'🔥'},{id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},
   {id:'mood',em:'😊'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
 const DASH_IDS=DASH_CARDS.map(c=>c.id);
 const DASH_MODCARDS=['habits','journal','goals','calendar','cooking','shopping','mood'];
@@ -17443,6 +18211,13 @@ function rDash(){
         <div class="dw-pbar"><div class="dw-pbar-fill" style="width:${shopPct}%;background:var(--green)"></div></div>
       </div>`;
     }
+  }
+
+  // ── WIDGET: MAZLÍČCI (4.94) ── jen se zvířetem; obal #pet-dash překreslí listener (petRefresh)
+  if(mods.includes('pets')&&!dHid.has('pets')){
+    if(!_fireSubs['pets']) subPets();
+    const ph=petsWidgetHTML();
+    if(ph) mw.pets='<div id="pet-dash">'+ph+'</div>';
   }
 
   // ── WIDGET: NÁLADA (pokud aktivní) ──
@@ -18627,6 +19402,18 @@ function buildChatContext(question=''){
     return [...all.slice(0,8).map(({c,gid})=>clLine(c,'- ',gid?tA('aip.ctx.cl.shared',{group:ctxGrp(gid)}):'',15)),...ctxMore(all.length,8)];
   });
 
+  // Mazlíček (4.94): nejvýš 4 zvířata, bez poznámek (jen v detailu)
+  add(tA('aip.ctx.s.pets'),1,()=>{
+    if(!hasMod('pets')) return [];
+    return allPets().slice(0,4).map(p=>{
+      const info=[t('pet.kind.'+p.kind),p.breed&&ctxT(p.breed,30),petAge(p.birth,today),p.weight!=null&&fmtNum(p.weight)+' kg',
+        p.allergies&&tA('aip.ctx.pet.allergy',{a:ctxT(p.allergies,60)})].filter(Boolean).join(', ');
+      const fc=petFoodCalc(p.food,today);
+      const care=petCareSorted(p).slice(0,4).map(([,c])=>ctxT(c.name,30)+' '+c.next).join(', ');
+      return '- '+ctxT(p.name,40)+' ('+info+')'+(fc?' · '+tA('aip.ctx.pet.food',{date:addDays(fc.runOut,-1)}):'')+(care?' · '+tA('aip.ctx.pet.care',{list:care}):'');
+    });
+  });
+
   add(tA('aip.ctx.s.shop'),1,()=>{
     const per=shopItems.filter(i=>i&&i.name&&!i.done);
     const lines=[...ctxList(tA('aip.ctx.shop.mine',{n:per.length}),per.slice(0,15).map(shopFmt)),...ctxMore(per.length,15)];
@@ -19383,10 +20170,11 @@ window.moveShopToFamily=async(btn,gid)=>{
 };
 
 // Zápis jedné položky do aktivního seznamu (osobní / sdílený + aktivita skupiny). Vrací true, pokud je sdílený.
-async function addShopEntry({name, category, qty}){
+// gid (4.94, nepovinné): cílový seznam místo zobrazeného (null = osobní); undefined = zobrazený jako dřív
+async function addShopEntry({name, category, qty, gid}){
   const cat = category || guessShopCategory(name);
   qty = String(qty||'').trim();
-  const fid = shopGid();
+  const fid = gid === undefined ? shopGid() : gid;
   installUnlock('shopping'); // před await: offline zápis čeká na server
   if(fid) {
     await addDoc(shopCol(fid),{
@@ -21657,7 +22445,7 @@ function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.
 // ── TOUR / PRŮVODCE ───────────────────────────────────
 
 // Texty kroků: tour.<modul>.t / tour.<modul>.x
-const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist']
+const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist','pets']
   .map(k => [k, {title: t('tour.' + k + '.t'), text: t('tour.' + k + '.x')}]));
 TOUR_MODULES.avatar = {
   title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return t('tour.avatar.t');}})()}`,
