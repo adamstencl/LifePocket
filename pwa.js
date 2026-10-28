@@ -86,6 +86,8 @@ function lpIsIOS() {
 function showIosBanner() {
   if (!lpIsIOS()) return;
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
+  // Vestavěný prohlížeč FB/Messenger/Instagram (4.93): „Přidat na plochu“ tam nejde, radí karta v appce
+  if (/FBAN|FBAV|Instagram|Line\//.test(navigator.userAgent || '')) return;
   try { if (localStorage.getItem('ios-dismissed')) return; } catch (e) { /* bez úložiště — ukaž */ }
   const banner = document.getElementById('ios-banner');
   if (banner) banner.style.display = 'block';

@@ -84,3 +84,15 @@
 - Dny `rest` kontrast 2,1–2,3 (opacity .55).
 - Pauza od pondělí po prvním splnění zmenší cíl na 1 (podle návrhu, zneužitelné).
 - Detail týdenního: dokud se nedotáhne historie, dlaždice 12/26/celkem krátce ukazují nižší čísla.
+
+## Z 4.93 (finální kontrola)
+- Celkový výkon v detailu ignoruje frekvenci (app.js `renderHabitDetail`, dlaždice „celkem“).
+- Nejednotné počty x/y v hlavičce skupiny návyků a u Rexe (hlavička počítá všechny aktivní, Rex jen `habitsDue`).
+- Offline archivace, pauza a smazání v detailu návyku nereagují (`await updateDoc` visí bez sítě).
+- Slabý kontrast stavů `.inactive` / `.pre` / `.future` ve světlých motivech.
+- Prompt injection přes neviditelné znaky v `</data>` (normalizovat/odstranit zero-width znaky před vložením dat do promptu).
+- Osobní checklist offline přepíše celý seznam (zápis celého dokumentu z paměti).
+- Fotka checklistu se přilepí k další položce.
+- Opakovaná vícedenní událost se v mřížce kalendáře ukáže jen první den.
+- Přerušené připojení ke skupině nejde zopakovat.
+- Hlášky jídelníček → nákup a volné párování receptů.

@@ -49,7 +49,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v88';
+const CACHE = 'lifepocket-v89';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -63,6 +63,7 @@ const OFFLINE_URLS = [
   '/i18n/ai-cs.js', // prompty AI (fáze 5)
   '/i18n/ai-en.js',
   '/style.css',
+  '/pwa.js', // instalace a banner iOS (4.93)
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
