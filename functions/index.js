@@ -902,7 +902,8 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   const senderProf = senderSnap.data();
   L = reqLang(request, senderProf); // bez data.lang podle profilu odesílatele
   const familyId = senderProf.familyId;
-  if (!familyId) throw new HttpsError('failed-precondition', tS(L, 'err.nfNoGroup'));
+  // familyId píše klient do vlastního profilu → do cesty jen po kontrole formátu (staré WORD-NNNN i nové WORD-XXXXXX)
+  if (typeof familyId !== 'string' || !GROUP_ID_RE.test(familyId)) throw new HttpsError('failed-precondition', tS(L, 'err.nfNoGroup'));
 
   // Jméno odesílatele; bez jména výchozí text v jazyce příjemce (níže)
   const senderNick = String(senderProf.prezdivka || senderProf.nickname || '').trim().slice(0, 40);
@@ -932,7 +933,7 @@ exports.notifyFamily = onCall({cors: true, region: 'europe-west1'}, async (reque
   let sent = 0;
   let membersReached = 0;
   for (const memberUid of Object.keys(members)) {
-    if (memberUid === uid) continue;
+    if (memberUid === uid || !UID_RE.test(memberUid)) continue; // klíč members je z dokumentu skupiny → ověřit před cestou
     try {
       const memberSnap = await db.doc(`users/${memberUid}/profile/main`).get();
       if (!memberSnap.exists) continue;
