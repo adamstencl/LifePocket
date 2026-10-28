@@ -174,10 +174,14 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1', maxInstances: 
   const L = reqLang(request);
   if (!request.auth) throw new HttpsError('unauthenticated', tS(L, 'err.auth'));
   const uid = request.auth.uid;
-  // Účet s heslem musí mít ověřený e-mail (ochrana proti hromadně zakládaným účtům); Google je ověřený
+  // Účet s heslem musí mít ověřený e-mail (ochrana proti hromadně zakládaným účtům); Google je ověřený.
+  // Token může být až hodinu starý (klient po ověření volá jen reload) → při „neověřeno“ rozhodne Auth
   const tok = request.auth.token || {};
   if (tok.firebase && tok.firebase.sign_in_provider === 'password' && tok.email_verified !== true) {
-    throw new HttpsError('failed-precondition', tS(L, 'err.aiVerify'));
+    let verified = false;
+    try { verified = (await getAuth().getUser(uid)).emailVerified === true; }
+    catch(e) { console.error('[LP] Kontrola ověření e-mailu selhala:', e.code || e.message); }
+    if (!verified) throw new HttpsError('failed-precondition', tS(L, 'err.aiVerify'));
   }
 
   // 2. Validace vstupu — před odečtem limitu, neplatný dotaz limit nespotřebuje
@@ -205,7 +209,7 @@ exports.claudeProxy = onCall({cors: true, region: 'europe-west1', maxInstances: 
     const gCount = gData.date === today ? (Number(gData.count) || 0) : 0;
     if (gCount >= aiCfg.dailyCap) {
       console.warn('[LP] Globální denní strop AI dosažen:', aiCfg.dailyCap);
-      throw new HttpsError('resource-exhausted', tS(L, 'err.aiGlobalCap'));
+      throw new HttpsError('resource-exhausted', tS(L, 'err.aiGlobalCap'), {reason: 'globalCap'});
     }
     // merge: v dokumentu je i famNotify (omezení notifyFamily)
     tx.set(rateRef, {date: today, count: count + 1}, {merge: true});
