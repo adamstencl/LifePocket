@@ -501,3 +501,4 @@ Cíl dne (MIT) by se měl dát nastavit dopředu na celý týden — co mám ud�
 - Panel „Více“ a chat: pevných 68 px místo safe-area.
 - Přesun nákupu do skupiny bez try/catch, výchozí checklist „Úkoly“ se může vytvořit dvakrát.
 - Kód skupiny jde uhodnout (144 000 kombinací), limit členů hlídá jen klient. Vyžaduje změnu pravidel (ANO).
+- Návyky: přetažení karty do jiné části dne (Ráno / Přes den / Večer). `enableDragReorder` umí jen pořadí v jednom kontejneru (`.habit-group-body`), přesun mezi skupinami by potřeboval nový režim tažení. Zatím jde přes detail → Upravit (4.95).

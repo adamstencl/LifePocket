@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.94';
+const APP_VERSION = '4.95';
 const CHANGELOG = [
+  { v:'4.95', items:[
+    '✏️ Návyk jde upravit: název, ikona, část dne, frekvence, cíl (v detailu návyku, Správa návyku → Upravit)'
+  ], en:[
+    '✏️ You can now edit a habit: name, icon, time of day, frequency, goal (habit detail, Manage habit → Edit)'
+  ]},
   { v:'4.94', items:[
     '🐾 Nový modul Mazlíček: karta psa, kočky i dalších zvířat s údaji, čipem a kontaktem na veterinu (tlačítko Zavolat)',
     '💉 Plán péče (očkování, odčervení, klíšťata) s opakováním: termín je v kalendáři, ráno přijde připomínka a po „Hotovo“ se posune',
@@ -3204,9 +3209,11 @@ function renderHabits(){
 
 // ── HABIT DETAIL ──────────────────────────────────────
 let detailHabitId = null;
+let _hdEdit = null; // rozpracovaná úprava návyku v detailu (4.95): {hid, name, emoji, group, ft, times, days, goal}
 
 window.openHabitDetail = (hid) => {
   detailHabitId = hid;
+  _hdEdit = null;
   const h = habits.find(x => x.id === hid);
   if (!h) return;
   const hdTitle = document.getElementById('hd-title');
@@ -3524,9 +3531,11 @@ function renderHabitDetail(h) {
 
     <div class="hd-section-title" style="margin-top:20px">${tH('hd.manage')}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button type="button" class="btn-s" style="flex:1 1 100%;min-height:44px" id="hde-btn" data-a0="${esc(h.id)}" aria-expanded="${hdEditOn(h)}" aria-controls="hd-edit" onclick="hdEditOpen(this.dataset.a0)">${tH('hd.edit')}</button>
       <button class="btn-s" style="flex:1;min-width:120px" data-a0="${esc(h.id)}" onclick="archiveHabit(this.dataset.a0)">📦 ${h.archived ? tH('hd.restore') : tH('hd.archive')}</button>
       <button class="btn-s" style="flex:1;min-width:120px;color:var(--text3);border-color:var(--border)" data-a0="${esc(h.id)}" onclick="showDeleteHabitConfirm(this.dataset.a0,this)">🗑️ ${tH('hd.delete')}</button>
     </div>
+    <div id="hd-edit">${hdEditOn(h) ? hdEditHTML(h) : ''}</div>
     <div id="hd-delete-confirm" style="display:none;margin-top:12px;background:rgba(255,59,48,.08);border:1px solid var(--red);border-radius:14px;padding:16px">
       <div style="font-size:14px;color:var(--red);font-weight:600;margin-bottom:8px">${tH('hd.delQ')}</div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:14px">${tH('hd.delText')}</div>
@@ -3555,6 +3564,131 @@ window.saveHabitReminder = async (hid, time) => {
   toast(time ? t('hd.reminderSet',{time}) : t('hd.reminderOffT'));
   renderHabitDetail(h); // překresli detail
   renderHabits(); // aktualizuj kartičku
+};
+
+// ── ÚPRAVA NÁVYKU (4.95): název, ikona, část dne, frekvence, cíl; typ ano/ne ↔ počet se nemění ──
+const HB_EDIT_EMOJI=['🏃','💧','📚','🧘','🥗','😴','🚭','💪','🎵','✍️']; // stejná nabídka jako formulář pro přidání
+const HB_EDIT_GROUPS=[['morning','🌅'],['day','☀️'],['evening','🌙']];
+function hdEditOn(h){ return !!(_hdEdit&&h&&_hdEdit.hid===h.id); }
+// Frekvence v jednotném tvaru (chybějící = denně, dny seřazené) – k porovnání a zápisu
+function habitFreqNorm(f){
+  const ft=f&&typeof f==='object'&&['daily','weekly','days'].includes(f.type)?f.type:'daily';
+  if(ft==='weekly') return {type:'weekly',times:clampInt(f.times||3,1,7)};
+  if(ft==='days') return {type:'days',days:[...new Set((Array.isArray(f.days)?f.days:[]).map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))].sort((a,b)=>a-b)};
+  return {type:'daily'};
+}
+// Jen změněná pole. Nová část dne: na konec skupiny a samostatně (rutinu ve staré skupině zacelí chainHeadGone, stejně jako archiv)
+function habitEditPatch(h,d){
+  const up={}, name=String(d.name||'').trim();
+  if(name&&name!==h.name) up.name=name;
+  if(d.emoji&&d.emoji!==h.emoji) up.emoji=d.emoji;
+  if(h.type==='count'){ const g=clampInt(parseInt(d.goal,10),1,9999); if(g!==Number(h.goal)) up.goal=g; }
+  const nf=habitFreqNorm({type:d.ft,times:d.times,days:d.days});
+  if(JSON.stringify(nf)!==JSON.stringify(habitFreqNorm(h.freq))) up.freq=nf;
+  if(CHAIN_GROUPS.includes(d.group)&&d.group!==(h.group||'day')){
+    up.group=d.group; up.chain=false;
+    up.order=chainGroupList(d.group).filter(x=>x.id!==h.id).reduce((m,x)=>Math.max(m,x.order||0),-1)+1;
+  }
+  return up;
+}
+function hdEditHTML(h){
+  const e=_hdEdit;
+  const emo=h.emoji&&!HB_EDIT_EMOJI.includes(h.emoji)?[h.emoji,...HB_EDIT_EMOJI]:HB_EDIT_EMOJI;
+  const times=e.times>6?[1,2,3,4,5,6,e.times]:[1,2,3,4,5,6];
+  const btn=(cls,on,k,v,label)=>`<button type="button" class="${cls}${on?' sel':''}" aria-pressed="${on}" data-a0="${k}" data-a1="${esc(v)}" onclick="hdEditSet(this.dataset.a0,this.dataset.a1)">${label}</button>`;
+  const moving=e.group!==(h.group||'day')&&!!chainOf(h);
+  return `<div class="hd-box hde" role="group" aria-labelledby="hde-btn">
+    <div class="fg"><label class="flbl" for="hde-name">${tH('hb.f.name')}</label>
+      <input class="finp" type="text" id="hde-name" maxlength="100" autocomplete="off" value="${esc(e.name)}" oninput="hdEditInput('name',this.value)" onkeydown="if(event.key==='Enter')hdEditSave()"></div>
+    <div class="fg"><div class="flbl" id="hde-grp-l">${tH('hd.edit.group')}</div>
+      <div class="habit-type-row" role="group" aria-labelledby="hde-grp-l">${HB_EDIT_GROUPS.map(([g,em])=>btn('ev-type-btn',e.group===g,'group',g,em+' '+tH('hb.grp.'+g))).join('')}</div>
+      ${moving?`<div class="hp-desc hde-note">${tH('hd.edit.chainNote')}</div>`:''}</div>
+    <div class="fg"><div class="flbl" id="hde-emo-l">${tH('hd.edit.emoji')}</div>
+      <div class="habit-emoji-row" role="group" aria-labelledby="hde-emo-l">${emo.map(x=>btn('emoji-pick-btn',e.emoji===x,'emoji',x,esc(x))).join('')}</div></div>
+    ${h.type==='count'?`<div class="fg"><label class="flbl" for="hde-goal">${tH('hb.f.goal')}</label>
+      <input class="finp" type="number" inputmode="numeric" id="hde-goal" min="1" max="9999" value="${esc(e.goal)}" oninput="hdEditInput('goal',this.value)"></div>`:''}
+    <div class="fg"><div class="flbl" id="hde-frq-l">${tH('hd.edit.freq')}</div>
+      <div class="freq-type-row" role="group" aria-labelledby="hde-frq-l">${[['daily','hb.f.daily'],['weekly','hb.f.weekly'],['days','hb.f.days']].map(([f,k])=>btn('ev-type-btn',e.ft===f,'ft',f,tH(k))).join('')}</div></div>
+    ${e.ft==='weekly'?`<div class="fg"><div class="flbl" id="hde-tw-l">${tH('hb.f.timesWeek')}</div>
+      <div class="freq-times-row" role="group" aria-labelledby="hde-tw-l">${times.map(n=>btn('freq-num-btn',e.times===n,'times',n,n+'×')).join('')}</div></div>`:''}
+    ${e.ft==='days'?`<div class="fg"><div class="flbl" id="hde-dd-l">${tH('hb.f.whichDays')}</div>
+      <div class="freq-days-row" role="group" aria-labelledby="hde-dd-l">${[1,2,3,4,5,6,0].map(d=>btn('freq-day-btn',e.days.includes(d),'day',d,tH('dow.'+d))).join('')}</div></div>`:''}
+    <div class="add-habit-actions">
+      <button type="button" class="btn-s" onclick="hdEditClose()">${tH('common.cancel')}</button>
+      <button type="button" class="btn-p" style="flex:1" onclick="hdEditSave()">💾 ${tH('common.save')}</button>
+    </div>
+  </div>`;
+}
+// Překreslit jen panel úpravy (detail kolem zůstane), fokus zpět na stejné tlačítko
+function hdEditRedraw(k,v){
+  const box=document.getElementById('hd-edit'), h=_hdEdit&&habits.find(x=>x.id===_hdEdit.hid);
+  if(!box||!h) return;
+  box.innerHTML=hdEditHTML(h);
+  if(k) [...box.querySelectorAll('button[data-a0]')].find(b=>b.dataset.a0===k&&b.dataset.a1===String(v))?.focus();
+}
+window.hdEditOpen=hid=>{
+  const h=habits.find(x=>x.id===hid);
+  if(!h) return;
+  if(hdEditOn(h)){ hdEditClose(); return; }
+  const f=habitFreqNorm(h.freq);
+  _hdEdit={hid,name:h.name||'',emoji:h.emoji||'',group:CHAIN_GROUPS.includes(h.group)?h.group:'day',
+    ft:f.type,times:f.type==='weekly'?f.times:3,days:f.type==='days'?f.days:[],goal:String(Number(h.goal)||10)};
+  hdEditRedraw();
+  document.getElementById('hde-btn')?.setAttribute('aria-expanded','true');
+  document.getElementById('hd-edit')?.scrollIntoView({block:'nearest',behavior:'smooth'}); // bez fokusu do názvu: klávesnice by zakryla volbu části dne
+};
+function hdEditClose(){
+  _hdEdit=null;
+  const box=document.getElementById('hd-edit'); if(box) box.innerHTML='';
+  const b=document.getElementById('hde-btn'); if(b){ b.setAttribute('aria-expanded','false'); b.focus(); }
+}
+window.hdEditClose=hdEditClose;
+window.hdEditInput=(k,v)=>{ if(_hdEdit&&(k==='name'||k==='goal')) _hdEdit[k]=String(v); };
+window.hdEditSet=(k,v)=>{
+  const e=_hdEdit; if(!e) return;
+  if(k==='group'&&CHAIN_GROUPS.includes(v)) e.group=v;
+  else if(k==='emoji'&&v) e.emoji=v;
+  else if(k==='ft'&&['daily','weekly','days'].includes(v)) e.ft=v;
+  else if(k==='times') e.times=clampInt(v,1,7);
+  else if(k==='day'){ const d=clampInt(v,0,6); e.days=e.days.includes(d)?e.days.filter(x=>x!==d):[...e.days,d]; }
+  else return;
+  hdEditRedraw(k,v);
+};
+function hdEditRefresh(h){
+  renderHabits();
+  if(detailHabitId!==h.id) return;
+  const ht=document.getElementById('hd-title'); if(ht) ht.textContent=(h.emoji||'')+' '+h.name;
+  renderHabitDetail(h);
+}
+// Uložení (vzor 4.81): nejdřív paměť a překreslení, zápis se nečeká; při chybě se paměť vrátí. Dnešní záznam zůstává.
+window.hdEditSave=()=>{
+  const e=_hdEdit, h=e&&habits.find(x=>x.id===e.hid);
+  if(!CU||!h) return;
+  const ni=document.getElementById('hde-name'), gi=document.getElementById('hde-goal');
+  if(ni) e.name=ni.value;
+  if(gi) e.goal=gi.value;
+  if(!e.name.trim()){ toast(t('hb.nameReq')); ni?.focus(); return; }
+  if(e.ft==='days'&&!e.days.length){ toast(t('hb.dayReq')); return; }
+  if(h.type==='count'&&!(parseInt(e.goal,10)>=1)){ toast(t('hb.di.bad')); gi?.focus(); return; }
+  const steps=e.group!==(h.group||'day')?chainOf(h):null; // rutina ve staré skupině (před změnou)
+  const up=habitEditPatch(h,e);
+  if(!Object.keys(up).length){ hdEditClose(); return; }
+  _hdEdit=null;
+  const back={};
+  Object.keys(up).forEach(k=>{ back[k]=Object.prototype.hasOwnProperty.call(h,k)?h[k]:undefined; });
+  Object.assign(h,up);
+  shieldCacheReset(); // týdenní souhrny a štíty podle nové frekvence
+  hdEditRefresh(h);
+  document.getElementById('hde-btn')?.focus();
+  updateDoc(doc(db,'users',CU.uid,'habits',h.id),up).catch(err=>{
+    const hh=habits.find(x=>x.id===h.id)||h; // snapshot mohl objekt nahradit
+    Object.keys(back).forEach(k=>{ if(back[k]===undefined) delete hh[k]; else hh[k]=back[k]; });
+    shieldCacheReset(); hdEditRefresh(hh);
+    toast(t('common.saveFailed',{err:userErr(err,'habit')}));
+  });
+  syncShared('h',h.id);
+  toast(t('hd.edit.saved'));
+  chainHeadGone(steps,h,false); // byl 1. krokem rutiny: další krok je nový začátek (bez chain)
 };
 
 window.habitPrevDay=()=>{
