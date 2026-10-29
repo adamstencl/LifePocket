@@ -1604,6 +1604,7 @@ export default {
   'hd.edit.freq': 'Frekvence',
   'hd.edit.chainNote': '🔗 Návyk se odpojí od rutiny a přesune se na konec nové části dne.',
   'hd.edit.saved': '✓ Návyk upraven',
+  'hd.edit.freqNote': 'Změna frekvence se projeví i ve statistikách a sérii za minulé dny.',
   'hd.restore': 'Obnovit',
   'hd.archive': 'Archivovat',
   'hd.delete': 'Smazat',

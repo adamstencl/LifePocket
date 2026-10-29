@@ -3587,7 +3587,7 @@ function habitEditPatch(h,d){
   if(JSON.stringify(nf)!==JSON.stringify(habitFreqNorm(h.freq))) up.freq=nf;
   if(CHAIN_GROUPS.includes(d.group)&&d.group!==(h.group||'day')){
     up.group=d.group; up.chain=false;
-    up.order=chainGroupList(d.group).filter(x=>x.id!==h.id).reduce((m,x)=>Math.max(m,x.order||0),-1)+1;
+    up.order=habits.filter(x=>x.id!==h.id&&(x.group||'day')===d.group).reduce((m,x)=>Math.max(m,x.order||0),-1)+1; // i archivované
   }
   return up;
 }
@@ -3608,7 +3608,8 @@ function hdEditHTML(h){
     ${h.type==='count'?`<div class="fg"><label class="flbl" for="hde-goal">${tH('hb.f.goal')}</label>
       <input class="finp" type="number" inputmode="numeric" id="hde-goal" min="1" max="9999" value="${esc(e.goal)}" oninput="hdEditInput('goal',this.value)"></div>`:''}
     <div class="fg"><div class="flbl" id="hde-frq-l">${tH('hd.edit.freq')}</div>
-      <div class="freq-type-row" role="group" aria-labelledby="hde-frq-l">${[['daily','hb.f.daily'],['weekly','hb.f.weekly'],['days','hb.f.days']].map(([f,k])=>btn('ev-type-btn',e.ft===f,'ft',f,tH(k))).join('')}</div></div>
+      <div class="freq-type-row" role="group" aria-labelledby="hde-frq-l">${[['daily','hb.f.daily'],['weekly','hb.f.weekly'],['days','hb.f.days']].map(([f,k])=>btn('ev-type-btn',e.ft===f,'ft',f,tH(k))).join('')}</div>
+      <div class="hp-desc hde-note">${tH('hd.edit.freqNote')}</div></div>
     ${e.ft==='weekly'?`<div class="fg"><div class="flbl" id="hde-tw-l">${tH('hb.f.timesWeek')}</div>
       <div class="freq-times-row" role="group" aria-labelledby="hde-tw-l">${times.map(n=>btn('freq-num-btn',e.times===n,'times',n,n+'×')).join('')}</div></div>`:''}
     ${e.ft==='days'?`<div class="fg"><div class="flbl" id="hde-dd-l">${tH('hb.f.whichDays')}</div>
@@ -3654,6 +3655,19 @@ window.hdEditSet=(k,v)=>{
   else return;
   hdEditRedraw(k,v);
 };
+// Nový cíl počítaného návyku: dnešek a den otevřený v seznamu přepočítat (done = value >= cíl), ostatní příznaky a historie zůstávají
+function hdGoalRelog(h){
+  if(!CU||h.type!=='count') return;
+  const g=Number(h.goal)||1, today=toDS();
+  [...new Set([today,habitDay])].forEach(ds=>{
+    if(ds>today) return;
+    const l=hLog(h.id+'_'+ds), v=Number(l?.value);
+    if(!l||l.value==null||!Number.isFinite(v)) return; // záznam štítu nemá value
+    const done=v>=g;
+    if(!!l.done===done) return;
+    putHabitLog({id:l.id,habitId:h.id,date:ds,done},true).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'habit')})));
+  });
+}
 function hdEditRefresh(h){
   renderHabits();
   if(detailHabitId!==h.id) return;
@@ -3678,12 +3692,15 @@ window.hdEditSave=()=>{
   Object.keys(up).forEach(k=>{ back[k]=Object.prototype.hasOwnProperty.call(h,k)?h[k]:undefined; });
   Object.assign(h,up);
   shieldCacheReset(); // týdenní souhrny a štíty podle nové frekvence
+  if('goal' in up) hdGoalRelog(h);
   hdEditRefresh(h);
   document.getElementById('hde-btn')?.focus();
   updateDoc(doc(db,'users',CU.uid,'habits',h.id),up).catch(err=>{
     const hh=habits.find(x=>x.id===h.id)||h; // snapshot mohl objekt nahradit
     Object.keys(back).forEach(k=>{ if(back[k]===undefined) delete hh[k]; else hh[k]=back[k]; });
+    if('goal' in back) hdGoalRelog(hh);
     shieldCacheReset(); hdEditRefresh(hh);
+    syncShared('h',hh.id);
     toast(t('common.saveFailed',{err:userErr(err,'habit')}));
   });
   syncShared('h',h.id);

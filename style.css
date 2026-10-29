@@ -1917,6 +1917,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .hde .finp{width:100%;box-sizing:border-box}
 .hde .hde-note{margin:8px 0 0;font-size:13px}
 .hde .add-habit-actions button{min-height:44px}
+.hde .emoji-pick-btn{width:44px;height:44px}
+.hde .freq-num-btn,.hde .freq-day-btn,.hde .finp{min-height:44px}
 .hp-desc{font-size:14px;color:var(--text2);margin-bottom:12px;line-height:1.45}
 .hp-lbl{font-size:13px;color:var(--text2);margin:0 0 6px}
 .hp-active{color:var(--accent);margin-bottom:10px;font-size:14px}

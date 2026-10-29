@@ -1574,6 +1574,7 @@ export default {
   'hd.edit.freq': 'Frequency',
   'hd.edit.chainNote': '🔗 The habit leaves its routine and moves to the end of the new time of day.',
   'hd.edit.saved': '✓ Habit updated',
+  'hd.edit.freqNote': 'A frequency change also applies to stats and the streak for past days.',
   'hd.restore': 'Restore',
   'hd.archive': 'Archive',
   'hd.delete': 'Delete',
