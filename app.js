@@ -67,8 +67,21 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.97';
+const APP_VERSION = '4.98';
 const CHANGELOG = [
+  { v:'4.98', items:[
+    '↕️ Návyk přesuneš do jiné části dne podržením a přetažením karty (i do sbalené nebo prázdné skupiny)',
+    '🗓️ Týdenní souhrn: v neděli večer přijde přehled týdne – návyky, nejdelší série, pitný režim a události na příští týden (vypnout jde v Nastavení → Notifikace)',
+    '✅ Počty v hlavičce skupiny návyků sedí s Domů; archivace, pauza a smazání návyku fungují i offline',
+    '🗓️ Výroční vícedenní události se v kalendáři ukážou všechny dny (i přes Nový rok); checklist offline nepřepíše seznam a fotka se nepřilepí k jiné položce',
+    '🛒 Jídelníček → nákup hlásí „vše už máš v nákupu“ a páruje recepty přesně; 🐾 granule se zálohou a bez zbytečné výzvy k nákupu; přerušené připojení ke skupině jde zopakovat'
+  ], en:[
+    '↕️ Move a habit to another part of the day by long-pressing and dragging its card (even into a collapsed or empty group)',
+    '🗓️ Weekly summary: on Sunday evening you get a recap of your week – habits, longest streak, water and next week’s events (turn it off in Settings → Notifications)',
+    '✅ Habit group header counts match Home; archiving, pausing or deleting a habit works offline too',
+    '🗓️ Yearly multi-day events show on every day in the calendar (even over New Year); checklists no longer overwrite the list offline and photos don’t stick to another item',
+    '🛒 Meal plan → shopping says “everything’s already on the list” and matches recipes exactly; 🐾 pet food with spare packs and no needless shopping prompt; an interrupted group join can be retried'
+  ]},
   { v:'4.97', items:[
     '📋 Checklist: pole pro novou položku má výstižnější popisek'
   ], en:[
