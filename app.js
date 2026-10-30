@@ -4235,9 +4235,24 @@ function renderCal(){
   renderEvList();
 }
 
+// Výskyt výroční vícedenní události (repeat:'yes' + dateEnd) v roce y: {s,e} jako YYYY-MM-DD, jinak null.
+// Délka podle původního rozpětí, přelom roku (30. 12. – 2. 1.) přejde do dalšího roku.
+function evYearSpan(ev,y){
+  if(!ev||ev.repeat!=='yes'||!isDS(ev.date)||!isDS(ev.dateEnd)||ev.dateEnd<=ev.date) return null;
+  const [sy,sm,sd]=ev.date.split('-').map(Number), [ey,em,ed]=ev.dateEnd.split('-').map(Number);
+  const span=Math.round((Date.UTC(ey,em-1,ed)-Date.UTC(sy,sm-1,sd))/864e5);
+  if(!(span>0&&span<366)) return null;
+  return {s:toDS(new Date(y,sm-1,sd)), e:toDS(new Date(y,sm-1,sd+span))};
+}
 function getEventsForDate(ds){
+  const y=+ds.slice(0,4);
   const match = ev => {
-    if(ev.repeat==='yes') return ev.date.slice(5)===ds.slice(5);
+    if(ev.repeat==='yes'){
+      // vícedenní: letošní výskyt, nebo loňský přes přelom roku
+      const a=evYearSpan(ev,y), b=a&&evYearSpan(ev,y-1);
+      if(a) return (ds>=a.s&&ds<=a.e)||(ds>=b.s&&ds<=b.e);
+      return ev.date.slice(5)===ds.slice(5);
+    }
     if(ev.dateEnd) return ds>=ev.date && ds<=ev.dateEnd;
     return ev.date===ds;
   };
@@ -4251,7 +4266,15 @@ function getUpcoming14(){
   const result=[];
   [...events, ...getAllFamilyEvents()].forEach(ev=>{
     let evDate=new Date(ev.date+'T12:00:00');
-    if(ev.repeat==='yes'){
+    const sp=evYearSpan(ev,today.getFullYear()-1);
+    if(sp){
+      // výroční vícedenní: probíhající výskyt (i loňský přes přelom roku) jako dnešní, jinak nejbližší začátek
+      for(let k=0;k<3;k++){
+        const o=evYearSpan(ev,today.getFullYear()-1+k), st=new Date(o.s+'T12:00:00');
+        if(o.s<=todayDS&&o.e>=todayDS){result.push({...ev,_date:new Date(todayDS+'T12:00:00'),_start:st,_end:o.e});break;}
+        if(st>=today&&st<=future){result.push({...ev,_date:st,_start:st,_end:o.e});break;}
+      }
+    } else if(ev.repeat==='yes'){
       const thisYear=new Date(today.getFullYear(),evDate.getMonth(),evDate.getDate());
       const nextYear=new Date(today.getFullYear()+1,evDate.getMonth(),evDate.getDate());
       if(thisYear>=today&&thisYear<=future) result.push({...ev,_date:thisYear});
@@ -4316,7 +4339,7 @@ function renderEvList(){
       +'<div class="ev-info">'
       +'<div class="ev-name">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div class="ev-date">'+(ev.dateEnd
-        ?fmtDate(ev.repeat==='yes'?ev._date:ev.date,'dM')+' – '+fmtDate(ev.dateEnd,'dM')
+        ?fmtDate(ev._start||ev.date,'dM')+' – '+fmtDate(ev._end||ev.dateEnd,'dM')
         :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
@@ -10120,9 +10143,11 @@ window.joinFamily = async (codeArg) => {
     code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(code === familyId || extraGroupIds.includes(code)) { toast(t('grp.already')); return false; }
-    if(Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
+    // Přerušené připojení (členství zapsané, profil ne): ve skupině už jsem → jen dopsat profil
+    const isIn = joinIsMember(fData);
+    if(!isIn && Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
     // Přidej sebe do skupiny jen vlastním klíčem (celá mapa z paměti by přepsala souběžné změny)
-    await updateDoc(doc(db,'families',code), {
+    if(!isIn) await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
     await setDoc(doc(db,'users',CU.uid,'profile','main'), {familyId: code}, {merge:true}); // jen familyId
@@ -10142,12 +10167,15 @@ window.joinFamily = async (codeArg) => {
     toast(t('grp.joinFail', {err: userErr(e,'skupina')})); return null;
   }
 };
+// Jsem už v members skupiny (např. po přerušeném připojení, kdy se nestihl zapsat profil)?
+function joinIsMember(fData) { return !!CU && !!fData?.members && Object.prototype.hasOwnProperty.call(fData.members, CU.uid); }
 // Odmítnutý zápis při připojení (4.83): mezitím se skupina mohla zaplnit → čerstvý dokument, ≥ 8 členů = plná
+// (pokud v ní už jsem, plná pro mě není)
 async function joinGroupFull(e, code) {
   if(e?.code !== 'permission-denied' || !code) return false;
   try {
     const s = await getDoc(doc(db,'families',code));
-    return s.exists() && Object.keys(s.data()?.members || {}).length >= GROUP_MEMBERS_MAX;
+    return s.exists() && !joinIsMember(s.data()) && Object.keys(s.data()?.members || {}).length >= GROUP_MEMBERS_MAX;
   } catch(err) { return false; }
 }
 
@@ -11056,8 +11084,9 @@ window.joinExtraGroup = async (codeArg) => {
     code = hit.code; const fData = hit.snap.data();
     if(code !== typed && !confirm(t('grp.codeFixedQ', {typed, code, name: cutName(fData.groupName,40) || code}))) return false;
     if(extraGroupIds.includes(code) || code === familyId) { toast(t('grp.already')); return false; }
-    if(Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
-    await updateDoc(doc(db,'families',code), {
+    const isIn = joinIsMember(fData); // přerušené připojení → jen dopsat profil
+    if(!isIn && Object.keys(fData.members||{}).length >= GROUP_MEMBERS_MAX) { toast(t('grp.full')); return false; }
+    if(!isIn) await updateDoc(doc(db,'families',code), {
       ['members.' + CU.uid]: { name: cutName(prof.prezdivka||prof.nickname||CU.displayName||t('grp.me')), avatar: prof.avatarId||'rex', joinedAt: new Date().toISOString(), role:'member' }
     });
     extraGroupIds = [...extraGroupIds, code];
@@ -16182,9 +16211,18 @@ window.deleteFoodLog = async (id) => {
 
 
 let _mpShopBusy = false; // hromadné přidání z jídelníčku (4.83)
+// Recept k jídlu v plánu: přesná shoda normalizovaného názvu (bez velikosti písmen, diakritiky a nadbytečných mezer).
+// Dřív includes() → „Rýže“ se spárovala s „Kuře s rýží“ a do nákupu šly cizí suroviny.
+function mpRecipeFor(mealName) {
+  const n = pantryNorm(mealName);
+  return n ? (savedRecipes || []).find(r => r && pantryNorm(r.name) === n) : undefined;
+}
 window.mealplanToShopping = async () => {
   if(!CU){ toast(t('mp.loginReq')); return; }
   if(_mpShopBusy) return; // zápis předchozího klepnutí ještě běží
+  const mg0 = mealGid();
+  // Plán skupiny se ještě načítá → nehlásit „prázdný“
+  if(mg0 && !mealGrp[mg0]?.loaded) { subscribeGroupMeal(mg0); toast(t('mp.planLoading')); return; }
   const plan = currentMealPlan();
 
   const mealNames = [];
@@ -16208,10 +16246,7 @@ window.mealplanToShopping = async () => {
   const toAdd = [];
 
   for(const mealName of mealNames) {
-    const recipe = savedRecipes.find(r =>
-      r.name.toLowerCase() === mealName.toLowerCase() ||
-      mealName.toLowerCase().includes(r.name.toLowerCase())
-    );
+    const recipe = mpRecipeFor(mealName);
     if(recipe && recipe.ingredients?.length && !foundRecipes.find(r=>r.id===recipe.id)) {
       foundRecipes.push(recipe);
       // Bez duplicit proti nekoupeným i proti surovinám z předchozích receptů (4.83)
@@ -16224,14 +16259,12 @@ window.mealplanToShopping = async () => {
   // Aktivita jednou za celou dávku (počet místo 20 volání)
   if(isSharedShop && addedCount) logGroupActivity(shopFid, 'shop', 'add', firstAdded, addedCount);
 
-  const withoutRecipe = mealNames.filter(m =>
-    !savedRecipes.find(r =>
-      r.name.toLowerCase() === m.toLowerCase() ||
-      m.toLowerCase().includes(r.name.toLowerCase())
-    )
-  );
+  const withoutRecipe = mealNames.filter(m => !mpRecipeFor(m));
 
-  if(addedCount > 0 || foundRecipes.length > 0) {
+  // Recepty nalezené, ale vše už v nákupu → „vše už máš v nákupu“ místo „Přidáno 0“
+  if(!addedCount && foundRecipes.some(r => r.ingredients?.length)) {
+    toast(t('mp.allInShop') + (withoutRecipe.length ? tN('mp.noRecipeN', withoutRecipe.length) : ''));
+  } else if(addedCount > 0 || foundRecipes.length > 0) {
     let msg = tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)}) + (addedCount ? shopToSfx(shopFid) : '');
     if(withoutRecipe.length) msg += tN('mp.noRecipeN', withoutRecipe.length);
     toast(msg);
@@ -16432,6 +16465,7 @@ window.hdNavMonth = (hid, dir) => {
 let checklists = [];
 let activeChecklist = null;
 let expandedCheckItemId = null;
+let clNewPhoto = null, clNewPhotoList = null, clShownList = null; // fotka k nové položce a seznam, ke kterému patří
 window.cancelCheckEdit = () => { expandedCheckItemId = null; renderChecklist(); };
 
 let _defChecklistUid = null; // pro tento účet už byl výchozí checklist založen
@@ -16477,12 +16511,8 @@ document.addEventListener('paste', async function(e) {
       if (!file) continue;
       toast(t('cl.processing'));
       try {
-        clNewPhoto = await compressImage(file, 900, 0.75);
-        const preview = document.getElementById('cl-new-photo-preview');
-        if (preview) {
-          preview.style.display = 'block';
-          preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
-        }
+        clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = clShownList;
+        clShowNewPhoto();
         document.getElementById('cl-new-inp')?.focus();
       } catch(err) { toast(t('cl.imgFail')); }
       break;
@@ -16501,7 +16531,7 @@ async function saveChecklistDoc(list) {
   }
 }
 // 4.83: úprava položek. fn(items) upraví/vrátí pole položek (podle item.id, bez závislosti na indexech).
-// Osobní seznam se uloží celý; seznam skupiny transakcí nad čerstvými daty ze serveru, aby souběžné
+// Osobní seznam i seznam skupiny se ukládají transakcí nad čerstvými daty ze serveru, aby souběžné
 // zápisy dvou zařízení neztratily položky. Offline / bez spojení: zápis nad daty z cache (clOfflineWrite).
 const CL_MAX_LEN = 900000; // rezerva pod limitem dokumentu Firestore (1 MiB)
 function clTooBig(x) { try { return JSON.stringify(x).length > CL_MAX_LEN; } catch(e) { return true; } }
@@ -16538,9 +16568,10 @@ function clSave(list, fn, addItem = null) {
   const loc = fn(list.items);
   if (Array.isArray(loc)) list.items = loc;
   const undo = e => { list.items = before; throw e; };
-  if (!list._family) return (clTooBig(list) ? Promise.reject(clErr('cl-big')) : saveChecklistDoc(list)).catch(undo);
-  if (!list._gid) return Promise.resolve();
-  const ref = doc(db,'families',list._gid,'checklists',list.id);
+  if (list._family && !list._gid) return Promise.resolve();
+  // Osobní seznam stejnou cestou jako seznam skupiny: mění se jen items (transakce / offline arrayUnion),
+  // ne celý dokument z paměti – offline zápis jiného zařízení se tak nepřepíše
+  const ref = list._family ? doc(db,'families',list._gid,'checklists',list.id) : doc(db,'users',CU.uid,'checklists',list.id);
   if (navigator.onLine === false) return clOfflineWrite(ref, fn, addItem).catch(undo);
   return clQueue(ref.path, () => runTransaction(db, async tx => {
     const s = await tx.get(ref);
@@ -16550,7 +16581,8 @@ function clSave(list, fn, addItem = null) {
     if (clTooBig(next)) throw clErr('cl-big');
     tx.update(ref, {items: next, updatedAt: Date.now()});
   }, {maxAttempts: 2}))
-    .catch(e => clIsOffline(e) ? clOfflineWrite(ref, fn, addItem) : Promise.reject(e))
+    // not-found ze serveru u právě založeného seznamu (setDoc ještě nedorazil): zápis přes cache, ve frontě za setDoc
+    .catch(e => clIsOffline(e) || e?.code === 'not-found' ? clOfflineWrite(ref, fn, addItem) : Promise.reject(e))
     .catch(undo);
 }
 function clSaveErr(e) {
@@ -16607,6 +16639,8 @@ function renderChecklist() {
   const base = allCl.find(c => c.id === activeChecklist) || allCl[0]; // záložka (osobní originál nebo seznam skupiny)
   if (!base) return;
   const list = clFind(base.id) || base; // data: u sdíleného seznamu kopie ve skupině
+  clShownList = base.id;
+  if (clNewPhoto && clNewPhotoList !== base.id) clNewPhoto = null; // jiný seznam (přepnutí, smazání…) → fotku zahodit
   if (!Array.isArray(list.items)) list.items = [];
   const isFamilyList = base._family === true;
   const shGid = isFamilyList ? null : clSharedGid(base), canShare = !isFamilyList && checkGroups().length > 0;
@@ -16673,6 +16707,7 @@ function renderChecklist() {
       }).join('') : emptyHTML('checklist')}
     </div>
   `;
+  clShowNewPhoto(); // rozepsaná fotka zůstane vidět (jinak by se nepozorovaně přilepila k další položce)
   enableDragReorder(el.querySelector('.cl-items'), '.cl-item', ids => reorderCheckItems(list.id, ids));
   scrollAnchorRestore(anchor);
   const f = typing && document.getElementById(typing.id);
@@ -16696,23 +16731,27 @@ function reorderCheckItems(listId, ids) {
 }
 
 window.switchChecklist = function(id) {
+  if (id !== activeChecklist) clNewPhoto = null; // fotka patří k rozepsané položce jiného seznamu
   activeChecklist = id;
   renderChecklist();
 };
 
-let clNewPhoto = null;
 window.clearClNewPhoto = () => { clNewPhoto = null; };
+// Náhled fotky k nové položce (po překreslení seznamu se obnoví podle clNewPhoto)
+function clShowNewPhoto() {
+  const preview = document.getElementById('cl-new-photo-preview');
+  if (!preview) return;
+  if (!clNewPhoto) { preview.style.display = 'none'; preview.innerHTML = ''; return; }
+  preview.style.display = 'block';
+  preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
+}
 
 window.handleClNewPhotoInput = async function(input) {
   const file = input.files[0]; if (!file) return;
   toast(t('cl.processing'));
   try {
-    clNewPhoto = await compressImage(file, 900, 0.75);
-    const preview = document.getElementById('cl-new-photo-preview');
-    if (preview) {
-      preview.style.display = 'block';
-      preview.innerHTML = `<img src="${esc(safeImgSrc(clNewPhoto))}" style="max-width:80px;max-height:60px;border-radius:8px;display:block"><button onclick="clearClNewPhoto();this.parentElement.style.display='none'" aria-label="${tH('a11y.photoDel')}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;font-size:11px;line-height:18px;text-align:center;padding:0">×</button>`;
-    }
+    clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = clShownList;
+    clShowNewPhoto();
   } catch(e) { toast(t('nt.photoFail')); }
   input.value = '';
 };
@@ -16947,7 +16986,9 @@ function petFoodCalc(f, today = toDS()) {
   const perPack = f.packKg * 1000 / f.dailyG;
   const runOut = addDays(f.openedAt, Math.floor(perPack * (1 + (f.spare || 0))));
   const left = petDays(today, runOut);
-  const pct = left <= 0 ? 0 : Math.max(0, Math.min(1, (perPack - petDays(f.openedAt, today)) / perPack));
+  // Zbytek právě otevřeného balení; po dojedení prvního se počítá další ze zálohy (bez „Nové balení“ by proužek ukazoval 0 %)
+  const used = Math.max(0, petDays(f.openedAt, today)), into = used < perPack ? used : used % perPack;
+  const pct = left <= 0 ? 0 : Math.max(0, Math.min(1, (perPack - into) / perPack, left / perPack));
   const state = left <= 0 ? 'out' : left <= f.warnDays ? 'warn' : 'ok';
   const ev = addDays(runOut, -f.warnDays);
   return {perPack, runOut, left, pct, state, evDate: ev < today ? today : ev};
@@ -17069,7 +17110,7 @@ function petEvSync(p, cid, isNew = false) {
   let ev = null;
   if(cid === 'food') {
     const fc = petFoodCalc(p.food);
-    if(fc) ev = {name: t('pet.food.ev', {name: p.name}), date: fc.evDate, care: 'food', typeEmoji: '🥣', remind: 'day0', time: null};
+    if(fc) ev = {name: t('pet.food.ev', {name: p.name}), date: fc.evDate, care: 'food', typeEmoji: '🥣', remind: 'day0', time: null, inShop: !!p.food.inShopAt};
   } else {
     const c = p.care?.[cid];
     if(c) ev = {name: c.name + ' – ' + p.name, date: c.next, care: c.kind, careId: cid, typeEmoji: PET_CARE_EM[c.kind] || '🩺', remind: c.remind, time: c.time};
@@ -17079,6 +17120,7 @@ function petEvSync(p, cid, isNew = false) {
     petId: p.id, care: ev.care, remind: ev.remind, time: ev.time || deleteField()};
   if(isNew) { data.addedBy = CU.uid; data.createdAt = new Date().toISOString(); }
   if(ev.careId) data.careId = ev.careId;
+  if(ev.care === 'food') data.inShop = ev.inShop; // granule už jsou v nákupu → server v ranním pushi nevyzývá k přidání
   setDoc(ref, data, {merge: true}).catch(e => console.warn('[LP] zrcadlo pets:', e?.code || e?.name));
 }
 function petSyncAll(p, isNew = false) { Object.keys(p.care || {}).forEach(cid => petEvSync(p, cid, isNew)); petEvSync(p, 'food', isNew); }
@@ -17441,19 +17483,39 @@ window.petDonePrev = () => {
   const nx = petAddInterval(petVal('pd-date'), c.every);
   el.textContent = c.every ? (nx ? t('pet.done.next', {date: fmtDate(nx, 'dmy'), every: petEveryLabel(c.every)}) : '') : t('pet.done.once');
 };
+// Stejný úkon ve stejný den už v historii je (souběžné „Hotovo“ na dvou zařízeních)
+function petLogDup(log, e) {
+  return (Array.isArray(log) ? log : []).some(l => l && l.d === e.d && (l.cid ? l.cid === e.cid : (l.kind === e.kind && l.name === e.name)));
+}
+// Zápis „Hotovo“: transakce nad čerstvou historií (druhé zařízení záznam nepřidá), ořez na posledních 30.
+// Offline: arrayUnion nad daty z paměti (dorazí po připojení), kontrola duplicity jen proti lokální historii.
+function petDoneWrite(ref, upd, entry, localLog) {
+  const offline = () => {
+    const u = {...upd};
+    if(!petLogDup(localLog, entry)) u.log = localLog.length >= PET_LOG_MAX ? [...localLog.slice(-(PET_LOG_MAX - 1)), entry] : arrayUnion(entry);
+    updateDoc(ref, u).catch(petErr);
+  };
+  if(navigator.onLine === false) { offline(); return Promise.resolve(); }
+  return runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if(!snap.exists()) throw clErr('not-found');
+    const log = Array.isArray(snap.data().log) ? snap.data().log.filter(l => l && typeof l === 'object') : [];
+    const u = {...upd};
+    if(!petLogDup(log, entry)) u.log = log.length >= PET_LOG_MAX ? [...log.slice(-(PET_LOG_MAX - 1)), entry] : [...log, entry];
+    tx.update(ref, u);
+  }, {maxAttempts: 3}).catch(e => { if(clIsOffline(e)) offline(); else throw e; });
+}
 window.petDoneSave = () => {
   const s = _petDone, p = s ? petFind(s.pid) : null, c = p?.care[s.cid];
   if(!CU || !c) { petClose('m-petdone'); return; }
   const d = petVal('pd-date');
   if(!isDS(d) || d > toDS()) { toast(t('cal.dateReq')); return; }
   const nx = petAddInterval(d, c.every);
-  const entry = {id: genId(), d, kind: c.kind, name: c.name, by: CU.uid};
+  const entry = {id: genId(), d, kind: c.kind, name: c.name, by: CU.uid, cid: s.cid};
   const upd = {updatedAt: Date.now()};
   if(nx) { upd['care.' + s.cid + '.last'] = d; upd['care.' + s.cid + '.next'] = nx; }
   else upd['care.' + s.cid] = deleteField();
-  // Historie: arrayUnion (souběh dvou zařízení), ořez na posledních 30 jen při plné historii
-  upd.log = p.log.length >= PET_LOG_MAX ? [...p.log.slice(-(PET_LOG_MAX - 1)), entry] : arrayUnion(entry);
-  updateDoc(petRef(p), upd).catch(petErr);
+  petDoneWrite(petRef(p), upd, entry, p.log).catch(petErr);
   const care = {...p.care};
   if(nx) care[s.cid] = {...c, last: d, next: nx}; else delete care[s.cid];
   petEvSync({...p, care}, s.cid);
@@ -17515,11 +17577,15 @@ window.petAddFood = id => {
   setTimeout(() => _petFoodBusy.delete(p.id), 1500);
   const target = p._gid && groupModShared(p._gid, 'shop') ? p._gid : shopGid();
   const name = p.food.name || t('pet.food.def'), key = name.trim().toLowerCase();
-  if(shopItemsOf(target).some(i => i && !i.done && String(i.name || '').trim().toLowerCase() === key)) { toast(t('pet.food.already')); return; }
-  addShopEntry({name, category: SHOP_CATS[SHOP_CATS.length - 1], qty: '1× ' + fmtNum(p.food.packKg) + ' kg', gid: target})
+  const already = shopItemsOf(target).some(i => i && !i.done && String(i.name || '').trim().toLowerCase() === key);
+  if(!already) addShopEntry({name, category: SHOP_CATS[SHOP_CATS.length - 1], qty: '1× ' + fmtNum(p.food.packKg) + ' kg', gid: target})
     .catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
-  updateDoc(petRef(p), {'food.inShopAt': toDS()}).catch(petErr);
-  toast(t('pet.food.added', {to: shopToSfx(target)}));
+  // Příznak „v nákupu“ (i když tam granule už byly) do mazlíčka a do zrcadla v kalendáři (ranní push)
+  // (zrcadlo vždy – starší verze příznak do kalendáře nepropisovaly)
+  const inShopAt = p.food.inShopAt || toDS();
+  if(!p.food.inShopAt) updateDoc(petRef(p), {'food.inShopAt': inShopAt}).catch(petErr);
+  petEvSync({...p, food: {...p.food, inShopAt}}, 'food');
+  toast(already ? t('pet.food.already') : t('pet.food.added', {to: shopToSfx(target)}));
 };
 
 // Na cestu: šablona → běžný checklist (ve skupině se sdílenými checklisty rovnou sdílený do ní)
@@ -19299,7 +19365,8 @@ const ctxDowFull=i=>{const w=weekdayNames('long',true);return lookupOr([w[6],...
 // Odstraní sekvence, kterými by cizí text mohl podvrhnout ohraničení dat nebo akci chatu ([FOOD:, <data>, </data>)
 // Vstup se nejdřív ořízne na cap znaků (regex pak běží v lineárním čase), kvantifikátory jsou omezené
 function ctxStrip(v,cap=2000){
-  let s=String(v==null?'':v).slice(0,cap),prev,i=0;
+  // neviditelné znaky (zero-width, soft hyphen, BOM) by obešly hledání '</data>'
+  let s=String(v==null?'':v).slice(0,cap).replace(/[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]/g,''),prev,i=0;
   do{prev=s;s=s.replace(/\[FOOD:|<\s{0,10}\/?\s{0,10}data[^>]{0,100}>/gi,'');}while(s!==prev&&++i<6);
   if(s!==prev) s=s.replace(/</g,''); // po 6 průchodech nic nepodvrhne: odstraň všechna '<'
   return s;

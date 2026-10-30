@@ -1811,7 +1811,8 @@ exports.sendScheduledNotifications = onSchedule(
           if (when === 'day0' && typeof ev.time === 'string' && evWin.slots.get(ev.time)?.has(ev.date)) continue;
           const vv = {name: nickname, ev: ev.name};
           const title = ev.care === 'food' ? tS(L, 'pet.food.t', vv) : when === 'day1' ? tS(L, 'pet.tmrw.t', vv) : tS(L, 'pet.today.t', vv);
-          const body = ev.care === 'food' ? tS(L, 'pet.food.b', vv) : when === 'day1' ? tS(L, 'pet.tmrw.b', vv) : tS(L, 'pet.today.b', vv);
+          // Granule už jsou v nákupu (příznak inShop ze zrcadla) → bez výzvy „přidej do nákupu“
+          const body = ev.care === 'food' ? tS(L, ev.inShop === true ? 'pet.food.bIn' : 'pet.food.b', vv) : when === 'day1' ? tS(L, 'pet.tmrw.b', vv) : tS(L, 'pet.today.b', vv);
           const petId = typeof ev.petId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(ev.petId) ? ev.petId : '';
           try { await push(title, body, `vet-${evDoc.id}-${ev.date}`, {data: {open: 'pets', id: petId}, ttl: TTL_EVENT}); }
           catch(e) { console.error(`[LP] pet push:`, e.message); }
