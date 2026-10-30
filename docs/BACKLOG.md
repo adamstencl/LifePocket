@@ -109,3 +109,14 @@
 - Každoroční události se pro souhrn čtou všechny (`repeat == 'yes'`); při velkém počtu narozenin zvážit uložené `md` (MM-DD) a rozsah.
 - Série se před pondělí dohledává nejvýš 42 čteními; delší nedohledaná série se ukáže jako „N+“.
 - Týdenní cíl v souhrnu je podle aktivních dnů (`habitWeekStat`), karta týdne na Domů (`calcWeekSummaryRaw`) počítá s `times` – sjednotit.
+
+## Z 4.98 (revize + test)
+- Týdenní souhrn: `weeklySent=true` až po úspěšném pushi (functions ~1666), jinak při chybě nepřijde ani večerní.
+- Týdenní souhrn: do počtu událostí nepočítat zrcadla mazlíčka (`vet`, granule), osobní `vet` jen s modulem pets.
+- `deleteHabit`/`archiveHabit`/`moveHabitToGroup`: při chybě se nevrátí `unshareAll` a `chainHeadGone` (volat až po úspěchu nebo `syncShared` v catch).
+- Jídelníček → nákup: při `mealGrp[g].err` věčné „Načítám…“ – rozlišit chybu.
+- Detail návyku „Celkem“ před dotažením historie počítá staré dny jako nesplněné; po `hlNeedHistory` zavolat `hbDetailRefresh`.
+- Přetažení: karta uskočí od prstu na krátké stránce (dočasná zóna nahoře); čára dopadu chybí u `.hb-next` (box-shadow) a u cizí rutiny ukazuje jiné místo, než kam návyk dopadne.
+- Hlavička skupiny počítá nevyřízené týdenní návyky, Domů (`habitsDue`) ne – sjednotit.
+- Fotka checklistu: `clNewPhotoList` nastavit před `await compressImage`.
+- `moveHabitToGroup` přečísluje jen nearchivované; `renderEvList` s neplatným rozpětím ukáže původní rok; opakovaný join může zapsat 2× aktivitu „připojil se“.
