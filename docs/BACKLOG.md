@@ -96,3 +96,10 @@
 - Opakovaná vícedenní událost se v mřížce kalendáře ukáže jen první den.
 - Přerušené připojení ke skupině nejde zopakovat.
 - Hlášky jídelníček → nákup a volné párování receptů.
+
+## Z 4.96 (připomínky)
+- `notifTimers` roste při dlouhém offline (scheduleDaily opakování přidává ID) – držet jeden handle v closure.
+- Připomínka s vlastním časem bez push tokenu propadne, když data ze serveru nedorazí do 2 min – dohnat při prvním `habitRemindReady()` (do ~30 min).
+- Komentář u `checkMissedNotifications` (app.js ~6833) neodpovídá chování.
+- SW data-only větev u zastaralé připomínky: raději zobrazit a hned zavřít (iOS).
+- Různé zóny zařízení vs. `prof.tz` kolem půlnoci mohou skrýt platnou připomínku.
