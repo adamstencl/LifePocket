@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.96';
+const APP_VERSION = '4.97';
 const CHANGELOG = [
+  { v:'4.97', items:[
+    '📋 Checklist: pole pro novou položku má výstižnější popisek'
+  ], en:[
+    '📋 Checklist: clearer label for adding a new item'
+  ]},
   { v:'4.96', items:[
     '🔔 Připomínka návyku nepřijde, když je už splněný, ani hned po otevření appky'
   ], en:[
