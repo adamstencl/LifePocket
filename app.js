@@ -6126,6 +6126,7 @@ const NOTIF_DEFAULTS = {
   habits: true,
   morningDigest: true,
   eveningDigest: true,
+  weekly: true,     // týdenní souhrn ze serveru: neděle v čase večerního souhrnu, místo něj
   birthday: true,
   pc: true          // výzva měsíce / týdne (4.63): ohlášení a večerní připomínka ze serveru
 };
@@ -6328,8 +6329,8 @@ function loadNotifSettings() {
   // jen platné HH:MM, jinak výchozí čas
   if (m) m.value = TP_RE.test(notifSettings.morning || '') ? notifSettings.morning : NOTIF_DEFAULTS.morning;
   if (ev) ev.value = TP_RE.test(notifSettings.evening || '') ? notifSettings.evening : NOTIF_DEFAULTS.evening;
-  const ids = ['nt-habits','nt-morning','nt-evening','nt-pc'];
-  const keys = ['habits','morningDigest','eveningDigest','pc'];
+  const ids = ['nt-habits','nt-morning','nt-evening','nt-weekly','nt-pc'];
+  const keys = ['habits','morningDigest','eveningDigest','weekly','pc'];
   ids.forEach((id,i) => {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
@@ -6367,6 +6368,7 @@ window.saveNotifSettings = () => {
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
   notifSettings.morningDigest = document.getElementById('nt-morning')?.checked ?? true;
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
+  notifSettings.weekly = document.getElementById('nt-weekly')?.checked ?? true;
   notifSettings.pc = document.getElementById('nt-pc')?.checked ?? true;
 
   localStorage.setItem('lp_notif', JSON.stringify(notifSettings));

@@ -1141,6 +1141,10 @@ else show();
                 <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co se ti dnes povedlo)</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-weekly" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.weekly">🗓️ Týdenní souhrn (neděle večer)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
                 <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
               </label>

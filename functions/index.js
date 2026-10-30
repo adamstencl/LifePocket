@@ -1211,6 +1211,179 @@ async function deletePublicChallengeData(uid) {
   }
 }
 
+// ── Týdenní souhrn (neděle večer) ────────────────────────
+// Posílá ho hlavní cron v neděli v čase večerního souhrnu (notifSettings.evening) místo běžného večerního souhrnu.
+// Pravidla výpočtu shodně s klientem (app.js habitDayState, habitWeekStat, habitStreak). Data se nelogují.
+const TTL_WEEKLY = 3 * 3600;
+const WK_STREAK_READS = 42; // strop čtení navíc na dohledání série před pondělím (6 týdnů po 7 dnech)
+const WK_STREAK_MIN = 2;    // kratší série se nehlásí
+const addDaysDS = (ds, n) => ymdUTC(new Date(Date.parse(ds + 'T12:00:00Z') + n * 86400000));
+const dowDS = (ds) => new Date(ds + 'T12:00:00Z').getUTCDay();
+
+// Den založení návyku v zóně uživatele (jako habitStartDS); neznámý = ''
+function wkHabitStart(h, tz) {
+  const ms = toMillis(h && h.createdAt);
+  if (ms !== null) return zoneNow(tz, new Date(ms)).today;
+  return typeof (h && h.createdAt) === 'string' ? h.createdAt.slice(0, 10) : '';
+}
+// Pauza v den ds (jako isHabitPausedOn): dnešek pausedUntil, minulost rozsahy pauses
+function wkPaused(h, ds, today) {
+  if (ds >= today) { const pu = h.pausedUntil ? String(h.pausedUntil).slice(0, 10) : ''; return !!(pu && pu >= today && pu >= ds); }
+  return (Array.isArray(h.pauses) ? h.pauses : []).some(p => p && typeof p.from === 'string' && typeof p.to === 'string' && p.from <= ds && ds <= p.to);
+}
+// Logy návyků → mapa „hid|den“ → {done, skipped}
+function wkLogIndex(docs, idx = new Map()) {
+  for (const doc of docs) {
+    if (doc.exists === false) continue;
+    const d = doc.data() || {};
+    const ds = typeof d.date === 'string' ? d.date : '';
+    if (!ds) continue;
+    const hid = typeof d.habitId === 'string' && d.habitId ? d.habitId : doc.id.slice(0, -(ds.length + 1));
+    const k = hid + '|' + ds;
+    const c = idx.get(k) || {done: false, skipped: false};
+    if (d.done) c.done = true;
+    if (d.skipped) c.skipped = true;
+    idx.set(k, c);
+  }
+  return idx;
+}
+// Stav dne: 'done' | 'miss' | 'neutral' | 'future' (jako habitDayState)
+function wkDayState(h, id, ds, today, idx, start) {
+  if (ds > today) return 'future';
+  const l = idx.get(id + '|' + ds);
+  if (l && l.done) return 'done';
+  if (l && l.skipped) return 'neutral';
+  if (wkPaused(h, ds, today)) return 'neutral';
+  const f = (h.freq && typeof h.freq === 'object') ? h.freq : {type: 'daily'};
+  if (f.type === 'days' && !(Array.isArray(f.days) ? f.days : []).map(Number).includes(dowDS(ds))) return 'neutral';
+  if (start && ds < start) return 'neutral';
+  if (f.type === 'weekly') return 'neutral';
+  return 'miss';
+}
+// Splněno / naplánováno za týden days (po–ne). Denní a „dny v týdnu“ po dnech (nesplněný dnešek se nepočítá,
+// archivovaný jen v den splnění), týdenní přes min(splněno, cíl týdne podle aktivních dnů) jako habitWeekStat.
+function wkHabitStats(habits, days, today, idx, tz) {
+  let due = 0, done = 0;
+  for (const {id, h} of habits) {
+    if (!h || typeof h !== 'object') continue;
+    const start = wkHabitStart(h, tz);
+    if (isWeeklyHabit(h)) {
+      if (h.archived) continue;
+      let n = 0, active = 0;
+      for (const ds of days) {
+        if (idx.get(id + '|' + ds)?.done) { n++; active++; continue; }
+        if (start && ds < start) continue;
+        if (wkPaused(h, ds, today)) continue;
+        active++;
+      }
+      if (!active) continue;
+      const target = Math.min(active, Math.max(1, Math.ceil(weekTimesS(h) * active / 7)));
+      due += target; done += Math.min(n, target);
+      continue;
+    }
+    for (const ds of days) {
+      if (ds > today) continue;
+      const st = wkDayState(h, id, ds, today, idx, start);
+      if (h.archived && st !== 'done') continue;
+      if (st === 'done') { due++; done++; } else if (st === 'miss' && ds < today) due++;
+    }
+  }
+  return {due, done, pct: due ? Math.round(done / due * 100) : 0};
+}
+// Krok série od dne d zpět (jako habitStreak). from = nejstarší den s načtenými logy.
+// Vrací {n, d}: d = den, od kterého je třeba pokračovat se staršími logy, jinak null (série skončila)
+function wkStreakStep(h, id, d, n, today, idx, start, from) {
+  for (let i = 0; i < 1500; i++) {
+    if (d < from) return {n, d};
+    const st = wkDayState(h, id, d, today, idx, start);
+    if (start && d < start && st !== 'done') return {n, d: null};
+    if (st === 'done') n++; else if (st === 'miss') return {n, d: null};
+    d = addDaysDS(d, -1);
+  }
+  return {n, d: null};
+}
+// Nejdelší aktuální série denních návyků. Série sahající před pondělí se dohledá po týdnech přes getAll
+// (ID `${hid}_${den}`, nejvýš WK_STREAK_READS čtení); nedohledaná = dolní mez (plus).
+async function wkBestStreak(uid, habits, today, idx, from, tz) {
+  let best = 0;
+  let open = [];
+  for (const {id, h} of habits) {
+    if (!h || typeof h !== 'object' || h.archived || isWeeklyHabit(h)) continue;
+    const start = wkHabitStart(h, tz);
+    const d0 = wkDayState(h, id, today, today, idx, start) === 'done' ? today : addDaysDS(today, -1);
+    const r = wkStreakStep(h, id, d0, 0, today, idx, start, from);
+    if (r.d) open.push({id, h, start, n: r.n, d: r.d}); else best = Math.max(best, r.n);
+  }
+  let reads = 0;
+  while (open.length && reads + 7 <= WK_STREAK_READS) {
+    open.sort((a, b) => b.n - a.n);
+    const batch = open.splice(0, Math.floor((WK_STREAK_READS - reads) / 7));
+    const refs = [];
+    for (const o of batch) for (let i = 0; i < 7; i++) refs.push(db.doc(`users/${uid}/habitLogs/${o.id}_${addDaysDS(o.d, -i)}`));
+    reads += refs.length;
+    wkLogIndex(await db.getAll(...refs), idx);
+    for (const o of batch) {
+      const r = wkStreakStep(o.h, o.id, o.d, o.n, today, idx, o.start, addDaysDS(o.d, -6));
+      if (r.d) open.push({...o, n: r.n, d: r.d}); else best = Math.max(best, r.n);
+    }
+  }
+  let plus = false;
+  for (const o of open) { plus = true; best = Math.max(best, o.n); }
+  return {n: best, plus, reads};
+}
+// Pitný režim týdne z users/{uid}/water: dny s pitím (any) a se splněným cílem (cíl dne z dokumentu, dnešek z nastavení)
+function wkWaterStats(docs, W, days, today) {
+  const inW = new Set(days);
+  let met = 0, any = 0;
+  for (const doc of docs) {
+    const d = doc.data() || {};
+    const ds = typeof d.date === 'string' ? d.date : doc.id;
+    if (!inW.has(ds)) continue;
+    const ml = Number(d.ml) || 0;
+    if (ml <= 0) continue;
+    any++;
+    const g = Number(d.goal);
+    const goal = ds !== today && g >= 500 && g <= 6000 ? g : waterGoalS(W);
+    if (ml >= goal) met++;
+  }
+  return {met, any};
+}
+// Události kolekce pro příštích 7 dní: jednorázové podle data začátku (rozsah na date) + každoroční (repeat 'yes')
+async function wkLoadEvents(path, from, to) {
+  const [a, b] = await Promise.all([
+    db.collection(path).where('date', '>=', from).where('date', '<=', to).get(),
+    db.collection(path).where('repeat', '==', 'yes').get(),
+  ]);
+  const byId = new Map();
+  for (const d of [...a.docs, ...b.docs]) byId.set(d.id, d);
+  return [...byId.values()];
+}
+// Počet událostí začínajících v některém ze dnů (každoroční podle měsíce a dne, jako evOnDate)
+function wkCountEvents(docs, days) {
+  let n = 0;
+  for (const doc of docs) {
+    const ev = doc.data() || {};
+    if (typeof ev.date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(ev.date)) continue;
+    if (days.some(ds => evOnDate(ev, ds))) n++;
+  }
+  return n;
+}
+// Text souhrnu: s = {habits: {pct}|null, streak: {n, plus}|null, water: {met}|null, events: číslo|null}
+function wkBody(L, s) {
+  const parts = [];
+  if (s.habits) {
+    let p = tS(L, 'wk.habits', {pct: s.habits.pct});
+    if (s.streak && s.streak.n >= WK_STREAK_MIN) p += ' ' + tS(L, 'wk.streak', {n: s.streak.n, v: s.streak.n + (s.streak.plus ? '+' : '')});
+    parts.push(p);
+  }
+  if (s.water) parts.push(tS(L, 'wk.water', {d: s.water.met}));
+  if (!parts.length) return null;
+  const first = parts.join(', ');
+  let body = first.charAt(0).toLocaleUpperCase(L) + first.slice(1) + '.';
+  if (typeof s.events === 'number') body += ' ' + (s.events > 0 ? tS(L, 'wk.ev', {n: s.events}) : tS(L, 'wk.ev0'));
+  return body;
+}
+
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
   {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 240},
@@ -1419,12 +1592,13 @@ exports.sendScheduledNotifications = onSchedule(
         const nickname = prof.prezdivka || prof.nickname || tS(L, 'nick.friend');
         const morningTime = ns.morning || '08:00';
         // Dnešní návyky načteme nejvýš jednou na uživatele (sdílí ranní, večerní i připomínky)
-        let dueCache = null;
+        let dueCache = null, habitsAll = null;
+        const getAllHabits = async () => {
+          if (!habitsAll) habitsAll = (await db.collection(`users/${uid}/habits`).get()).docs;
+          return habitsAll;
+        };
         const getDueHabits = async () => {
-          if (!dueCache) {
-            const habitsSnap = await db.collection(`users/${uid}/habits`).get();
-            dueCache = habitsSnap.docs.filter(d => isHabitDueToday(d.data(), today, dow));
-          }
+          if (!dueCache) dueCache = (await getAllHabits()).filter(d => isHabitDueToday(d.data(), today, dow));
           return dueCache;
         };
 
@@ -1444,8 +1618,58 @@ exports.sendScheduledNotifications = onSchedule(
           }
         }
 
+        // ── Týdenní souhrn: neděle v čase večerního souhrnu (undefined = zapnuto). Když se pošle, nahradí
+        // večerní souhrn (jinak by v neděli přišly dvě notifikace); týden bez dat = nic a večerní souhrn jako obvykle ──
+        let weeklySent = false;
+        if (dow === 0 && ns.weekly !== false && isTimeMatch(h, m, ns.evening || '21:00')) {
+          try {
+            const days = weekDaysToToday(today, dow); // po–ne v zóně uživatele
+            const mon = days[0];
+            const mods = Array.isArray(prof.modules) ? prof.modules : null;
+            let hs = null, streak = null, ws = null, evN = null;
+            if (habitsOn) {
+              const hdocs = (await getAllHabits()).map(d => ({id: d.id, h: d.data()}));
+              if (hdocs.length) {
+                // Jeden dotaz na logy týdne (rozsah na jednom poli, bez složeného indexu)
+                const logs = await db.collection(`users/${uid}/habitLogs`).where('date', '>=', mon).get();
+                const idx = wkLogIndex(logs.docs);
+                const st = wkHabitStats(hdocs, days, today, idx, zn.tz);
+                // Týden bez jediného splnění = bez dat (žádné „návyky 0 %“, v neděli pak přijde běžný večerní souhrn)
+                if (st.done > 0) { hs = st; streak = await wkBestStreak(uid, hdocs, today, idx, mon, zn.tz); }
+              }
+            }
+            // Pitný režim jako připomínky pití: nastavení v profilu a zapnutý modul
+            if (prof.water && (!mods || mods.includes('water'))) {
+              const wsnap = await db.collection(`users/${uid}/water`).where('date', '>=', mon).get();
+              const w = wkWaterStats(wsnap.docs, prof.water, days, today);
+              if (w.any) ws = w;
+            }
+            if (hs || ws) {
+              // Události příštích 7 dní (zítra až příští neděle): osobní a skupiny se sdíleným kalendářem
+              if (!mods || mods.includes('calendar')) {
+                const next = [1, 2, 3, 4, 5, 6, 7].map(i => addDaysDS(today, i));
+                const evDocs = [...await wkLoadEvents(`users/${uid}/events`, next[0], next[6])];
+                for (const fid of calGroupIds(prof)) {
+                  try {
+                    const fe = famEntry(fid);
+                    const famSnap = await fe.doc;
+                    const fam = famSnap.exists ? famSnap.data() : null;
+                    if (fam && fam.members?.[uid] && fam.shareCal) evDocs.push(...await lazy(fe, `wk|${next[0]}`, () => wkLoadEvents(`families/${fid}/events`, next[0], next[6])));
+                  } catch(e) { /* skupina nemusí existovat */ }
+                }
+                evN = wkCountEvents(evDocs, next);
+              }
+              const body = wkBody(L, {habits: hs, streak, water: ws, events: evN});
+              if (body) {
+                weeklySent = true;
+                await push(tS(L, 'wk.t', {name: nickname}), body, `weekly-${mon}`, {data: {open: hs ? 'habits' : 'water'}, ttl: TTL_WEEKLY});
+              }
+            }
+          } catch(e) { console.error(`[LP] týdenní souhrn uid=${uid}:`, e.message); }
+        }
+
         // ── Večerní shrnutí ──
-        if (habitsOn && ns.eveningDigest !== false) {
+        if (!weeklySent && habitsOn && ns.eveningDigest !== false) {
           const eveningTime = ns.evening || '21:00';
           if (isTimeMatch(h, m, eveningTime)) {
             const dueDocs = await getDigestHabits();

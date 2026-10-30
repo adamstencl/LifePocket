@@ -2557,6 +2557,7 @@ export default {
   'game.badge.pc_12': 'Year of challenges',
   'game.badge.pc_12.d': 'Twelve completed challenges of the month or week.',
   'game.badge.pc_12.tip': 'Complete twelve challenges of the month or week.',
+  'set.notif.weekly': '🗓️ Weekly summary (Sunday evening)',
   'set.notif.pc': '🏆 Challenges of the month (new challenge, evening reminder)',
   // ── Mazlíček (4.94) ──
   'pet.addAria': 'Add a pet',

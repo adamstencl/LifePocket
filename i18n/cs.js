@@ -2601,6 +2601,7 @@ export default {
   'game.badge.pc_12': 'Rok výzev',
   'game.badge.pc_12.d': 'Dvanáct splněných výzev měsíce nebo týdne.',
   'game.badge.pc_12.tip': 'Splň dvanáct výzev měsíce nebo týdne.',
+  'set.notif.weekly': '🗓️ Týdenní souhrn (neděle večer)',
   'set.notif.pc': '🏆 Výzvy měsíce (nová výzva, večerní připomínka)',
   // ── Mazlíček (4.94) ──
   'pet.addAria': 'Přidat mazlíčka',

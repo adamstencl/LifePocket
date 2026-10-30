@@ -103,3 +103,9 @@
 - Komentář u `checkMissedNotifications` (app.js ~6833) neodpovídá chování.
 - SW data-only větev u zastaralé připomínky: raději zobrazit a hned zavřít (iOS).
 - Různé zóny zařízení vs. `prof.tz` kolem půlnoci mohou skrýt platnou připomínku.
+
+## Týdenní souhrn (neděle večer)
+- Lokální náhrada bez push tokenu (klient by souhrn sestavil sám v čase večerního souhrnu) – zatím jen push ze serveru.
+- Každoroční události se pro souhrn čtou všechny (`repeat == 'yes'`); při velkém počtu narozenin zvážit uložené `md` (MM-DD) a rozsah.
+- Série se před pondělí dohledává nejvýš 42 čteními; delší nedohledaná série se ukáže jako „N+“.
+- Týdenní cíl v souhrnu je podle aktivních dnů (`habitWeekStat`), karta týdne na Domů (`calcWeekSummaryRaw`) počítá s `times` – sjednotit.
