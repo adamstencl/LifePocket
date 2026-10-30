@@ -38,6 +38,7 @@ const cs = {
   'pet.today.b': '{name}, dnes je na řadě {ev}. Po splnění klepni na Hotovo.',
   'pet.food.t': '🥣 Granule docházejí',
   'pet.food.b': '{ev}. Klepni a přidej je do nákupu.',
+  'pet.food.bIn': '{ev}. V nákupu už je máš.',
   'test.t': '🧪 Test push',
   'test.b': 'Server → telefon funguje! Notifikace při zavřené appce jsou aktivní.',
   // Pitný režim (4.62): bez minulého času → bez rodových tvarů. Situační (near/last/behind) a 5 střídavých r0–r4
@@ -216,6 +217,7 @@ const en = {
   'pet.today.b': '{name}, today is the day for {ev}. Tap Done once it’s done.',
   'pet.food.t': '🥣 Pet food running low',
   'pet.food.b': '{ev}. Tap to add it to your shopping list.',
+  'pet.food.bIn': '{ev}. It’s already on your shopping list.',
   'test.t': '🧪 Test push',
   'test.b': 'Server → phone works! Notifications with the app closed are active.',
   'wt.n.near.t': '🏁 Almost there',
