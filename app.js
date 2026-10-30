@@ -4072,15 +4072,15 @@ window.deleteHabit=(id)=>{
   },e=>{
     if(!CU||CU.uid!==uid) return;
     if(!habits.some(h=>h.id===id)) habits.push(delH); // snapshot ho mohl vrátit sám
-    // Zrcadla ve skupinách zpět (hned, bez debounce syncShared: listener zrcadel by mezitím sdílení zase odebral)
+    const have=new Set(habitLogs.map(l=>l.id));
+    habitLogs.push(...memLogs.filter(l=>!have.has(l.id)));
+    shieldCacheReset();
+    // Zrcadla ve skupinách zpět až po obnovení logů (jinak série 0; hned, bez debounce syncShared: listener zrcadel by mezitím sdílení zase odebral)
     shGids.filter(g=>myGroupIds().includes(g)).forEach(g=>{
       if(!mySharedIn.has('h_'+id)) mySharedIn.set('h_'+id,new Set());
       mySharedIn.get('h_'+id).add(g);
       writeMirror('h',id,g);
     });
-    const have=new Set(habitLogs.map(l=>l.id));
-    habitLogs.push(...memLogs.filter(l=>!have.has(l.id)));
-    shieldCacheReset();
     renderHabits();
     toast(t('common.saveFailed',{err:userErr(e,'habit')}));
   });
@@ -19772,7 +19772,7 @@ function buildChatContext(question=''){
 
   add(tA('aip.ctx.s.habits'),2,()=>{
     const act=habits.filter(h=>h&&h.name&&!h.archived);
-    // „dnes x/n“ jako Domů (4.98): pauza, přeskočení a dny mimo frekvenci se nepočítají; týdenní (4.91) jen dnes splněný
+    // „dnes x/n“ jako Domů (4.99): pauza, přeskočení a dny mimo frekvenci se nepočítají; týdenní (4.91) jen dnes splněný
     const dueAll=act.filter(h=>habitDueOrDone(h,today));
     const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>hDone(h.id,today)).length,n:dueAll.length})];
     act.slice(0,20).forEach(h=>{
