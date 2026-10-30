@@ -3170,13 +3170,11 @@ function renderHabits(){
     const groupHabits=habits.filter(h=>getGroup(h)===g.id && !h.archived).sort((a,b)=>(a.order||0)-(b.order||0));
     if(!groupHabits.length) return;
 
-    // Calculate done count for today
-    const doneCount=groupHabits.filter(h=>{
-      const log=hLog(h.id+'_'+habitDay);
-      return log&&log.done;
-    }).length;
-    const pct=Math.round(doneCount/groupHabits.length*100);
-    const pctCls=pct===100?'full':pct>0?'partial':'empty';
+    // Splněno / na řadě ve zvolený den (4.98, jako Domů): bez pauzy a neutrálních dnů; týdenní jen nevyřízený nebo ten den splněný
+    const dueG=groupHabits.filter(h=>habitDueOrDone(h,habitDay));
+    const doneCount=dueG.filter(h=>hDone(h.id,habitDay)).length;
+    const pct=dueG.length?Math.round(doneCount/dueG.length*100):0;
+    const pctCls=!dueG.length?'empty':pct===100?'full':pct>0?'partial':'empty';
 
     // Is group open? Default: all open (i při filtru jde skupinu sbalit)
     const isOpen=openGroups.has(g.id);
@@ -3188,10 +3186,10 @@ function renderHabits(){
         <div class="habit-group-left">
           <span class="habit-group-emoji">${g.emoji}</span>
           <span class="habit-group-title">${g.label}</span>
-          <span class="habit-group-count">${doneCount}/${groupHabits.length}</span>
+          <span class="habit-group-count">${doneCount}/${dueG.length}</span>
         </div>
         <div class="habit-group-progress">
-          <span class="habit-group-pct ${pctCls}">${pct}%</span>
+          <span class="habit-group-pct ${pctCls}">${dueG.length?pct+'%':'—'}</span>
           <span class="habit-group-arrow ${isOpen?'open':''}">▼</span>
         </div>
       </div>
@@ -3217,7 +3215,7 @@ function renderHabits(){
   if(pendOnly&&!html) html=`<div class="hb-pend-empty">${tH(habitDay>toDS()?'hb.pendFuture':'hb.pendEmpty')}</div>`;
   list.innerHTML='<div data-cta-tip="h">'+ctaListTipHTML('h')+'</div>'+html;
   // Při filtru bez přetahování (pořadí podmnožiny by přepsalo pořadí celé skupiny)
-  if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]'}));
+  if(!pendOnly) list.querySelectorAll('.habit-group-body').forEach(b=>enableDragReorder(b,'.habit-card',saveHabitOrder,{skip:'.habit-check,.habit-table,.cnt-clickable,[onclick*="directInput"]',...hbDragZones(list)}));
   scrollAnchorRestore(anchor);
   wtLinkScan(); // nabídka propojení s pitným režimem (4.85)
 }
@@ -3363,6 +3361,18 @@ function renderHabitDetail(h) {
     else if (!(l && l.skipped) && isHabitPausedOn(h, ds)) paused90++;
   }
   const pct30=calcPct(30),pct60=calcPct(60),pct90=calcPct(90);
+  // Celkem (4.98): od založení (nebo prvního splnění, je-li dřív) do dneška, done/(done+miss) jako calcPct
+  const pctAll=(()=>{
+    const st=habitStartDS(h), first=logs.reduce((m,l)=>typeof l.date==='string'&&(!m||l.date<m)?l.date:m,'');
+    const from=[st,first].filter(Boolean).sort()[0]||today;
+    if(_hlCutoff&&from<_hlCutoff) hlNeedHistory(h.id); // celá historie se dotáhne
+    let done=0,total=0;
+    for(let i=0,ds=today;i<HL_STREAK_MAX&&ds>=from;i++,ds=addDays(ds,-1)){
+      const s=habitDayState(h,ds,today);
+      if(s==='done'){total++;done++;} else if(s==='miss') total++;
+    }
+    return total>0?Math.round(done/total*100):0;
+  })();
 
   // Linked goal
   const hdLinkedGoal = h.goalId ? goals.find(x=>x.id===h.goalId) : null;
@@ -3506,7 +3516,7 @@ function renderHabitDetail(h) {
         <div class="hd-stat-lbl">${tH('hd.doneThisMonth')}</div>
       </div>
       <div class="hd-stat">
-        <div class="hd-stat-num">${(() => { const daysSince = Math.max(1, Math.round((new Date() - new Date(h.createdAt || Date.now())) / 86400000)); return Math.min(100, Math.round(totalDone / daysSince * 100)); })()}%</div>
+        <div class="hd-stat-num" style="${pctAll>=80?'color:var(--green)':pctAll>=50?'color:var(--accent)':''}">${pctAll}%</div>
         <div class="hd-stat-lbl">${tH('hd.overall')}</div>
       </div>
       <div class="hd-stat"><div class="hd-stat-num" style="${pct30>=80?'color:var(--green)':pct30>=50?'color:var(--accent)':''}">${pct30}%</div><div class="hd-stat-lbl">📅 ${tH('hd.nDays',{n:30})}</div></div>
@@ -3574,12 +3584,24 @@ window.saveHabitReminder = async (hid, time) => {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { toast(t('hd.notifOff')); return; }
   }
+  // Optimisticky (vzor 4.81, 4.98): paměť a překreslení hned, zápis se nečeká (offline by visel); při chybě zpět
+  const prev = Object.prototype.hasOwnProperty.call(h, 'reminderTime') ? h.reminderTime : undefined;
   h.reminderTime = time;
-  await updateDoc(doc(db,'users',CU.uid,'habits',hid), { reminderTime: time });
   toast(time ? t('hd.reminderSet',{time}) : t('hd.reminderOffT'));
-  renderHabitDetail(h); // překresli detail
-  renderHabits(); // aktualizuj kartičku
+  hbDetailRefresh(hid);
+  updateDoc(doc(db,'users',CU.uid,'habits',hid), { reminderTime: time }).catch(e => {
+    const hh = habits.find(x => x.id === hid); // snapshot mohl objekt nahradit
+    if (hh && hh.reminderTime === time) { if (prev === undefined) delete hh.reminderTime; else hh.reminderTime = prev; }
+    hbDetailRefresh(hid);
+    toast(t('common.saveFailed', { err: userErr(e, 'habit') }));
+  });
 };
+// Překreslit seznam a otevřený detail návyku (po optimistické změně nebo jejím vrácení)
+function hbDetailRefresh(hid){
+  renderHabits();
+  const h = habits.find(x => x.id === hid);
+  if (h && detailHabitId === hid && document.getElementById('p-habit-detail')?.classList.contains('active')) renderHabitDetail(h);
+}
 
 // ── ÚPRAVA NÁVYKU (4.95): název, ikona, část dne, frekvence, cíl; typ ano/ne ↔ počet se nemění ──
 const HB_EDIT_EMOJI=['🏃','💧','📚','🧘','🥗','😴','🚭','💪','🎵','✍️']; // stejná nabídka jako formulář pro přidání
@@ -4004,21 +4026,39 @@ window.showDeleteHabitConfirm=(id,btn)=>{
   if(btn) btn.style.display='none';
 };
 
-window.deleteHabit=async(id)=>{
+// Optimisticky (4.98): návyk zmizí hned a detail se zavře, zápis se nečeká (offline by visel).
+// Záznamy se mažou až po potvrzeném smazání návyku (při chybě se návyk i s historií vrátí).
+window.deleteHabit=(id)=>{
   if(!CU)return;
+  const delH=habits.find(h=>h.id===id);
+  if(!delH) return;
+  const delSteps=chainOf(delH); // 1. krok rutiny: připomínka na nový 1. krok (4.89)
   unshareAll('h',id); // zrcadla ve skupinách pryč dřív, než návyk zmizí
-  const delH=habits.find(h=>h.id===id), delSteps=chainOf(delH); // 1. krok rutiny: připomínka na nový 1. krok (4.89)
-  await deleteDoc(doc(db,'users',CU.uid,'habits',id));
+  const memLogs=habitLogs.filter(l=>l.habitId===id);
   habits=habits.filter(h=>h.id!==id);
-  // Listener drží jen posledních HL_WINDOW dní → smazat i starší záznamy (offline aspoň ty v paměti)
-  const delIds=new Set(habitLogs.filter(l=>l.habitId===id).map(l=>l.id));
-  try{ (await getDocs(query(collection(db,'users',CU.uid,'habitLogs'),where('habitId','==',id)))).docs.forEach(d=>delIds.add(d.id)); }
-  catch(e){ console.warn('[LP] mazání historie návyku:',e?.code||e?.name); }
-  for(const lid of delIds) await delHabitLog(lid,true);
   habitLogs=habitLogs.filter(l=>l.habitId!==id);
+  shieldCacheReset();
   renderHabits(); toast(t('hb.deleted'));
   window.closeHabitDetail();
-  if(delH) chainHeadGone(delSteps, delH, true);
+  chainHeadGone(delSteps, delH, true);
+  const uid=CU.uid;
+  deleteDoc(doc(db,'users',uid,'habits',id)).then(async()=>{
+    // Listener drží jen posledních HL_WINDOW dní → smazat i starší záznamy (při chybě dotazu aspoň ty z paměti)
+    const delIds=new Set(memLogs.map(l=>l.id));
+    try{ (await getDocs(query(collection(db,'users',uid,'habitLogs'),where('habitId','==',id)))).docs.forEach(d=>delIds.add(d.id)); }
+    catch(e){ console.warn('[LP] mazání historie návyku:',e?.code||e?.name); }
+    if(!CU||CU.uid!==uid) return; // mezitím odhlášení
+    const r=await Promise.allSettled([...delIds].map(lid=>delHabitLog(lid,true))); // záznam už v paměti není → chyba nic nevrací
+    if(r.some(x=>x.status==='rejected')) console.warn('[LP] habitLogs delete: partial');
+  },e=>{
+    if(!CU||CU.uid!==uid) return;
+    if(!habits.some(h=>h.id===id)) habits.push(delH); // snapshot ho mohl vrátit sám
+    const have=new Set(habitLogs.map(l=>l.id));
+    habitLogs.push(...memLogs.filter(l=>!have.has(l.id)));
+    shieldCacheReset();
+    renderHabits();
+    toast(t('common.saveFailed',{err:userErr(e,'habit')}));
+  });
 };
 
 let _showArchived = false;
@@ -4033,14 +4073,24 @@ window.archiveHabit = async (id) => {
   const steps = isArchived ? null : chainOf(h); // 1. krok rutiny → nový 1. krok bez připomínky (4.89)
   // Obnovený návyk se vrací samostatně na konec skupiny (4.93): na původním místě by rozdělil rutinu, která ho obtékala
   const order = isArchived ? chainGroupList(h.group || 'day').reduce((m, x) => Math.max(m, x.order || 0), -1) + 1 : 0;
-  await updateDoc(doc(db, 'users', CU.uid, 'habits', id), isArchived ? { archived: false, chain: false, order } : { archived: true });
-  h.archived = !isArchived;
-  if (isArchived) { h.chain = false; h.order = order; }
+  // Optimisticky (vzor 4.81, 4.98): paměť a překreslení hned, zápis se nečeká (offline by visel); při chybě zpět
+  const up = isArchived ? { archived: false, chain: false, order } : { archived: true };
+  const back = {};
+  Object.keys(up).forEach(k => { back[k] = Object.prototype.hasOwnProperty.call(h, k) ? h[k] : undefined; });
+  Object.assign(h, up);
   syncShared('h', id); // archivovaný návyk zůstává ve skupině s arch:true
   toast(isArchived ? t('hb.restored') : t('hb.archived'));
   renderHabits();
   if (!isArchived) window.closeHabitDetail();
+  else hbDetailRefresh(id);
   chainHeadGone(steps, h, false);
+  updateDoc(doc(db, 'users', CU.uid, 'habits', id), up).catch(e => {
+    const hh = habits.find(x => x.id === id); // snapshot mohl objekt nahradit
+    if (hh) Object.keys(back).forEach(k => { if (back[k] === undefined) delete hh[k]; else hh[k] = back[k]; });
+    if (hh) syncShared('h', id);
+    hbDetailRefresh(id);
+    toast(t('common.saveFailed', { err: userErr(e, 'habit') }));
+  });
 };
 
 // ── PAUZA NÁVYKU (rozsahy pauses + synchronní pausedUntil pro server) ──
@@ -4090,13 +4140,21 @@ window.pauseHabit=async(id,days)=>{
     pauses=pauses.slice(-12);
     pausedUntil=to;
   }
-  await updateDoc(doc(db,'users',CU.uid,'habits',id),{pauses,pausedUntil});
+  // Optimisticky (vzor 4.81, 4.98): zápis se nečeká (offline by visel); při chybě se pauza vrátí
+  const back={pauses:h.pauses,pausedUntil:h.pausedUntil};
   h.pauses=pauses; h.pausedUntil=pausedUntil;
   shieldCacheReset();
   toast(days?tH('hp.toast.on',{date:fmtDate(pausedUntil,'dm')}):t('hp.toast.off'));
   syncShared('h', id);
   renderHabits();
   if(detailHabitId===id)renderHabitDetail(h);
+  updateDoc(doc(db,'users',CU.uid,'habits',id),{pauses,pausedUntil}).catch(e=>{
+    const hh=habits.find(x=>x.id===id); // snapshot mohl objekt nahradit
+    if(hh){ hh.pauses=back.pauses; hh.pausedUntil=back.pausedUntil; if(hh.pauses===undefined) delete hh.pauses; if(hh.pausedUntil===undefined) delete hh.pausedUntil; syncShared('h',id); }
+    shieldCacheReset();
+    hbDetailRefresh(id);
+    toast(t('common.saveFailed',{err:userErr(e,'habit')}));
+  });
 };
 // Začátek legacy pauzy: z pausedFrom/pausedAt, jinak včerejšek (včera nesmí spotřebovat štít ani přerušit sérii)
 function legacyPauseFrom(h,today=toDS()){
@@ -4453,6 +4511,9 @@ window.moveHabit = async function(id, dir) {
 // enableDragReorder(container, itemSelector, onDrop[, opts]): řádky = potomci containeru dle itemSelector
 // s data-drag-id. Podržení ~350 ms (mimo tlačítka a pole) řádek zvedne, tažení přesouvá, puštění
 // zavolá onDrop(ids v novém pořadí, id taženého řádku). Volat po každém renderu; listenery se nezdvojí (příznak na elementu).
+// Volitelně přesun do jiného seznamu (4.98, návyky mezi částmi dne): opts.zones() = cílové prvky mimo container,
+// opts.onZoneHover(zóna|null, clientY) při tahu, opts.onZoneDrop(id, zóna) po puštění nad zónou,
+// opts.onLift() / opts.onEnd() připraví a uklidí dočasné zóny (posun obsahu se vyrovná scrollem). Bez opts.zones beze změny.
 const DRAG_HOLD_MS = 350, DRAG_SLOP = 8;
 const DRAG_SKIP = 'button,input,textarea,select,label,a,img,[contenteditable],.no-drag';
 let _dragSuppressClick = 0; // čas, do kdy se spolkne klik po puštění řádku
@@ -4568,14 +4629,26 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
       st.items.forEach(r => { r.style.transform = ''; r.style.transition = ''; r.classList.remove('lp-drag-lift', 'lp-drag-shift'); });
       container.classList.remove('lp-drag-on');
     }
+    if (st.zone) st.zone.classList.remove('lp-drop-zone');
+    const prep = st.prep;
     st = null;
+    if (prep) keepPos(() => opts.onEnd?.()); // onEnd uklidí i značky z onZoneHover
+  }
+  // Úprava DOM nad seznamem (dočasné zóny) bez poskočení obsahu: posun containeru vyrovnat scrollem
+  function keepPos(fn){
+    const on = container.isConnected, y0 = on ? container.getBoundingClientRect().top : 0;
+    try { fn(); } catch(e) { console.warn('[LP] drag:', e?.name); }
+    if (!on || !container.isConnected) return;
+    const d = container.getBoundingClientRect().top - y0;
+    if (Math.abs(d) >= 1) dragScrollParent(container).scrollTop += d;
   }
 
   function lift(){
     if (!st || !container.isConnected || !st.row.isConnected) { cleanup(); return; }
     const items = rows();
     const from = items.indexOf(st.row);
-    if (from < 0 || items.length < 2) { cleanup(); return; }
+    if (from < 0 || items.length < (opts.zones ? 1 : 2)) { cleanup(); return; } // se zónami jde přesunout i jediný řádek
+    if (opts.onLift) { st.prep = true; keepPos(opts.onLift); }
     const cTop = container.getBoundingClientRect().top;
     const rects = items.map(r => r.getBoundingClientRect());
     st.items = items; st.from = st.to = from;
@@ -4604,9 +4677,18 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
     const dy = (st.lastY - cTop) - st.startY;
     const { items, from, tops, hs } = st;
     st.row.style.transform = `translateY(${dy}px) scale(1.03)`;
+    // Prst nad jiným seznamem (zóna): vlastní řádky zůstanou na místě
+    let zone = null;
+    if (opts.zones) {
+      const y = st.lastY;
+      zone = opts.zones().find(z => { if (z.contains(container)) return false; const r = z.getBoundingClientRect(); return y >= r.top && y <= r.bottom; }) || null;
+      if (zone !== st.zone) { st.zone?.classList.remove('lp-drop-zone'); zone?.classList.add('lp-drop-zone'); st.zone = zone; }
+      try { opts.onZoneHover?.(zone, y); } catch(e) {}
+    }
     const center = tops[from] + dy + hs[from] / 2;
     let to = 0;
-    items.forEach((r, i) => { if (i !== from && tops[i] + hs[i] / 2 < center) to++; });
+    if (zone) to = from;
+    else items.forEach((r, i) => { if (i !== from && tops[i] + hs[i] / 2 < center) to++; });
     st.to = to;
     items.forEach((r, i) => {
       if (i === from) return;
@@ -4650,9 +4732,10 @@ function enableDragReorder(container, itemSelector, onDrop, opts = {}){
     if (!st || e.pointerId !== st.pid) return;
     if (!st.active || !container.isConnected) { cleanup(); return; } // seznam se překreslil → jen uklidit
     _dragSuppressClick = Date.now() + 400; // puštění nesmí otevřít detail ani editaci
-    const { items, from, to } = st;
+    const { items, from, to, zone } = st;
     const ids = items.map(r => r.dataset.dragId);
     cleanup();
+    if (zone) { try { opts.onZoneDrop?.(ids[from], zone); } catch(err) { console.warn('[LP] drag:', err?.name); } return; }
     if (to === from) return;
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
@@ -4697,6 +4780,79 @@ function saveHabitOrder(ids, movedId){
     segOf.set(movedId, a && a === b ? a : own && (a === own || b === own) ? own : null); // i na poslední místo vlastní rutiny
   }
   chainApply(ids, segOf);
+}
+
+// Přetažení návyku do jiné části dne (4.98): zóny = ostatní skupiny; sbalená skupina přijme návyk na konec,
+// chybějící (prázdná) skupina se při zvednutí ukáže jako dočasná zóna. Cíl = {group, before: id karty, před kterou návyk dopadne}.
+function hbDragZones(list){
+  let at = null;
+  const marks = () => list.querySelectorAll('.hb-drop-before,.hb-drop-end').forEach(x => x.classList.remove('hb-drop-before', 'hb-drop-end'));
+  return {
+    zones: () => [...list.querySelectorAll('.habit-group[data-group]')],
+    onLift(){
+      at = null;
+      list.classList.add('hb-drag-x');
+      CHAIN_GROUPS.forEach((g, i) => {
+        if (list.querySelector(`.habit-group[data-group="${g}"]`)) return;
+        const ph = document.createElement('div');
+        ph.className = 'habit-group hb-drop-ph'; ph.dataset.group = g;
+        const em = (HB_EDIT_GROUPS.find(x => x[0] === g) || [])[1] || '';
+        ph.innerHTML = `<div class="habit-group-header"><div class="habit-group-left"><span class="habit-group-emoji">${em}</span><span class="habit-group-title">${tH('hb.grp.' + g)}</span></div></div>`;
+        const next = CHAIN_GROUPS.slice(i + 1).map(n => list.querySelector(`.habit-group[data-group="${n}"]`)).find(Boolean);
+        list.insertBefore(ph, next || null);
+      });
+    },
+    onZoneHover(zone, y){
+      marks();
+      if (!zone) { at = null; return; }
+      // Otevřená skupina: místo podle prstu mezi kartami; sbalená nebo prázdná: na konec
+      const cards = [...zone.querySelectorAll('.habit-group-body.open .habit-card[data-drag-id]')];
+      const i = cards.filter(c => { const r = c.getBoundingClientRect(); return r.top + r.height / 2 < y; }).length;
+      at = { group: zone.dataset.group, before: cards[i]?.dataset.dragId || null };
+      if (cards[i]) cards[i].classList.add('hb-drop-before'); else zone.classList.add('hb-drop-end');
+    },
+    onZoneDrop(hid){ const a = at; at = null; if (a) moveHabitToGroup(hid, a.group, a.before); },
+    onEnd(){ marks(); list.classList.remove('hb-drag-x'); list.querySelectorAll('.hb-drop-ph').forEach(x => x.remove()); }
+  };
+}
+// Přesun návyku do jiné části dne (vzor 4.81 / habitEditPatch): group, order, chain:false; paměť a překreslení hned, zápis se nečeká,
+// při chybě se pořadí vrátí. Dovnitř cizí rutiny nedopadne (posune se za její konec), rutinu ve staré skupině zacelí chainHeadGone.
+function moveHabitToGroup(hid, group, beforeId){
+  const h = habits.find(x => x.id === hid);
+  if (!CU || !h || h.archived || !CHAIN_GROUPS.includes(group) || group === (h.group || 'day')) return;
+  const steps = chainOf(h); // rutina ve staré skupině (před změnou)
+  const list = chainGroupList(group);
+  let p = beforeId ? list.findIndex(x => x.id === beforeId) : -1;
+  if (p < 0) p = list.length;
+  while (p > 0 && p < list.length && list[p].chain === true) p++;
+  list.splice(p, 0, h);
+  const back = [], batch = writeBatch(db);
+  list.forEach((x, i) => {
+    const up = x === h ? { group, order: i, chain: false } : {};
+    if (x !== h && (x.order || 0) !== i) up.order = i;
+    if (i === p + 1 && x.chain === true) up.chain = false; // byl 1. ve skupině (chain se ignoroval): k přesunutému se nepřilepí
+    if (!Object.keys(up).length) return;
+    const was = {};
+    Object.keys(up).forEach(k => { was[k] = Object.prototype.hasOwnProperty.call(x, k) ? x[k] : undefined; });
+    back.push([x.id, was]);
+    Object.assign(x, up);
+    batch.update(doc(db, 'users', CU.uid, 'habits', x.id), up);
+  });
+  // Cílová skupina se otevře (i sbalená), ať je přesunutý návyk vidět
+  if (!openGroups.has(group)) {
+    openGroups.add(group);
+    try { localStorage.setItem('lp_open_groups', JSON.stringify({ date: toDS(), groups: [...openGroups] })); } catch(e) {}
+  }
+  renderHabits();
+  batch.commit().catch(e => {
+    back.forEach(([id, was]) => {
+      const x = habits.find(y => y.id === id); // snapshot mohl objekt nahradit
+      if (x) Object.keys(was).forEach(k => { if (was[k] === undefined) delete x[k]; else x[k] = was[k]; });
+    });
+    renderHabits();
+    toast(t('hb.orderFail', { err: userErr(e, 'habit') }));
+  });
+  chainHeadGone(steps, h, false); // byl 1. krokem rutiny: další krok je nový začátek (bez chain)
 }
 
 // Cíle přesunu osobních událostí: skupiny, kde kalendář opravdu sdílím (hlavní první)
@@ -6154,7 +6310,7 @@ const NOTIF_DEFAULTS = {
   pc: true          // výzva měsíce / týdne (4.63): ohlášení a večerní připomínka ze serveru
 };
 let notifSettings = {...NOTIF_DEFAULTS};
-let notifTimers = [];
+let notifTimers = []; // ID časovačů nebo funkce, která zruší své časovače (scheduleDaily drží handle v closure, 4.98)
 
 // ── Prostředí zařízení (push) ──
 function notifGranted() { return typeof Notification !== 'undefined' && Notification.permission === 'granted'; }
@@ -6331,7 +6487,7 @@ async function initNotifications() {
 let _notifVisBound = false;
 // Zruší naplánované lokální notifikace a intervaly (odhlášení)
 function clearNotifTimers() {
-  notifTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
+  notifTimers.forEach(t => { if (typeof t === 'function') t(); else { clearTimeout(t); clearInterval(t); } });
   notifTimers = [];
 }
 
@@ -6827,27 +6983,30 @@ function scheduleDaily(hour, minute, callback) {
   if (target <= now) target.setDate(target.getDate() + 1);
   const ms = target - now;
 
+  // Jeden handle na každý druh časovače v closure (4.98): opakování nepřidává nová ID do notifTimers
+  let tFirst = 0, tDaily = 0, tRetry = 0;
   // callback vrátí false = data ještě nejsou ze serveru → lastRun nezapsat, zkusit za minutu, jen týž den (4.96)
   const run = (day) => {
+    clearTimeout(tRetry); tRetry = 0;
     if (toDS() !== day) return;
     const stored = lsGet(key, {});
     if (stored.lastRun === day) return; // už dnes proběhl
-    if (callback() === false) { notifTimers.push(setTimeout(() => run(day), 60 * 1000)); return; }
+    if (callback() === false) { tRetry = setTimeout(() => run(day), 60 * 1000); return; }
     stored.lastRun = day;
     localStorage.setItem(key, JSON.stringify(stored));
   };
   const fire = () => {
     run(toDS());
     // Naplánuj na zítřek
-    const daily = setInterval(() => run(toDS()), 24 * 60 * 60 * 1000);
-    notifTimers.push(daily);
+    tDaily = setInterval(() => run(toDS()), 24 * 60 * 60 * 1000);
   };
 
-  const t = setTimeout(fire, ms);
-  notifTimers.push(t);
+  tFirst = setTimeout(fire, ms);
+  notifTimers.push(() => { clearTimeout(tFirst); clearInterval(tDaily); clearTimeout(tRetry); });
 }
 
-// Zkontroluj při návratu do appky jestli jsme promeškali nějaké notifikace
+// Při návratu do appky (visibilitychange) dožene dnešní ranní a večerní souhrn, pokud jeho čas už minul a dnes neproběhl,
+// a jednou denně (od 10:00) připomínku nesplněných návyků. Připomínky s vlastním časem tady nejsou (checkPerHabitReminders).
 function checkMissedNotifications() {
   if (!notifGranted()) return;
   const now = new Date();
@@ -6860,7 +7019,8 @@ function checkMissedNotifications() {
       const key = `lp_sched_${mh}_${mm}`;
       const stored = lsGet(key, {});
       const today = toDS(now);
-      // Data ještě nejsou ze serveru (false) → lastRun nezapsat, zkusí se při dalším návratu nebo ticku (4.96)
+      // Data ještě nejsou ze serveru (false) → lastRun nezapsat, zkusí se při dalším návratu do appky
+      // (po minutě to zkouší jen časovač scheduleDaily, a to jen když čas nastal při otevřené appce) (4.96)
       if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm)) && sendMorningNotif() !== false) {
         stored.lastRun = today;
         localStorage.setItem(key, JSON.stringify(stored));
@@ -6880,7 +7040,7 @@ function checkMissedNotifications() {
       }
     }
   }
-  // Návyky — zkontroluj pokud je 10+ hodin a nebyla dnešní připomínka
+  // Návyky — od 10:00, jen pokud dnes ještě nebyla (lp_last_remind zapíše checkAndRemindHabits, až data přijdou ze serveru)
   if (notifSettings.habits && h >= 10) {
     const lastRemind = localStorage.getItem('lp_last_remind');
     const today = toDS(now);
@@ -6914,13 +7074,22 @@ function scheduleHabitReminders() {
   setTimeout(checkPerHabitReminders, 3000);
 }
 
+// Od kdy (den a minuta) kontrola připomínek čekala na data ze serveru; při prvním habitRemindReady() se propadlé dohoní (4.98)
+let _hrWait = null;
+const HR_CATCHUP_MIN = 30;
 function checkPerHabitReminders() {
   if (!notifGranted() || hasPushToken()) return; // s push tokenem posílá server
-  if (!habitRemindReady()) return; // záznamy ještě nejsou ze serveru: nic neposílat ani neznačit (4.96)
   const now = new Date();
   const today = toDS(now);
-  const dow = now.getDay();
   const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (!habitRemindReady()) { // záznamy ještě nejsou ze serveru: nic neposílat ani neznačit (4.96)
+    if (!_hrWait || _hrWait.day !== today) _hrWait = { day: today, min: nowMin };
+    return;
+  }
+  // Čas připomínky padl do čekání a uplynul před méně než 30 min → poslat teď (jednou, pak běžné okno ±2 min)
+  const wait = _hrWait && _hrWait.day === today ? _hrWait : null;
+  _hrWait = null;
+  const dow = now.getDay();
   const av = AVS.find(a => a.id === prof?.avatarId);
 
   habits.forEach(h => {
@@ -6929,7 +7098,9 @@ function checkPerHabitReminders() {
     if (isNaN(rh) || isNaN(rm)) return;
     const targetMin = rh * 60 + rm;
     // Okno ±2 minuty — nemineme při pomalém intervalovém timeru
-    if (Math.abs(nowMin - targetMin) > 2) return;
+    const late = nowMin - targetMin;
+    const catchUp = wait && targetMin >= wait.min - 2 && late > 2 && late < HR_CATCHUP_MIN;
+    if (Math.abs(late) > 2 && !catchUp) return;
 
     // Zkontroluj jestli jsme dnes tuto notifikaci už poslali
     const sentKey = `lp_hrnotif_${h.id}_${today}`;
@@ -8595,6 +8766,8 @@ function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)
 function perfDue(ds){ return habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
 // Aktivní návyky na řadě v daný den (Domů, Rex, oslava „vše splněno“; 4.81): bez archivu, týdenních a neutrálních dnů
 function habitsDue(ds){ return habits.filter(h=>!h.archived&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
+// Do počtu „x/y“ (hlavička skupiny, Rex; 4.98): denní jako habitsDue, týdenní jen nevyřízený nebo ten den splněný
+function habitDueOrDone(h,ds){ return !!h&&!h.archived&&(isWeekly(h)?(isHabitPending(h,ds)||hDone(h.id,ds)):habitDayState(h,ds)!=='neutral'); }
 function isPerfectDay(ds){
   const due=perfDue(ds);
   return due.length>=2&&due.every(h=>hDone(h.id,ds));
@@ -19571,17 +19744,14 @@ function buildChatContext(question=''){
 
   add(tA('aip.ctx.s.habits'),2,()=>{
     const act=habits.filter(h=>h&&h.name&&!h.archived);
-    const dow=now.getDay();
-    const done=new Set(), skip=new Set();
-    habitLogs.forEach(l=>{ if(!l) return; const k=l.habitId+'|'+l.date; if(l.done) done.add(k); else if(l.skipped) skip.add(k); });
-    const due=h=>{const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};return f.type!=='days'||(Array.isArray(f.days)?f.days:[]).includes(dow);};
-    // Týdenní (4.91) do „dnes x/n“ jen nevyřízený nebo dnes splněný
-    const dueAll=act.filter(h=>isWeekly(h)?(isHabitPending(h,today)||done.has(h.id+'|'+today)):due(h));
-    const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>done.has(h.id+'|'+today)).length,n:dueAll.length})];
+    // „dnes x/n“ jako Domů (4.98): pauza, přeskočení a dny mimo frekvenci se nepočítají; týdenní (4.91) jen nevyřízený nebo dnes splněný
+    const dueAll=act.filter(h=>habitDueOrDone(h,today));
+    const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>hDone(h.id,today)).length,n:dueAll.length})];
     act.slice(0,20).forEach(h=>{
-      const k=h.id+'|'+today;
       const f=(h.freq&&typeof h.freq==='object')?h.freq:{type:'daily'};
-      const mark=done.has(k)?'✅':skip.has(k)?'⏭️':(isWeekly(h)?isHabitPending(h,today):due(h))?'⬜':'➖';
+      const st=habitDayState(h,today), l=hLog(h.id+'_'+today);
+      // ⬜ na řadě a nesplněno (pozastavený nikdy), ⏭️ přeskočeno, ➖ dnes není na řadě
+      const mark=st==='done'?'✅':l&&l.skipped?'⏭️':(isWeekly(h)?isHabitPending(h,today):st==='miss')?'⬜':'➖';
       // Streak: stejná logika jako karta (dnešní nesplněný den, pauza ani přeskočení sérii nepřeruší)
       const streak=habitStreak(h.id,today);
       let wk='';

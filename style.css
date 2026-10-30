@@ -1771,6 +1771,13 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .lp-drag-on,.lp-drag-on [data-drag-id]{cursor:grabbing;-webkit-user-select:none;user-select:none}
 .lp-drag-shift{transition:transform .18s ease!important}
 .lp-drag-lift{position:relative;z-index:20;transition:none!important;box-shadow:0 10px 28px rgba(0,0,0,.35);will-change:transform}
+/* 4.98: přetažení návyku do jiné části dne – karta smí ven ze skupiny, cílová skupina orámovaná, čára = místo dopadu */
+.hb-drag-x .habit-group{overflow:visible}
+.habit-group.lp-drop-zone{outline:2px dashed var(--accent);outline-offset:2px}
+.hb-drop-ph{border-style:dashed}
+.hb-drop-ph .habit-group-header{cursor:default}
+.habit-card.hb-drop-before{box-shadow:0 -3px 0 var(--accent)}
+.habit-group.hb-drop-end .habit-group-body.open>.habit-card:last-child{box-shadow:0 3px 0 var(--accent)}
 /* Úprava Domů 4.86 */
 .dash-edit{display:block;margin:4px auto 8px;min-height:44px;padding:0 18px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
 .dash-edit:focus-visible,.dl-set:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -2412,6 +2419,11 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .htd-dot.future.today{box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--accent)}
 /* 4.92: den před založením návyku – neutrální (ne ×), dá se zpětně doplnit */
 .htd-dot.pre{background:transparent;border:1px dashed var(--border);opacity:.6}
+/* 4.98: světlé motivy – --border je na bílé kartě pod 1,5:1; --text3 (s průhledností .8) drží kontrast aspoň 3:1 */
+[data-theme="sunshine"] .htd-dot.inactive,[data-theme="tangerine"] .htd-dot.inactive{color:var(--text3)}
+[data-theme="sunshine"] .htd-dot.pre,[data-theme="tangerine"] .htd-dot.pre{border-color:var(--text3);opacity:.8}
+[data-theme="sunshine"] .htd-dot.future,[data-theme="tangerine"] .htd-dot.future{box-shadow:inset 0 0 0 1px var(--text3);opacity:.8}
+[data-theme="sunshine"] .htd-dot.future.today,[data-theme="tangerine"] .htd-dot.future.today{box-shadow:inset 0 0 0 1px var(--text3),0 0 0 2px var(--accent)}
 .hd-day-cell.wk-miss:not(.done){background:var(--wk-miss-bg);color:var(--text2)}
 .habit-name{-webkit-hyphens:auto;hyphens:auto;-webkit-hyphenate-limit-before:5;-webkit-hyphenate-limit-after:5;hyphenate-limit-chars:12 5 5}
 /* 4.90: úzký telefon – pilulka Splněno/Nesplněno jen opakuje kolečko (nedá se na ni kliknout), skryje se; název aspoň 7.5em (≈ 9em písma názvu 13 px), ovládání, které se nevejde, spadne na další řádek vpravo */
