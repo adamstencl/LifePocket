@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.95';
+const APP_VERSION = '4.96';
 const CHANGELOG = [
+  { v:'4.96', items:[
+    '🔔 Připomínka návyku nepřijde, když je už splněný, ani hned po otevření appky'
+  ], en:[
+    '🔔 Habit reminders no longer arrive for habits you have already done, nor right after opening the app'
+  ]},
   { v:'4.95', items:[
     '✏️ Návyk jde upravit: název, ikona, část dne, frekvence, cíl (v detailu návyku, Správa návyku → Upravit)'
   ], en:[
@@ -1718,7 +1723,7 @@ onAuthStateChanged(auth,async u=>{
     _gaBuf.clear();
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
-    clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false;
+    clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false; _hlCacheNow=true;
     _nudgeSyncAt=0; _nudgeSyncP=null; _nudgeSyncWant=false; _nudgeQ=false; clearTimeout(_nudgeWait); _nudgeWait=0; // fronta nabídek (4.69)
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
@@ -2374,6 +2379,9 @@ async function delHabitLog(logId,silent=false){
 let habitsReady=Promise.resolve();
 let _habitsSnapOk=false; // návyky už přišly ze snapshotu (bez nich nejde poznat smazaný návyk)
 let _hlServerOk=false;   // záznamy návyků už přišly ze serveru (backfill a štíty nesmí počítat z neúplných dat)
+let _hlCacheNow=true;    // poslední snapshot záznamů je z cache (offline) → lokální připomínky čekají (4.96)
+// Lokální připomínky a souhrny návyků jen z úplných dat ze serveru (4.96): z cache/prázdných záznamů by přišla připomínka i ke splněnému návyku
+function habitRemindReady(){ return _habitsSnapOk && _hlServerOk && !_hlCacheNow; }
 function subHabits(){
   if(!CU)return;
   if(unsubHabits)unsubHabits();
@@ -2382,6 +2390,7 @@ function subHabits(){
   habitsReady=new Promise(r=>{markReady=r;});
   _habitsSnapOk=false;
   _hlServerOk=false;
+  _hlCacheNow=true;
   // includeMetadataChanges: přechod cache → server přijde i beze změny dat (jinak by _habitsSnapOk zůstal false)
   unsubHabits=onSnapshot(query(collection(db,'users',CU.uid,'habits'),orderBy('createdAt','asc')),{includeMetadataChanges:true},snap=>{
     // Offline start (data z cache) ještě neznamená úplný seznam návyků
@@ -2396,6 +2405,7 @@ function subHabits(){
   }, snapErr('habits'));
   _hlCutoff=hlCutoffDS();
   unsubLogs=onSnapshot(query(collection(db,'users',CU.uid,'habitLogs'),where('date','>=',_hlCutoff)),{includeMetadataChanges:true},snap=>{
+    _hlCacheNow=snap.metadata.fromCache;
     // Jen změna metadat (cache → server): nepřekreslovat, jen potvrdit úplná data
     if(lOk&&!snap.docChanges().length){ if(!snap.metadata.fromCache&&!_hlServerOk){ _hlServerOk=true; gameKick(); } return; }
     // Starší záznamy (dotažené nebo zapsané lokálně) snapshot neobsahuje — zachovat je
@@ -6785,22 +6795,19 @@ function scheduleDaily(hour, minute, callback) {
   if (target <= now) target.setDate(target.getDate() + 1);
   const ms = target - now;
 
-  const fire = () => {
+  // callback vrátí false = data ještě nejsou ze serveru → lastRun nezapsat, zkusit za minutu, jen týž den (4.96)
+  const run = (day) => {
+    if (toDS() !== day) return;
     const stored = lsGet(key, {});
-    const todayStr = toDS();
-    if (stored.lastRun === todayStr) return; // už dnes proběhl
-    stored.lastRun = todayStr;
+    if (stored.lastRun === day) return; // už dnes proběhl
+    if (callback() === false) { notifTimers.push(setTimeout(() => run(day), 60 * 1000)); return; }
+    stored.lastRun = day;
     localStorage.setItem(key, JSON.stringify(stored));
-    callback();
+  };
+  const fire = () => {
+    run(toDS());
     // Naplánuj na zítřek
-    const daily = setInterval(() => {
-      const s2 = lsGet(key, {});
-      const t2 = toDS();
-      if (s2.lastRun === t2) return;
-      s2.lastRun = t2;
-      localStorage.setItem(key, JSON.stringify(s2));
-      callback();
-    }, 24 * 60 * 60 * 1000);
+    const daily = setInterval(() => run(toDS()), 24 * 60 * 60 * 1000);
     notifTimers.push(daily);
   };
 
@@ -6821,10 +6828,10 @@ function checkMissedNotifications() {
       const key = `lp_sched_${mh}_${mm}`;
       const stored = lsGet(key, {});
       const today = toDS(now);
-      if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm))) {
+      // Data ještě nejsou ze serveru (false) → lastRun nezapsat, zkusí se při dalším návratu nebo ticku (4.96)
+      if (stored.lastRun !== today && (h > mh || (h === mh && m >= mm)) && sendMorningNotif() !== false) {
         stored.lastRun = today;
         localStorage.setItem(key, JSON.stringify(stored));
-        sendMorningNotif();
       }
     }
   }
@@ -6835,10 +6842,9 @@ function checkMissedNotifications() {
       const key = `lp_sched_${eh}_${em}`;
       const stored = lsGet(key, {});
       const today = toDS(now);
-      if (stored.lastRun !== today && (h > eh || (h === eh && m >= em))) {
+      if (stored.lastRun !== today && (h > eh || (h === eh && m >= em)) && sendEveningNotif() !== false) {
         stored.lastRun = today;
         localStorage.setItem(key, JSON.stringify(stored));
-        sendEveningNotif();
       }
     }
   }
@@ -6859,7 +6865,15 @@ function scheduleHabitReminders() {
   notifTimers.push(checkInterval);
   // Jedna kontrola hned při spuštění (pokud je správný čas)
   const h = new Date().getHours();
-  if (h >= 8 && h <= 22) setTimeout(checkAndRemindHabits, 5000);
+  // Data ze serveru můžou přijít později (pomalá síť) → zkusit znovu po 20 s, nejdéle ~3 min; offline nic (4.96)
+  if (h >= 8 && h <= 22) {
+    let tries = 0;
+    const first = () => {
+      if (habitRemindReady()) { checkAndRemindHabits(); return; }
+      if (++tries < 10) notifTimers.push(setTimeout(first, 20000));
+    };
+    notifTimers.push(setTimeout(first, 5000));
+  }
 
   // Každou minutu zkontroluj individuální časy návyků
   const perHabitInterval = setInterval(checkPerHabitReminders, 60 * 1000);
@@ -6870,6 +6884,7 @@ function scheduleHabitReminders() {
 
 function checkPerHabitReminders() {
   if (!notifGranted() || hasPushToken()) return; // s push tokenem posílá server
+  if (!habitRemindReady()) return; // záznamy ještě nejsou ze serveru: nic neposílat ani neznačit (4.96)
   const now = new Date();
   const today = toDS(now);
   const dow = now.getDay();
@@ -6906,8 +6921,10 @@ function checkPerHabitReminders() {
 }
 
 // ── Obsah notifikací ──
+// Vrací false = data návyků ještě nejsou ze serveru (volající nezapíše lastRun a zkusí to znovu)
 function sendMorningNotif() {
   if (hasPushToken()) return; // s push tokenem posílá server
+  if (!habitRemindReady()) return false;
   const today = toDS();
   const todayEvents = events.filter(ev => {
     if (ev.repeat === 'yes') return ev.date.slice(5) === today.slice(5);
@@ -6926,6 +6943,7 @@ function sendMorningNotif() {
 
 function sendEveningNotif() {
   if (hasPushToken()) return; // s push tokenem posílá server
+  if (!habitRemindReady()) return false; // jako ranní: počet splněných jen ze serverových dat
   const today = toDS();
   if (!hasMod('habits')) return;
   const due = habits.filter(h => isHabitRemindDue(h, today, new Date().getDay()));
@@ -6945,6 +6963,7 @@ function sendEveningNotif() {
 }
 
 function checkAndRemindHabits() {
+  if (!habitRemindReady()) return; // před načtením ze serveru by splněný návyk vypadal nesplněně; lp_last_remind nezapisovat (4.96)
   const today = toDS();
   const push = hasPushToken();
   const undone = habits.filter(h => {
