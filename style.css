@@ -1777,6 +1777,7 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .hb-drop-ph{border-style:dashed}
 .hb-drop-ph .habit-group-header{cursor:default}
 .habit-card.hb-drop-before{box-shadow:0 -3px 0 var(--accent)}
+.habit-card.hb-next.hb-drop-before,.habit-card.hb-next.hb-drop-before:hover{box-shadow:0 -3px 0 var(--accent),0 0 0 1px var(--accent) inset} /* čára dopadu i u „další na řadě“ */
 .habit-group.hb-drop-end .habit-group-body.open>.habit-card:last-child{box-shadow:0 3px 0 var(--accent)}
 /* Úprava Domů 4.86 */
 .dash-edit{display:block;margin:4px auto 8px;min-height:44px;padding:0 18px;background:none;border:none;color:var(--text3);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}

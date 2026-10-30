@@ -2316,6 +2316,7 @@ export default {
   'mp.viewGone': 'Jídelníček skupiny {name} už není sdílený, ukazuju {to}',
   'mp.grpGone': '⚠️ Skupina už jídelníček nesdílí, jídlo se neuložilo',
   'mp.planLoading': '⏳ Načítám jídelníček skupiny, zkus to za chvilku znovu',
+  'mp.planLoadFail': '⚠️ Jídelníček skupiny se nepodařilo načíst, zkus to za chvíli',
   'mp.shopLoading': '⏳ Načítám nákupní seznam skupiny, zkus to za chvilku znovu',
   'mp.roNote': '👀 Jídelníček skupiny upravuje její správce. Svůj vlastní si můžeš vést v „Moje“.',
   'mp.toShopBtn': '🛒 Do nákupu',

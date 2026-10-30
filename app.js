@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.98';
+const APP_VERSION = '4.99';
 const CHANGELOG = [
+  { v:'4.99', items:[
+    '🔧 Drobné opravy týdenního souhrnu, návyků a jídelníčku'
+  ], en:[
+    '🔧 Small fixes to the weekly summary, habits and meal plan'
+  ]},
   { v:'4.98', items:[
     '↕️ Návyk přesuneš do jiné části dne podržením a přetažením karty (i do sbalené nebo prázdné skupiny)',
     '🗓️ Týdenní souhrn: v neděli večer přijde přehled týdne – návyky, nejdelší série, pitný režim a události na příští týden (vypnout jde v Nastavení → Notifikace)',
@@ -3183,7 +3188,7 @@ function renderHabits(){
     const groupHabits=habits.filter(h=>getGroup(h)===g.id && !h.archived).sort((a,b)=>(a.order||0)-(b.order||0));
     if(!groupHabits.length) return;
 
-    // Splněno / na řadě ve zvolený den (4.98, jako Domů): bez pauzy a neutrálních dnů; týdenní jen nevyřízený nebo ten den splněný
+    // Splněno / na řadě ve zvolený den (4.99, jako Domů): bez pauzy a neutrálních dnů; týdenní jen ten den splněný
     const dueG=groupHabits.filter(h=>habitDueOrDone(h,habitDay));
     const doneCount=dueG.filter(h=>hDone(h.id,habitDay)).length;
     const pct=dueG.length?Math.round(doneCount/dueG.length*100):0;
@@ -4046,6 +4051,7 @@ window.deleteHabit=(id)=>{
   const delH=habits.find(h=>h.id===id);
   if(!delH) return;
   const delSteps=chainOf(delH); // 1. krok rutiny: připomínka na nový 1. krok (4.89)
+  const shGids=sharedGids('h',id); // při chybě smazání se zrcadla obnoví
   unshareAll('h',id); // zrcadla ve skupinách pryč dřív, než návyk zmizí
   const memLogs=habitLogs.filter(l=>l.habitId===id);
   habits=habits.filter(h=>h.id!==id);
@@ -4066,6 +4072,12 @@ window.deleteHabit=(id)=>{
   },e=>{
     if(!CU||CU.uid!==uid) return;
     if(!habits.some(h=>h.id===id)) habits.push(delH); // snapshot ho mohl vrátit sám
+    // Zrcadla ve skupinách zpět (hned, bez debounce syncShared: listener zrcadel by mezitím sdílení zase odebral)
+    shGids.filter(g=>myGroupIds().includes(g)).forEach(g=>{
+      if(!mySharedIn.has('h_'+id)) mySharedIn.set('h_'+id,new Set());
+      mySharedIn.get('h_'+id).add(g);
+      writeMirror('h',id,g);
+    });
     const have=new Set(habitLogs.map(l=>l.id));
     habitLogs.push(...memLogs.filter(l=>!have.has(l.id)));
     shieldCacheReset();
@@ -4862,6 +4874,7 @@ function moveHabitToGroup(hid, group, beforeId){
       const x = habits.find(y => y.id === id); // snapshot mohl objekt nahradit
       if (x) Object.keys(was).forEach(k => { if (was[k] === undefined) delete x[k]; else x[k] = was[k]; });
     });
+    syncShared('h', hid); // sdílený návyk: zrcadlo podle vráceného stavu
     renderHabits();
     toast(t('hb.orderFail', { err: userErr(e, 'habit') }));
   });
@@ -8779,8 +8792,8 @@ function gameLevel(){ return Math.max(levelOf(gameTotal()),Number(game?.lvlSeen)
 function perfDue(ds){ return habits.filter(h=>(!h.archived||hDone(h.id,ds))&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
 // Aktivní návyky na řadě v daný den (Domů, Rex, oslava „vše splněno“; 4.81): bez archivu, týdenních a neutrálních dnů
 function habitsDue(ds){ return habits.filter(h=>!h.archived&&h.freq?.type!=='weekly'&&habitDayState(h,ds)!=='neutral'); }
-// Do počtu „x/y“ (hlavička skupiny, Rex; 4.98): denní jako habitsDue, týdenní jen nevyřízený nebo ten den splněný
-function habitDueOrDone(h,ds){ return !!h&&!h.archived&&(isWeekly(h)?(isHabitPending(h,ds)||hDone(h.id,ds)):habitDayState(h,ds)!=='neutral'); }
+// Do počtu „x/y“ (hlavička skupiny, Rex; 4.99): denní jako habitsDue, týdenní jen ten den splněný (nevyřízený týdenní nesnižuje %)
+function habitDueOrDone(h,ds){ return !!h&&!h.archived&&(isWeekly(h)?hDone(h.id,ds):habitDayState(h,ds)!=='neutral'); }
 function isPerfectDay(ds){
   const due=perfDue(ds);
   return due.length>=2&&due.every(h=>hDone(h.id,ds));
@@ -16408,7 +16421,7 @@ window.mealplanToShopping = async () => {
   if(_mpShopBusy) return; // zápis předchozího klepnutí ještě běží
   const mg0 = mealGid();
   // Plán skupiny se ještě načítá → nehlásit „prázdný“
-  if(mg0 && !mealGrp[mg0]?.loaded) { subscribeGroupMeal(mg0); toast(t('mp.planLoading')); return; }
+  if(mg0 && !mealGrp[mg0]?.loaded) { subscribeGroupMeal(mg0); toast(t(mealGrp[mg0]?.err ? 'mp.planLoadFail' : 'mp.planLoading')); return; }
   const plan = currentMealPlan();
 
   const mealNames = [];
@@ -16697,7 +16710,8 @@ document.addEventListener('paste', async function(e) {
       if (!file) continue;
       toast(t('cl.processing'));
       try {
-        clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = clShownList;
+        const lst = clShownList; // seznam zachytit před await (uživatel může mezitím přepnout)
+        clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = lst;
         clShowNewPhoto();
         document.getElementById('cl-new-inp')?.focus();
       } catch(err) { toast(t('cl.imgFail')); }
@@ -16936,7 +16950,8 @@ window.handleClNewPhotoInput = async function(input) {
   const file = input.files[0]; if (!file) return;
   toast(t('cl.processing'));
   try {
-    clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = clShownList;
+    const lst = clShownList; // seznam zachytit před await (uživatel může mezitím přepnout)
+    clNewPhoto = await compressImage(file, 900, 0.75); clNewPhotoList = lst;
     clShowNewPhoto();
   } catch(e) { toast(t('nt.photoFail')); }
   input.value = '';
@@ -19757,7 +19772,7 @@ function buildChatContext(question=''){
 
   add(tA('aip.ctx.s.habits'),2,()=>{
     const act=habits.filter(h=>h&&h.name&&!h.archived);
-    // „dnes x/n“ jako Domů (4.98): pauza, přeskočení a dny mimo frekvenci se nepočítají; týdenní (4.91) jen nevyřízený nebo dnes splněný
+    // „dnes x/n“ jako Domů (4.98): pauza, přeskočení a dny mimo frekvenci se nepočítají; týdenní (4.91) jen dnes splněný
     const dueAll=act.filter(h=>habitDueOrDone(h,today));
     const lines=[tA('aip.ctx.hab.sum',{done:dueAll.filter(h=>hDone(h.id,today)).length,n:dueAll.length})];
     act.slice(0,20).forEach(h=>{

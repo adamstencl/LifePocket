@@ -1359,11 +1359,13 @@ async function wkLoadEvents(path, from, to) {
   return [...byId.values()];
 }
 // Počet událostí začínajících v některém ze dnů (každoroční podle měsíce a dne, jako evOnDate)
-function wkCountEvents(docs, days) {
+// Veterina: zrcadla mazlíčka (petId: granule i péče) se nepočítají vůbec, osobní jen se zapnutým modulem pets
+function wkCountEvents(docs, days, petsOn = false) {
   let n = 0;
   for (const doc of docs) {
     const ev = doc.data() || {};
     if (typeof ev.date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(ev.date)) continue;
+    if (ev.type === 'vet' && (ev.petId || !petsOn)) continue;
     if (days.some(ds => evOnDate(ev, ds))) n++;
   }
   return n;
@@ -1657,12 +1659,14 @@ exports.sendScheduledNotifications = onSchedule(
                     if (fam && fam.members?.[uid] && fam.shareCal) evDocs.push(...await lazy(fe, `wk|${next[0]}`, () => wkLoadEvents(`families/${fid}/events`, next[0], next[6])));
                   } catch(e) { /* skupina nemusí existovat */ }
                 }
-                evN = wkCountEvents(evDocs, next);
+                evN = wkCountEvents(evDocs, next, !!mods && mods.includes('pets')); // pets jako hasMod v appce
               }
               const body = wkBody(L, {habits: hs, streak, water: ws, events: evN});
               if (body) {
-                weeklySent = true;
-                await push(tS(L, 'wk.t', {name: nickname}), body, `weekly-${mon}`, {data: {open: hs ? 'habits' : 'water'}, ttl: TTL_WEEKLY});
+                // Odesláno = aspoň jedno zařízení; jinak (chyba, 0 doručení) přijde běžný večerní souhrn
+                const res = await sendPushToUser(uid, prof, tS(L, 'wk.t', {name: nickname}), body, `weekly-${mon}`, {data: {open: hs ? 'habits' : 'water'}, ttl: TTL_WEEKLY});
+                sentTotal += res.sent;
+                weeklySent = res.sent > 0;
               }
             }
           } catch(e) { console.error(`[LP] týdenní souhrn uid=${uid}:`, e.message); }

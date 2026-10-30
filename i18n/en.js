@@ -2282,6 +2282,7 @@ export default {
   'mp.viewGone': 'The {name} meal plan is no longer shared, showing {to}',
   'mp.grpGone': '⚠️ The group no longer shares its meal plan, the meal wasn’t saved',
   'mp.planLoading': '⏳ Loading the group meal plan, try again in a moment',
+  'mp.planLoadFail': '⚠️ Couldn’t load the group meal plan, try again in a moment',
   'mp.shopLoading': '⏳ Loading the group shopping list, try again in a moment',
   'mp.roNote': '👀 The group meal plan is edited by its admin. You can keep your own under “Mine”.',
   'mp.toShopBtn': '🛒 To shopping',
