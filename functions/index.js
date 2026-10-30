@@ -355,6 +355,9 @@ function isTimeMatch(h, m, timeStr) {
   return ((n - t + 1440) % 1440) < 5;
 }
 
+// Platnost připomínek v sekundách (webpush TTL, 4.96)
+const TTL_HABIT = 1800, TTL_DIGEST = 3600, TTL_EVENT = 3600, TTL_BDAY = 6 * 3600;
+
 // options.quiet: souhrn (např. večerní ze skupiny) – při nahrazení starší notifikace se stejným tagem nezvoní znovu
 // a doručuje se s normální prioritou; ostatní (připomínky, události, změny) zvoní a vibrují podle nastavení telefonu
 // (silent:false, vibrate, renotify:true) s Urgency high (Android je doručí i v úsporném režimu).
@@ -378,11 +381,14 @@ async function sendPush(token, title, body, tag = 'lifepocket', options = {}) {
   if (options.actions?.length) data.actions = JSON.stringify(options.actions);
   if (quiet) data.quiet = '1';
   if (options.sticky === false) data.sticky = '0'; // pro SW, když payload nemá notification
+  // options.ttl (s): připomínka s časovou platností – po vypršení ji FCM nedoručí (telefon byl offline), jinak až 4 týdny (4.96)
+  const headers = {Urgency: quiet ? 'normal' : 'high'};
+  if (Number.isInteger(options.ttl) && options.ttl > 0) headers.TTL = String(options.ttl);
   await getMessaging().send({
     token,
     data,
     webpush: {
-      headers: {Urgency: quiet ? 'normal' : 'high'},
+      headers,
       notification: notif,
       fcmOptions: {link: 'https://lifepocket.app/'},
     }
@@ -1433,7 +1439,7 @@ exports.sendScheduledNotifications = onSchedule(
         if (habitsOn && ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
           const total = (await getDigestHabits()).length;
           if (total > 0) {
-            try { await push(tS(L, 'morning.t', {name: nickname}), tS(L, 'morning.b', {n: total}), 'morning', {data: {open: 'habits'}}); }
+            try { await push(tS(L, 'morning.t', {name: nickname}), tS(L, 'morning.b', {n: total}), 'morning', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
             catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
           }
         }
@@ -1457,7 +1463,7 @@ exports.sendScheduledNotifications = onSchedule(
               if (done === total) body = tS(L, 'evening.all', {n: total, g});
               else if (done === 0) body = tS(L, 'evening.zero', {g});
               else body = tS(L, 'evening.part', {done, total, n: total - done, g}); // plurál podle zbývajících
-              try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}}); }
+              try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
               catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
             }
           }
@@ -1490,7 +1496,7 @@ exports.sendScheduledNotifications = onSchedule(
                 `${habit.emoji || '🔔'} ${habit.name}`,
                 tS(L, 'habit.nag', {name: nickname, habit: habit.name, g}),
                 `habit-${habitDoc.id}`,
-                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title: tS(L, 'habit.done')}] }
+                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title: tS(L, 'habit.done')}], ttl: TTL_HABIT }
               );
             } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
@@ -1562,10 +1568,10 @@ exports.sendScheduledNotifications = onSchedule(
           if (!ev.date || ev.type !== 'birthday') continue;
           const bday = ev.date.slice(5);
           if (bday === todayMD) {
-            try { await push(tS(L, 'bday.today.t'), tS(L, 'bday.today.b', {name: nickname, who: ev.name}), `bday-${evDoc.id}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'bday.today.t'), tS(L, 'bday.today.b', {name: nickname, who: ev.name}), `bday-${evDoc.id}`, {data: {open: 'cal'}, ttl: TTL_BDAY}); }
             catch(e) { console.error(`[LP] bday push:`, e.message); }
           } else if (bday === tmrwMD) {
-            try { await push(tS(L, 'bday.tmrw.t'), tS(L, 'bday.tmrw.b', {who: ev.name}), `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'bday.tmrw.t'), tS(L, 'bday.tmrw.b', {who: ev.name}), `bday-tmrw-${evDoc.id}`, {data: {open: 'cal'}, ttl: TTL_BDAY}); }
             catch(e) { console.error(`[LP] bday-tmrw push:`, e.message); }
           }
         }
@@ -1583,7 +1589,7 @@ exports.sendScheduledNotifications = onSchedule(
           const title = ev.care === 'food' ? tS(L, 'pet.food.t', vv) : when === 'day1' ? tS(L, 'pet.tmrw.t', vv) : tS(L, 'pet.today.t', vv);
           const body = ev.care === 'food' ? tS(L, 'pet.food.b', vv) : when === 'day1' ? tS(L, 'pet.tmrw.b', vv) : tS(L, 'pet.today.b', vv);
           const petId = typeof ev.petId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(ev.petId) ? ev.petId : '';
-          try { await push(title, body, `vet-${evDoc.id}-${ev.date}`, {data: {open: 'pets', id: petId}}); }
+          try { await push(title, body, `vet-${evDoc.id}-${ev.date}`, {data: {open: 'pets', id: petId}, ttl: TTL_EVENT}); }
           catch(e) { console.error(`[LP] pet push:`, e.message); }
         }
 
@@ -1597,7 +1603,7 @@ exports.sendScheduledNotifications = onSchedule(
           if (!dates) continue;
           for (const evDay of dates) {
             if (!evOnDate(ev, evDay)) continue;
-            try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${evDay}`, {data: {open: 'cal'}}); }
+            try { await push(tS(L, 'ev.t', {ev: ev.name}), tS(L, 'ev.b', {name: nickname, ev: ev.name, time: ev.time}), `ev-${evDoc.id}-${evDay}`, {data: {open: 'cal'}, ttl: TTL_EVENT}); }
             catch(e) { console.error(`[LP] event push:`, e.message); }
             break; // jedna událost = nejvýš jedno upozornění v běhu
           }

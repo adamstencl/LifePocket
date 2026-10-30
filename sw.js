@@ -28,9 +28,30 @@ try {
 // s renotify:false, což na některých Androidech (Samsung) notifikaci ztišilo. Proto se už nenahrazuje.
 // Bez "notification" (jen data) ji složíme tady. Handler vždy vrací Promise (iOS ruší subscription u "tichých" pushů,
 // u payloadu s notification ji ale SDK zobrazilo samo).
+// Místní dnešek zařízení (ne UTC)
+function localToday() {
+  const n = new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+}
+// Připomínka návyku pro jiný den než dnes (zpožděné doručení, třeba přes půlnoc) se nemá ukázat (4.96)
+function staleHabitPush(d) {
+  return !!d && typeof d.habitId === 'string' && d.habitId && typeof d.date === 'string' && d.date !== localToday();
+}
+// Payload s "notification" zobrazí SDK dřív, než se zavolá tento handler → zastaralou připomínku hned zavřeme.
+// Push bez zobrazené notifikace nejde (iOS by zrušil odběr), proto zavřít až po zobrazení.
+function closeStaleHabit(d) {
+  const tag = typeof d.tag === 'string' && d.tag ? d.tag : 'habit-' + d.habitId;
+  const close = () => self.registration.getNotifications({tag}).then(ns => ns.forEach(n => {
+    const nd = (n.data && n.data.FCM_MSG && n.data.FCM_MSG.data) || n.data || {};
+    if (nd.habitId === d.habitId && nd.date === d.date) n.close();
+  })).catch(() => {});
+  return close().then(() => new Promise(r => setTimeout(r, 1000))).then(close); // pojistka, kdyby se zobrazila až po handleru
+}
+
 if (fmsg) fmsg.onBackgroundMessage(payload => {
-  if (payload.notification) return Promise.resolve();
   const d = payload.data || {};
+  if (payload.notification) return staleHabitPush(d) ? closeStaleHabit(d) : Promise.resolve();
+  if (staleHabitPush(d)) return Promise.resolve();
   let actions = [];
   try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { /* neplatné akce — bez tlačítek */ }
   const {tag, actions: _a, ...clickData} = d;

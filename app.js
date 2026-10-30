@@ -6734,6 +6734,8 @@ function isHabitRemindDue(h, today, dow) {
 function showForegroundPush(payload) {
   const n = payload?.notification || {};
   const d = payload?.data || {};
+  // Připomínka návyku pro jiný den než dnešek (zpožděné doručení) se nezobrazí (4.96)
+  if (typeof d.habitId === 'string' && d.habitId && typeof d.date === 'string' && d.date !== toDS()) return;
   let actions = [];
   try { actions = d.actions ? JSON.parse(d.actions) : []; } catch(e) { actions = []; }
   const {tag, actions: _a, title, body, ...clickData} = d;
