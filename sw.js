@@ -70,7 +70,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v97';
+const CACHE = 'lifepocket-v98';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -207,6 +207,19 @@ function habitSnooze(data) {
     if (r.status >= 500) return snoozeLocal(hid, date, sn);
   }, () => { clearTimeout(tm); return snoozeLocal(hid, date, sn); });
 }
+// Parametry odložení z připomínky návyku (5.02), tvar jako v habitSnooze; sn 3 = limit (panel jen se Splněno).
+// Podpis jen celý (u, at, st) a jen při sn < 3, jinak appka nabídne lokální odložení.
+function habitNotifSnz(data) {
+  const d = typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date) ? data.date : '';
+  if (!d) return null;
+  const nz = {d};
+  if (/^[0-3]$/.test(String(data.sn))) nz.sn = Number(data.sn);
+  if (nz.sn < 3 && /^\d{12,14}$/.test(String(data.at)) && typeof data.st === 'string' && /^[A-Za-z0-9_-]{43}$/.test(data.st)
+    && typeof data.u === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.u)) {
+    nz.at = Number(data.at); nz.st = data.st; nz.u = data.u;
+  }
+  return nz;
+}
 function onNotifClick(e) {
   const raw = e.notification.data || {};
   // Notifikace zobrazená Firebase SDK: data serveru jsou v FCM_MSG.data; SDK handler se nespustí
@@ -268,8 +281,11 @@ function onNotifClick(e) {
     const open = data.open || 'habit';
     const id = open === 'habit' && typeof data.habitId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.habitId) ? data.habitId
       : open === 'pets' && typeof data.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(data.id) ? data.id : '';
-    e.waitUntil(openInApp({type: 'OPEN_TARGET', open, id},
-      '/?open=' + open + (id ? '&id=' + encodeURIComponent(id) : '')));
+    // 5.02: klepnutí na samotnou připomínku návyku nese i parametry odložení (panel v appce, iPhone tlačítka nemá).
+    // Podepsané části (u, at, st) v URL jen za # – fragment se na server neposílá.
+    const nz = open === 'habit' && id ? habitNotifSnz(data) : null;
+    e.waitUntil(openInApp(nz ? {type: 'OPEN_TARGET', open, id, nz} : {type: 'OPEN_TARGET', open, id},
+      '/?open=' + open + (id ? '&id=' + encodeURIComponent(id) : '') + (nz ? '#' + new URLSearchParams(nz) : '')));
   } else {
     e.waitUntil(openInApp(null, '/'));
   }

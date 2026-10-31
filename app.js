@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.01';
+const APP_VERSION = '5.02';
 const CHANGELOG = [
+  { v:'5.02', items:[
+    '📱 iPhone: po klepnutí na připomínku návyku můžeš návyk splnit nebo odložit o 15 min přímo v appce'
+  ], en:[
+    '📱 iPhone: after tapping a habit reminder you can complete the habit or snooze it for 15 min right in the app'
+  ]},
   { v:'5.01', items:[
     '⏰ Připomínku návyku jde odložit o 15 minut (až 3×) tlačítkem v notifikaci'
   ], en:[
@@ -1827,6 +1832,7 @@ function clearUserSessionState(){
     waterDays={}; _wtReady=false; _wtSubFrom=''; _wtSubAt=0; _wtHbWait=false; _wtHbBusy.clear(); clearTimeout(_wtDayTimer); _wtEdit=null; _wtOnbGoal=0; _wtSuggestGoal=0;
     _wtLinkScanned=false; _wtLinkQ=false; window.wtLinkClose?.(); // nabídka propojení pití (4.85)
     window.chainBarClose?.(); // lišta „Další krok“ rutiny (4.89)
+    window.hspClose?.(); // panel připomínky návyku (5.02)
     checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
@@ -7270,13 +7276,15 @@ function habitNotifActions(sn) {
   return a;
 }
 // Zpráva HABIT_SNOOZE od SW; vstup se validuje (sn = počet odložení v notifikaci, starší / opakované se zahodí)
-function handleHabitSnooze(d) {
+// Vrací 'ok' | 'dup' (už odloženo) | 'limit' | '' (neplatné); quiet = bez toastu (panel 5.02 ukáže vlastní)
+function handleHabitSnooze(d, quiet) {
   const today = toDS();
   const hid = okNotifHabitId(d.habitId) ? d.habitId : '';
   const sn = Number.isInteger(d.sn) ? d.sn : -1;
-  if (!CU || !hid || d.date !== today || sn < 0 || sn >= HSNZ_MAX || _hsnzTimers.has(hid)) return;
+  if (!CU || !hid || d.date !== today || sn < 0) return '';
   const c = hsnzCount(hid, today);
-  if (c >= HSNZ_MAX || sn < c) return;
+  if (sn >= HSNZ_MAX || c >= HSNZ_MAX) return 'limit';
+  if (_hsnzTimers.has(hid) || sn < c) return 'dup';
   const st = lsGet('lp_hsnz', {});
   const uid = CU.uid;
   const cur = st && st.u === uid && st.d === today && st.c && typeof st.c === 'object' ? st.c : {};
@@ -7297,8 +7305,96 @@ function handleHabitSnooze(d) {
       `habit-${hid}`
     );
   }, HSNZ_MS));
-  if (document.visibilityState === 'visible') toast(t('ln.snoozed'));
+  if (!quiet && document.visibilityState === 'visible') toast(t('ln.snoozed'));
+  return 'ok';
 }
+
+// ── Panel po klepnutí na připomínku návyku (5.02) ──
+// iPhone (web push v PWA) tlačítka v notifikaci neukazuje → po otevření appky „✓ Splněno“ a „⏰ Za 15 min“.
+// Parametry z sw.js (habitNotifSnz): d = den připomínky, sn = počet odložení, podpis u/at/st jen celý (jinak lokální odložení).
+const HSP_URL = 'https://europe-west1-lifepocket-d8f0e.cloudfunctions.net/habitSnooze';
+const HSP_TIMEOUT = 5000;
+let _hsp = null, _hspBusy = false;
+function hspParse(o) {
+  if (!o || typeof o !== 'object') return null;
+  const d = typeof o.d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.d) ? o.d : '';
+  if (!d) return null;
+  const sn = /^[0-3]$/.test(String(o.sn)) ? Number(o.sn) : -1;
+  const at = /^\d{12,14}$/.test(String(o.at)) ? Number(o.at) : 0;
+  const sig = sn >= 0 && sn < HSNZ_MAX && at && typeof o.st === 'string' && /^[A-Za-z0-9_-]{43}$/.test(o.st)
+    && typeof o.u === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(o.u);
+  return sig ? {d, sn, at, st: o.st, u: o.u} : {d, sn};
+}
+function hspClose() {
+  _hsp = null;
+  document.getElementById('habit-snz')?.remove();
+  document.body.classList.remove('hsp-on');
+}
+window.hspClose = hspClose;
+// Jen dnešní připomínka a dosud neoznačený návyk; jiný účet než v podpisu → podpis zahodit (jen lokálně)
+function hspShow(hid, nz) {
+  hspClose();
+  const today = toDS(), h = habits.find(x => x.id === hid);
+  if (!CU || !h || !nz || nz.d !== today || hMarked(hid, today)) return;
+  const p = nz.u && nz.u !== CU.uid ? {d: nz.d, sn: nz.sn} : {...nz};
+  // sn = podepsaný počet (tělo pro server), used = i s lokálními odloženími (zbývá N×, lokální odložení)
+  const used = Math.max(p.sn, hsnzCount(hid, today), 0), left = HSNZ_MAX - used;
+  _hsp = {hid, ...p, used};
+  chainBarClose();
+  const el = document.createElement('div');
+  el.id = 'habit-snz'; el.className = 'cta-ask hsp-ask'; el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', t('hsp.aria'));
+  el.innerHTML = `<div class="hsp-t">🔔 ${esc(h.emoji || '🎯')} ${esc(h.name)}</div>
+    <div class="hsp-row">
+      <button type="button" class="hsp-b hsp-done" data-a0="${esc(hid)}" onclick="hspDone(this.dataset.a0)">${tH('hsp.done')}</button>
+      ${left > 0 ? `<button type="button" class="hsp-b hsp-snz" data-a0="${esc(hid)}" onclick="hspSnooze(this.dataset.a0)">${tH('hsp.snooze', {n: left})}</button>` : ''}
+    </div>
+    <button type="button" class="hsp-x" onclick="hspClose()">${tH('hsp.close')}</button>`;
+  document.body.appendChild(el);
+  document.body.style.setProperty('--hsp-h', el.offsetHeight + 'px'); // toast nad panel
+  document.body.classList.add('hsp-on');
+}
+// Splněno: stejná cesta jako tlačítko Splněno v notifikaci (handleNotifHabitDone)
+window.hspDone = hid => {
+  const p = _hsp;
+  if (!p || p.hid !== hid || _hspBusy) return;
+  hspClose();
+  handleNotifHabitDone({habitId: hid, date: p.d}).then(ok => { if (ok === false) toast(t('hsp.doneFail')); }, () => toast(t('hsp.doneFail')));
+};
+// Lokální odložení (bez podpisu, offline, 5xx): časovač v otevřené appce, jako HABIT_SNOOZE
+function hspLocal(p) {
+  const r = handleHabitSnooze({habitId: p.hid, date: p.d, sn: p.used}, true);
+  toast(t(r === 'ok' || r === 'dup' ? 'hsp.snoozedLocal' : r === 'limit' ? 'hsp.limit' : 'hsp.fail'), 3500);
+}
+// Za 15 min: s podpisem server (habitSnooze, stejné tělo jako sw.js), 5xx / offline / timeout → lokálně
+window.hspSnooze = async hid => {
+  const p = _hsp;
+  if (!p || p.hid !== hid || _hspBusy) return;
+  if (!CU || p.d !== toDS()) { hspClose(); toast(t('hsp.stale'), 3500); return; }
+  const h = habits.find(x => x.id === hid);
+  if (h && hMarked(hid, p.d)) { hspClose(); toast(t('notif.h.already', {emoji: h.emoji, name: h.name})); return; }
+  if (!p.st || navigator.onLine === false) { hspClose(); hspLocal(p); return; }
+  _hspBusy = true;
+  document.querySelectorAll('#habit-snz button').forEach(b => { b.disabled = true; });
+  const ac = typeof AbortController === 'function' ? new AbortController() : null;
+  const tm = ac ? setTimeout(() => ac.abort(), HSP_TIMEOUT) : 0;
+  let st = 0;
+  try {
+    const r = await fetch(HSP_URL, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store', credentials: 'omit',
+      body: JSON.stringify({u: p.u, h: hid, d: p.d, at: p.at, sn: p.sn, st: p.st}), signal: ac ? ac.signal : undefined,
+    });
+    st = r.status;
+  } catch (e) { st = 0; } // offline / timeout / CORS
+  finally { clearTimeout(tm); _hspBusy = false; }
+  if (_hsp !== p) return; // mezitím zavřeno / jiný panel
+  hspClose();
+  if (st >= 200 && st < 300) toast(t('ln.snoozed'), 3500);
+  else if (st === 409) toast(t('hsp.limit'), 3500);
+  else if (st === 410) toast(t('hsp.stale'), 3500);
+  else if (!st || st >= 500) hspLocal(p);
+  else toast(t('hsp.fail'), 3500); // 400 / 403 / 404
+};
 
 function checkBirthdayNotifs() {
   if (!notifGranted()) return;
@@ -15912,8 +16008,11 @@ function captureOpenTargetLink() {
     // Pitný režim: &drink=<ml>&at=<ms> (zápis jen jednou, parametry hned z adresy pryč)
     const drink = o === 'water' ? wtLinkMl(u.searchParams.get('drink')) : 0, at = drink ? wtLinkAt(u.searchParams.get('at')) : 0;
     ['open','id','drink','at'].forEach(k => u.searchParams.delete(k));
+    // Připomínka návyku (5.02): parametry odložení za # (sw.js habitNotifSnz), z adresy hned pryč
+    const nz = o === 'habit' && u.hash.length > 1 ? hspParse(Object.fromEntries(new URLSearchParams(u.hash.slice(1)))) : null;
+    if(nz) u.hash = '';
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
-    _pendingOpen = {open: o, id: okNotifHabitId(id) ? id : null, drink, at};
+    _pendingOpen = {open: o, id: okNotifHabitId(id) ? id : null, drink, at, nz};
   } catch(e) {}
 }
 captureOpenTargetLink();
@@ -15938,6 +16037,7 @@ async function consumePendingOpen() {
     if(!CU) return;
     if(p.open === 'habit' && p.id && habits.some(h => h.id === p.id)) window.openHabitDetail(p.id);
     else window.sp('habits');
+    if(p.nz && p.id) hspShow(p.id, p.nz); // panel Splněno / Za 15 min (5.02)
   } catch(e) { console.warn('[LP] otevření z notifikace:', e?.name); }
   finally { _openBusy = false; }
 }
@@ -15958,7 +16058,8 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
   } else {
     if(!d || d.type !== 'OPEN_TARGET' || !OPEN_TARGETS.includes(d.open)) return;
     const drink = d.open === 'water' ? wtLinkMl(d.drink) : 0;
-    _pendingOpen = {open: d.open, id: okNotifHabitId(d.id) ? d.id : null, drink, at: drink ? wtLinkAt(d.at) : 0};
+    _pendingOpen = {open: d.open, id: okNotifHabitId(d.id) ? d.id : null, drink, at: drink ? wtLinkAt(d.at) : 0,
+      nz: d.open === 'habit' && d.nz && typeof d.nz === 'object' ? hspParse(d.nz) : null};
   }
   if(document.getElementById('app')?.classList.contains('active')) consumePendingOpen();
 });
