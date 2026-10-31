@@ -120,3 +120,9 @@
 - Hlavička skupiny počítá nevyřízené týdenní návyky, Domů (`habitsDue`) ne – sjednotit.
 - Fotka checklistu: `clNewPhotoList` nastavit před `await compressImage`.
 - `moveHabitToGroup` přečísluje jen nearchivované; `renderEvList` s neplatným rozpětím ukáže původní rok; opakovaný join může zapsat 2× aktivitu „připojil se“.
+
+## Z 5.00 (připomínka jídelníčku)
+- Lokální připomínka (bez push tokenu) jen při otevřené appce, nedohání se v `checkMissedNotifications`; změna z jiného zařízení nepřeplánuje lokální časovač.
+- Profil bez `modules`: server připomínku pošle, klient (`hasMod`) ne – sjednotit.
+- Zápis `mealRemind` ze zařízení se starým profilem může vrátit `on` (stejně jako `notifSettings`).
+- Kopie jídelníčku ze skupiny nezapisuje `mealPlanAt`; vynechání podle plánu skupiny by stálo čtení navíc.
