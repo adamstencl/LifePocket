@@ -1229,6 +1229,44 @@ async function loadVet(path) {
 }
 
 const CRON_BATCH = 20;
+// Časová pojistka (5.05): po CRON_SOFT_MS se další dávky uživatelů nezačnou (timeout funkce je 240 s)
+const CRON_SOFT_MS = 200000;
+
+// Připomínky návyků (5.05): okno běhu = časy t, pro které isTimeMatch platí, tj. (teď − 4 min … teď) v minutách dne.
+// Přes půlnoc dva rozsahy. reminderTime ukládá klient jako „HH:MM“ s nulami (výběr času, saveHabitReminder),
+// takže porovnání řetězců odpovídá času. Rozsah na jednom poli nepotřebuje složený index.
+function habitRemRanges(h, m) {
+  const n = h * 60 + m, lo = n - 4;
+  if (lo >= 0) return [{lo: hmStr(lo), hi: hmStr(n)}];
+  return [{lo: '00:00', hi: hmStr(n)}, {lo: hmStr(lo + 1440), hi: '23:59'}];
+}
+async function loadRemindHabits(path, h, m) {
+  const byId = new Map();
+  for (const r of habitRemRanges(h, m)) {
+    const snap = await db.collection(path).where('reminderTime', '>=', r.lo).where('reminderTime', '<=', r.hi).get();
+    for (const d of snap.docs) byId.set(d.id, d);
+  }
+  return [...byId.values()];
+}
+
+// Pojistka proti dvojímu běhu (5.05): jeden dokument config/cronRun s posledním 5min slotem, převzetí transakcí.
+// Proti create() na slot: 1 čtení + 1 zápis za běh, žádné staré dokumenty k úklidu. config/** je pro klienty zavřené.
+// true = tenhle běh slot převzal; false = slot (nebo novější) už běží. Chyba čtení/zápisu → běh pokračuje (raději poslat).
+async function claimCronSlot(slot) {
+  try {
+    return await db.runTransaction(async (tx) => {
+      const ref = db.doc('config/cronRun');
+      const s = await tx.get(ref);
+      const last = s.exists ? s.data().slot : null;
+      if (Number.isInteger(last) && last >= slot) return false;
+      tx.set(ref, {slot, at: Timestamp.now()});
+      return true;
+    });
+  } catch(e) {
+    console.error('[LP] cronRun:', e.code || e.message);
+    return true;
+  }
+}
 
 // ── Veřejné výzvy (Výzva měsíce / týdne, 4.63) ──
 // Seznam výzev 1× za 15 min na instanci (ne na uživatele). Dotaz na rozsah jednoho pole (end) nepotřebuje
@@ -1529,6 +1567,9 @@ exports.sendScheduledNotifications = onSchedule(
     const runDate = new Date();
     const pz = zoneNow(DEF_TZ, runDate);
     console.log(`[LP] Cron: ${String(pz.h).padStart(2,'0')}:${String(pz.m).padStart(2,'0')}, datum: ${pz.today} (${DEF_TZ})`);
+    // Dvojí spuštění téhož slotu (opakování Scheduleru, souběh) → druhý běh nic neposílá
+    const slot = Math.floor(runDate.getTime() / CRON_STEP_MS);
+    if (!(await claimCronSlot(slot))) { console.warn(`[LP] Cron slot ${slot} už běží, konec`); return; }
 
     // Klient zapisuje jen podkolekce (users/{uid}/profile/main …), kořenový dokument
     // neexistuje → get() by nic nevrátil. listDocuments() vrací i „chybějící“ rodiče.
@@ -1742,6 +1783,18 @@ exports.sendScheduledNotifications = onSchedule(
           if (!dueCache) dueCache = (await getAllHabits()).filter(d => isHabitDueToday(d.data(), today, dow));
           return dueCache;
         };
+        // Připomínky (5.05): celé návyky jen když už jsou načtené (ranní, večerní, nedělní běh), jinak jen ty
+        // s reminderTime v okně tohoto běhu (obvykle 0 dokumentů = 1 čtení za dotaz místo všech návyků)
+        const getRemindHabits = async () => {
+          if (habitsAll) return getDueHabits();
+          return (await loadRemindHabits(`users/${uid}/habits`, h, m)).filter(d => isHabitDueToday(d.data(), today, dow));
+        };
+        // Odložená připomínka: jeden návyk podle ID (celý seznam jen když už je načtený)
+        const getDueHabit = async (hid) => {
+          if (habitsAll) return (await getDueHabits()).find(d => d.id === hid) || null;
+          const d = await db.doc(`users/${uid}/habits/${hid}`).get();
+          return d.exists && isHabitDueToday(d.data(), today, dow) ? d : null;
+        };
 
         // Ranní a večerní shrnutí návyků jen s modulem Návyky (starý profil bez modules = zapnuto)
         // a jen když má na dnes aspoň jeden návyk (prázdné varianty se neposílají)
@@ -1865,7 +1918,7 @@ exports.sendScheduledNotifications = onSchedule(
           );
         };
         if (ns.habits !== false) {
-          for (const habitDoc of await getDueHabits()) {
+          for (const habitDoc of await getRemindHabits()) {
             const habit = habitDoc.data();
             if (!habit.reminderTime) continue;
             if (!isTimeMatch(h, m, habit.reminderTime)) continue;
@@ -1880,7 +1933,7 @@ exports.sendScheduledNotifications = onSchedule(
           snzHandled.add(sz.ref.path);
           try {
             const habitDoc = ns.habits !== false && sz.ds === today && runDate.getTime() - sz.dueAt <= SNZ_STALE
-              ? (await getDueHabits()).find(d => d.id === sz.hid) : null;
+              ? await getDueHabit(sz.hid) : null;
             const send = !!habitDoc && !(await nagSkip(habitDoc));
             if (await claimSnooze(sz) && send) await nagPush(habitDoc, sz.n);
           } catch(e) { console.error(`[LP] odložená připomínka uid=${uid}:`, e.message); }
@@ -1930,14 +1983,17 @@ exports.sendScheduledNotifications = onSchedule(
         // Narozeniny se posílají jen v ranním čase uživatele → jen tehdy je čteme
         const bdayRun = isTimeMatch(h, m, morningTime);
 
+        // Každé čtení zvlášť (5.05): chyba jednoho dotazu (index, výpadek) nesmí shodit ostatní upozornění
+        const safeLoad = (p, what) => p.catch(e => { console.error(`[LP] ${what} uid=${uid}:`, e.code || e.message); return []; });
         // Osobní kalendář
         const evWin = evWinFor(zn.tz); // intervaly časů (přes půlnoc dva) → obvykle 1 dotaz na kolekci
-        const evGroups = [await loadTimedEvents(`users/${uid}/events`, evWin)];
-        const bdayGroups = bdayRun ? [await loadBirthdays(`users/${uid}/events`)] : [];
+        // evGroups: {docs, own} – own = osobní kalendář (termíny mazlíčka jen se zapnutým modulem)
+        const evGroups = [{docs: await safeLoad(loadTimedEvents(`users/${uid}/events`, evWin), 'events'), own: true}];
+        const bdayGroups = bdayRun ? [await safeLoad(loadBirthdays(`users/${uid}/events`), 'bdays')] : [];
         // Mazlíček (4.94): jeden dotaz type=='vet' na kalendář a den (jen v ranním běhu, jako narozeniny);
         // osobní kalendář jen se zapnutým modulem, skupinové vždy (sdíleného mazlíčka vidí celá skupina)
         const petsOn = Array.isArray(prof.modules) && prof.modules.includes('pets');
-        const vetGroups = bdayRun && petsOn ? [await loadVet(`users/${uid}/events`)] : [];
+        const vetGroups = bdayRun && petsOn ? [await safeLoad(loadVet(`users/${uid}/events`), 'vet')] : [];
         // Skupinové kalendáře (4.53): hlavní i vedlejší skupiny, které kalendář sdílí (stejně jako klient)
         for (const fid of calGroupIds(prof)) {
           try {
@@ -1946,9 +2002,9 @@ exports.sendScheduledNotifications = onSchedule(
             const famSnap = await fe.doc;
             const fam = famSnap.exists ? famSnap.data() : null;
             if (fam && fam.members?.[uid] && fam.shareCal) {
-              if (evWin.ranges.length) evGroups.push(await lazy(fe, `events|${evWin.key}`, () => loadTimedEvents(`families/${fid}/events`, evWin)));
-              if (bdayRun) bdayGroups.push(await lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)));
-              if (bdayRun) vetGroups.push(await lazy(fe, 'vet', () => loadVet(`families/${fid}/events`)));
+              if (evWin.ranges.length) evGroups.push({docs: await safeLoad(lazy(fe, `events|${evWin.key}`, () => loadTimedEvents(`families/${fid}/events`, evWin)), 'grp events'), own: false});
+              if (bdayRun) bdayGroups.push(await safeLoad(lazy(fe, 'bdays', () => loadBirthdays(`families/${fid}/events`)), 'grp bdays'));
+              if (bdayRun) vetGroups.push(await safeLoad(lazy(fe, 'vet', () => loadVet(`families/${fid}/events`)), 'grp vet'));
             }
           } catch(e) { /* skupina nemusí existovat */ }
         }
@@ -1988,9 +2044,11 @@ exports.sendScheduledNotifications = onSchedule(
         // Události s časem — hodinu předem. Typy s časem shodně s klientem (app.js evHasTime): všechny kromě
         // narozenin, tedy i vlastní typy (customEvTypes). Datum = den začátku v zóně uživatele (i zítřek
         // u událostí krátce po půlnoci); slots obsahují jen časy, jejichž okamžik leží v okně tohoto běhu.
-        for (const evDoc of evGroups.flat()) {
+        // Termín mazlíčka (petId, 5.05): bez připomínky (remind none) nic; v osobním kalendáři jen se zapnutým modulem (jako ráno)
+        for (const {docs, own} of evGroups) for (const evDoc of docs) {
           const ev = evDoc.data();
           if (typeof ev.date !== 'string' || ev.type === 'birthday' || typeof ev.time !== 'string') continue;
+          if (ev.petId && (ev.remind === 'none' || (own && !petsOn))) continue;
           const dates = evWin.slots.get(ev.time);
           if (!dates) continue;
           for (const evDay of dates) {
@@ -2007,6 +2065,10 @@ exports.sendScheduledNotifications = onSchedule(
 
     // Dávky po 20 uživatelích paralelně; chyba jednoho neshodí běh
     for (let i = 0; i < userRefs.length; i += CRON_BATCH) {
+      if (Date.now() - runDate.getTime() > CRON_SOFT_MS) {
+        console.warn(`[LP] Cron: časová pojistka, nezpracováno ${userRefs.length - i} z ${userRefs.length} uživatelů`);
+        break;
+      }
       const res = await Promise.allSettled(userRefs.slice(i, i + CRON_BATCH).map(r => processUser(r.id)));
       res.forEach(r => { if (r.status === 'rejected') console.error('[LP] Cron uživatel selhal:', r.reason && r.reason.message); });
     }

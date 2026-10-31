@@ -70,7 +70,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v101';
+const CACHE = 'lifepocket-v102';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -268,7 +268,7 @@ function onNotifClick(e) {
     );
   } else if (data.open === 'grpfeed' && typeof data.gid === 'string' && /^[A-Z]{3,8}-[A-Z0-9]{4,8}$/.test(data.gid)) {
     // Upozornění ze skupiny → „Co je nového“: otevřené okno dostane zprávu, jinak se otevře s parametry v URL
-    const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react'].includes(data.module) ? data.module : '';
+    const mod = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge', 'note', 'recipe'].includes(data.module) ? data.module : '';
     e.waitUntil(openInApp({type: 'OPEN_GRPFEED', gid: data.gid, module: mod},
       '/?open=grpfeed&gid=' + encodeURIComponent(data.gid) + (mod ? '&m=' + mod : '')));
   } else if (data.open === 'pc') {
