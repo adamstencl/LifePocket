@@ -16025,7 +16025,7 @@ function mealPlanHasAny(plan) {
 function mealTodayIdx() { return (new Date().getDay() + 6) % 7; }
 
 // ── Připomínka plánování (5.00): profile/main.mealRemind {on, dow (0 = neděle), time} – čte i server (cron) ──
-// Vynechání shodně se serverem (functions/index.js mealRemindDecide): aspoň 5 dní s jídlem a plán upravený za 7 dní
+// Vynechání shodně se serverem (functions/index.js mealRemindDecide): aspoň 5 dní s jídlem a plán upravený za poslední 3 dny
 const MEAL_REMIND_DEF = {on: false, dow: 0, time: '18:00'};
 function mealRemindCfg() {
   const r = prof?.mealRemind;
@@ -16039,7 +16039,7 @@ function mealPlanDays(plan) {
 }
 function mealRemindSkip() {
   const at = prof?.mealPlanAt;
-  return typeof at === 'number' && Date.now() - at < 7 * 86400000 && mealPlanDays(prof?.mealPlan) >= 5;
+  return typeof at === 'number' && Date.now() - at < 3 * 86400000 && mealPlanDays(prof?.mealPlan) >= 5;
 }
 function renderMealRemind() {
   const box = document.getElementById('mp-remind');

@@ -2291,7 +2291,7 @@ export default {
   'mp.rem.d': 'A reminder to plan next week’s meals',
   'mp.rem.day': 'Which day',
   'mp.rem.time': 'What time',
-  'mp.rem.hint': 'If you updated your meal plan in the past week and have at least 5 days planned, the reminder won’t come. Applies to your own meal plan (Mine).',
+  'mp.rem.hint': 'If you updated your meal plan in the last 3 days and have at least 5 days planned, the reminder won’t come. Applies to your own meal plan (Mine).',
   'mp.rem.saved': '✅ Planning reminder saved',
   'mp.rem.off': 'Planning reminder turned off',
   'mp.rem.nT': '🍽️ Time to plan your meals',

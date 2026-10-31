@@ -2325,7 +2325,7 @@ export default {
   'mp.rem.d': 'Upozornění, kdy naplánovat jídla na další týden',
   'mp.rem.day': 'Který den',
   'mp.rem.time': 'V kolik',
-  'mp.rem.hint': 'Když máš jídelníček v posledním týdnu upravený a naplánovaných aspoň 5 dní, připomínka nepřijde. Platí pro tvůj vlastní jídelníček (Moje).',
+  'mp.rem.hint': 'Když máš jídelníček upravený v posledních 3 dnech a naplánovaných aspoň 5 dní, připomínka nepřijde. Platí pro tvůj vlastní jídelníček (Moje).',
   'mp.rem.saved': '✅ Připomínka plánování uložena',
   'mp.rem.off': 'Připomínka plánování vypnuta',
   'mp.rem.nT': '🍽️ Čas naplánovat jídelníček',

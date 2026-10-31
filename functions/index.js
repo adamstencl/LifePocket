@@ -1389,10 +1389,10 @@ function wkBody(L, s) {
 // ── Připomínka plánování jídelníčku (5.00) ───────────────
 // prof.mealRemind = {on, dow (0 = neděle), time 'HH:MM'}; posílá hlavní cron, jen z načteného profilu (0 čtení navíc).
 // Plán prof.mealPlan je týdenní šablona d0–d6 bez dat → „naplánovaný příští týden“ = aspoň 5 dní s jídlem
-// a plán upravený za posledních 7 dní (prof.mealPlanAt, ms). Plán skupiny se nečte (stálo by to čtení navíc).
+// a plán upravený za poslední 3 dny před připomínkou (prof.mealPlanAt, ms; 7 dní = perioda → chodila by jen ob týden). Plán skupiny se nečte (stálo by to čtení navíc).
 const TTL_MEAL = 3 * 3600;
 const MEAL_SKIP_DAYS = 5;
-const MEAL_FRESH_MS = 7 * 86400000;
+const MEAL_FRESH_MS = 3 * 86400000;
 function mealPlanDays(plan) {
   if (!plan || typeof plan !== 'object') return 0;
   let n = 0;
