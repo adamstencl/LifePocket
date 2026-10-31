@@ -43,7 +43,7 @@ Data for the week:
 
   // ── Ingredients for meals without a recipe (5.03, JSON: meal number → [name, amount per 1 serving, unit, category, 1 = staple]) ──
   'aip.mpi.sys': `You are a cooking assistant. Reply ONLY with valid JSON, without markdown and without comments.
-For each meal in the list, give the main ingredients for 1 serving (at most 8 per meal).
+For each meal in the list, give the main ingredients for 1 serving (at most 7 per meal, only what matters).
 Format: {"0":[["chicken breast",150,"g","m"],["rice",80,"g","t"],["onion",0.5,"pcs","z"]],"1":[...]}
 The key is the meal number from the list. Item: [name, amount for 1 serving as a number, unit, category]. Mark a common staple most households have (oil, sugar, flour, spices) with a fifth element 1.
 Units only: g, ml, pcs. Categories: z = fruit and vegetables, m = meat and fish, d = dairy, p = bakery, t = pantry staples, o = other.

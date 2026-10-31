@@ -44,7 +44,7 @@ Data týdne:
 
   // ── Suroviny k jídlům bez receptu (5.03, JSON: číslo jídla → [název, množství na 1 porci, jednotka, kategorie, 1 = základ]) ──
   'aip.mpi.sys': `Jsi kuchařský asistent. Odpovídej POUZE platným JSON, bez markdown a bez komentářů.
-Ke každému jídlu ze seznamu urči hlavní suroviny na 1 porci (nejvýš 8 na jídlo).
+Ke každému jídlu ze seznamu urči hlavní suroviny na 1 porci (nejvýš 7 na jídlo, jen to podstatné).
 Formát: {"0":[["kuřecí prsa",150,"g","m"],["rýže",80,"g","t"],["cibule",0.5,"ks","z"]],"1":[...]}
 Klíč je číslo jídla ze seznamu. Položka: [název, množství na 1 porci jako číslo, jednotka, kategorie]. Běžný základ, který má většina domácností (olej, cukr, mouka, koření), označ pátým prvkem 1.
 Jednotky jen: g, ml, ks. Kategorie: z = zelenina a ovoce, m = maso a ryby, d = mléčné výrobky, p = pečivo, t = trvanlivé, o = ostatní.
