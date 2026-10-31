@@ -1386,6 +1386,17 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 @media(hover:hover){.mp-slot:not(.mp-slot--ro):hover{border-color:var(--accent)}}
 .mp-del{width:44px;height:44px;flex-shrink:0;background:none;border:none;border-radius:10px;color:var(--text2);font-size:16px;cursor:pointer}
 .mp-del:active{background:var(--card2)}
+/* Připomínka plánování (5.00) */
+.mp-rem{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 14px;margin-top:6px}
+.mp-rem .togrow{padding:0;border-bottom:none;gap:12px}
+.mp-rem-det{margin-top:12px}
+.mp-rem-sub{display:block;font-size:14px;color:var(--text2);margin-bottom:6px}
+.seg--days{gap:0}
+.seg--days .seg-btn{min-width:0;padding:0 2px;font-size:14px}
+.mp-rem-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mp-rem-row .mp-rem-sub{margin-bottom:0}
+.mp-rem-time{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;width:6.5em;min-height:44px}
+.mp-rem-hint{font-size:13px;color:var(--text2);margin-top:10px;line-height:1.4}
 
 /* KALORIE DNES */
 .kc-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:18px 16px;box-shadow:var(--shadow);font-variant-numeric:tabular-nums}

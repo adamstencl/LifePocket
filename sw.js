@@ -70,7 +70,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v95';
+const CACHE = 'lifepocket-v96';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -232,9 +232,9 @@ function onNotifClick(e) {
     // Výzva měsíce / týdne (4.63) → detail výzvy
     const cid = typeof data.cid === 'string' && /^(m-20\d{2}-(0[1-9]|1[0-2])|w-20\d{2}-W[0-5]\d)$/.test(data.cid) ? data.cid : '';
     e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'pc', id: cid}, '/?open=pc' + (cid ? '&id=' + encodeURIComponent(cid) : '')));
-  } else if (['habit', 'habits', 'cal', 'water', 'pets'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
+  } else if (['habit', 'habits', 'cal', 'water', 'pets', 'mealplan'].includes(data.open) || (!data.open && typeof data.habitId === 'string' && data.habitId)) {
     // Připomínka návyku → detail návyku, ranní/večerní přehled → Návyky, událost / narozeniny → Kalendář,
-    // připomínka pití → Pitný režim, péče o mazlíčka a granule (4.94) → Mazlíček
+    // připomínka pití → Pitný režim, péče o mazlíčka a granule (4.94) → Mazlíček, plánování jídel (5.00) → Jídelníček
     const open = data.open || 'habit';
     const id = open === 'habit' && typeof data.habitId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.habitId) ? data.habitId
       : open === 'pets' && typeof data.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(data.id) ? data.id : '';

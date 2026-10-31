@@ -1386,6 +1386,39 @@ function wkBody(L, s) {
   return body;
 }
 
+// ── Připomínka plánování jídelníčku (5.00) ───────────────
+// prof.mealRemind = {on, dow (0 = neděle), time 'HH:MM'}; posílá hlavní cron, jen z načteného profilu (0 čtení navíc).
+// Plán prof.mealPlan je týdenní šablona d0–d6 bez dat → „naplánovaný příští týden“ = aspoň 5 dní s jídlem
+// a plán upravený za posledních 7 dní (prof.mealPlanAt, ms). Plán skupiny se nečte (stálo by to čtení navíc).
+const TTL_MEAL = 3 * 3600;
+const MEAL_SKIP_DAYS = 5;
+const MEAL_FRESH_MS = 7 * 86400000;
+function mealPlanDays(plan) {
+  if (!plan || typeof plan !== 'object') return 0;
+  let n = 0;
+  for (let d = 0; d < 7; d++) {
+    const day = plan['d' + d];
+    if (day && typeof day === 'object' && [0, 1, 2].some(m => typeof day['m' + m] === 'string' && day['m' + m].trim())) n++;
+  }
+  return n;
+}
+// Rozhodnutí bez I/O: null = neposílat, jinak {day} = den připomínky (YYYY-MM-DD v zóně uživatele) pro tag
+function mealRemindDecide(prof, zn, nowMs) {
+  const r = prof && prof.mealRemind;
+  if (!r || typeof r !== 'object' || r.on !== true) return null;
+  if (!Number.isInteger(r.dow) || r.dow < 0 || r.dow > 6 || typeof r.time !== 'string' || !HHMM_RE.test(r.time)) return null;
+  if (Array.isArray(prof.modules) && !prof.modules.includes('mealplan')) return null;
+  if (!isTimeMatch(zn.h, zn.m, r.time)) return null;
+  // Okno přes půlnoc (23:58 → běh v 00:00): den připomínky je včerejšek
+  const [th, tm] = r.time.split(':').map(Number);
+  const past = zn.h * 60 + zn.m < th * 60 + tm;
+  const dow = past ? (zn.dow + 6) % 7 : zn.dow;
+  if (dow !== r.dow) return null;
+  const at = toMillis(prof.mealPlanAt);
+  if (at !== null && nowMs - at < MEAL_FRESH_MS && mealPlanDays(prof.mealPlan) >= MEAL_SKIP_DAYS) return null;
+  return {day: past ? addDaysDS(zn.today, -1) : zn.today};
+}
+
 // ── Hlavní cron — každých 5 minut ────────────────────────
 exports.sendScheduledNotifications = onSchedule(
   {schedule: 'every 5 minutes', timeZone: 'Europe/Prague', region: 'europe-west1', timeoutSeconds: 240},
@@ -1762,6 +1795,13 @@ exports.sendScheduledNotifications = onSchedule(
         // ── Výzva měsíce / týdne (4.63): ohlášení startu a večerní připomínka ──
         try { await pcNotifs(prof, push, L, zn, g); }
         catch(e) { console.error(`[LP] výzvy uid=${uid}:`, e.message); }
+
+        // ── Připomínka plánování jídelníčku (5.00): den a čas v zóně uživatele, jen z profilu ──
+        const mr = mealRemindDecide(prof, zn, runDate.getTime());
+        if (mr) {
+          try { await push(tS(L, 'meal.rem.t'), tS(L, 'meal.rem.b', {name: nickname}), `meal-${mr.day}`, {data: {open: 'mealplan'}, ttl: TTL_MEAL}); }
+          catch(e) { console.error(`[LP] jídelníček push uid=${uid}:`, e.message); }
+        }
 
         // ── Narozeniny + Události — osobní i rodinné ──
         // Narozeniny se posílají jen v ranním čase uživatele → jen tehdy je čteme

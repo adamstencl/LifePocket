@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '4.99';
+const APP_VERSION = '5.00';
 const CHANGELOG = [
+  { v:'5.00', items:[
+    '🔔 Jídelníček: připomenutí, kdy naplánovat jídla na další týden (nastavíš den a čas v Jídelníčku)'
+  ], en:[
+    '🔔 Meal plan: a reminder to plan next week’s meals (set the day and time in Meal plan)'
+  ]},
   { v:'4.99', items:[
     '🔧 Drobné opravy týdenního souhrnu, návyků a jídelníčku'
   ], en:[
@@ -6989,15 +6994,20 @@ function scheduleAllNotifications() {
   scheduleDaily(8, 1, checkBirthdayNotifs);
   setTimeout(checkBirthdayNotifs, 6000); // i hned při spuštění
 
+  // Připomínka plánování jídelníčku (5.00): bez push tokenu lokálně, jen při otevřené appce
+  const mr = mealRemindCfg();
+  if (mr.on) { const [rh, rm] = mr.time.split(':').map(Number); scheduleDaily(rh, rm, sendMealRemindLocal, 'meal'); }
+
   // Události s časem — každou minutu hodinu předem
   const evIv = setInterval(checkEventReminders, 60 * 1000);
   notifTimers.push(evIv);
   setTimeout(checkEventReminders, 5000);
 }
 
-function scheduleDaily(hour, minute, callback) {
+function scheduleDaily(hour, minute, callback, tag = '') {
   // Ulož plánované časy do localStorage — při probuzení appky zkontrolujeme
-  const key = `lp_sched_${hour}_${minute}`;
+  // tag: vlastní klíč (5.00), ať připomínka ve stejný čas nezapíše lastRun ranního / večerního souhrnu
+  const key = `lp_sched_${hour}_${minute}${tag ? '_' + tag : ''}`;
   const existing = lsGet(key, {});
   const today = toDS();
   existing.hour = hour; existing.minute = minute; existing.lastRun = existing.lastRun || '';
@@ -15839,7 +15849,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets', 'mealplan'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -15865,6 +15875,8 @@ async function consumePendingOpen() {
     // Kalendář z notifikace i při vypnutém modulu: osobní události dotáhnout, ať obrazovka neukazuje prázdný kalendář
     if(p.open === 'cal') { if(!_fireSubs['events']) subEvents(); window.sp('calendar'); return; }
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
+    // Připomínka plánování jídelníčku (5.00) → Jídelníček, záložka Plán týdne
+    if(p.open === 'mealplan') { try { localStorage.setItem('lp_meal_tab', 'plan'); } catch(e) {} window.sp('mealplan'); return; }
     // Mazlíček (4.94): péče / granule z ranního upozornění (i při vypnutém modulu – data se dotáhnou)
     if(p.open === 'pets') { if(!_fireSubs['pets']) subPets(); if(p.id && PET_ID_RE.test(p.id)) petSelSave(p.id); window.sp('pets'); return; }
     // Výzva měsíce (4.63): detail výzvy z notifikace (seznam se načte, pokud ještě není)
@@ -16012,6 +16024,77 @@ function mealPlanHasAny(plan) {
 // Index dnešního dne v plánu: 0 = pondělí (lokální čas)
 function mealTodayIdx() { return (new Date().getDay() + 6) % 7; }
 
+// ── Připomínka plánování (5.00): profile/main.mealRemind {on, dow (0 = neděle), time} – čte i server (cron) ──
+// Vynechání shodně se serverem (functions/index.js mealRemindDecide): aspoň 5 dní s jídlem a plán upravený za 7 dní
+const MEAL_REMIND_DEF = {on: false, dow: 0, time: '18:00'};
+function mealRemindCfg() {
+  const r = prof?.mealRemind;
+  if(!r || typeof r !== 'object') return {...MEAL_REMIND_DEF};
+  return {on: r.on === true, dow: Number.isInteger(r.dow) && r.dow >= 0 && r.dow <= 6 ? r.dow : MEAL_REMIND_DEF.dow,
+    time: TP_RE.test(r.time || '') ? r.time : MEAL_REMIND_DEF.time};
+}
+function mealPlanDays(plan) {
+  return [0,1,2,3,4,5,6].filter(d => { const day = plan?.['d'+d];
+    return day && typeof day === 'object' && [0,1,2].some(m => typeof day['m'+m] === 'string' && day['m'+m].trim()); }).length;
+}
+function mealRemindSkip() {
+  const at = prof?.mealPlanAt;
+  return typeof at === 'number' && Date.now() - at < 7 * 86400000 && mealPlanDays(prof?.mealPlan) >= 5;
+}
+function renderMealRemind() {
+  const box = document.getElementById('mp-remind');
+  if(!box) return;
+  if(!CU || !prof) { box.innerHTML = ''; return; }
+  const r = mealRemindCfg();
+  const denied = typeof Notification !== 'undefined' && Notification.permission === 'denied';
+  const days = weekdayNames('short'); // od pondělí; dow v datech od neděle
+  box.innerHTML = `<section class="mp-rem" aria-labelledby="mp-rem-h">
+    <div class="togrow"><div class="toginf"><div class="tognm" id="mp-rem-h">${tH('mp.rem.t')}</div><div class="togds">${tH('mp.rem.d')}</div></div>
+      <label class="togswitch"><input type="checkbox" id="mp-rem-on" ${r.on ? 'checked' : ''} aria-labelledby="mp-rem-h" onchange="mealRemOn(this.checked)"><span class="togsl"></span></label></div>
+    ${r.on ? `<div class="mp-rem-det">
+      <div class="mp-rem-sub" id="mp-rem-dow-h">${tH('mp.rem.day')}</div>
+      <div class="seg seg--block seg--days" role="radiogroup" aria-labelledby="mp-rem-dow-h">${days.map((d, i) => { const dw = (i + 1) % 7;
+        return `<button type="button" class="seg-btn${dw === r.dow ? ' active' : ''}" role="radio" aria-checked="${dw === r.dow}" data-a0="${dw}" onclick="mealRemDow(+this.dataset.a0)">${esc(d)}</button>`; }).join('')}</div>
+      <div class="mp-rem-row"><label class="mp-rem-sub" for="mp-rem-time">${tH('mp.rem.time')}</label>
+        <input class="time-picker-inp mp-rem-time" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" data-time-clear="0" autocomplete="off" id="mp-rem-time" value="${esc(r.time)}" onchange="mealRemTime()"></div>
+      <div class="mp-rem-hint">${tH('mp.rem.hint')}</div>
+      ${denied ? `<div class="wt-warn">${tH('wt.noPerm')}</div>` : ''}
+    </div>` : ''}
+  </section>`;
+}
+function saveMealRemind(cfg) {
+  if(!CU || !prof) return;
+  prof.mealRemind = cfg;
+  // Bez čekání na server (offline se zápis odešle později), stejně jako saveNotifSettings
+  setDoc(doc(db,'users',CU.uid,'profile','main'), {mealRemind: cfg}, {merge:true})
+    .catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
+  toast(t(cfg.on ? 'mp.rem.saved' : 'mp.rem.off'));
+  scheduleAllNotifications(); // lokální náhrada bez push tokenu
+  renderMealRemind();
+}
+window.mealRemOn = async (on) => {
+  const r = mealRemindCfg();
+  if(on && !(await wtEnsurePerm())) { renderMealRemind(); return; } // systémové okno v gestu přepnutí
+  saveMealRemind({...r, on: !!on});
+};
+window.mealRemDow = (dow) => {
+  if(!Number.isInteger(dow) || dow < 0 || dow > 6) return;
+  saveMealRemind({...mealRemindCfg(), dow});
+};
+window.mealRemTime = () => {
+  const v = document.getElementById('mp-rem-time')?.value || '';
+  const r = mealRemindCfg();
+  if(!TP_RE.test(v) || v === r.time) { renderMealRemind(); return; }
+  saveMealRemind({...r, time: v});
+};
+// Lokální připomínka jen bez push tokenu (jinak posílá server), v nastavený den; časovač ze scheduleDaily
+function sendMealRemindLocal() {
+  if(hasPushToken()) return;
+  const r = mealRemindCfg();
+  if(!r.on || !hasMod('mealplan') || new Date().getDay() !== r.dow || mealRemindSkip()) return;
+  sendNotif(t('mp.rem.nT'), t('mp.rem.nB', {name: prof?.prezdivka || prof?.nickname || t('ln.friend')}), '🍽️', {open: 'mealplan'}, [], 'meal-' + toDS());
+}
+
 // Záložky Plán týdne / Kalorie dnes (poslední volba se pamatuje)
 function getMealTab() {
   try { return localStorage.getItem('lp_meal_tab') === 'kcal' ? 'kcal' : 'plan'; } catch(e) { return 'plan'; }
@@ -16030,6 +16113,7 @@ window.switchMealTab = (tab) => {
 function renderMealPlan() {
   updateGroupFeedBells();
   renderKcalToday();
+  renderMealRemind();
   const el = document.getElementById('mealplan-content');
   if(!el) return;
 
@@ -16101,7 +16185,8 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
     if(!prof.mealPlan) prof.mealPlan = {};
     if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
     prof.mealPlan[dayKey][mealKey] = val;
-    setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: {[dayKey]: {[mealKey]: val}}}, {merge:true})
+    prof.mealPlanAt = Date.now(); // čas úpravy plánu: server podle něj vynechá připomínku plánování (5.00)
+    setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: {[dayKey]: {[mealKey]: val}}, mealPlanAt: prof.mealPlanAt}, {merge:true})
       .catch(e => toast('❌ '+userErr(e,'jídelníček')));
   }
   return true;
@@ -16156,7 +16241,8 @@ window.generateMealPlanAI = async () => {
     } else {
       // updateDoc nahradí celé pole mealPlan (merge by ponechal staré klíče)
       prof.mealPlan = plan;
-      await updateDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: plan});
+      prof.mealPlanAt = Date.now();
+      await updateDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: plan, mealPlanAt: prof.mealPlanAt});
       renderMealPlan();
     }
     toast(t('mp.aiDone'));

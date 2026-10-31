@@ -37,6 +37,9 @@ const cs = {
   'wk.water': 'pitný režim splněn {d}/7 dní',
   'wk.ev': {one: 'Příští týden: {n} událost.', few: 'Příští týden: {n} události.', other: 'Příští týden: {n} událostí.'},
   'wk.ev0': 'Příští týden zatím nemáš nic v kalendáři.',
+  // Jídelníček (5.00): připomínka plánování v den a čas z prof.mealRemind
+  'meal.rem.t': '🍽️ Čas naplánovat jídelníček',
+  'meal.rem.b': '{name}, naplánuj si jídla na příští týden – pak víš, co nakoupit.',
   'ev.b': '{name}, za hodinu tě čeká: {ev} v {time}',
   // Mazlíček (4.94): ranní upozornění na péči a granule (ev = název události, např. „Odčervení – Bára“)
   'pet.tmrw.t': '🩺 Zítra: {ev}',
@@ -223,6 +226,9 @@ const en = {
   'wk.water': 'water goal met {d}/7 days',
   'wk.ev': {one: 'Next week: {n} event.', other: 'Next week: {n} events.'},
   'wk.ev0': 'Nothing in your calendar for next week yet.',
+  // Meal plan (5.00): planning reminder on the day and time from prof.mealRemind
+  'meal.rem.t': '🍽️ Time to plan your meals',
+  'meal.rem.b': '{name}, plan your meals for next week – then you know what to buy.',
   'ev.b': '{name}, coming up in an hour: {ev} at {time}',
   'pet.tmrw.t': '🩺 Tomorrow: {ev}',
   'pet.tmrw.b': '{name}, tomorrow is the day for {ev}.',
