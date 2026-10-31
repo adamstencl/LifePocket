@@ -70,9 +70,9 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '5.02';
 const CHANGELOG = [
   { v:'5.02', items:[
-    '📱 iPhone: po klepnutí na připomínku návyku můžeš návyk splnit nebo odložit o 15 min přímo v appce'
+    '📱 Po klepnutí na připomínku návyku ho splníš nebo odložíš o 15 min přímo v appce (hodí se hlavně na iPhonu, kde notifikace tlačítka nemají)'
   ], en:[
-    '📱 iPhone: after tapping a habit reminder you can complete the habit or snooze it for 15 min right in the app'
+    '📱 After tapping a habit reminder you can complete it or snooze it for 15 min right in the app (handy on iPhone, where notifications have no buttons)'
   ]},
   { v:'5.01', items:[
     '⏰ Připomínku návyku jde odložit o 15 minut (až 3×) tlačítkem v notifikaci'

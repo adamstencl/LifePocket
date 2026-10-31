@@ -138,3 +138,7 @@
 - Po úspěšném odložení SW nic nepotvrdí (u pití krátké potvrzení je).
 - Vlastník si může přepsat `profile.habitSnz` a obejít limit 3 (jen sám sobě).
 - iOS akční tlačítka v notifikacích neukazuje – odložení tam není vidět.
+
+## Z 5.02 (panel po klepnutí na připomínku)
+- `hspShow` zavírá jen lištu „Další krok“; s otevřenou nabídkou propojení pití nebo sdílení se překryjí. `ctaAskShare` nekontroluje `naCovered()`.
+- `hspDone` nekontroluje datum: panel otevřený přes půlnoc zapíše včerejšek.
