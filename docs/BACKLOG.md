@@ -142,3 +142,9 @@
 ## Z 5.02 (panel po klepnutí na připomínku)
 - `hspShow` zavírá jen lištu „Další krok“; s otevřenou nabídkou propojení pití nebo sdílení se překryjí. `ctaAskShare` nekontroluje `naCovered()`.
 - `hspDone` nekontroluje datum: panel otevřený přes půlnoc zapíše včerejšek.
+
+## Z 5.04 (jídlo → recept)
+- `mprStart` při běžícím dotazu (`_mprBusy`) a klepnutí u jiného jídla: nic se nestane – přidat toast.
+- `mprGen` catch: chybový toast i po zavření okna (`if(_mpr===st)`).
+- `openMealPicker` `curHTML`: ochrana `typeof === 'string'` proti poškozené hodnotě.
+- Sjednotit ořez názvu receptu (plán 200 / normRecipe 80 / zrcadlo 100).

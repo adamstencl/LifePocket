@@ -17177,6 +17177,7 @@ window.mprOpen = (id) => {
   document.getElementById('meal-picker-modal')?.remove();
   mprClose();
   sp('cooking');
+  window.switchCookTab?.('recipes'); // #cook-result je v záložce Recepty
   openSavedRecipe(id);
 };
 // go = rovnou generovat (tlačítko v okně jídla už cenu uvádí), jinak nejdřív úvod s tlačítkem
