@@ -132,3 +132,9 @@
 - Lokální počítadlo (`lp_hsnz`) a serverové (`profile.habitSnz`) jsou oddělené; záloha přes appku při chybě serveru limit serveru nevidí.
 - Kvůli 5min cronu přijde odložená připomínka za 15–20 min.
 - Starý klient (cache před 5.01) může celoprofilovým zápisem vrátit `habitSnz` na starší stav téhož dne → nejvýš odložení navíc.
+
+## Z 5.01 (odložení připomínky)
+- Timeout SW (5 s) po úspěšném zápisu na serveru → odloží i appka (dvě připomínky se stejným tagem, rozejdou se počítadla).
+- Po úspěšném odložení SW nic nepotvrdí (u pití krátké potvrzení je).
+- Vlastník si může přepsat `profile.habitSnz` a obejít limit 3 (jen sám sobě).
+- iOS akční tlačítka v notifikacích neukazuje – odložení tam není vidět.
