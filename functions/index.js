@@ -734,7 +734,8 @@ async function waterQuickWrite(uid, at, ml, now = Date.now()) {
 // ── Odložení připomínky návyku o 15 min z notifikace (5.01) ──
 // Připomínka nese sn = počet dnešních odložení a podpis st = HMAC(klíč odložení, uid|hid|datum|at|sn).
 // Klíč odložení je odvozený z klíče pití (config/secrets.waterHmac), takže podpis pití nejde použít tady a naopak.
-// Fronta: users/{uid}/snoozes/{hid}_{datum} {dueAt, n}; počítadlo dne (limit 3): profile/main.habitSnz {d, c: {hid: n}}.
+// Fronta: snoozeQueue/{uid}_{hid}_{datum} {uid, hid, ds, dueAt, n} na nejvyšší úrovni – žádné pravidlo na ni nesedí,
+// klient ji nemůže číst ani zahltit. Počítadlo dne (limit 3): profile/main.habitSnz {d, c: {hid: n}}.
 // Obojí zapisuje jen Admin SDK; klient je nečte (habitSnz jen nepřepisuje, viz profNoTokens v app.js).
 const SNZ_MS = 15 * 60000;          // odložení o 15 min (cron po 5 min → přijde za 15–20 min)
 const SNZ_MAX = 3;                  // nejvýš 3× na návyk a den
@@ -743,7 +744,7 @@ const SNZ_SCAN_MAX = 500;           // pojistka čtení fronty za běh
 const SNZ_MAP_MAX = 50;             // pojistka velikosti habitSnz.c
 const SNZ_HID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const SNZ_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
-const SNZ_ID_RE = /^([A-Za-z0-9_-]{1,128})_(\d{4}-\d{2}-\d{2})$/;
+const snzDocId = (uid, hid, ds) => `${uid}_${hid}_${ds}`;
 async function snoozeKey() {
   return require('crypto').createHmac('sha256', await waterSecret()).update('lp-habit-snooze-v1', 'utf8').digest();
 }
@@ -792,32 +793,44 @@ async function habitSnoozeWrite(uid, hid, ds, sn, now = Date.now()) {
     const n = sn + 1;
     const S = prof.habitSnz;
     const cur = S && typeof S === 'object' && S.d === today && S.c && typeof S.c === 'object' && Object.keys(S.c).length < SNZ_MAP_MAX ? S.c : {};
-    tx.set(db.doc(`users/${uid}/snoozes/${hid}_${ds}`), {dueAt: Timestamp.fromMillis(now + SNZ_MS), n});
+    tx.set(db.doc(`snoozeQueue/${snzDocId(uid, hid, ds)}`), {uid, hid, ds, dueAt: Timestamp.fromMillis(now + SNZ_MS), n});
     tx.update(pref, {habitSnz: {d: today, c: {...cur, [hid]: n}}});
     return 'ok';
   });
 }
-// Fronta odložení pro běh cronu: jeden dotaz collectionGroup bez filtru (nepotřebuje index), dokumenty žijí ≤ 20 min.
+// Fronta odložení pro běh cronu: jeden dotaz na kolekci bez filtru (nepotřebuje index), dokumenty žijí ≤ 20 min.
 // Vrací Map uid → [{ref, hid, ds, n, dueAt}] jen se splatnými (dueAt ≤ teď); neplatné a nesmyslně budoucí smaže.
 async function loadDueSnoozes(nowMs) {
   const out = new Map();
   let snap;
-  try { snap = await db.collectionGroup('snoozes').limit(SNZ_SCAN_MAX).get(); }
-  catch(e) { console.error('[LP] snoozes:', e.code || e.message); return out; }
+  try { snap = await db.collection('snoozeQueue').limit(SNZ_SCAN_MAX).get(); }
+  catch(e) { console.error('[LP] snoozeQueue:', e.code || e.message); return out; }
   const drop = [];
   for (const d of snap.docs) {
-    const userRef = d.ref.parent.parent;
-    if (!userRef || !userRef.parent || userRef.parent.id !== 'users' || userRef.parent.parent) continue; // jen users/{uid}/snoozes
-    const m = SNZ_ID_RE.exec(d.id);
     const x = d.data() || {};
     const dueAt = toMillis(x.dueAt);
-    if (!m || dueAt === null || !Number.isInteger(x.n) || x.n < 1 || x.n > SNZ_MAX || dueAt > nowMs + SNZ_MS + 60000) { drop.push(d.ref); continue; }
+    const valid = typeof x.uid === 'string' && UID_RE.test(x.uid) && typeof x.hid === 'string' && SNZ_HID_RE.test(x.hid)
+      && typeof x.ds === 'string' && SNZ_DS_RE.test(x.ds) && d.id === snzDocId(x.uid, x.hid, x.ds)
+      && dueAt !== null && Number.isInteger(x.n) && x.n >= 1 && x.n <= SNZ_MAX && dueAt <= nowMs + SNZ_MS + 60000;
+    if (!valid) { drop.push(d.ref); continue; }
     if (dueAt > nowMs) continue; // ještě není čas
-    if (!out.has(userRef.id)) out.set(userRef.id, []);
-    out.get(userRef.id).push({ref: d.ref, hid: m[1], ds: m[2], n: x.n, dueAt});
+    if (!out.has(x.uid)) out.set(x.uid, []);
+    out.get(x.uid).push({ref: d.ref, hid: x.hid, ds: x.ds, n: x.n, dueAt});
   }
   await Promise.allSettled(drop.map(r => r.delete()));
   return out;
+}
+// Převzetí odložení transakcí: smaže dokument jen tehdy, když je pořád stejný (dueAt a n) → dva překrývající se
+// běhy cronu nepošlou připomínku dvakrát. true = tenhle běh dokument smazal a smí poslat.
+async function claimSnooze(sz) {
+  return db.runTransaction(async (tx) => {
+    const s = await tx.get(sz.ref);
+    if (!s.exists) return false;
+    const x = s.data() || {};
+    if (toMillis(x.dueAt) !== sz.dueAt || x.n !== sz.n) return false; // mezitím nové odložení → nechat na další běh
+    tx.delete(sz.ref);
+    return true;
+  });
 }
 
 // Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
@@ -1524,6 +1537,7 @@ exports.sendScheduledNotifications = onSchedule(
     // Odložené připomínky návyků (5.01): jeden dotaz na frontu za běh, splatné podle uid
     const snzDue = await loadDueSnoozes(runDate.getTime());
     const snzHandled = new Set();
+    const snzNoProfile = new Set(); // uid bez profilu (smazaný účet) → jejich odložení hned pryč
 
     // Skupiny: dokument a události čteme jednou za běh pro všechny členy (cache slibů podle familyId)
     const famCache = new Map();
@@ -1698,7 +1712,7 @@ exports.sendScheduledNotifications = onSchedule(
     const processUser = async (uid) => {
       try {
         const profileSnap = await db.doc(`users/${uid}/profile/main`).get();
-        if (!profileSnap.exists) return;
+        if (!profileSnap.exists) { snzNoProfile.add(uid); return; }
 
         const prof = profileSnap.data();
         // Bez tokenu nemá smysl nic dalšího číst
@@ -1861,15 +1875,14 @@ exports.sendScheduledNotifications = onSchedule(
           }
         }
 
-        // ── Odložené připomínky návyků (5.01): dokument fronty se smaže vždy (před pushem → nikdy dvakrát) ──
+        // ── Odložené připomínky návyků (5.01): dokument fronty se smaže vždy, transakcí a před pushem (nikdy dvakrát) ──
         for (const sz of snzDue.get(uid) || []) {
           snzHandled.add(sz.ref.path);
           try {
             const habitDoc = ns.habits !== false && sz.ds === today && runDate.getTime() - sz.dueAt <= SNZ_STALE
               ? (await getDueHabits()).find(d => d.id === sz.hid) : null;
             const send = !!habitDoc && !(await nagSkip(habitDoc));
-            await sz.ref.delete();
-            if (send) await nagPush(habitDoc, sz.n);
+            if (await claimSnooze(sz) && send) await nagPush(habitDoc, sz.n);
           } catch(e) { console.error(`[LP] odložená připomínka uid=${uid}:`, e.message); }
         }
 
@@ -1997,8 +2010,10 @@ exports.sendScheduledNotifications = onSchedule(
       const res = await Promise.allSettled(userRefs.slice(i, i + CRON_BATCH).map(r => processUser(r.id)));
       res.forEach(r => { if (r.status === 'rejected') console.error('[LP] Cron uživatel selhal:', r.reason && r.reason.message); });
     }
-    // Splatná odložení, která nikdo nezpracoval (bez profilu / tokenu), po 30 min smazat
-    const snzLeft = [...snzDue.values()].flat().filter(sz => !snzHandled.has(sz.ref.path) && runDate.getTime() - sz.dueAt > SNZ_STALE);
+    // Splatná odložení, která nikdo nezpracoval: účet bez profilu / smazaný hned, bez tokenu po 30 min
+    const snzUsers = new Set(userRefs.map(r => r.id));
+    const snzLeft = [...snzDue.entries()].flatMap(([u, list]) => list.map(sz => ({u, sz})))
+      .filter(({u, sz}) => !snzHandled.has(sz.ref.path) && (!snzUsers.has(u) || snzNoProfile.has(u) || runDate.getTime() - sz.dueAt > SNZ_STALE)).map(({sz}) => sz);
     await Promise.allSettled(snzLeft.map(sz => sz.ref.delete()));
 
     console.log(`[LP] Cron hotovo, odesláno ${sentTotal} notifikací`);
@@ -2238,6 +2253,11 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', maxInstances
     // (d) limit AI
     step = 'd';
     await db.doc(`rateLimits/${uid}`).delete();
+    // (d2) fronta odložených připomínek (5.01, mimo users/**): jednopolový dotaz, automatický index; chyba nevadí (uklidí cron)
+    try {
+      const q = await db.collection('snoozeQueue').where('uid', '==', uid).get();
+      await Promise.all(q.docs.map(d => d.ref.delete()));
+    } catch(e) { console.error(`[LP] deleteAccount uid=${uid} snoozeQueue: ${e && e.code || ''}`); }
   } catch (e) {
     console.error(`[LP] deleteAccount uid=${uid} krok ${step} selhal: ${e && e.code || ''} ${e && e.message || ''}`);
     throw new HttpsError('internal', tS(L, 'err.delFail'));

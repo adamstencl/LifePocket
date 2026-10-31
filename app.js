@@ -7255,12 +7255,12 @@ function checkAndRemindHabits() {
 
 // ── Odložení připomínky návyku o 15 min (5.01) ──
 // S push tokenem odkládá server (habitSnooze v sw.js); sem chodí lokální připomínky a záloha při chybě sítě.
-// Počítadlo dne v localStorage lp_hsnz {d, c: {hid: n}}, nejvýš HSNZ_MAX; časovač běží jen v otevřené appce.
+// Počítadlo dne v localStorage lp_hsnz {u: uid, d, c: {hid: n}} (jiný účet = 0), nejvýš HSNZ_MAX; časovač jen v otevřené appce.
 const HSNZ_MAX = 3, HSNZ_MS = 15 * 60000;
 const _hsnzTimers = new Map();
 function hsnzCount(hid, ds = toDS()) {
   const s = lsGet('lp_hsnz', {});
-  const n = s && s.d === ds && s.c && typeof s.c === 'object' ? s.c[hid] : 0;
+  const n = s && CU && s.u === CU.uid && s.d === ds && s.c && typeof s.c === 'object' ? s.c[hid] : 0;
   return Number.isInteger(n) && n > 0 ? Math.min(n, HSNZ_MAX) : 0;
 }
 // Tlačítka připomínky návyku: „Za 15 min“ jen do 3. odložení
@@ -7278,10 +7278,10 @@ function handleHabitSnooze(d) {
   const c = hsnzCount(hid, today);
   if (c >= HSNZ_MAX || sn < c) return;
   const st = lsGet('lp_hsnz', {});
-  const cur = st && st.d === today && st.c && typeof st.c === 'object' ? st.c : {};
-  const n = sn + 1;
-  lsSave('lp_hsnz', {d: today, c: {...cur, [hid]: n}});
   const uid = CU.uid;
+  const cur = st && st.u === uid && st.d === today && st.c && typeof st.c === 'object' ? st.c : {};
+  const n = sn + 1;
+  lsSave('lp_hsnz', {u: uid, d: today, c: {...cur, [hid]: n}});
   _hsnzTimers.set(hid, setTimeout(() => {
     _hsnzTimers.delete(hid);
     if (!CU || CU.uid !== uid || toDS() !== today || !notifSettings.habits) return;
