@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.05';
+const APP_VERSION = '5.06';
 const CHANGELOG = [
+  { v:'5.06', items:[
+    '⚔️ Karta parťáka na Domů je výraznější – zpráva v bublině a zvýrazněný rámeček s úrovní'
+  ], en:[
+    '⚔️ Your companion card on Home stands out more – message in a speech bubble and a highlighted frame with your level'
+  ]},
   { v:'5.05', items:[
     '🔧 Opravy po kontrole: splnění z připomínky v detailu návyku, termíny mazlíčka ve skupině, granule v nákupu, porce receptů, spolehlivější připomínky'
   ], en:[
