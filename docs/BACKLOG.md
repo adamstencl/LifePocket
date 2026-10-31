@@ -148,3 +148,10 @@
 - `mprGen` catch: chybový toast i po zavření okna (`if(_mpr===st)`).
 - `openMealPicker` `curHTML`: ochrana `typeof === 'string'` proti poškozené hodnotě.
 - Sjednotit ořez názvu receptu (plán 200 / normRecipe 80 / zrcadlo 100).
+
+## Z 5.05 (regresní audit – zbytek)
+- `scaleQty`: zlomky a desetinná čárka („1/2 lžičky“ → „0.5/2“, „1,5 lžíce“ → „0.8“, „1 ks“ → „0.5 ks“) – nově viditelné i v Jídelníček → nákup.
+- Porce receptů v Do nákupu: přepočet jen když je v plánu jídlo bez receptu; jídlo s prázdným klíčem (emoji) přepočte recepty bez okna – sjednotit.
+- `mealplanToShopping`: `shopActive` načíst až po `await mpiCacheLoad()`.
+- `delEvent`: osiřelou kopii mazat jen v jejím kalendáři (`pgid`/osobní), ne naslepo ve všech; příznak proti dvojímu dotazu během čekání 3 s.
+- Cron: slot z `event.scheduleTime`; při časové pojistce rotovat začátek seznamu uživatelů; `reminderTime` ve tvaru HH:MM:SS server nenajde (klient ho nevytváří).
