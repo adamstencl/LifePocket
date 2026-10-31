@@ -2638,3 +2638,15 @@ body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
 .mpi-btns{display:flex;gap:8px;margin-top:12px}
 .mpi-btns .btn-s{flex:1;min-height:44px;padding:10px}
 .mpi-btns .btn-sv{flex:2;min-height:44px;white-space:normal}
+/* Jídlo z jídelníčku → recept (5.04) */
+.mp-rc{font-size:18px}
+.mpr-cur{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 10px;padding:8px 10px;background:var(--card2);border:1px solid var(--border);border-radius:10px}
+.mpr-cur-n{flex:1 1 140px;min-width:0;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text);overflow-wrap:anywhere}
+.mpr-cur-b{flex:0 1 auto;min-height:44px;padding:8px 12px;background:none;border:1px solid var(--border2);border-radius:10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--accent);cursor:pointer;text-align:left}
+.mpr-cur-b:active{border-color:var(--accent)}
+.mpr-name{overflow-wrap:anywhere}
+.mpr-meta{display:flex;flex-wrap:wrap;gap:6px 12px}
+.mpr-q{margin-left:auto;padding-left:8px;color:var(--text3);font-size:14px;text-align:right;flex-shrink:0;max-width:45%}
+.mpr-tip{margin-top:14px;background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text2)}
+.mpr-btns{position:sticky;bottom:-22px;margin:12px -22px -22px;padding:10px 22px 22px;background:var(--card);border-top:1px solid var(--border)}
+@media(max-width:380px){.mpr-btns{bottom:-16px;margin:12px -12px -16px;padding:10px 12px 16px}}

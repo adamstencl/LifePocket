@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.03';
+const APP_VERSION = '5.04';
 const CHANGELOG = [
+  { v:'5.04', items:[
+    '🔖 Jídelníček: jídlo, které ti chutnalo, uložíš jedním klepnutím do receptů'
+  ], en:[
+    '🔖 Meal plan: save a meal you enjoyed to your recipes with a single tap'
+  ]},
   { v:'5.03', items:[
     '🛒 Jídelníček → nákup: suroviny k jídlům bez receptu doplní AI jedním dotazem, před přidáním je zkontroluješ'
   ], en:[
@@ -16308,7 +16313,9 @@ function renderMealPlan() {
         const mealKey = 'm'+mi;
         const val = (typeof dayData[mealKey] === 'string' ? dayData[mealKey] : '').trim();
         const label = `<span class="mp-slot-l">${MEAL_EMOJI[mi]} ${meal}</span>`;
-        if(!canEdit) return `<div class="mp-row">${label}<div class="mp-slot mp-slot--ro${val?'':' is-empty'}">${val?esc(val):tH('mp.nothing')}</div></div>`;
+        // Člen bez práv: u jídla ikona receptu (otevřít / uložit do mých receptů, 5.04)
+        const rc = !canEdit && val ? mpRecipeFor(val) : null;
+        if(!canEdit) return `<div class="mp-row">${label}<div class="mp-slot mp-slot--ro${val?'':' is-empty'}">${val?esc(val):tH('mp.nothing')}</div>${val ? `<button class="mp-del mp-rc" data-a0="${esc(val)}" data-a1="${mealKey}" onclick="mprMeal(this.dataset.a0,this.dataset.a1)" aria-label="${tH(rc ? 'mp.rcOpenAria' : 'mp.rcSaveAria', {val})}">${rc ? '📖' : '🔖'}</button>` : ''}</div>`;
         return `<div class="mp-row">${label}<button class="mp-slot${val?'':' is-empty'}" data-a0="${dayKey}" data-a1="${mealKey}" onclick="openMealPicker(this.dataset.a0,this.dataset.a1)">${val ? esc(val) : tH('mp.add.'+mi)}</button>${val ? `<button class="mp-del" data-a0="${dayKey}" data-a1="${mealKey}" onclick="clearMealSlot(this.dataset.a0,this.dataset.a1)" aria-label="${tH('mp.delAria', {meal, val})}">✕</button>` : ''}</div>`;
       }).join('')}
     </section>`;
@@ -17073,6 +17080,11 @@ window.openMealPicker = (dayKey, mealKey) => {
           </div>
         </div>`).join('')
     : `<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px">${tH('shop.pick.none')}<br>${tH('mp.noRecGo')}</div>`;
+  // Jídlo ve slotu (5.04): má recept → otevřít, jinak uložit do receptů (1 dotaz na AI)
+  const cur = String(currentMealPlan()?.[dayKey]?.[mealKey] || '').trim(), curRec = cur ? mpRecipeFor(cur) : null;
+  const curHTML = !cur ? '' : `<div class="mpr-cur"><span class="mpr-cur-n">${esc(cur)}</span>${curRec
+    ? `<button type="button" class="mpr-cur-b" data-a0="${esc(curRec.id)}" onclick="mprOpen(this.dataset.a0)">${tH('mp.rcOpen')}</button>`
+    : `<button type="button" class="mpr-cur-b" data-a0="${esc(cur)}" data-a1="${mealKey}" onclick="mprStart(this.dataset.a0,this.dataset.a1,true)">${tH('mp.rcSave')}</button>`}</div>`;
 
   const modal = document.createElement('div');
   modal.id = 'meal-picker-modal';
@@ -17083,6 +17095,7 @@ window.openMealPicker = (dayKey, mealKey) => {
         <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:19px;color:var(--accent);font-weight:700">📅 ${dayLabel} — ${mealLabel}</div>
         <button onclick="document.getElementById('meal-picker-modal').remove()" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1">×</button>
       </div>
+      ${curHTML}
       <div style="font-size:13px;color:var(--text3);margin-bottom:14px">${tH('mp.pickHint')}</div>
 
       <div style="overflow-y:auto;flex:1;margin-bottom:14px">
@@ -17124,6 +17137,150 @@ window.pickMealManual = async (dayKey, mealKey) => {
   document.getElementById('meal-picker-modal')?.remove();
   renderMealPlan();
   toast(t('mp.added',{name:val}) + mealPickSfx());
+};
+
+// ── Jídlo z jídelníčku → recept (5.04) ──────────────
+// Recept se ukládá do mých receptů (users/{uid}/savedRecipes) jako ve Vaření; skupině se sdílí jen zrcadlem.
+// Název = název jídla z plánu, ať ho mpRecipeFor spáruje (i když AI vrátí jiný název).
+// m0–m2 → interní mealType receptu (klíč MEAL_TYPE_KEYS s popiskem mp.meal.N)
+function mprType(mi) { return Object.keys(MEAL_TYPE_KEYS).find(k => MEAL_TYPE_KEYS[k] === 'mp.meal.' + mi) || ''; }
+let _mpr = null, _mprBusy = false; // stav okna: účet, jídlo, slot, vygenerovaný recept
+function mprModal(html) {
+  let m = document.getElementById('mpr-modal'), isNew = false;
+  if(!m) {
+    m = document.createElement('div');
+    m.id = 'mpr-modal';
+    m.addEventListener('click', e => { if(e.target === m) mprClose(); });
+    // Zpět sundá jen .open → zavřít celé
+    if(typeof MutationObserver === 'function') new MutationObserver(() => { if(m.isConnected && !m.classList.contains('open')) mprClose(); }).observe(m, {attributes: true, attributeFilter: ['class']});
+    document.body.appendChild(m);
+    isNew = true;
+  }
+  m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal mpi-box" role="dialog" aria-modal="true">${html}</div>`;
+  return isNew ? m : null;
+}
+function mprIsOpen() { return !!document.getElementById('mpr-modal')?.classList.contains('open'); }
+window.mprClose = () => { document.getElementById('mpr-modal')?.remove(); _mpr = null; };
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  const m = document.getElementById('mpr-modal');
+  if(m && topOverlay() === m) { e.preventDefault(); e.stopPropagation(); mprClose(); }
+});
+// Klepnutí u jídla: recept existuje → otevřít ve Vaření, jinak nabídka uložit
+window.mprMeal = (name, mealKey) => {
+  const r = mpRecipeFor(name);
+  if(r) window.mprOpen(r.id); else window.mprStart(name, mealKey, false);
+};
+window.mprOpen = (id) => {
+  if(!savedRecipes.some(r => r.id === id)) return;
+  document.getElementById('meal-picker-modal')?.remove();
+  mprClose();
+  sp('cooking');
+  openSavedRecipe(id);
+};
+// go = rovnou generovat (tlačítko v okně jídla už cenu uvádí), jinak nejdřív úvod s tlačítkem
+window.mprStart = (name, mealKey, go) => {
+  if(!CU) { toast(t('mp.loginReq')); return; }
+  name = cutName(String(name || '').replace(/\s+/g, ' '), 200);
+  if(!name || _mprBusy) return;
+  const r = mpRecipeFor(name);
+  if(r) { window.mprOpen(r.id); return; }
+  document.getElementById('meal-picker-modal')?.remove();
+  _mpr = {uid: CU.uid, name, mi: /^m[0-2]$/.test(mealKey) ? +mealKey[1] : -1, recipe: null};
+  mprIntro();
+  if(go) window.mprGen(document.getElementById('mpr-gen'));
+};
+function mprIntro() {
+  const st = _mpr;
+  if(!st) return;
+  const box = mprModal(`<h3 class="mpi-h">${tH('mp.rcTitle')}</h3>
+    <div class="mpi-meal">${esc(st.name)}</div>
+    <p class="mpi-sub">${tH('mp.rcText')}</p>
+    ${mpiHit(_mpiCache?.uid === st.uid ? _mpiCache : null, mpiKey(st.name)) ? `<p class="mpi-note">${tH('mp.rcIngHint')}</p>` : ''}
+    <button type="button" id="mpr-gen" class="btn-sv mpi-main" onclick="mprGen(this)">${tH('mp.rcSave')}</button>
+    <button type="button" class="btn-s mpi-close" onclick="mprClose()">${tH('common.close')}</button>`);
+  if(box) focusOverlay(box);
+}
+// Suroviny z cache „Do nákupu“ (5.03) jako vodítko: stejné jídlo → stejné suroviny v receptu i nákupu
+function mprIngHint(c, name) {
+  const e = mpiHit(c, mpiKey(name));
+  if(!e) return '';
+  return e.i.map(i => ctxT(i.n, 40) + (i.q > 0 ? ' ' + i.q + ' ' + i.u : '')).join('\n');
+}
+// Odpověď AI → recept pod názvem jídla z plánu; nevalidní → SyntaxError
+function mprRecipe(raw, name, mi) {
+  if(typeof raw !== 'string' || !raw.trim()) throw new Error('AI unavailable');
+  const txt = aiFixCs(raw, {recipe: true}).trim().replace(/`{3}json/g, '').replace(/`{3}/g, '').trim();
+  const r = normRecipe(JSON.parse(txt));
+  if(!r || !r.ingredients.length || !r.steps.length) throw new SyntaxError('JSON recept');
+  r.name = name; // párování s plánem (přesná shoda normalizovaného názvu)
+  if(!MEAL_TYPE_KEYS[r.mealType] && mi >= 0) r.mealType = mprType(mi);
+  return r;
+}
+window.mprGen = async (btn) => {
+  const st = _mpr;
+  if(!st || _mprBusy || !CU || st.uid !== CU.uid) return;
+  _mprBusy = true;
+  if(btn) { btn.disabled = true; btn.textContent = t('mp.rcBusy'); }
+  try {
+    const c = await mpiCacheLoad();
+    if(_mpr !== st || !CU || st.uid !== CU.uid) return;
+    const n = clampInt(c?.p || 4, 1, 12), list = mprIngHint(c, st.name);
+    const hints = st.mi >= 0 ? tA('aip.rcp.mealType', {type: mprType(st.mi)}) : '';
+    const user = tA('aip.rcp.planUser', {food: ctxT(st.name, 200), n}) + (list ? '\n' + tA('aip.rcp.planIng', {list, n}) : '');
+    const raw = await callClaude([
+      {role: 'system', content: tA('aip.rcp.sys', {portions: n, hints})},
+      {role: 'user', content: user}
+    ], 1500);
+    const r = mprRecipe(raw, st.name, st.mi);
+    if(_mpr !== st || !mprIsOpen() || !CU || st.uid !== CU.uid) return; // okno zavřené nebo jiný účet → nic nekreslit
+    st.recipe = r;
+    mprPreview();
+  } catch(e) {
+    // Limit dne už ohlásil callClaudeRaw (jinak dva toasty)
+    if(e?.code !== 'functions/resource-exhausted') toast('❌ ' + userErr(e, 'recept'));
+    if(btn && btn.isConnected) { btn.disabled = false; btn.textContent = t('mp.rcSave'); }
+  } finally { _mprBusy = false; }
+};
+// Recept stejnými prvky jako ve Vaření (renderRecipe), jen bez ovládání
+function mprRecipeHTML(r) {
+  return `<div class="cook-recipe-meta mpr-meta">
+      <span>⏱ ${esc(r.time)}</span><span>🍽 ${esc(mealTypeLabel(r.mealType || r.difficulty) || '?')}</span><span>👥 ${tNH('ck.portions', r.portions)}</span>
+    </div>
+    <div class="cook-section">${tH('ck.ingr')}</div>
+    ${r.ingredients.map(i => `<div class="cook-ingredient"><span>${esc(i.name)}</span><span class="mpr-q">${esc(i.qty)}</span></div>`).join('')}
+    <div class="cook-section">${tH('ck.steps')}</div>
+    ${r.steps.map((s, i) => `<div class="cook-step"><span class="cook-step-num">${i + 1}.</span><span>${esc(s)}</span></div>`).join('')}
+    ${r.tip ? `<div class="mpr-tip">💡 ${esc(r.tip)}</div>` : ''}`;
+}
+function mprPreview() {
+  const st = _mpr;
+  if(!st?.recipe) return;
+  const box = mprModal(`<h3 class="mpi-h mpr-name">${esc(st.recipe.name)}</h3>
+    <p class="mpi-note">${tH('mp.rcPreviewSub')}</p>
+    ${mprRecipeHTML(st.recipe)}
+    <div class="mpi-btns mpr-btns">
+      <button type="button" class="btn-s" onclick="mprClose()">${tH('common.cancel')}</button>
+      <button type="button" id="mpr-save" class="btn-sv" onclick="mprSave()">${tH('mp.rcSaveBtn')}</button>
+    </div>`);
+  if(box) focusOverlay(box);
+  else document.getElementById('mpr-save')?.focus();
+}
+// Uložení jako ruční recept: bez čekání na server (offline), hned i lokálně → plán se spáruje okamžitě
+window.mprSave = () => {
+  const st = _mpr;
+  if(!st?.recipe || !CU || st.uid !== CU.uid) return;
+  if(mpRecipeFor(st.name)) { mprClose(); toast(t('mp.rcHave')); return; }
+  const data = {...st.recipe, savedAt: new Date().toISOString(), fromPlan: true};
+  delete data.id;
+  const ref = doc(collection(db, 'users', CU.uid, 'savedRecipes'));
+  setDoc(ref, data).catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
+  if(!savedRecipes.some(r => r.id === ref.id)) savedRecipes = [{id: ref.id, ...data}, ...savedRecipes]; // snapshot pole stejně přepíše
+  mprClose();
+  renderSavedRecipes();
+  renderMealPlan();
+  toast(t('mp.rcSaved', {name: st.name}));
 };
 
 window.openAddToMealplan = () => {
@@ -20883,6 +21040,7 @@ function subSavedRecipes(){
       if(_shRcPending&&savedRecipes.some(r=>r.id===_shRcPending)) _shRcPending=null;
       for(const [sid,nm] of _shRcCopying) if(savedRecipes.some(r=>r.name===nm)) _shRcCopying.delete(sid); // kopie „Uložit k sobě“ potvrzená
       renderSavedRecipes();
+      if(!canEditMealPlan()&&document.getElementById('p-mealplan')?.classList.contains('active')) renderMealPlan(); // ikony receptů u jídel (5.04)
       if(srv&&!_recipesSrvOk){_recipesSrvOk=true;setTimeout(shOrphanSweep,0);}
     }
   );
