@@ -1886,6 +1886,8 @@ export default {
   'ln.remindBody': '{who}, you haven’t done “{name}” today yet. Now’s the right time! 💪',
   'ln.remindBody#f': '{who}, you haven’t done “{name}” today yet. Now’s the right time! 💪',
   'ln.doneAction': '✅ Done',
+  'ln.snoozeAction': '⏰ In 15 min',
+  'ln.snoozed': '⏰ I’ll remind you in 15 minutes',
   'ln.morningTitle': '{emoji} Good morning, {name}!',
   'ln.eveNone': 'Add your first habit and start building a better routine!',
   'ln.eveZero': 'You didn’t complete any habit today. Tomorrow will work out! 💪',

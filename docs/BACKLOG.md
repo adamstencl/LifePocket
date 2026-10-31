@@ -126,3 +126,9 @@
 - Profil bez `modules`: server připomínku pošle, klient (`hasMod`) ne – sjednotit.
 - Zápis `mealRemind` ze zařízení se starým profilem může vrátit `on` (stejně jako `notifSettings`).
 - Kopie jídelníčku ze skupiny nezapisuje `mealPlanAt`; vynechání podle plánu skupiny by stálo čtení navíc.
+
+## Z 5.01 (odložení připomínky návyku)
+- Bez push tokenu odkládá appka (`setTimeout` 15 min) jen při otevřené appce; zavřená appka = odložení se ztratí (SW bez okna nic nedělá).
+- Lokální počítadlo (`lp_hsnz`) a serverové (`profile.habitSnz`) jsou oddělené; záloha přes appku při chybě serveru limit serveru nevidí.
+- Kvůli 5min cronu přijde odložená připomínka za 15–20 min.
+- Starý klient (cache před 5.01) může celoprofilovým zápisem vrátit `habitSnz` na starší stav téhož dne → nejvýš odložení navíc.

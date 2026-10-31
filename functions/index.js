@@ -731,6 +731,95 @@ async function waterQuickWrite(uid, at, ml, now = Date.now()) {
   });
 }
 
+// ── Odložení připomínky návyku o 15 min z notifikace (5.01) ──
+// Připomínka nese sn = počet dnešních odložení a podpis st = HMAC(klíč odložení, uid|hid|datum|at|sn).
+// Klíč odložení je odvozený z klíče pití (config/secrets.waterHmac), takže podpis pití nejde použít tady a naopak.
+// Fronta: users/{uid}/snoozes/{hid}_{datum} {dueAt, n}; počítadlo dne (limit 3): profile/main.habitSnz {d, c: {hid: n}}.
+// Obojí zapisuje jen Admin SDK; klient je nečte (habitSnz jen nepřepisuje, viz profNoTokens v app.js).
+const SNZ_MS = 15 * 60000;          // odložení o 15 min (cron po 5 min → přijde za 15–20 min)
+const SNZ_MAX = 3;                  // nejvýš 3× na návyk a den
+const SNZ_STALE = 30 * 60000;       // odložená připomínka starší než 30 min po termínu se už neposílá (jako TTL)
+const SNZ_SCAN_MAX = 500;           // pojistka čtení fronty za běh
+const SNZ_MAP_MAX = 50;             // pojistka velikosti habitSnz.c
+const SNZ_HID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const SNZ_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SNZ_ID_RE = /^([A-Za-z0-9_-]{1,128})_(\d{4}-\d{2}-\d{2})$/;
+async function snoozeKey() {
+  return require('crypto').createHmac('sha256', await waterSecret()).update('lp-habit-snooze-v1', 'utf8').digest();
+}
+const snoozeSig = (key, uid, hid, ds, at, sn) => require('crypto').createHmac('sha256', key).update(`${uid}|${hid}|${ds}|${at}|${sn}`, 'utf8').digest('base64url');
+function snoozeSigOk(key, uid, hid, ds, at, sn, st) {
+  if (typeof st !== 'string' || !WQ_SIG_RE.test(st)) return false;
+  const a = Buffer.from(st, 'base64url'), b = Buffer.from(snoozeSig(key, uid, hid, ds, at, sn), 'base64url');
+  return a.length === 32 && b.length === 32 && require('crypto').timingSafeEqual(a, b);
+}
+// Dnešní počet odložení návyku z profilu (jiný den = 0)
+function snoozeCount(prof, hid, today) {
+  const S = prof && prof.habitSnz;
+  if (!S || typeof S !== 'object' || S.d !== today || !S.c || typeof S.c !== 'object') return 0;
+  const n = S.c[hid];
+  return Number.isInteger(n) && n > 0 ? Math.min(n, SNZ_MAX) : 0;
+}
+// Data a tlačítka připomínky návyku; „Za 15 min“ jen do 3. odložení a jen s podpisem (bez klíče jen „Splněno“)
+async function habitNagOptions(L, uid, hid, today, sn) {
+  const opt = {data: {habitId: hid, date: today, open: 'habit', sn}, actions: [{action: 'done', title: tS(L, 'habit.done')}], ttl: TTL_HABIT};
+  if (sn < SNZ_MAX) {
+    try {
+      const at = Date.now();
+      opt.data.st = snoozeSig(await snoozeKey(), uid, hid, today, at, sn);
+      opt.data.at = at;
+      opt.data.u = uid;
+      opt.actions.push({action: 'snooze', title: tS(L, 'habit.snooze')});
+    } catch(e) { console.error('[LP] snooze klíč:', e.message); }
+  }
+  return opt;
+}
+// Zápis odložení (bez I/O mimo transakci). Vrací 'ok' | 'dup' | 'off' | 'limit' | 'stale'.
+// Jednorázovost: sn z podpisu musí být aspoň dnešní počet (starší notifikace / opakované klepnutí = 'dup').
+async function habitSnoozeWrite(uid, hid, ds, sn, now = Date.now()) {
+  const pref = db.doc(`users/${uid}/profile/main`);
+  return db.runTransaction(async (tx) => {
+    const ps = await tx.get(pref);
+    if (!ps.exists) return 'off';
+    const prof = ps.data();
+    const ns = prof.notifSettings || {};
+    if (ns.habits === false || (Array.isArray(prof.modules) && !prof.modules.includes('habits'))) return 'off';
+    const today = zoneNow(prof.tz, new Date(now)).today;
+    if (ds !== today) return 'stale';
+    const c = snoozeCount(prof, hid, today);
+    if (c >= SNZ_MAX) return 'limit';
+    if (sn < c) return 'dup';
+    const n = sn + 1;
+    const S = prof.habitSnz;
+    const cur = S && typeof S === 'object' && S.d === today && S.c && typeof S.c === 'object' && Object.keys(S.c).length < SNZ_MAP_MAX ? S.c : {};
+    tx.set(db.doc(`users/${uid}/snoozes/${hid}_${ds}`), {dueAt: Timestamp.fromMillis(now + SNZ_MS), n});
+    tx.update(pref, {habitSnz: {d: today, c: {...cur, [hid]: n}}});
+    return 'ok';
+  });
+}
+// Fronta odložení pro běh cronu: jeden dotaz collectionGroup bez filtru (nepotřebuje index), dokumenty žijí ≤ 20 min.
+// Vrací Map uid → [{ref, hid, ds, n, dueAt}] jen se splatnými (dueAt ≤ teď); neplatné a nesmyslně budoucí smaže.
+async function loadDueSnoozes(nowMs) {
+  const out = new Map();
+  let snap;
+  try { snap = await db.collectionGroup('snoozes').limit(SNZ_SCAN_MAX).get(); }
+  catch(e) { console.error('[LP] snoozes:', e.code || e.message); return out; }
+  const drop = [];
+  for (const d of snap.docs) {
+    const userRef = d.ref.parent.parent;
+    if (!userRef || !userRef.parent || userRef.parent.id !== 'users' || userRef.parent.parent) continue; // jen users/{uid}/snoozes
+    const m = SNZ_ID_RE.exec(d.id);
+    const x = d.data() || {};
+    const dueAt = toMillis(x.dueAt);
+    if (!m || dueAt === null || !Number.isInteger(x.n) || x.n < 1 || x.n > SNZ_MAX || dueAt > nowMs + SNZ_MS + 60000) { drop.push(d.ref); continue; }
+    if (dueAt > nowMs) continue; // ještě není čas
+    if (!out.has(userRef.id)) out.set(userRef.id, []);
+    out.get(userRef.id).push({ref: d.ref, hid: m[1], ds: m[2], n: x.n, dueAt});
+  }
+  await Promise.allSettled(drop.map(r => r.delete()));
+  return out;
+}
+
 // Texty skupin jsou ve slovníku (i18n-server.js) v jazyce příjemce L; emoji modulů jsou společná
 const GN_EM = {shop: '🧺', cal: '🗓️', meal: '🥗', check: '📋', pantry: '🧊', habit: '🔥', goal: '🎯', react: '👏', challenge: '🤝',
   note: '📒', recipe: '👨‍🍳'};
@@ -1432,6 +1521,9 @@ exports.sendScheduledNotifications = onSchedule(
     // neexistuje → get() by nic nevrátil. listDocuments() vrací i „chybějící“ rodiče.
     const userRefs = await db.collection('users').listDocuments();
     let sentTotal = 0; // počet skutečně odeslaných notifikací (zařízení)
+    // Odložené připomínky návyků (5.01): jeden dotaz na frontu za běh, splatné podle uid
+    const snzDue = await loadDueSnoozes(runDate.getTime());
+    const snzHandled = new Set();
 
     // Skupiny: dokument a události čteme jednou za běh pro všechny členy (cache slibů podle familyId)
     const famCache = new Map();
@@ -1735,32 +1827,50 @@ exports.sendScheduledNotifications = onSchedule(
         catch(e) { console.error(`[LP] Skupiny uid=${uid}:`, e.message); }
 
         // ── Připomínky návyků ──
+        // Nepřipomínat: propojený s pitným režimem (4.67), týdenní se splněným cílem nebo dnes označený den (4.80)
+        const nagSkip = async (habitDoc) => {
+          const habit = habitDoc.data();
+          if (waterHabitSkip(prof, habitDoc.id, today)) return true;
+          if (isWeeklyHabit(habit)) {
+            const ws = await weekHabitState(uid, habitDoc, today, dow);
+            return ws.met || ws.todayMarked;
+          }
+          // ID logu = ID dokumentu návyku (pole habit.id v datech není); splněno, nesplněno i přeskočeno
+          const logSnap = await db.doc(`users/${uid}/habitLogs/${habitDoc.id}_${today}`).get();
+          if (!logSnap.exists) return false;
+          const ld = logSnap.data() || {};
+          return !!(ld.done || ld.failed || ld.skipped);
+        };
+        const nagPush = async (habitDoc, sn) => {
+          const habit = habitDoc.data();
+          await push(
+            `${habit.emoji || '🔔'} ${habit.name}`,
+            tS(L, 'habit.nag', {name: nickname, habit: habit.name, g}),
+            `habit-${habitDoc.id}`,
+            await habitNagOptions(L, uid, habitDoc.id, today, sn)
+          );
+        };
         if (ns.habits !== false) {
           for (const habitDoc of await getDueHabits()) {
             const habit = habitDoc.data();
             if (!habit.reminderTime) continue;
             if (!isTimeMatch(h, m, habit.reminderTime)) continue;
-            if (waterHabitSkip(prof, habitDoc.id, today)) continue; // propojený s pitným režimem (4.67)
-            if (isWeeklyHabit(habit)) {
-              // Týdenní: splněný týdenní cíl nebo dnes označený den → nepřipomínat (4.80)
-              const ws = await weekHabitState(uid, habitDoc, today, dow);
-              if (ws.met || ws.todayMarked) continue;
-            } else {
-              // ID logu = ID dokumentu návyku (pole habit.id v datech není)
-              const logId = `${habitDoc.id}_${today}`;
-              const logSnap = await db.doc(`users/${uid}/habitLogs/${logId}`).get();
-              // Den už označený (splněno, nesplněno i přeskočeno) → nepřipomínat (4.80)
-              if (logSnap.exists) { const ld = logSnap.data() || {}; if (ld.done || ld.failed || ld.skipped) continue; }
-            }
-            try {
-              await push(
-                `${habit.emoji || '🔔'} ${habit.name}`,
-                tS(L, 'habit.nag', {name: nickname, habit: habit.name, g}),
-                `habit-${habitDoc.id}`,
-                { data: {habitId: habitDoc.id, date: today, open: 'habit'}, actions: [{action:'done', title: tS(L, 'habit.done')}], ttl: TTL_HABIT }
-              );
-            } catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
+            if (await nagSkip(habitDoc)) continue;
+            try { await nagPush(habitDoc, snoozeCount(prof, habitDoc.id, today)); }
+            catch(e) { console.error(`[LP] habit push uid=${uid}:`, e.message); }
           }
+        }
+
+        // ── Odložené připomínky návyků (5.01): dokument fronty se smaže vždy (před pushem → nikdy dvakrát) ──
+        for (const sz of snzDue.get(uid) || []) {
+          snzHandled.add(sz.ref.path);
+          try {
+            const habitDoc = ns.habits !== false && sz.ds === today && runDate.getTime() - sz.dueAt <= SNZ_STALE
+              ? (await getDueHabits()).find(d => d.id === sz.hid) : null;
+            const send = !!habitDoc && !(await nagSkip(habitDoc));
+            await sz.ref.delete();
+            if (send) await nagPush(habitDoc, sz.n);
+          } catch(e) { console.error(`[LP] odložená připomínka uid=${uid}:`, e.message); }
         }
 
         // ── Pitný režim (4.62): jen se zapnutým modulem; profil už je načtený → žádné čtení navíc ──
@@ -1887,6 +1997,9 @@ exports.sendScheduledNotifications = onSchedule(
       const res = await Promise.allSettled(userRefs.slice(i, i + CRON_BATCH).map(r => processUser(r.id)));
       res.forEach(r => { if (r.status === 'rejected') console.error('[LP] Cron uživatel selhal:', r.reason && r.reason.message); });
     }
+    // Splatná odložení, která nikdo nezpracoval (bez profilu / tokenu), po 30 min smazat
+    const snzLeft = [...snzDue.values()].flat().filter(sz => !snzHandled.has(sz.ref.path) && runDate.getTime() - sz.dueAt > SNZ_STALE);
+    await Promise.allSettled(snzLeft.map(sz => sz.ref.delete()));
 
     console.log(`[LP] Cron hotovo, odesláno ${sentTotal} notifikací`);
   }
@@ -2625,6 +2738,33 @@ exports.waterQuickAdd = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, inv
       else res.status(r === 'limit' ? 409 : r === 'stale' ? 410 : 404).json({ok: false});
     } catch(e) {
       console.error('[LP] waterQuickAdd:', e.code || e.message);
+      res.status(500).json({ok: false});
+    }
+  });
+
+// ── Odložení připomínky návyku z tlačítka „Za 15 min“ (5.01) ──
+// Volá sw.js (POST JSON {u, h, d, at, sn, st}); stejný model jako waterQuickAdd: bez přihlášení, oprávnění dává
+// jen jednorázový podpis st. Samostatná funkce: jiný vstup i zápis, chyba v jedné neovlivní druhou.
+// Odpověď: 200 {ok, dup?} | 400 vstup | 403 podpis | 404 připomínky vypnuté / účet | 405 metoda | 409 limit 3× | 410 prošlé | 500
+exports.habitSnooze = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, invoker: 'public', maxInstances: 10, timeoutSeconds: 20},
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ok: false}); return; }
+    const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const {u, h, d, at, sn, st} = b;
+    if (typeof u !== 'string' || !UID_RE.test(u) || typeof h !== 'string' || !SNZ_HID_RE.test(h)
+      || typeof d !== 'string' || !SNZ_DS_RE.test(d) || !Number.isSafeInteger(at) || at <= 0
+      || !Number.isInteger(sn) || sn < 0 || sn >= SNZ_MAX || typeof st !== 'string' || !WQ_SIG_RE.test(st)) {
+      res.status(400).json({ok: false}); return;
+    }
+    try {
+      const now = Date.now();
+      if (at > now + WQ_FUTURE || now - at > WQ_MAX_AGE) { res.status(410).json({ok: false}); return; }
+      if (!snoozeSigOk(await snoozeKey(), u, h, d, at, sn, st)) { res.status(403).json({ok: false}); return; }
+      const r = await habitSnoozeWrite(u, h, d, sn, now);
+      if (r === 'ok' || r === 'dup') res.status(200).json(r === 'dup' ? {ok: true, dup: true} : {ok: true});
+      else res.status(r === 'limit' ? 409 : r === 'stale' ? 410 : 404).json({ok: false});
+    } catch(e) {
+      console.error('[LP] habitSnooze:', e.code || e.message);
       res.status(500).json({ok: false});
     }
   });

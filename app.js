@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.00';
+const APP_VERSION = '5.01';
 const CHANGELOG = [
+  { v:'5.01', items:[
+    '⏰ Připomínku návyku jde odložit o 15 minut (až 3×) tlačítkem v notifikaci'
+  ], en:[
+    '⏰ You can snooze a habit reminder for 15 minutes (up to 3×) with a button in the notification'
+  ]},
   { v:'5.00', items:[
     '🔔 Jídelníček: připomenutí, kdy naplánovat jídla na další týden (nastavíš den a čas v Jídelníčku)'
   ], en:[
@@ -1867,7 +1872,7 @@ function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.roun
 // Celoprofilový zápis bez polí, která spravují jiné cesty: tokeny, skupiny (familyId/extraGroupIds/formerGroups
 // – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu;
 // waterDay píše jen zápis vody, waterSent (dedup připomínek) jen server
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.waterDay;delete c.waterSent;delete c.pc;return c;}
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.waterDay;delete c.waterSent;delete c.pc;delete c.habitSnz;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -7152,8 +7157,8 @@ function checkPerHabitReminders() {
       t('ln.remindTitle', {emoji: h.emoji, name: h.name}),
       t('ln.remindBody', {who: name, name: h.name, g: prof?.gender}),
       av?.emoji || h.emoji,
-      {habitId: h.id, date: today, open: 'habit'},
-      [{action: 'done', title: t('ln.doneAction')}],
+      {habitId: h.id, date: today, open: 'habit', sn: hsnzCount(h.id, today)},
+      habitNotifActions(hsnzCount(h.id, today)),
       `habit-${h.id}`
     );
   });
@@ -7240,12 +7245,59 @@ function checkAndRemindHabits() {
         `${h.emoji} ${h.name}`,
         t('ln.undoneBody'),
         h.emoji,
-        {habitId: h.id, date: today, open: 'habit'},
-        [{action: 'done', title: t('ln.doneAction')}],
+        {habitId: h.id, date: today, open: 'habit', sn: hsnzCount(h.id, today)},
+        habitNotifActions(hsnzCount(h.id, today)),
         `habit-${h.id}`
       );
     }, i * 2000); // rozestup 2s aby se neprekryvaly
   });
+}
+
+// ── Odložení připomínky návyku o 15 min (5.01) ──
+// S push tokenem odkládá server (habitSnooze v sw.js); sem chodí lokální připomínky a záloha při chybě sítě.
+// Počítadlo dne v localStorage lp_hsnz {d, c: {hid: n}}, nejvýš HSNZ_MAX; časovač běží jen v otevřené appce.
+const HSNZ_MAX = 3, HSNZ_MS = 15 * 60000;
+const _hsnzTimers = new Map();
+function hsnzCount(hid, ds = toDS()) {
+  const s = lsGet('lp_hsnz', {});
+  const n = s && s.d === ds && s.c && typeof s.c === 'object' ? s.c[hid] : 0;
+  return Number.isInteger(n) && n > 0 ? Math.min(n, HSNZ_MAX) : 0;
+}
+// Tlačítka připomínky návyku: „Za 15 min“ jen do 3. odložení
+function habitNotifActions(sn) {
+  const a = [{action: 'done', title: t('ln.doneAction')}];
+  if (sn < HSNZ_MAX) a.push({action: 'snooze', title: t('ln.snoozeAction')});
+  return a;
+}
+// Zpráva HABIT_SNOOZE od SW; vstup se validuje (sn = počet odložení v notifikaci, starší / opakované se zahodí)
+function handleHabitSnooze(d) {
+  const today = toDS();
+  const hid = okNotifHabitId(d.habitId) ? d.habitId : '';
+  const sn = Number.isInteger(d.sn) ? d.sn : -1;
+  if (!CU || !hid || d.date !== today || sn < 0 || sn >= HSNZ_MAX || _hsnzTimers.has(hid)) return;
+  const c = hsnzCount(hid, today);
+  if (c >= HSNZ_MAX || sn < c) return;
+  const st = lsGet('lp_hsnz', {});
+  const cur = st && st.d === today && st.c && typeof st.c === 'object' ? st.c : {};
+  const n = sn + 1;
+  lsSave('lp_hsnz', {d: today, c: {...cur, [hid]: n}});
+  const uid = CU.uid;
+  _hsnzTimers.set(hid, setTimeout(() => {
+    _hsnzTimers.delete(hid);
+    if (!CU || CU.uid !== uid || toDS() !== today || !notifSettings.habits) return;
+    const h = habits.find(x => x.id === hid);
+    if (!h || !isHabitRemindDue(h, today, new Date().getDay()) || hMarked(hid, today)) return;
+    const av = AVS.find(a => a.id === prof?.avatarId);
+    sendNotif(
+      t('ln.remindTitle', {emoji: h.emoji, name: h.name}),
+      t('ln.remindBody', {who: prof?.prezdivka || prof?.nickname || t('ln.friend'), name: h.name, g: prof?.gender}),
+      av?.emoji || h.emoji,
+      {habitId: hid, date: today, open: 'habit', sn: n},
+      habitNotifActions(n),
+      `habit-${hid}`
+    );
+  }, HSNZ_MS));
+  if (document.visibilityState === 'visible') toast(t('ln.snoozed'));
 }
 
 function checkBirthdayNotifs() {
@@ -15891,6 +15943,7 @@ async function consumePendingOpen() {
 }
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
   const d = ev.data;
+  if(d && d.type === 'HABIT_SNOOZE') { handleHabitSnooze(d); return; } // „⏰ Za 15 min“ z lokální připomínky (5.01)
   if(d && d.type === 'WATER_SYNCED') { // zapsal server z notifikace (4.71): at do lp_wt_seen, ať ho otevření appky nezdvojí
     const at = Number.isSafeInteger(d.at) && d.at > 0 ? d.at : 0, ml = wtLinkMl(d.ml);
     if(!at) return;

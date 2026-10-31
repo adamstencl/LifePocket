@@ -70,7 +70,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v96';
+const CACHE = 'lifepocket-v97';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -180,6 +180,33 @@ function waterQuick(data, ml, at) {
       .catch(() => {}); // zápis proběhl → potvrzení je jen doplněk, žádný fallback
   }, err => { clearTimeout(tm); throw err; });
 }
+// Odložení připomínky návyku o 15 min (5.01): s podpisem zapíše server (habitSnooze) a nic se neotevírá;
+// bez podpisu nebo při chybě sítě / serveru naplánuje odložení běžící appka (zpráva bez fokusu), jinak nic.
+// 4xx (limit, prošlé, podpis) = nic, appka by limit stejně odmítla.
+const HS_URL = 'https://europe-west1-lifepocket-d8f0e.cloudfunctions.net/habitSnooze';
+function snoozeLocal(hid, date, sn) {
+  return self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(clients => {
+    const c = pickClient(clients);
+    if (c) c.postMessage({type: 'HABIT_SNOOZE', habitId: hid, date, sn});
+  });
+}
+function habitSnooze(data) {
+  const hid = typeof data.habitId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.habitId) ? data.habitId : '';
+  const date = typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date) ? data.date : '';
+  const sn = /^[0-2]$/.test(String(data.sn)) ? Number(data.sn) : -1;
+  if (!hid || !date || sn < 0) return Promise.resolve();
+  const at = /^\d{12,14}$/.test(String(data.at)) ? Number(data.at) : 0;
+  if (!at || typeof data.st !== 'string' || typeof data.u !== 'string') return snoozeLocal(hid, date, sn);
+  const ac = typeof AbortController === 'function' ? new AbortController() : null;
+  const tm = ac ? setTimeout(() => ac.abort(), WQ_TIMEOUT) : 0;
+  return fetch(HS_URL, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store', credentials: 'omit',
+    body: JSON.stringify({u: data.u, h: hid, d: date, at, sn, st: data.st}), signal: ac ? ac.signal : undefined,
+  }).then(r => {
+    clearTimeout(tm);
+    if (r.status >= 500) return snoozeLocal(hid, date, sn);
+  }, () => { clearTimeout(tm); return snoozeLocal(hid, date, sn); });
+}
 function onNotifClick(e) {
   const raw = e.notification.data || {};
   // Notifikace zobrazená Firebase SDK: data serveru jsou v FCM_MSG.data; SDK handler se nespustí
@@ -197,6 +224,9 @@ function onNotifClick(e) {
     if (ml && at && typeof data.wt === 'string' && typeof data.u === 'string') e.waitUntil(waterQuick(data, ml, at).catch(open));
     else if (ml && at) e.waitUntil(open());
     else e.waitUntil(openInApp({type: 'OPEN_TARGET', open: 'water', id: ''}, '/?open=water'));
+  } else if (e.action === 'snooze') {
+    // „⏰ Za 15 min“ u připomínky návyku (5.01): nic se neotevírá
+    e.waitUntil(habitSnooze(data).catch(() => {}));
   } else if (e.action === 'done') {
     // Datum z notifikace (den, pro který připomínka platí); jinak lokální dnešek (ne UTC).
     // Tady jen kontrola tvaru, rozsah (ne budoucnost, max. 14 dní) ověří app.js přes validNotifDate().

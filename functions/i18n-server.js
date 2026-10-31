@@ -25,6 +25,7 @@ const cs = {
   'habit.nag#f': '{name}, ještě jsi dnes nesplnila "{habit}". Teď je správný čas! 💪',
   'habit.nag#x': '{name}, "{habit}" dnes ještě čeká na splnění. Teď je správný čas! 💪',
   'habit.done': '✅ Splněno',
+  'habit.snooze': '⏰ Za 15 min', // odložení připomínky návyku (5.01)
   'bday.today.t': '🎂 Dnes jsou narozeniny!',
   'bday.today.b': '{name}, nezapomeň popřát: {who} 🎉',
   'bday.tmrw.t': '🎂 Zítra jsou narozeniny!',
@@ -215,6 +216,7 @@ const en = {
   'evening.part': {one: 'You completed {done} of {total} habits. Just {n} more to go!', other: 'You completed {done} of {total} habits. {n} still to go!'},
   'habit.nag': '{name}, you haven’t done “{habit}” yet today. Now’s a good time! 💪',
   'habit.done': '✅ Done',
+  'habit.snooze': '⏰ In 15 min',
   'bday.today.t': '🎂 Birthday today!',
   'bday.today.b': '{name}, don’t forget to wish {who} a happy birthday 🎉',
   'bday.tmrw.t': '🎂 Birthday tomorrow!',

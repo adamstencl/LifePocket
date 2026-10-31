@@ -1919,6 +1919,8 @@ export default {
   'ln.remindBody#f': '{who}, ještě jsi dnes nesplnila „{name}“. Teď je správný čas! 💪',
   'ln.remindBody#x': '{who}, „{name}“ dnes ještě čeká na splnění. Teď je správný čas! 💪',
   'ln.doneAction': '✅ Splněno',
+  'ln.snoozeAction': '⏰ Za 15 min',
+  'ln.snoozed': '⏰ Připomenu za 15 minut',
   'ln.morningTitle': '{emoji} Dobré ráno, {name}!',
   'ln.eveNone': 'Přidej si první návyk a začni budovat lepší rutinu!',
   'ln.eveZero': 'Dnes jsi nesplnil žádný návyk. Zítra to vyjde! 💪',
