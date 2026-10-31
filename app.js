@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.02';
+const APP_VERSION = '5.03';
 const CHANGELOG = [
+  { v:'5.03', items:[
+    '🛒 Jídelníček → nákup: suroviny k jídlům bez receptu doplní AI jedním dotazem, před přidáním je zkontroluješ'
+  ], en:[
+    '🛒 Meal plan → shopping: AI fills in the ingredients for meals without a recipe in a single request, and you check them before adding'
+  ]},
   { v:'5.02', items:[
     '📱 Po klepnutí na připomínku návyku ho splníš nebo odložíš o 15 min přímo v appce (hodí se hlavně na iPhonu, kde notifikace tlačítka nemají)'
   ], en:[
@@ -16700,30 +16705,307 @@ window.mealplanToShopping = async () => {
 
   const withoutRecipe = mealNames.filter(m => !mpRecipeFor(m));
 
+  // Jídla bez receptu (5.03): suroviny z cache nebo jedním dotazem na AI, před přidáním náhled
+  if(withoutRecipe.length) {
+    if(addedCount) toast(tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)}) + shopToSfx(shopFid));
+    mpiStart(withoutRecipe, shopFid, toAdd.map(i => shopKey(i.name)));
+    return;
+  }
   // Recepty nalezené, ale vše už v nákupu → „vše už máš v nákupu“ místo „Přidáno 0“
   if(!addedCount && foundRecipes.some(r => r.ingredients?.length)) {
-    toast(t('mp.allInShop') + (withoutRecipe.length ? tN('mp.noRecipeN', withoutRecipe.length) : ''));
+    toast(t('mp.allInShop'));
   } else if(addedCount > 0 || foundRecipes.length > 0) {
-    let msg = tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)}) + (addedCount ? shopToSfx(shopFid) : '');
-    if(withoutRecipe.length) msg += tN('mp.noRecipeN', withoutRecipe.length);
-    toast(msg);
+    toast(tN('mp.toShop', addedCount, {rec: tN('pl.recipesGen', foundRecipes.length)}) + (addedCount ? shopToSfx(shopFid) : ''));
     sp('shopping');
-  } else if(withoutRecipe.length) {
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
-    modal.innerHTML = `
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:100%;max-width:340px">
-        <div style="font-family:'Playfair Display',serif;font-size:18px;color:var(--accent);margin-bottom:10px;font-weight:700">${tH('mp.noRecTitle')}</div>
-        <div style="font-size:14px;color:var(--text2);margin-bottom:14px">${tH('mp.noRecText')}</div>
-        ${withoutRecipe.map(m=>`<div style="padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--text)">• ${esc(m)}</div>`).join('')}
-        <div style="font-size:13px;color:var(--text3);margin:12px 0 16px">${tH('mp.noRecHint')}</div>
-        <button onclick="this.closest('[style]').remove()" style="width:100%;background:var(--accent);border:none;border-radius:10px;padding:11px;font-family:'Crimson Pro',serif;font-size:15px;color:var(--on-accent);font-weight:700;cursor:pointer">${tH('mp.understood')}</button>
-      </div>`;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
   } else {
     toast(t('mp.allInShop'));
   }
+};
+
+// ── Suroviny k jídlům bez receptu od AI (5.03) ──────────────
+// Jeden dotaz na AI pro všechna jídla bez receptu; suroviny pro 1 porci se uloží do users/{uid}/shopStats/mealIng
+// {p: porce, m: {klíč jídla: {t, l, i:[{n,q,u,c,b}]}}} – mimo profil (ten čte cron i každé spuštění), max MPI_CACHE_MAX jídel (LRU podle t)
+const MPI_CACHE_MAX = 60, MPI_ING_MAX = 12, MPI_MEALS_MAX = 21, MPI_OUT_MAX = 60;
+const MPI_CAT_CODES = {z:0, m:1, d:2, p:3, t:4, o:5}; // kód kategorie v odpovědi AI → index SHOP_CATS
+function mpiKey(name) { return pantryNorm(name).replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 80); }
+// Základ, který má většina domácností (sůl, pepř, voda, olej) → v náhledu předem odškrtnutý
+function mpiBasic(name) { const n = pantryIngName(name); return /^(sul|pepr|voda|salt|pepper|water)( |$)/.test(n) || /(^| )(olej|oil)$/.test(n); }
+// Jedna surovina od AI nebo z cache → {n, q (číslo, 0 = bez množství), u: ks|g|ml, c: index SHOP_CATS, b: 1 = základ}; nevalidní → null
+function mpiItem(raw) {
+  let n, q, u, c, b;
+  if(Array.isArray(raw)) [n, q, u, c, b] = raw;
+  else if(raw && typeof raw === 'object') { n = raw.name ?? raw.n; q = raw.qty ?? raw.q; u = raw.unit ?? raw.u; c = raw.cat ?? raw.c; b = raw.basic ?? raw.b; }
+  else return null;
+  if(typeof n !== 'string') return null;
+  const name = cutName(n.slice(0, 200).replace(/[\u0000-\u001f\u007f<>{}\[\]]+/g, ' ').replace(/\s+/g, ' '), 40);
+  if(name.length < 2 || !shopKey(name)) return null;
+  let unit = 'ks', k = 1;
+  const U = typeof u === 'string' ? ING_UNITS[pantryNorm(u).replace(/\.$/, '')] : null;
+  if(Array.isArray(U)) { unit = U[0]; k = U[1]; }
+  if(unit === 'kg') { unit = 'g'; k *= 1000; }
+  if(unit === 'l') { unit = 'ml'; k *= 1000; }
+  let qty = typeof q === 'number' ? q : typeof q === 'string' ? parseFloat(q.replace(',', '.')) : NaN;
+  qty = Number.isFinite(qty) && qty > 0 ? qty * k : 0;
+  if(qty > (unit === 'ks' ? 30 : 3000)) qty = 0; // nesmysl na 1 porci → bez množství
+  qty = Math.round(qty * 100) / 100;
+  let ci = -1;
+  if(Number.isInteger(c) && c >= 0 && c < SHOP_CATS.length) ci = c;
+  else if(typeof c === 'string') {
+    const cs = c.trim(), cl = cs.toLowerCase();
+    ci = Object.prototype.hasOwnProperty.call(MPI_CAT_CODES, cl) ? MPI_CAT_CODES[cl] : SHOP_CATS.indexOf(cs);
+    if(ci < 0) ci = SHOP_CAT_IDS.indexOf(cl);
+  }
+  if(ci < 0) ci = SHOP_CATS.indexOf(guessShopCategory(name));
+  const it = {n: name, q: qty, u: unit, c: ci};
+  if(b === true || b === 1 || b === '1' || mpiBasic(name)) it.b = 1;
+  return it;
+}
+function mpiItems(list) {
+  const out = [], seen = new Set();
+  for(const raw of (Array.isArray(list) ? list.slice(0, 40) : [])) {
+    const it = mpiItem(raw), k = it && shopKey(it.n);
+    if(!it || seen.has(k)) continue;
+    seen.add(k); out.push(it);
+    if(out.length >= MPI_ING_MAX) break;
+  }
+  return out;
+}
+// Odpověď AI → pole délky count (suroviny jídla i, nebo null). Useknutou odpověď zachrání do posledního celého jídla.
+function mpiParse(raw, count) {
+  if(typeof raw !== 'string') throw new SyntaxError('JSON ingredients');
+  const s = raw.slice(0, 40000).replace(/```(?:json)?/gi, '').replace(/\]\s+\]/g, ']]').replace(/\}\s+\]/g, '}]');
+  const a = s.indexOf('{'), z = s.lastIndexOf('}');
+  let obj = null;
+  if(a >= 0 && z > a) { try { obj = JSON.parse(s.slice(a, z + 1)); } catch(e) {} }
+  if(!obj && a >= 0) {
+    const cut = Math.max(s.lastIndexOf(']]'), s.lastIndexOf('}]'));
+    if(cut > a) { try { obj = JSON.parse(s.slice(a, cut + 2) + '}'); } catch(e) {} }
+  }
+  if(!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new SyntaxError('JSON ingredients');
+  const out = [];
+  for(let i = 0; i < count; i++) {
+    const v = Object.prototype.hasOwnProperty.call(obj, String(i)) ? obj[String(i)] : null;
+    const its = Array.isArray(v) ? mpiItems(v) : [];
+    out.push(its.length ? its : null);
+  }
+  if(!out.some(Boolean)) throw new SyntaxError('JSON ingredients');
+  return out;
+}
+// Množství do nákupu: g/ml zaokrouhlené (od 1000 na kg/l), kusy nahoru na celé; různé jednotky spojené „ + “
+function mpiQtyStr(sum) {
+  const parts = [];
+  for(const u of ['ks', 'g', 'ml']) {
+    const v = sum[u];
+    if(!(v > 0)) continue;
+    if(u === 'ks') { parts.push(Math.max(1, Math.ceil(v - 0.05)) + ' ' + unitLabel('ks')); continue; }
+    if(v >= 1000) { parts.push(Math.round(v / 100) / 10 + (u === 'g' ? ' kg' : ' l')); continue; }
+    parts.push((v >= 100 ? Math.round(v / 10) * 10 : v >= 20 ? Math.round(v / 5) * 5 : Math.max(1, Math.round(v))) + ' ' + u);
+  }
+  return cutName(parts.join(' + '), 30);
+}
+// Suroviny jídel (pro 1 porci) → sloučené řádky pro portions porcí; meals = názvy jídel ve stejném pořadí jako lists
+function mpiMerge(lists, meals, portions) {
+  const rows = [], byKey = new Map();
+  lists.forEach((its, mi) => (its || []).forEach(it => {
+    const k = shopKey(it.n);
+    if(!k) return;
+    let r = byKey.get(k);
+    if(!r) {
+      if(rows.length >= MPI_OUT_MAX) return;
+      r = {key: k, name: it.n, c: it.c, b: !!it.b, sum: {}, meals: []};
+      byKey.set(k, r); rows.push(r);
+    }
+    if(!it.b) r.b = false; // základ jen tam, kde je základem u všech jídel
+    if(it.q > 0) r.sum[it.u] = (r.sum[it.u] || 0) + it.q * portions;
+    if(meals[mi] && !r.meals.includes(meals[mi])) r.meals.push(meals[mi]);
+  }));
+  rows.forEach(r => { r.qty = mpiQtyStr(r.sum); r.from = cutName(r.meals[0] || '', 70) + (r.meals.length > 1 ? ' +' + (r.meals.length - 1) : ''); });
+  return rows;
+}
+// Cache se načte jednou za přihlášení; nenačtená (offline) se příště zkusí znovu a zápis jen doplní klíče (merge)
+let _mpiCache = null;
+function mpiRef() { return doc(db, 'users', CU.uid, 'shopStats', 'mealIng'); }
+function mpiCacheClean(m) {
+  const out = {};
+  if(!m || typeof m !== 'object') return out;
+  for(const [k, e] of Object.entries(m)) {
+    if(!k || k.length > 80 || !e || typeof e !== 'object') continue;
+    const i = mpiItems(e.i);
+    if(i.length) out[k] = {t: Number.isFinite(e.t) ? e.t : 0, l: typeof e.l === 'string' ? e.l : '', i};
+  }
+  return out;
+}
+async function mpiCacheLoad() {
+  const uid = CU?.uid;
+  if(!uid) return null;
+  if(_mpiCache && _mpiCache.uid === uid && !_mpiCache.partial) return _mpiCache;
+  let d = null, ok = false;
+  try {
+    const s = await Promise.race([getDoc(mpiRef()), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 4000))]);
+    d = s.exists() ? s.data() : null; ok = true;
+  } catch(e) { console.warn('[LP] mealIng cache:', e?.code || e?.name); }
+  if(CU?.uid !== uid) return null;
+  const prev = _mpiCache && _mpiCache.uid === uid ? _mpiCache.m : {}; // co se uložilo během nenačtené cache
+  _mpiCache = {uid, p: d ? clampInt(d.p, 0, 12) : (_mpiCache?.uid === uid ? _mpiCache.p : 0), m: {...mpiCacheClean(d?.m), ...prev}, partial: !ok};
+  return _mpiCache;
+}
+// Uloží nová jídla a obnoví čas použitých; nad limit vypadnou nejdéle nepoužitá
+function mpiCacheSave(add, used, portions) {
+  const c = _mpiCache;
+  if(!c || !CU || c.uid !== CU.uid) return;
+  const now = Date.now(), addKeys = Object.keys(add || {});
+  let dirty = c.p !== portions;
+  c.p = portions;
+  addKeys.forEach(k => { c.m[k] = {t: now, l: LANG, i: add[k]}; dirty = true; });
+  for(const k of used || []) if(c.m[k] && now - c.m[k].t > 86400000) { c.m[k].t = now; dirty = true; } // čas jen jednou za den (méně zápisů)
+  const keys = Object.keys(c.m);
+  if(keys.length > MPI_CACHE_MAX) keys.sort((a, b) => c.m[a].t - c.m[b].t).slice(0, keys.length - MPI_CACHE_MAX).forEach(k => { delete c.m[k]; });
+  if(!dirty) return;
+  // Bez await (offline se zapíše po připojení); nenačtená cache jen doplní nová jídla, uložená nepřepíše
+  const w = c.partial ? setDoc(mpiRef(), {p: c.p, m: Object.fromEntries(addKeys.filter(k => c.m[k]).map(k => [k, c.m[k]]))}, {merge: true})
+    : setDoc(mpiRef(), {p: c.p, m: c.m});
+  w.catch(e => console.warn('[LP] mealIng save:', e?.code || e?.name));
+}
+function mpiHit(c, k) { const e = c?.m?.[k]; return e && e.l === LANG && e.i?.length ? e : null; }
+
+let _mpi = null, _mpiBusy = false; // stav okna: účet, cíl nákupu, jídla, suroviny, porce, ruční (od)škrtnutí
+// Jídla bez receptu z „Do nákupu“: vše v cache → rovnou náhled, jinak nabídka doplnit suroviny pomocí AI (1 dotaz)
+async function mpiStart(names, fid, pendingKeys) {
+  if(_mpiBusy || !CU) return;
+  const meals = [], seen = new Set();
+  for(const nm of names) { const k = mpiKey(nm); if(k && !seen.has(k)) { seen.add(k); meals.push({name: cutName(nm, 200), key: k}); } }
+  if(!meals.length) return;
+  const pg = pantryForShop(fid); // zásoby k cílovému nákupu (nápověda „máš v zásobách“)
+  if(!pantryReady(pg)) { if(pg) subscribeGroupPantry(pg); else subPantryMine(); }
+  _mpiBusy = true;
+  let c;
+  try { c = await mpiCacheLoad(); } finally { _mpiBusy = false; }
+  if(!c) return;
+  const missing = meals.filter(m => !mpiHit(c, m.key)).slice(0, MPI_MEALS_MAX);
+  _mpi = {uid: CU.uid, fid, meals, missing, pending: new Set(pendingKeys || []), portions: clampInt(c.p || 2, 1, 12), lists: null, sel: {}, failed: 0};
+  if(!missing.length) { mpiLists(); mpiPreview(); return; }
+  const cached = meals.length - missing.length;
+  mpiModal(`<h3 class="mpi-h">${tH('mp.noRecTitle')}</h3>
+    <p class="mpi-sub">${tH('mp.noRecText')}</p>
+    <div class="mpi-meals">${missing.map(m => `<div class="mpi-meal">• ${esc(m.name)}</div>`).join('')}</div>
+    ${cached ? `<p class="mpi-note">${tNH('mp.aiIngCached', cached)}</p>` : ''}
+    <button type="button" class="btn-sv mpi-main" onclick="mpiAi(this)">${tH('mp.aiIngBtn')}</button>
+    <p class="mpi-hint">${tH('mp.noRecHint')}</p>
+    <button type="button" class="btn-s mpi-close" onclick="mpiClose()">${tH('common.close')}</button>`);
+}
+function mpiModal(html) {
+  let m = document.getElementById('mpi-modal');
+  if(!m) {
+    m = document.createElement('div');
+    m.id = 'mpi-modal';
+    m.className = 'moverlay open';
+    m.addEventListener('click', e => { if(e.target === m) mpiClose(); });
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div class="modal mpi-box" role="dialog" aria-modal="true">${html}</div>`;
+}
+window.mpiClose = () => { document.getElementById('mpi-modal')?.remove(); _mpi = null; };
+// Suroviny všech jídel okna z cache, v pořadí jídel
+function mpiLists() {
+  _mpi.lists = _mpi.meals.map(m => mpiHit(_mpiCache, m.key)?.i || null);
+  _mpi.failed = _mpi.lists.filter(x => !x).length;
+}
+window.mpiAi = async (btn) => {
+  const st = _mpi;
+  if(!st || _mpiBusy || !CU || st.uid !== CU.uid) return;
+  _mpiBusy = true;
+  if(btn) { btn.disabled = true; btn.textContent = t('mp.aiIngBusy'); }
+  try {
+    // Názvy jídel jako data (ctxT odstraní ohraničení <data> a řídicí znaky); instrukce z nich se neplní
+    const list = st.missing.map((m, i) => i + ': ' + ctxT(m.name, 100)).join('\n');
+    const raw = await callClaude([
+      {role: 'system', content: tA('aip.mpi.sys')},
+      {role: 'user', content: tA('aip.mpi.user', {list})}
+    ], 2000);
+    if(!raw) throw new Error('AI unavailable');
+    const res = mpiParse(raw, st.missing.length);
+    if(!CU || st.uid !== CU.uid) return; // mezitím jiný účet
+    const add = {};
+    st.missing.forEach((m, i) => { if(res[i]) add[m.key] = res[i]; });
+    mpiCacheSave(add, st.meals.map(m => m.key), st.portions); // uloží se i po zavření okna (dotaz je zaplacený)
+    if(_mpi !== st) return;
+    mpiLists();
+    mpiPreview();
+  } catch(e) {
+    toast('❌ ' + userErr(e, 'jidelnicek'));
+    if(btn && btn.isConnected) { btn.disabled = false; btn.textContent = t('mp.aiIngBtn'); }
+  } finally { _mpiBusy = false; }
+};
+// Řádky náhledu: bez položek už v nákupu (i právě přidaných z receptů); zásoby a základy předem odškrtnuté
+function mpiRows(st) {
+  const shop = shopItemsOf(st.fid);
+  const pantry = pantryItemsOf(pantryForShop(st.fid)).filter(p => p && p.name);
+  const rows = [];
+  let inShop = 0;
+  for(const r of mpiMerge(st.lists, st.meals.map(m => m.name), st.portions)) {
+    if(st.pending.has(r.key) || shopHasOpen(shop, r.name)) { inShop++; continue; }
+    r.pantry = !!pantryFind(pantry, r.name);
+    r.on = Object.prototype.hasOwnProperty.call(st.sel, r.key) ? st.sel[r.key] : !(r.b || r.pantry);
+    rows.push(r);
+  }
+  return {rows, inShop};
+}
+function mpiPreview() {
+  const st = _mpi;
+  if(!st) return;
+  const {rows, inShop} = mpiRows(st);
+  st.rows = rows;
+  const n = rows.filter(r => r.on).length;
+  const notes = [inShop ? tNH('mp.aiIngInShop', inShop) : '', st.failed ? tNH('mp.aiIngMissing', st.failed) : ''].filter(Boolean);
+  mpiModal(`<h3 class="mpi-h">${tH('mp.aiIngTitle')}</h3>
+    <p class="mpi-sub">${tH('mp.aiIngSub')}</p>
+    <div class="mpi-port">
+      <button type="button" onclick="mpiPort(-1)" aria-label="${tH('a11y.portionsLess')}">−</button>
+      <span>${tNH('ck.portions', st.portions)}</span>
+      <button type="button" onclick="mpiPort(1)" aria-label="${tH('a11y.portionsMore')}">+</button>
+    </div>
+    ${rows.length ? `<div class="mpi-list">${rows.map((r, i) => `<label class="mpi-row">
+        <input type="checkbox" data-a0="${i}" ${r.on ? 'checked' : ''} onchange="mpiTog(this.dataset.a0,this.checked)">
+        <span class="mpi-nm">${esc(r.name)}${r.pantry ? `<small>${tH('mp.aiIngPantry')}</small>` : r.b ? `<small>${tH('mp.aiIngBasic')}</small>` : ''}</span>
+        ${r.qty ? `<span class="mpi-q">${esc(r.qty)}</span>` : ''}
+      </label>`).join('')}</div>` : `<p class="mpi-note">${tH('mp.aiIngNone')}</p>`}
+    ${notes.map(x => `<p class="mpi-note">${x}</p>`).join('')}
+    <div class="mpi-btns">
+      <button type="button" class="btn-s" onclick="mpiClose()">${tH('common.cancel')}</button>
+      <button type="button" id="mpi-add" class="btn-sv" onclick="mpiAdd()" ${n ? '' : 'disabled'}>${tNH('mp.aiIngAdd', n)}</button>
+    </div>`);
+}
+window.mpiPort = (d) => {
+  if(!_mpi) return;
+  _mpi.portions = clampInt(_mpi.portions + d, 1, 12);
+  mpiPreview();
+};
+window.mpiTog = (i, on) => {
+  const r = _mpi?.rows?.[+i];
+  if(!r) return;
+  r.on = !!on; _mpi.sel[r.key] = r.on;
+  const n = _mpi.rows.filter(x => x.on).length, b = document.getElementById('mpi-add');
+  if(b) { b.textContent = tN('mp.aiIngAdd', n); b.disabled = !n; }
+};
+// Zaškrtnuté → nákup stejnou cestou jako recepty (bez duplicit, kategorie, množství, autor u skupiny)
+window.mpiAdd = () => {
+  const st = _mpi;
+  if(!st || !CU || st.uid !== CU.uid || _mpShopBusy) return;
+  const fid = st.fid;
+  if(fid && !shopGroups().includes(fid)) { toast(t('ck.shopTargetGone', {name: groupDataOf(fid) ? grpName(fid) : t('grp.defName')}), 5000); return; }
+  if(!shopTargetReady(fid)) return;
+  const pick = (st.rows || []).filter(r => r.on);
+  if(!pick.length) return;
+  const list = shopItemsOf(fid), out = [];
+  for(const r of pick) out.push(...shopRecipeEntries([{name: r.name, qty: r.qty, category: SHOP_CATS[r.c]}], [...list, ...out], r.from).out);
+  mpiCacheSave(null, st.meals.map(m => m.key), st.portions); // zapamatuje porce a obnoví čas použitých jídel
+  mpiClose();
+  if(!out.length) { toast(t('mp.allInShop')); return; }
+  _mpShopBusy = true;
+  shopBusyUntil(shopBatchAdd(fid, out), document.querySelector('[onclick="mealplanToShopping()"]'), () => { _mpShopBusy = false; });
+  if(fid) logGroupActivity(fid, 'shop', 'add', out[0].name, out.length);
+  toast(tN('mp.aiIngAdded', out.length) + shopToSfx(fid));
+  sp('shopping');
 };
 
 window.openMealPicker = (dayKey, mealKey) => {
