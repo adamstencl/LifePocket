@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.06';
+const APP_VERSION = '5.07';
 const CHANGELOG = [
+  { v:'5.07', items:[
+    '✏️ Parťáka si můžeš pojmenovat (na jeho stránce ✏️); na úrovni 10 ti to sám nabídne'
+  ], en:[
+    '✏️ You can give your companion a name (✏️ on its page); at level 10 it will offer it itself'
+  ]},
   { v:'5.06', items:[
     '⚔️ Karta parťáka na Domů je výraznější – zpráva v bublině a zvýrazněný rámeček s úrovní'
   ], en:[
@@ -1097,6 +1102,21 @@ const AVS=[
   {id:'nora',emoji:'🏡',name:'Nora'},
   {id:'rio',emoji:'🌊',name:'Rio'},
 ];
+// Vlastní jméno parťáka (5.07): prof.avatarName, 1–20 znaků po trim, bez <> a řídicích/neviditelných znaků; jinak '' = výchozí
+const AV_NAME_MAX=20;
+function cleanAvName(v){
+  if(typeof v!=='string') return '';
+  const s=v.trim();
+  if(!s||[...s].length>AV_NAME_MAX||/[<>\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/.test(s)) return '';
+  return s;
+}
+// Aktuální parťák: vzhled z AVS, jméno vlastní nebo výchozí (jediné místo pro jméno v UI)
+function curAv(){ const b=AVS.find(a=>a.id===prof?.avatarId)||AVS[0]; return {...b,name:cleanAvName(prof?.avatarName)||b.name}; }
+function avName(){ return curAv().name; }
+// Jméno do promptu AI: vlastní v uvozovkách jako data + pravidlo, že instrukce z něj se neplní
+function aiAvCustom(){ return ctxT(cleanAvName(prof?.avatarName),AV_NAME_MAX).replace(/["„“”]/g,'').trim(); }
+function aiAvName(){ const c=aiAvCustom(); return c?tA('aip.avNameQ',{name:c}):(AVS.find(a=>a.id===prof?.avatarId)||AVS[0]).name; }
+function aiAvRule(){ return aiAvCustom()?'\n'+tA('aip.avNameRule',{name:aiAvName()}):''; }
 // id = klíč v prof.visionAreas (zůstává česky), popisky ze slovníku
 const AREAS=[
   {id:'zdraví',key:'zdravi',emoji:'💪'},
@@ -6125,7 +6145,7 @@ window.finishOnboard=async()=>{
 
 
 function rEmptyStates(){
-  const av = AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av = curAv();
   const name = prof.prezdivka||prof.nickname||'';
   // Journal empty
   const je_av=document.getElementById('je-av'); if(je_av)je_av.textContent=av.emoji;
@@ -6205,7 +6225,7 @@ async function loadChatHistory() {
           const ts = Number.isFinite(m.ts) ? m.ts : null; // starší zprávy bez času: čas se nezobrazí
           if(m.role==='user') appendMsg('user', m.content, '', '', ts);
           else if(m.role==='assistant'){
-            const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+            const av=curAv();
             appendMsg('bot', m.content, av.name, av.emoji, ts);
           }
         });
@@ -6286,7 +6306,7 @@ async function generateChatSummary() {
 
 function rAvPage(){
   rEmptyStates();
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
   const msgs=AVMSGS[av.id]||[t('home.welcome')];
   const msg=msgs[new Date().getDate()%msgs.length];
   const el_em=document.getElementById('av-em');
@@ -7539,12 +7559,12 @@ async function rexProactiveGreeting() {
   const weekPatterns = analyzeWeekPatterns();
 
   const sys = tA('aip.greet.sys', {
-    name: AVS.find(a=>a.id===prof?.avatarId)?.name || 'Rex', done: doneToday, total: totalH,
+    name: aiAvName(), done: doneToday, total: totalH,
     bdToday: bdayToday.join(', ') || tA('aip.none'), bdTomorrow: bdayTmrw.join(', ') || tA('aip.none'),
     patterns: weekPatterns || tA('aip.fewData'), nick: prof?.nickname || '', lang: t('ai.greet.lang')
-  });
-  // Jména z podkladů (narozeniny, návyky) smí v pozdravu být, i když znějí cize
-  const greetAllow = [...bdayToday, ...bdayTmrw, ...habits.map(h => h.name)].join(' ');
+  }) + aiAvRule();
+  // Jména z podkladů (narozeniny, návyky, jméno parťáka) smí v pozdravu být, i když znějí cize
+  const greetAllow = [avName(), ...bdayToday, ...bdayTmrw, ...habits.map(h => h.name)].join(' ');
 
   try {
     const q = [{role:'system',content:sys},{role:'user',content:t('ai.greet.ask')}];
@@ -7616,14 +7636,14 @@ function showRexDashboardMessage(msg) {
   const existing = document.getElementById('rex-dash-msg');
   if (existing) existing.remove();
 
-  const av = AVS.find(a => a.id === prof?.avatarId) || {emoji:'⭐', name:'Rex'};
+  const av = curAv();
   const dashCard = document.querySelector('.avbanner');
   if (!dashCard) return;
 
   const msgEl = document.createElement('div');
   msgEl.id = 'rex-dash-msg';
   msgEl.className = 'rex-dash-msg'; // celý řádek pod avatarem a textem (karta je flex v řádku)
-  msgEl.innerHTML = `<span style="color:var(--accent);font-style:normal;font-weight:600">${av.emoji} ${av.name}:</span> ${esc(msg)}`;
+  msgEl.innerHTML = `<span style="color:var(--accent);font-style:normal;font-weight:600">${av.emoji} ${esc(av.name)}:</span> ${esc(msg)}`;
   dashCard.appendChild(msgEl);
 }
 
@@ -7659,8 +7679,8 @@ window.getRexWeeklyReport = async () => {
   const weekStr = week.map(d => tA('aip.wr.day', {date: d.date, entries: d.entries, mood: d.mood, habits: d.habits})).join('\n');
   const patterns = analyzeWeekPatterns();
 
-  const av = AVS.find(a => a.id === prof?.avatarId) || {name:'Rex'};
-  const sys = tA('aip.wr.sys', {name: av.name, nick: prof?.nickname || '', rules: weeklyReportRules(8), week: weekStr, patterns: patterns || tA('aip.fewData')});
+  const av = curAv();
+  const sys = tA('aip.wr.sys', {name: aiAvName(), nick: prof?.nickname || '', rules: weeklyReportRules(8), week: weekStr, patterns: patterns || tA('aip.fewData')}) + aiAvRule();
 
   try {
     const rep = aiFixCs(aiPlain(await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:t('ai.wr.user')}], 500), uid)));
@@ -7705,8 +7725,8 @@ async function generateWeeklyReportSilent() {
     });
   }
   const weekStr = week.map(d => tA('aip.wr.day', {date: d.date, entries: d.entries, mood: d.mood, habits: d.habits})).join('\n');
-  const av = AVS.find(a => a.id === prof?.avatarId) || {name:'Rex'};
-  const sys = tA('aip.wr.sysSilent', {name: av.name, nick: prof?.nickname || tA('aip.wr.nickFb'), rules: weeklyReportRules(5), week: weekStr});
+  const av = curAv();
+  const sys = tA('aip.wr.sysSilent', {name: aiAvName(), nick: prof?.nickname || tA('aip.wr.nickFb'), rules: weeklyReportRules(5), week: weekStr}) + aiAvRule();
   try {
     const rep = aiFixCs(aiPlain(await callClaude([{role:'system',content:sys},{role:'user',content:t('ai.wr.userSilent')}], 300)));
     if (!rep) return;
@@ -8749,7 +8769,7 @@ function ctCur() {
 }
 const ctVal = (x, ...a) => typeof x === 'function' ? x(...a) : x;
 function coTedHTML() {
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   const st = ctSteps();
   if (!st.length && !_ctThanks) return '';
   // Splněné kroky si zapamatovat (smazaná položka krok nevrátí)
@@ -8887,7 +8907,7 @@ function quickStartHTML() {
   const completedCount = completedIds.length;
   const total = relevant.length;
   const pct = Math.round(completedCount / total * 100);
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
 
   const taskHTML = relevant.map(t => {
     const isDone = t.done || done.includes(t.id);
@@ -9188,7 +9208,7 @@ function gameRingSel(L){
 function gameAccSel(L){ return GAME_ACC.find(a=>a.id===game?.rex?.acc&&a.lvl<=L)||null; }
 // Kruh kolem avatara = podíl XP do další úrovně, číslo úrovně a doplněk
 function gameRingHTML(sz){
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av=curAv();
   const L=gameLevel(), acc=gameAccSel(L);
   return `<span class="gring gr-${gameRingSel(L)} gt-${ringTier(L)}" style="--sz:${sz}px;--p:${gameProgress().pct}" aria-hidden="true"><span class="gring-em">${av.emoji}</span>${acc?`<span class="gring-acc ga-${acc.id}">${acc.em}</span>`:''}<span class="gring-lvl">${L}</span></span>`;
 }
@@ -9204,7 +9224,7 @@ function gameBarHTML(){
 }
 // Překreslí banner na Domů, hlavičku avatara a otevřený sheet
 function gameRenderUI(){
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], on=gameUiOn();
+  const av=curAv(), on=gameUiOn();
   const dem=document.getElementById('d-avem');
   if(dem){ if(on){ dem.innerHTML=gameRingHTML(64); dem.classList.add('has-ring'); } else { dem.textContent=av.emoji; dem.classList.remove('has-ring'); } }
   const dl=document.getElementById('d-avlvl');
@@ -9281,7 +9301,7 @@ window.gameRing=id=>{
 // Oslava nové úrovně: modal (fokus na „Super!“), když už nějaký modal oslavy běží, jen bublina
 function celebModalOpen(){ return ['m-lvlup','m-gwin'].some(id=>document.getElementById(id)?.classList.contains('open')); }
 function celebrateLevel(from,L){
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av=curAv();
   if(celebModalOpen()){ showAvReaction(av.emoji,t('game.lvlUp.title',{n:L}),lvlName(L),true); return; }
   const unl=[...GAME_ACC.filter(a=>a.lvl>from&&a.lvl<=L).map(a=>({a,nm:t('game.acc.'+a.id)})),
     ...GAME_RINGS.filter(r=>r.lvl>from&&r.lvl<=L).map(r=>({r,nm:t('game.ring.'+r.id)}))];
@@ -9294,6 +9314,7 @@ function celebrateLevel(from,L){
     ${unl.length?`<div class="lu-unl"><div class="gs-sec" style="margin-top:0">${tH('game.unlocked')}</div>${unl.map(u=>u.a
       ?`<div class="lu-row"><span>${u.a.em} ${esc(u.nm)}</span><button type="button" class="btn-s" data-a0="${u.a.id}" onclick="gameWear(this.dataset.a0)">${tH('game.wear')}</button></div>`
       :`<div class="lu-row"><span><span class="gw-sw gr-${u.r.id}" aria-hidden="true"></span> ${esc(u.nm)}</span><button type="button" class="btn-s" data-a0="${u.r.id}" onclick="gameRing(this.dataset.a0);cm('m-lvlup')">${tH('game.wear')}</button></div>`).join('')}</div>`:''}
+    ${avNameOfferLvlHTML(from,L)}
     <button type="button" class="btn-p lu-ok" id="lvlup-ok" onclick="cm('m-lvlup')">${tH('game.lvlUp.ok')}</button>`;
   om('m-lvlup');
   spawnConfetti();
@@ -9302,7 +9323,7 @@ function celebrateLevel(from,L){
 // Esc zavře modaly gamifikace a cílů
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  for(const id of ['m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin','m-admov','m-dashedit']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
+  for(const id of ['m-avname','m-sccard','m-badge','m-lvlup','m-gwin','m-gval','m-game','m-chal','m-pc','m-pcadmin','m-admov','m-dashedit']) if(document.getElementById(id)?.classList.contains('open')){ if(id==='m-sccard') window.closeShareCard(); else cm(id); break; }
 });
 // Nastavení: přepínač „Body a úrovně“ (výpočty běží dál, vypnutí jen skryje kruh, XP a oslavy úrovní)
 function renderGameSetting(){
@@ -9337,7 +9358,7 @@ function gameIntroHTML(){
     if(lsGet('lp_game_intro')) return '';
     if(accNew(7)){ lsSave('lp_game_intro',1); return ''; } // nováček: „novinka“ nedává smysl ani později, body vysvětlí průvodce a Rex
   }
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av=curAv();
   let n=0; const today=toDS();
   for(const l of habitLogs) if(l&&l.done&&l.date>=_hlCutoff&&l.date<=today) n++;
   return `<div class="invite-hint gn-intro" id="game-intro-card" role="region" aria-label="${tH('game.intro.title',{av:av.name})}">
@@ -9643,7 +9664,7 @@ window.closeShareCard=()=>{
 function badgeCardSpec(id,nick){
   const b=BADGES.find(x=>x.id===id), got=game?.badges?.[id];
   if(!b||!got) return null;
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], L=gameLevel();
+  const av=curAv(), L=gameLevel();
   const n=BADGES.filter(x=>game.badges[x.id]).length, li=lvlIdx(L);
   return {range:'',em:b.em,title:t('game.badge.'+b.id),sub:t('game.badge.got',{date:fmtDate(got,'dmy')}),name:nick,
     quote:t('game.badge.'+b.id+'.d'),line:(av.emoji||'')+' '+av.name,
@@ -9714,7 +9735,7 @@ function weekCardHTML(){
   if(lsGet('lp_week_card','')===mon) return '';
   const S=calcWeekSummary(mon);
   if(!S.hasData) return '';
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av=curAv();
   const tile=(num,lbl)=>`<div class="sth-card"><div class="gs-num">${esc(num)}</div><div class="gs-lbl">${lbl}</div></div>`;
   return `<div class="dw wk-card" id="week-card" role="region" aria-label="${tH('game.wk.title',{av:av.name})}">
     <div class="dw-head"><div class="dw-title">${tH('game.wk.title',{av:av.name})}</div><div class="gs-lbl">${esc(weekRange(S))}</div></div>
@@ -9731,7 +9752,7 @@ window.dismissWeekCard=mon=>{ lsSave('lp_week_card',String(mon||'')); document.g
 window.shareWeek=mon=>{ if(!/^\d{4}-\d\d-\d\d$/.test(String(mon))) return; openShareCard('week',mon); };
 // Týden jako obrázek: procenta, sloupce po dnech, splnění, perfektní dny, nejlepší série, úroveň a body
 function weekCardSpec(mon,nick){
-  const S=calcWeekSummary(mon), av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0], wn=weekdayNames('short');
+  const S=calcWeekSummary(mon), av=curAv(), wn=weekdayNames('short');
   const L=S.lvlUp||gameLevel();
   return {range:weekRange(S),em:av.emoji||'⭐',title:t('game.card.week'),name:nick,big:S.hasData?t('game.card.pctVal',{n:S.pct}):'–',bigLbl:t('game.card.pct'),
     quote:t('game.card.quote',{say:t('game.wk.say.'+weekSayIdx(S.pct)),av:av.name}),
@@ -9780,7 +9801,7 @@ function goalProgressChanged(g,newP,silent=false,prevP=0){
 }
 // Oslava mezníku: 25/50/75 bublina společníka, 100 % modal (konfety respektují prefers-reduced-motion)
 function celebrateGoal(g,m){
-  const av=AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av=curAv();
   const say=av.name+': '+t('game.say.goal.'+av.id);
   if(m<100||celebModalOpen()){ showAvReaction('🎯',m<100?t('game.goal.ms.'+m):t('game.goal.done'),(g.emoji||'🎯')+' '+cutName(g.name,40)+' · '+say,true); return; }
   const body=document.getElementById('gwin-body');
@@ -9888,7 +9909,7 @@ window.saveGoalVal=async()=>{
 let avReactionTimer = null;
 
 function showAvReaction(emoji, title, msg, confetti=false) {
-  const av = AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av = curAv();
   const el = document.getElementById('av-reaction');
   const emEl = document.getElementById('av-r-em');
   const titleEl = document.getElementById('av-r-title');
@@ -9927,7 +9948,7 @@ function getStreak(hid) { return habitStreak(hid, toDS()); }
 
 function checkAvatarReactions(hid, date, justCompleted) {
   if(!justCompleted) return; // jen při splnění, ne při odškrtnutí
-  const av = AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av = curAv();
   const name = prof?.prezdivka||prof?.nickname||'';
   const today = toDS();
   if(date !== today) return; // jen pro dnešek
@@ -9988,7 +10009,7 @@ function checkAvatarReactions(hid, date, justCompleted) {
 // Kontrola nečinnosti — zavolá se při načtení
 function checkInactivity() {
   if(!habits.length) return;
-  const av = AVS.find(a=>a.id===prof?.avatarId)||AVS[0];
+  const av = curAv();
   const name = prof?.prezdivka||prof?.nickname||'';
   const today = new Date();
   let lastActive = null;
@@ -13648,7 +13669,7 @@ function chCheckDone() {
   }
 }
 function celebrateChallenge(gid, c, st) {
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   const line = (c.emoji || '🤝') + ' ' + c.title;
   if(celebModalOpen()) { showAvReaction('🤝', t('ch.win.t'), line, true); return; }
   const body = document.getElementById('gwin-body');
@@ -14123,7 +14144,7 @@ function pcCheckDone() {
 }
 const PC_WIN_BADGE = {1: 'pc_1', 3: 'pc_3', 12: 'pc_12'};
 function celebratePc(c, badge) {
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   const line = c.emoji + ' ' + pcTitle(c);
   if(celebModalOpen()) { showAvReaction('🎖️', t('pc.win.t'), line, true); return; }
   const body = document.getElementById('gwin-body');
@@ -17365,7 +17386,7 @@ window.mprSave = () => {
 };
 
 window.openAddToMealplan = () => {
-  if(!lastRecipe){ toast(t('mp.needRecipe')); return; }
+  if(!lastRecipe){ toast(t('mp.needRecipe',{av:avName()})); return; }
   const existing = document.getElementById('add-to-mealplan-modal');
   if(existing) existing.remove();
   // Ve skupinách volba cíle (Moje + skupiny se sdíleným jídelníčkem): výchozí zobrazený plán, když v něm smím psát
@@ -18756,7 +18777,8 @@ function subModules(){
   if(any('cooking','shopping','mealplan')) initPantry();
 }
 function buildNav(){
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
+  applyAvTexts();
   const showRex=(prof.modules||[]).includes('rex');
   const home={id:'dashboard',emoji:'🏠',label:t('nav.home')};
   const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
@@ -18774,7 +18796,7 @@ function buildNav(){
   const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof.template)?NAV_TPL[prof.template]:[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
   all=[home,...first,...rex,...uMods.filter(m=>!first.includes(m)),settings];
   }
-  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${p.label}</span></button>`).join('');
+  const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${esc(p.label)}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
   const primary=all.slice(0,4);
   const more=all.slice(4);
@@ -18898,9 +18920,9 @@ async function loadDailyQuote() {
 
   // Pokus o AI citát
   try {
-      const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+      const av = curAv();
       const text = await callClaude([
-        {role:'system', content:t('ai.quote.sys',{name:av.name})},
+        {role:'system', content:t('ai.quote.sys',{name:aiAvName()})+aiAvRule()},
         {role:'user', content:t('ai.quote.user')}
       ], 60);
       const q = aiFixCs(aiPlain(text));
@@ -19031,7 +19053,7 @@ function nudgeForDash() {
   return nudgeCardHTML(n);
 }
 function nudgeCardHTML(n) {
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0], x = n.txt(av), id = esc(n.id);
+  const av = curAv(), x = n.txt(av), id = esc(n.id);
   return `<div class="invite-hint nudge" id="nudge-card" role="region" aria-label="${tH('nd.aria', {av:av.name})}">
     <span class="invite-hint-em" aria-hidden="true">${esc(x.em)}</span>
     <div class="invite-hint-body">
@@ -19197,7 +19219,7 @@ window.openDashEdit=()=>{
   if(!ov.classList.contains('open')){ om('m-dashedit'); focusOverlay(ov); }
 };
 function rDash(){
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
   const g=prof.gender==='f'||prof.gender==='x'?prof.gender:'m'; // x = neutrální tvary (#x)
   const gr=t('av.'+av.id+'.greet',{name:prof.prezdivka||prof.nickname,g});
   const h=new Date().getHours();
@@ -19270,6 +19292,7 @@ function rDash(){
   if(!slots){
   // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
   html+=quickStartHTML();
+  html+=avNameOfferHTML(); // úroveň 10: nabídka pojmenovat parťáka (jednou, 5.07)
   if(unlD('focus')) mw.focus=focusWidgetHTML();
   mw.water=waterWidgetHTML();
   if(simple) html+=nudgeForDash(); // nabídka z fronty (pitný režim, body, upozornění ze skupin … pod jedním limitem)
@@ -19294,7 +19317,7 @@ function rDash(){
   const rexSt = getRexState(rexEn);
   if (rexEnergyVisible()) mw.energy = `<div class="dw" onclick="sp('avatar')" style="cursor:pointer">
     <div class="dw-head">
-      <div class="dw-title">${av.emoji||'⭐'} ${av.name||'Rex'}</div>
+      <div class="dw-title">${av.emoji||'⭐'} ${esc(av.name)}</div>
       <div class="dw-arrow">→</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -19514,7 +19537,7 @@ function rDash(){
     // Sloty (kap. 3): 1 = Začínáme, 2 = karta modulu č. 1, 3 = nabídka z fronty, jinak hlavní úkol / souhrn / další moduly.
     // Nálada (starší modul 'mood', není v MODS ani v liště) patří k Poznámkám, proto hned za ně.
     const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(Boolean);
-    const cards=[quickStartHTML(),modCards[0],nudgeForDash(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean);
+    const cards=[quickStartHTML(),modCards[0],nudgeForDash(),avNameOfferHTML(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean);
     html+=cards.slice(0,3).join('');
     if(unl('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
     html+='<div id="ch-dash">'+chDashHTML()+'</div>'; // běžící výzvy skupiny (pozvaný je vidí hned)
@@ -20173,7 +20196,7 @@ function rGoals() {
 // SETTINGS
 function initSet(){
   document.getElementById('set-nick').value=prof.nickname||'';
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
   document.getElementById('set-avem').textContent=av.emoji;
   document.getElementById('set-avnm').textContent=av.name;
   renderGameSetting(); // přepínač Body a úrovně (4.40)
@@ -20281,6 +20304,107 @@ window.saveNick=()=>{
 window.openAVC=()=>{tmpAv=prof.avatarId||'rex';rAvGrid('av-change-grid',true);om('m-avchange');};
 window.saveAVC=async()=>{if(!tmpAv)return;prof.avatarId=tmpAv;await setDoc(doc(db,'users',CU.uid,'profile','main'),{avatarId:tmpAv},{merge:true});buildNav();rDash();rAvPage();initSet();cm('m-avchange');toast(t('set.avSaved'));};
 
+// ── Vlastní jméno parťáka (5.07): prof.avatarName, kdykoli na stránce parťáka ✏️; na úrovni 10 jednou nabídka ──
+const AV_NAME_LVL=10;
+// Chyba zadání (klíč slovníku) nebo '' = v pořádku; prázdné pole = výchozí jméno
+function avNameErr(v){
+  const s=String(v??'').trim();
+  if(!s) return '';
+  if([...s].length>AV_NAME_MAX) return 'avn.errLong';
+  return cleanAvName(s)?'':'avn.errChars';
+}
+// Statické texty se jménem (data-i18n bez proměnných): po načtení profilu a po změně jména (z buildNav)
+function applyAvTexts(){
+  const v={av:avName()};
+  document.querySelectorAll('[data-i18n="ck.welcomeX"]').forEach(el=>{ el.textContent=t('ck.welcomeAv',v); });
+  document.querySelectorAll('[data-i18n="ck.rexThinking"]').forEach(el=>{ el.textContent=t('ck.thinking',{name:v.av}); });
+  const mb=document.getElementById('auto-mood-btn'); if(mb) mb.title=t('nt.autoMoodAv',v);
+}
+function avNameRefresh(){ buildNav(); rDash(); rAvPage(); initSet(); }
+// Zápis do profilu: místně hned (funguje i offline), chyba serveru vrátí původní stav
+function avNameWrite(patch,undo){
+  if(!CU) return;
+  setDoc(doc(db,'users',CU.uid,'profile','main'),patch,{merge:true}).catch(e=>{
+    console.warn('[LP] avName:',e?.code||e?.name);
+    Object.assign(prof,undo); avNameRefresh(); toast(t('avn.errSave'));
+  });
+}
+window.openAvRename=()=>{
+  if(!CU) return;
+  const cur=cleanAvName(prof.avatarName), def=(AVS.find(a=>a.id===prof?.avatarId)||AVS[0]).name;
+  const inp=document.getElementById('avn-inp'); if(!inp) return;
+  inp.value=cur; inp.placeholder=def;
+  const ex=t('avn.ex').split(',').map(x=>x.trim()).filter(x=>x&&x!==cur);
+  document.getElementById('avn-ex').innerHTML=ex.map(x=>`<button type="button" class="chip avn-chip" data-a0="${esc(x)}" onclick="avNamePick(this.dataset.a0)">${esc(x)}</button>`).join('');
+  const rs=document.getElementById('avn-reset'); if(rs) rs.hidden=!cur;
+  window.avNameInput();
+  om('m-avname');
+  setTimeout(()=>{ inp.focus(); inp.select(); },60);
+};
+window.avNameInput=()=>{
+  const inp=document.getElementById('avn-inp'), h=document.getElementById('avn-hint'); if(!inp||!h) return;
+  const e=avNameErr(inp.value);
+  h.textContent=e?t(e,{n:AV_NAME_MAX}):t('avn.count',{n:[...inp.value.trim()].length,max:AV_NAME_MAX});
+  h.classList.toggle('err',!!e); inp.setAttribute('aria-invalid',e?'true':'false');
+};
+window.avNamePick=v=>{ const inp=document.getElementById('avn-inp'); if(!inp) return; inp.value=String(v||'').slice(0,40); window.avNameInput(); inp.focus(); };
+window.saveAvName=()=>{
+  const inp=document.getElementById('avn-inp'); if(!inp||!CU) return;
+  const e=avNameErr(inp.value);
+  if(e){ window.avNameInput(); toast(t(e,{n:AV_NAME_MAX})); inp.focus(); return; }
+  const nm=cleanAvName(inp.value);
+  if(!nm) return window.resetAvName();
+  const undo={avatarName:prof.avatarName,avatarNameAsked:prof.avatarNameAsked};
+  cm('m-avname');
+  if(nm===cleanAvName(prof.avatarName)) return;
+  prof.avatarName=nm; prof.avatarNameAsked=true;
+  avNameRefresh();
+  toast(t('avn.saved',{name:nm}));
+  avNameWrite({avatarName:nm,avatarNameAsked:true},undo);
+};
+window.resetAvName=()=>{
+  if(!CU) return;
+  cm('m-avname');
+  if(!cleanAvName(prof.avatarName)&&prof.avatarName==null) return;
+  const undo={avatarName:prof.avatarName};
+  delete prof.avatarName;
+  avNameRefresh();
+  toast(t('avn.resetDone',{name:avName()}));
+  avNameWrite({avatarName:deleteField()},undo);
+};
+// Nabídka na úrovni ≥ 10: parťák v appce, body viditelné, jméno nezměněné a nabídka ještě nebyla (prof.avatarNameAsked)
+function avNameOfferDue(){
+  return !!CU&&gameUiOn()&&gameLevel()>=AV_NAME_LVL&&(prof.modules||[]).includes('rex')&&!cleanAvName(prof.avatarName)&&!prof.avatarNameAsked;
+}
+const avNameOfferBtns=()=>`<div class="gi-btns"><button type="button" class="invite-hint-btn" onclick="avNameOfferYes()">${tH('avn.offer.yes')}</button>
+      <button type="button" class="btn-s gi-later" onclick="avNameOfferNo()">${tH('avn.offer.no')}</button></div>`;
+// Karta na Domů (první otevření na úrovni ≥ 10, nebo když oslavu úrovně překryla jiná)
+function avNameOfferHTML(){
+  if(!avNameOfferDue()) return '';
+  const av=curAv();
+  return `<div class="invite-hint avn-offer" id="avn-offer" role="region" aria-label="${tH('avn.offer.t')}">
+    <span class="invite-hint-em" aria-hidden="true">${esc(av.emoji)}</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${tH('avn.offer.t')}</div>
+      <div class="invite-hint-d">${tH('avn.offer.d',{av:av.name,n:AV_NAME_LVL})}</div>
+      ${avNameOfferBtns()}
+    </div>
+  </div>`;
+}
+// Řádek v oslavě úrovně (přechod přes 10)
+function avNameOfferLvlHTML(from,L){
+  if(!(from<AV_NAME_LVL&&L>=AV_NAME_LVL)||!avNameOfferDue()) return '';
+  return `<div class="lu-avn" id="lu-avn"><div class="lu-avn-t">${tH('avn.offer.t')}</div>${avNameOfferBtns()}</div>`;
+}
+function avNameMarkAsked(){
+  if(prof.avatarNameAsked) return;
+  prof.avatarNameAsked=true;
+  avNameWrite({avatarNameAsked:true},{avatarNameAsked:false});
+}
+function avNameOfferHide(){ document.getElementById('avn-offer')?.remove(); document.getElementById('lu-avn')?.remove(); }
+window.avNameOfferYes=()=>{ avNameMarkAsked(); avNameOfferHide(); if(document.getElementById('m-lvlup')?.classList.contains('open')) cm('m-lvlup'); window.openAvRename(); };
+window.avNameOfferNo=()=>{ avNameMarkAsked(); avNameOfferHide(); };
+
 // VOICE — chat mic
 window.togMic=()=>{
   if(!('webkitSpeechRecognition'in window||'SpeechRecognition'in window)){
@@ -20348,7 +20472,7 @@ async function finishDS(text){
   appendMsg('user','🎙️ '+text);
   const uid=CU?.uid;
   saveChatMessage('user',text,false); // zapíše se spolu s odpovědí
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
   document.getElementById('typing').classList.add('active');scrollChat();
   const today=toDS();
   const gCtx=goals.length ? goals.map(g=>`- ${g.emoji} ${g.name} (${g.progress||0}%)`).join('\n') : tA('aip.ds.none');
@@ -20357,7 +20481,7 @@ async function finishDS(text){
     return `- ${log?.done?'✅':'⬜'} ${h.emoji} ${h.name}${h.type==='count'?' ('+(log?.value||0)+'/'+h.goal+')':''}`;
   }).join('\n');
   const vision=(()=>{const a=prof.visionAreas||{};const va=Object.entries(a).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('; ');return va||prof.vision||tA('aip.ds.noVision');})();
-  const sys=tA('aip.ds.sys',{name:av.name,nick:prof.prezdivka||prof.nickname,vision,goals:gCtx,habits:todayHabits||tA('aip.ds.none')});
+  const sys=tA('aip.ds.sys',{name:aiAvName(),nick:prof.prezdivka||prof.nickname,vision,goals:gCtx,habits:todayHabits||tA('aip.ds.none')})+aiAvRule();
   try{
     const rep=aiFixCs(aiPlain(await chatAwaitAI(callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.ds.user',{text})}],500),uid)));
     if(CU?.uid!==uid){document.getElementById('typing').classList.remove('active');return;} // mezitím jiný účet
@@ -20947,14 +21071,14 @@ async function chatSend(){
   const uid=CU?.uid;
   appendMsg('user',userMsg);saveChatMessage('user',userMsg,false); // zapíše se spolu s odpovědí (při chybě v catch)
   document.getElementById('send-btn').disabled=true;document.getElementById('typing').classList.add('active');scrollChat();
-  const av=AVS.find(a=>a.id===prof.avatarId)||AVS[0];
+  const av=curAv();
   // ── Kontext ze všech modulů (buildChatContext); chyba kontextu chat nikdy neshodí ──
   await chatDataReady();
   let chatCtx='';
   try{chatCtx=buildChatContext(userMsg);}catch(e){chatCtx='';}
 
   const memorySec = chatMemorySummary ? tA('aip.chat.memory',{s:ctxStrip(chatMemorySummary,6000)}) : '';
-  const mkSys=(ctx,mem)=>tA('aip.chat.sys',{name:av.name,nick:prof.prezdivka||prof.nickname,memory:mem,ctx:ctx||tA('aip.chat.noCtx')});
+  const mkSys=(ctx,mem)=>tA('aip.chat.sys',{name:aiAvName(),nick:prof.prezdivka||prof.nickname,memory:mem,ctx:ctx||tA('aip.chat.noCtx')})+aiAvRule();
   let sys=mkSys(chatCtx,memorySec);
   const hist=chatFitHist(sys.length,chatH.slice(-10));
   // Pořád moc dlouhé: zkrátit kontext, nakonec i bez paměti
@@ -21026,7 +21150,7 @@ let _rexShopBusy=false;
 window.confirmRecipeToShop=(key,btnEl)=>{
   if(_rexShopBusy) return;
   const recipe=_rexRecipes.get(key);
-  if(!recipe||!CU){toast(t('mp.needRecipe'));return;}
+  if(!recipe||!CU){toast(t('mp.needRecipe',{av:avName()}));return;}
   const shopFid = shopGid(), isShared = !!shopFid; // zobrazený seznam (4.50)
   if(!shopTargetReady(shopFid)) return; // bez načteného seznamu skupiny by vznikly duplicity
   btnEl?.remove();
@@ -21036,7 +21160,7 @@ window.confirmRecipeToShop=(key,btnEl)=>{
   shopBusyUntil(shopBatchAdd(shopFid, out), null, ()=>{ _rexShopBusy=false; });
   if(isShared && added) logGroupActivity(shopFid, 'shop', 'add', firstAdded, added);
   const c=document.getElementById('chatmsgs');
-  const avCur = AVS.find(a=>a.id===prof?.avatarId) || {emoji:'⭐',name:'Rex'};
+  const avCur = curAv();
   const {row:doneRow,bubble:done}=makeBotBubble(`✅ ${tNH('chat.ingAdded', added)} <button onclick="sp('shopping')" style="margin-left:10px;background:rgba(76,217,100,.15);border:1px solid rgba(76,217,100,.3);border-radius:8px;padding:4px 12px;color:var(--green);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer">${tH('ck.showShop')}</button>`,avCur.emoji,avCur.name);
   c.appendChild(doneRow);scrollChat();
   toast(tN('chat.ingAddedToast', added) + (added ? shopToSfx(shopFid) : ''));
@@ -22200,7 +22324,7 @@ window.askRecipe=async()=>{
   document.getElementById('cook-welcome').style.display='none';
   const cookLoadingEl=document.getElementById('cook-loading');
   cookLoadingEl.style.display='block';
-  const avatarName=(AVS.find(a=>a.id===prof?.avatarId)||AVS[0]).name;
+  const avatarName=avName();
   const loadingText=cookLoadingEl.querySelector('div:last-child');
   if(loadingText)loadingText.textContent=t('ck.thinking',{name:avatarName});
   cookLoadingEl?.scrollIntoView({behavior:'smooth', block:'center'});
@@ -23312,7 +23436,7 @@ function showFoodDetectBanner(foods) {
   banner.id = 'food-detect-banner';
   banner.className = 'food-detect-banner';
   banner.innerHTML = `
-    <div class="food-detect-title">${tH('nt.foodFound')}</div>
+    <div class="food-detect-title">${tH('nt.foodFound',{av:avName()})}</div>
     <div class="food-detect-items">
       ${foods.map(f => `<span class="food-tag">🍳 ${esc(f)}</span>`).join('')}
     </div>
@@ -23418,7 +23542,7 @@ function showMoodSuggest(mood, reason) {
   suggest.innerHTML = `
       <span style="font-size:22px">${esc(mood)}</span>
       <div style="flex:1">
-        <div style="font-size:13px;color:var(--text);font-weight:600">${tH('nt.moodSuggest',{mood})}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600">${tH('nt.moodSuggest',{mood,av:avName()})}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:1px">${esc(reason ?? '')}</div>
       </div>
       <button data-a0="${esc(mood)}" onclick="acceptMood(this.dataset.a0)"
@@ -23520,7 +23644,7 @@ function showHabitDetectBanner(completed, newHabits) {
   banner.id = 'habit-detect-banner';
   banner.className = 'habit-detect-banner';
 
-  let html = `<div class="habit-detect-title">${tH('nt.actFound')}</div>`;
+  let html = `<div class="habit-detect-title">${tH('nt.actFound',{av:avName()})}</div>`;
 
   // Splněné aktivity
   if (completed.length > 0) {
@@ -23655,7 +23779,7 @@ function makeBotBubble(htmlContent, labelEmoji='', labelName=''){
   avDiv.textContent=av?av.emoji:(labelEmoji||'⭐');
   const bubble=document.createElement('div');
   bubble.className='msg bot';
-  const lbl=labelName?`<div class="mlbl">${labelEmoji||''} ${labelName}</div>`:'';
+  const lbl=labelName?`<div class="mlbl">${esc(labelEmoji||'')} ${esc(labelName)}</div>`:'';
   bubble.innerHTML=lbl+htmlContent;
   row.appendChild(avDiv);row.appendChild(bubble);
   return {row,bubble};
@@ -23717,7 +23841,7 @@ function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.
 const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist','pets']
   .map(k => [k, {title: t('tour.' + k + '.t'), text: t('tour.' + k + '.x')}]));
 TOUR_MODULES.avatar = {
-  title: `${(()=>{try{const av=AVS?.find(a=>a.id===prof?.avatarId);return av?av.emoji+' '+av.name:'Rex ⚔️';}catch(e){return t('tour.avatar.t');}})()}`,
+  get title(){ try{ const av=curAv(); return esc(av.emoji+' '+av.name); }catch(e){ return t('tour.avatar.t'); } }, // do HTML, vlastní jméno (5.07)
   text: t('tour.avatar.x')
 };
 
@@ -23740,7 +23864,7 @@ function tourAfterJoin() {
 }
 function startWelcomeTour() {
   _tourPlanned = false;
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
 
   const modal = document.createElement('div');
@@ -23751,7 +23875,7 @@ function startWelcomeTour() {
       <div style="font-size:52px;margin-bottom:12px">${av.emoji}</div>
       <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--accent);font-weight:700;margin-bottom:8px">${tH('tour.hello',{name})}</div>
       <div style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px">
-        ${tH('tour.iam1')} <strong>${av.name}</strong>${tH('tour.iam2')}
+        ${tH('tour.iam1')} <strong>${esc(av.name)}</strong>${tH('tour.iam2')}
       </div>
       <div style="font-size:14px;color:var(--text3);line-height:1.6;margin-bottom:24px">
         ${tH('tour.intro')}
@@ -23805,7 +23929,7 @@ function showTourStep() {
   }
 
   const moduleId = steps[_tourStep];
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   // Parťák: titulek podle zvoleného avatara (TOUR_MODULES vzniká před načtením profilu)
   const info = moduleId === 'avatar' ? {title: esc(av.emoji + ' ' + av.name), text: TOUR_MODULES.avatar.text} : TOUR_MODULES[moduleId];
   // Nápověda modulu by po prohlídce zopakovala stejný text
@@ -23861,7 +23985,7 @@ function finishTour() {
   try { localStorage.setItem('lp_tour_done', '1'); localStorage.removeItem('lp_tour_pending'); } catch(e) {}
   sp('dashboard');
 
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
   const name = prof?.prezdivka || prof?.nickname || t('ln.friend');
   setTimeout(() => {
     document.getElementById('tour-done')?.remove();
@@ -23904,7 +24028,7 @@ function showModuleHint(moduleId) {
   if(uiBusy() && !document.getElementById('module-hint')) return; // jiné okno, nápověda se ukáže při další návštěvě
   const info = TOUR_MODULES[moduleId];
   if(!info) return;
-  const av = AVS.find(a => a.id === prof?.avatarId) || AVS[0];
+  const av = curAv();
 
   localStorage.setItem(key, '1');
 

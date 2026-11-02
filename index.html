@@ -914,7 +914,7 @@ else show();
               <span class="av-online-dot"></span>
             </div>
             <div class="av-chat-info">
-              <div class="av-chat-name" id="av-nm" data-i18n="home.companion">Společník</div>
+              <div class="av-nm-row"><div class="av-chat-name" id="av-nm" data-i18n="home.companion">Společník</div><button type="button" class="av-ren-btn" id="av-ren-btn" onclick="openAvRename()" data-i18n-attr="aria-label:avn.rename;title:avn.rename" aria-label="Přejmenovat" title="Přejmenovat"><span aria-hidden="true">✏️</span></button></div>
               <div id="av-lvl"></div>
               <div class="av-chat-status">● Online</div>
               <div class="av-chat-msg" id="av-msg" data-i18n="home.avMsg">Vítej! Jsem tady pro tebe každý den.</div>
@@ -1535,6 +1535,21 @@ else show();
     <div class="mtitle" data-i18n="set.avChange.title">🔄 Změnit společníka</div>
     <div class="av-grid" id="av-change-grid"></div>
     <div class="macts"><button class="btn-s" onclick="cm(&#39;m-avchange&#39;)" data-i18n="common.cancel">Zrušit</button><button class="btn-p" onclick="saveAVC()" data-i18n="common.save">Uložit</button></div>
+  </div>
+</div>
+
+<!-- Jméno parťáka (5.07, vykresluje openAvRename) -->
+<div class="moverlay" id="m-avname" onclick="if(event.target===this)cm(&#39;m-avname&#39;)">
+  <div class="modal avn-sheet" role="dialog" aria-modal="true" aria-labelledby="avn-title">
+    <div class="mtitle" id="avn-title" data-i18n="avn.title">✏️ Jméno parťáka</div>
+    <div class="fg">
+      <label class="flbl" for="avn-inp" id="avn-lbl" data-i18n="avn.lbl">Jak mi budeš říkat?</label>
+      <input class="finp" type="text" id="avn-inp" maxlength="20" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-describedby="avn-hint" oninput="avNameInput()" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();saveAvName();}">
+      <div class="avn-hint" id="avn-hint" aria-live="polite"></div>
+    </div>
+    <div class="avn-ex-l" data-i18n="avn.exLbl">Třeba:</div>
+    <div class="avn-ex" id="avn-ex"></div>
+    <div class="macts"><button type="button" class="btn-s" id="avn-reset" onclick="resetAvName()" data-i18n="avn.reset">Vrátit výchozí</button><button type="button" class="btn-p" onclick="saveAvName()" data-i18n="common.save">Uložit</button></div>
   </div>
 </div>
 

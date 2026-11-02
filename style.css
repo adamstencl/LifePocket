@@ -2657,3 +2657,18 @@ body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
 .avbanner .avtxt{position:relative;background:var(--card);border:1px solid var(--border2);border-radius:14px;padding:8px 12px;margin:6px 0 4px;font-style:normal;color:var(--text1)}
 .avbanner .avtxt:empty{display:none}
 .avbanner .avtxt::before{content:'';position:absolute;left:-7px;top:14px;width:12px;height:12px;background:var(--card);border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);transform:rotate(45deg)}
+/* Jméno parťáka (5.07): ✏️ u jména, okno přejmenování, nabídka na úrovni 10 */
+.av-chat-left,.av-chat-info{min-width:0}
+.av-nm-row{display:flex;align-items:center;gap:6px;min-width:0}
+.av-chat-name{overflow-wrap:anywhere;line-height:1.15}
+.av-ren-btn{flex-shrink:0;background:var(--card2);border:1px solid var(--border2);border-radius:50%;width:36px;height:36px;padding:0;font-size:15px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.av-ren-btn:hover,.av-ren-btn:focus-visible{border-color:var(--accent)}
+.avn-sheet .finp{font-size:16px;min-height:44px} /* 16px = iOS nezoomuje */
+.avn-hint{font-size:12px;color:var(--text3);margin-top:5px;min-height:16px}
+.avn-hint.err{color:var(--red)}
+.avn-ex-l{font-size:13px;color:var(--text2);font-weight:600;margin:4px 0 6px}
+.avn-ex{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.avn-chip{padding:6px 12px;min-height:36px;max-width:100%;overflow-wrap:anywhere}
+.lu-avn{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:12px 0;text-align:left}
+.lu-avn-t{font-weight:700;color:var(--text);margin-bottom:8px}
+.avn-offer .invite-hint-d{overflow-wrap:anywhere}
