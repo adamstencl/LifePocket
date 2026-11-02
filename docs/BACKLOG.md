@@ -155,3 +155,9 @@
 - `mealplanToShopping`: `shopActive` načíst až po `await mpiCacheLoad()`.
 - `delEvent`: osiřelou kopii mazat jen v jejím kalendáři (`pgid`/osobní), ne naslepo ve všech; příznak proti dvojímu dotazu během čekání 3 s.
 - Cron: slot z `event.scheduleTime`; při časové pojistce rotovat začátek seznamu uživatelů; `reminderTime` ve tvaru HH:MM:SS server nenajde (klient ho nevytváří).
+
+## Z 5.07 (jméno parťáka)
+- Jméno z emoji: `ctxT(…, AV_NAME_MAX)` počítá UTF-16 → v promptu se ořízne; `maxlength` 20 pustí jen 10 emoji. Sjednotit (code pointy nebo ×2).
+- `avNameWrite` catch: nehlídá změnu účtu (uid) a souběh dvou zápisů.
+- `cleanAvName`: doplnit U+061C, U+180E, U+3164, U+034F, tag znaky E0000–E007F (i do `ctxStrip`).
+- Po obnově profilu ze serveru překreslit i stránku parťáka a Nastavení.
