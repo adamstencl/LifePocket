@@ -1692,6 +1692,7 @@ export default {
   'cal.migrateBtnTo': '📤 Přesunout do {to} ({n})',
   'cal.migrateTo': 'Přesunout osobní události do skupiny',
   'cal.editGone': '⚠️ Skupina už kalendář nesdílí, událost nejde upravit',
+  'cal.evGone': '⚠️ Událost mezitím někdo smazal, změny se neuložily',
   'cal.all': 'Vše',
   'cal.none14': 'Žádné události v příštích 14 dnech',
   'cal.es.t': 'Ulož si narozeniny a akce, připomeneme ti je.',

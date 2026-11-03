@@ -395,14 +395,14 @@ else show();
       <!-- Avatar banner -->
       <div class="avbanner" role="button" tabindex="0" onclick="sp(&#39;avatar&#39;)">
         <div class="avbig" id="d-avem">⭐</div>
-        <div style="flex:1">
+        <div class="avinfo" style="flex:1">
           <div class="avsnm" id="d-avnm"></div>
           <div class="avtxt" id="d-avtxt"></div>
           <div class="avlvl" id="d-avlvl"></div>
         </div>
         <!-- Jednoduchý režim (4.69): parťák není v liště, napíše se mu odsud -->
         <button type="button" class="avchat-btn" id="d-avchat" hidden onclick="event.stopPropagation();sp(&#39;avatar&#39;)"><span aria-hidden="true">💬</span></button>
-        <div style="color:var(--text3);font-size:12px">→</div>
+        <div class="avarrow" style="color:var(--text3);font-size:12px">→</div>
       </div>
       <!-- WIDGETY — generované dle zapnutých modulů -->
       <div id="d-widgets"></div>

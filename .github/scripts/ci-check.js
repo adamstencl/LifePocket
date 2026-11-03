@@ -151,6 +151,20 @@ try {
     });
     if ([...alpha[1]].sort().join('') !== set.sort().join('')) fail('FAMILY_CODE_ALPHABET (' + alpha[1] + ') neodpovídá třídě v pravidle [' + cls[1] + ']');
     else ok('abeceda kódu shodná s pravidlem (' + alpha[1].length + ' znaků)');
+    // Stejná abeceda i v isNewGroupCode (čtení skupiny ne-členem a join)
+    const ng = rules.match(/function isNewGroupCode\(fid\) \{\s*return fid\.matches\('([^']+)'\)/);
+    const ngc = ng && ng[1].match(/-\[([^\]]+)\]\{(\d+)\}\$$/);
+    if (!ngc) fail('isNewGroupCode ve firestore.rules nenalezeno nebo má neočekávaný tvar');
+    else {
+      const s2 = [];
+      ngc[1].replace(/(.)-(.)|(.)/g, (m, a, b, c) => {
+        if (c) s2.push(c); else for (let i = a.charCodeAt(0); i <= b.charCodeAt(0); i++) s2.push(String.fromCharCode(i));
+      });
+      const len = (rm[2].match(/\{(\d+)\}/) || [])[1];
+      if ([...alpha[1]].sort().join('') !== s2.sort().join('')) fail('isNewGroupCode: abeceda [' + ngc[1] + '] neodpovídá FAMILY_CODE_ALPHABET (' + alpha[1] + ')');
+      else if (len && ngc[2] !== len) fail('isNewGroupCode: délka {' + ngc[2] + '} se liší od pravidla create {' + len + '}');
+      else ok('isNewGroupCode: abeceda a délka shodné');
+    }
   }
 } catch (e) { fail('FAMILY_WORDS: ' + e.message); }
 

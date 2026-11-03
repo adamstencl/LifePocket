@@ -2218,8 +2218,10 @@ exports.dailyStats = onSchedule(
 const DELETE_REAUTH_SEC = 10 * 60;
 const GROUP_ID_RE = /^[A-Z]{2,12}-[A-Z0-9]{4,8}$/;
 
-// Odebere uid ze skupiny; jediný člen → smaže celou skupinu, správce → předá roli
-async function leaveGroupForDelete(gid, uid) {
+// Odebere uid ze skupiny; jediný člen → smaže celou skupinu, správce → předá roli.
+// trusted=false: kód jen z formerGroups/removedGroups (píše klient) → osiřelé podkolekce
+// neexistující skupiny nemazat (mohou čekat na ruční obnovu po rotaci kódu)
+async function leaveGroupForDelete(gid, uid, trusted = true) {
   const ref = db.doc(`families/${gid}`);
   const outcome = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -2233,15 +2235,25 @@ async function leaveGroupForDelete(gid, uid) {
     const wasAdmin = members[uid] && members[uid].role === 'admin';
     const adminLeft = others.some(id => members[id] && members[id].role === 'admin');
     if (wasAdmin && !adminLeft) {
-      const ts = (id) => { const t = Date.parse(members[id] && members[id].joinedAt); return Number.isFinite(t) ? t : Infinity; };
-      const heir = others.slice().sort((a, b) => ts(a) - ts(b) || (a < b ? -1 : 1))[0];
+      // joinedAt si člen při připojení píše sám (5.08): platí jen mezi založením skupiny a teď (+5 min),
+      // jinak se bere jako neznámé (na konec, mezi sebou podle uid → deterministicky)
+      const cRaw = snap.data().createdAt;
+      const created = cRaw && typeof cRaw.toMillis === 'function' ? cRaw.toMillis() : Date.parse(cRaw);
+      const maxT = Date.now() + 5 * 60 * 1000;
+      const ts = (id) => {
+        const j = members[id] && members[id].joinedAt;
+        const t = typeof j === 'string' && j.length <= 40 ? Date.parse(j) : NaN;
+        if (!Number.isFinite(t) || t > maxT || (Number.isFinite(created) && t < created - 60 * 1000)) return Infinity;
+        return t;
+      };
+      const heir = others.slice().sort((a, b) => (ts(a) - ts(b)) || (a < b ? -1 : 1))[0];
       args.push(new FieldPath('members', heir, 'role'), 'admin');
     }
     tx.update(ref, ...args);
     return wasAdmin && !adminLeft ? 'leftHandover' : 'left';
   });
   // 'missing' po dřívějším přerušeném běhu: dokument je pryč, podkolekce mohly zůstat
-  if (outcome === 'sole' || outcome === 'missing') await db.recursiveDelete(ref);
+  if (outcome === 'sole' || (outcome === 'missing' && trusted)) await db.recursiveDelete(ref);
   return outcome;
 }
 
@@ -2293,11 +2305,15 @@ exports.deleteAccount = onCall({cors: true, region: 'europe-west1', maxInstances
     const memberSnap = await db.collection('families')
       .where(new FieldPath('members', uid, 'role'), 'in', ['admin', 'member']).get();
     memberSnap.forEach(d => gids.add(d.id));
+    // + opuštěné (formerGroups) a ty, odkud byl odebrán (removedGroups, 5.08): jen úklid jeho stop
+    //   (aktivita, reakce, zrcadla v shared); skupina se nemaže
+    const cleanOnly = [...formerGroupIds(prof), ...removedGroupIds(prof)].filter(g => !gids.has(g));
     // (b) odchod ze skupin; obsah přidaný uživatelem zůstává (privacy.html bod 5), jeho aktivita (feed),
     //     sdílené návyky a reakce se mažou
     step = 'b';
-    for (const gid of gids) {
-      const outcome = await leaveGroupForDelete(gid, uid);
+    const all = [...gids].map(g => [g, true]).concat([...new Set(cleanOnly)].map(g => [g, false]));
+    for (const [gid, trusted] of all) {
+      const outcome = await leaveGroupForDelete(gid, uid, trusted);
       console.log(`[LP] deleteAccount uid=${uid} skupina: ${outcome}`);
       // Smazaná skupina (sole/missing) uklidila aktivitu sama; chyba úklidu smazání účtu nezastaví (zbytek smaže TTL)
       if (outcome !== 'sole' && outcome !== 'missing') {
@@ -2680,7 +2696,8 @@ exports.rotateGroupCode = onCall({cors: true, region: 'europe-west1', maxInstanc
 // ── Restore Group — obnova opuštěné skupiny (4.47) ───────────────────────────
 // Když skupinu opustí všichni členové, dokument i data (nákupy, události…) zůstávají, jen k nim nikdo nemá
 // přístup (pravidla pouští jen členy). Volající, který skupinu založil (createdBy) nebo ji opustil
-// (users/{uid}/profile/main.formerGroups.{kód}, zapisuje klient při odchodu), ji tu vrátí:
+// (users/{uid}/profile/main.formerGroups.{kód}, zapisuje klient při odchodu; od 5.08 jen u nového
+// formátu kódu, starou skupinu WORD-NNNN obnoví jen zakladatel), ji tu vrátí:
 //  - bez gid: seznam takových skupin bez členů (max 20) s počty položek
 //  - s gid: v transakci ověří totéž, přidá volajícího jako správce a skupinu zapíše do profilu
 //    (familyId, pokud nemá platnou hlavní skupinu, jinak extraGroupIds).
@@ -2701,8 +2718,25 @@ function formerGroupIds(prof) {
   return Object.keys(fg).filter(g => GROUP_ID_RE.test(g))
     .sort((a, b) => (Number(fg[b]) || 0) - (Number(fg[a]) || 0)).slice(0, RESTORE_MAX);
 }
+// Nový kód WORD-XXXXXX (stejně jako isNewGroupCode ve firestore.rules); jen ten nejde uhodnout
+function isNewGroupCode(g) {
+  return typeof g === 'string' && new RegExp('^[A-Z]{4}-[' + FAMILY_CODE_ALPHABET + ']{6}$').test(g);
+}
+// formerGroups si klient píše sám (5.08): věřit mu jde jen u nového kódu (~887 mil. kombinací na slovo).
+// Starý kód WORD-NNNN (10 000 na slovo) jde uhodnout → obnova jen zakladateli (createdBy zapisuje
+// zakladatel při vzniku a pravidla ho hlídají; jiný serverem zapsaný záznam o členství po odchodu není).
+// Skupiny, odkud uživatele odebral správce (klient píše removedGroups.{kód} = čas); bez práva obnovy,
+// slouží jen k úklidu při smazání účtu
+function removedGroupIds(prof) {
+  const rg = prof && prof.removedGroups;
+  if (!rg || typeof rg !== 'object') return [];
+  return Object.keys(rg).filter(g => GROUP_ID_RE.test(g))
+    .sort((a, b) => (Number(rg[b]) || 0) - (Number(rg[a]) || 0)).slice(0, RESTORE_MAX);
+}
 function canRestore(d, uid, former, gid) {
-  return isEmptyGroup(d) && (d.createdBy === uid || former.includes(gid));
+  if (!isEmptyGroup(d)) return false;
+  if (d.createdBy === uid) return true;
+  return isNewGroupCode(gid) && former.includes(gid);
 }
 
 exports.restoreGroup = onCall({cors: true, region: 'europe-west1', maxInstances: 3, timeoutSeconds: 60}, async (request) => {
@@ -2721,7 +2755,7 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', maxInstances:
       // automatický single-field index na createdBy
       const own = await db.collection('families').where('createdBy', '==', uid).limit(RESTORE_SCAN).get();
       own.forEach(s => snaps.set(s.id, s));
-      const rest = former.filter(g => !snaps.has(g));
+      const rest = former.filter(g => !snaps.has(g) && isNewGroupCode(g));
       if (rest.length) (await db.getAll(...rest.map(g => db.doc(`families/${g}`)))).forEach(s => { if (s.exists) snaps.set(s.id, s); });
       const found = [...snaps.values()]
         .filter(s => canRestore(s.data() || {}, uid, former, s.id))
@@ -2759,12 +2793,11 @@ exports.restoreGroup = onCall({cors: true, region: 'europe-west1', maxInstances:
     const res = await db.runTransaction(async (tx) => {
       const gs = await tx.get(ref);
       const ps = await tx.get(profRef);
-      if (!gs.exists) throw new HttpsError('not-found', tS(L, 'err.resGone'));
       if (!ps.exists) throw new HttpsError('failed-precondition', tS(L, 'err.resSetup'));
-      const d = gs.data() || {};
+      const d = gs.exists ? (gs.data() || {}) : null;
       const p = ps.data() || {};
-      if (!isEmptyGroup(d)) throw new HttpsError('failed-precondition', tS(L, 'err.resTaken'));
-      if (!canRestore(d, uid, formerGroupIds(p), gid)) throw new HttpsError('permission-denied', tS(L, 'err.resDenied'));
+      // Neexistuje / obsazeno / bez práva: stejná chyba, ať nejde zjišťovat cizí skupiny (5.08)
+      if (!d || !canRestore(d, uid, formerGroupIds(p), gid)) throw new HttpsError('not-found', tS(L, 'err.resNone'));
       // Hlavní skupina: jen když v profilu žádná platná není (neexistuje nebo v ní nejsem)
       let asMain = true;
       if (typeof p.familyId === 'string' && p.familyId !== gid && GROUP_ID_RE.test(p.familyId)) {

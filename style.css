@@ -912,8 +912,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .ev-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 16px;margin-bottom:7px;display:flex;align-items:center;gap:12px;transition:border-color 0.2s}
 .ev-card:hover{border-color:var(--accent2)}
 .ev-icon{font-size:20px;flex-shrink:0}
-.ev-info{flex:1}
-.ev-name{font-size:15px;color:var(--text);font-weight:600}
+.ev-info{flex:1;min-width:0}
+.ev-name{font-size:15px;color:var(--text);font-weight:600;overflow-wrap:anywhere}
 .ev-date{font-size:12px;color:var(--text2);margin-top:2px}
 .ev-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px;border-radius:6px;transition:color 0.2s}
 .ev-del:hover{color:var(--red)}
@@ -1662,6 +1662,8 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 #gcal-status{font-size:12px;display:none}
 
 /* ── QUICK START ────────────────────────────────────── */
+/* Karty Domů mimo .dw (5.08): vlastní základ jako .dw, ne přihlašovací .card (480 px, stín, velké zaoblení) */
+.qs-card,.ct-card,.focus-card{background:var(--card);border:1px solid var(--border);border-radius:16px;width:auto;max-width:100%;box-sizing:border-box}
 .qs-card{padding:16px;margin-bottom:12px;border-color:rgba(245,200,66,.25)}
 .qs-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
 .qs-title-row{display:flex;align-items:center;gap:10px}
@@ -2429,6 +2431,11 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .hd-day-cell.rest,.htd-dot.rest{background:transparent;color:var(--text3);opacity:.55}
 .htd-dot.future{background:transparent;box-shadow:inset 0 0 0 1px var(--border)}
 .htd-dot.future.today{box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--accent)}
+/* 5.08: dnešek bez záznamu – neutrální jako budoucí den, ale klikací */
+.htd-dot.tdopen{background:transparent;box-shadow:inset 0 0 0 1px var(--border)}
+.htd-dot.tdopen.today{box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--accent)}
+[data-theme="sunshine"] .htd-dot.tdopen,[data-theme="tangerine"] .htd-dot.tdopen{box-shadow:inset 0 0 0 1px var(--text3)}
+[data-theme="sunshine"] .htd-dot.tdopen.today,[data-theme="tangerine"] .htd-dot.tdopen.today{box-shadow:inset 0 0 0 1px var(--text3),0 0 0 2px var(--accent)}
 /* 4.92: den před založením návyku – neutrální (ne ×), dá se zpětně doplnit */
 .htd-dot.pre{background:transparent;border:1px dashed var(--border);opacity:.6}
 /* 4.98: světlé motivy – --border je na bílé kartě pod 1,5:1; --text3 (s průhledností .8) drží kontrast aspoň 3:1 */
@@ -2657,6 +2664,18 @@ body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
 .avbanner .avtxt{position:relative;background:var(--card);border:1px solid var(--border2);border-radius:14px;padding:8px 12px;margin:6px 0 4px;font-style:normal;color:var(--text1)}
 .avbanner .avtxt:empty{display:none}
 .avbanner .avtxt::before{content:'';position:absolute;left:-7px;top:14px;width:12px;height:12px;background:var(--card);border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);transform:rotate(45deg)}
+/* 5.08: jednoduchý režim (💬 v kartě) – jméno vedle avatara, bublina pod nimi na celou šířku karty */
+.avbanner.av-simple{row-gap:10px}
+.avbanner.av-simple>.avinfo{display:contents}
+.avbanner.av-simple>.avbig{order:0}
+.avbanner.av-simple .avsnm{order:1;flex:1 1 0;min-width:0;margin-bottom:0}
+.avbanner.av-simple>.avchat-btn{order:2}
+.avbanner.av-simple>.avarrow{order:3}
+.avbanner.av-simple .avtxt{order:4;flex:1 1 100%;margin:0}
+.avbanner.av-simple .avlvl{order:5;flex:1 1 100%}
+.avbanner.av-simple .avlvl:empty{display:none}
+.avbanner.av-simple>.rex-dash-msg{order:6}
+.avbanner.av-simple .avtxt::before{left:22px;top:-7px;border-left:1px solid var(--border2);border-top:1px solid var(--border2);border-bottom:none}
 /* Jméno parťáka (5.07): ✏️ u jména, okno přejmenování, nabídka na úrovni 10 */
 .av-chat-left,.av-chat-info{min-width:0}
 .av-nm-row{display:flex;align-items:center;gap:6px;min-width:0}

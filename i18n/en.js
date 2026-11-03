@@ -1662,6 +1662,7 @@ export default {
   'cal.migrateBtnTo': '📤 Move to {to} ({n})',
   'cal.migrateTo': 'Move personal events to group',
   'cal.editGone': '⚠️ The group no longer shares its calendar, the event can’t be edited',
+  'cal.evGone': '⚠️ The event was deleted in the meantime, changes weren’t saved',
   'cal.all': 'All',
   'cal.none14': 'No events in the next 14 days',
   'cal.es.t': 'Save birthdays and events, we’ll remind you.',
