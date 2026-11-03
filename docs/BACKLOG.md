@@ -161,3 +161,11 @@
 - `avNameWrite` catch: nehlídá změnu účtu (uid) a souběh dvou zápisů.
 - `cleanAvName`: doplnit U+061C, U+180E, U+3164, U+034F, tag znaky E0000–E007F (i do `ctxStrip`).
 - Po obnově profilu ze serveru překreslit i stránku parťáka a Nastavení.
+
+## Z 5.08 (celková kontrola)
+- `.ev-icon` přeteče s dlouhým cizím `typeEmoji` (jen podvržená data) – omezit šířku.
+- Předání správce: člen si může zapsat `joinedAt` = `createdAt` skupiny (stará slabina, ořez ji jen zmírňuje).
+- `deleteAccount` s `trusted=true` maže rekurzivně chybějící skupinu z `prof.familyId` (klientem zapsané) – osiřelá data po neúplné rotaci.
+- privacy bod 5: po nasazení nových `firestore.rules` upravit formulaci „po nasazení…“.
+- Indexy: nepoužitý `participants (n ASC, joinedAt ASC)`; TTL `activity`/`reactions`/`challenges.expireAt` jen v konzoli – zapsat do `fieldOverrides`.
+- Workflow: připnout `actions/*` a `firebase-tools` na přesné verze.
