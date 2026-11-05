@@ -1979,6 +1979,8 @@ export default {
   'yd.done': '✓ Splněno',
   'yd.fail': '✕ Nesplněno',
   'yd.skip': '⏭ Přeskočit',
+  'yd.goal': '✓ Na cíl ({goal})',
+  'yd.shield': '❄️ Den chránil štít série',
   'yd.minus': 'Ubrat: {name}',
   'yd.plus': 'Přidat: {name}',
   'yd.ok': 'Hotovo',

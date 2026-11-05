@@ -1946,6 +1946,8 @@ export default {
   'yd.done': '✓ Done',
   'yd.fail': '✕ Not done',
   'yd.skip': '⏭ Skip',
+  'yd.goal': '✓ To goal ({goal})',
+  'yd.shield': '❄️ A streak shield covered this day',
   'yd.minus': 'Less: {name}',
   'yd.plus': 'More: {name}',
   'yd.ok': 'Finish',

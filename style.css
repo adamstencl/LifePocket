@@ -2537,6 +2537,8 @@ body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
 .yd-btns{display:flex;align-items:center;gap:6px}
 .yd-b{flex:1 1 0;min-width:0;min-height:44px;padding:6px 4px;border-radius:10px;background:var(--card2);color:var(--text);border:1px solid var(--border2);font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;line-height:1.15;overflow-wrap:anywhere;cursor:pointer}
 .yd-b.on.yd-done{background:var(--green);color:var(--on-green);border-color:var(--green)}
+.yd-b.on.yd-goal{background:var(--green);color:var(--on-green);border-color:var(--green)}
+.yd-info{font-size:14px;color:var(--text2)}
 .yd-b.on.yd-fail{background:rgba(255,107,107,.18);border-color:var(--red)}
 .yd-b.on.yd-skip{background:var(--card3);border-color:var(--accent)}
 .yd-c{flex:0 0 48px;font-size:20px}

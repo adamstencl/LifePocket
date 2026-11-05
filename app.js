@@ -7277,8 +7277,9 @@ function sendMorningNotif() {
   });
   const todayDow = new Date().getDay();
   const habitCount = hasMod('habits') ? habits.filter(h => isHabitRemindDue(h, today, todayDow)).length : 0;
-  // Doplň včerejšek (5.09): věta navíc, jen po štítech (ydReady) a se zapnutou volbou
-  const ydN = hasMod('habits') && ydPref() && ydReady() ? ydList(today).length : 0;
+  // Doplň včerejšek (5.09): věta navíc, jen po štítech (ydReady) a se zapnutou volbou; před štíty zkusit znovu (lastRun nezapisovat)
+  if (hasMod('habits') && ydPref() && !ydReady()) return false;
+  const ydN = hasMod('habits') && ydPref() ? ydList(today).length : 0;
   if (!habitCount && !ydN) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
   let body = [habitCount ? tN('ln.morningHabits', habitCount) : '', ydN ? tN('ln.morningYd', ydN) : ''].filter(Boolean).join(' ');
   if (todayEvents.length > 0) {
@@ -7525,7 +7526,12 @@ function ydList(today = toDS()) {
 // Nic jiného dole ani v okně (panel z notifikace, lišta rutiny, dotaz na upozornění, instalace, průvodce, oslava)
 function ydFree() {
   return !!document.getElementById('app')?.classList.contains('active') && !uiBusy() && !naCovered()
-    && !document.getElementById('notif-ask') && !_pendingOpen && !_openBusy;
+    && !document.getElementById('notif-ask') && !_pendingOpen && !_openBusy && !ydTyping();
+}
+// Fokus v textovém poli (psaní by panel přerušil)
+function ydTyping() {
+  const a = document.activeElement;
+  return !!a && !!a.matches && a.matches('textarea,[contenteditable=""],[contenteditable="true"],input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=range]):not([type=color]):not([type=file])');
 }
 // Karta na Domů (nahoře, i v jednoduchém režimu): dokud včerejšek není doplněný
 function ydCardSigNow() { return ydOn() && ydReady() ? String(ydList().length) : '0'; }
@@ -7545,7 +7551,7 @@ function ydCardSync() {
 function ydKick() {
   if (!CU) return;
   ydCardSync();
-  if (_yd) { if (_yd.day !== toDS()) ydClose(); else ydRender(); return; }
+  if (_yd) { if (_yd.day !== toDS() || !ydOn()) ydClose(); else ydRender(); return; } // jiný den, vypnutá volba / modul, Nepřipomínat dnes
   if (_ydSess || _ydWait || !ydOn() || !ydReady()) return;
   if (Date.now() - (Number(ydSt().later) || 0) < YD_LATER_MS) return;
   if (!ydList().length) return;
@@ -7587,6 +7593,8 @@ function ydBtn(hid, how, cur, label) {
 function ydRowHTML(h, y) {
   const l = hLog(h.id + '_' + y), id = esc(h.id), name = (h.emoji || '🎯') + ' ' + h.name;
   const cur = l?.done ? 'done' : l?.failed ? 'fail' : l?.skipped ? 'skip' : '';
+  // Štít (např. z jiného zařízení) jen informativně: klepnutí by ho smazalo nebo přepsalo
+  if (ydShielded(l)) return `<div class="yd-row"><div class="yd-n">${esc(name)}</div><div class="yd-info">${tH('yd.shield')}</div></div>`;
   const fs = ydBtn(h.id, 'fail', cur, tH('yd.fail')) + ydBtn(h.id, 'skip', cur, tH('yd.skip'));
   let ctl;
   if (h.type === 'count') {
@@ -7594,7 +7602,7 @@ function ydRowHTML(h, y) {
     ctl = `<div class="yd-btns"><button type="button" class="yd-b yd-c" data-a0="${id}" data-a1="-" onclick="ydCnt(this.dataset.a0,-1)" aria-label="${tH('yd.minus', {name})}"${v > 0 ? '' : ' disabled'}>−</button>
       <span class="yd-v${v >= goal ? ' ok' : ''}">${v}/${goal}</span>
       <button type="button" class="yd-b yd-c" data-a0="${id}" data-a1="+" onclick="ydCnt(this.dataset.a0,1)" aria-label="${tH('yd.plus', {name})}">+</button></div>
-      <div class="yd-btns">${fs}</div>`;
+      <div class="yd-btns"><button type="button" class="yd-b yd-goal${v >= goal ? ' on' : ''}" data-a0="${id}" data-a1="goal" onclick="ydCnt(this.dataset.a0,'goal')" aria-pressed="${v >= goal}">${tH('yd.goal', {goal})}</button>${fs}</div>`;
   } else ctl = `<div class="yd-btns">${ydBtn(h.id, 'done', cur, tH('yd.done'))}${fs}</div>`;
   return `<div class="yd-row"><div class="yd-n">${esc(name)}</div>${ctl}</div>`;
 }
@@ -7603,10 +7611,11 @@ function ydRender() {
   if (!el || !_yd) return;
   const y = addDays(_yd.day, -1);
   const rows = _yd.ids.map(id => habits.find(h => h.id === id)).filter(h => h && !h.archived);
+  if (!rows.length) { ydClose(); return; } // všechny návyky z panelu mezitím archivované / smazané
   // Překreslení nesmí ztratit fokus (klávesnice, čtečka) ani posun seznamu
   const a = document.activeElement, fk = a && el.contains(a) ? (a.dataset.a0 || '') + '|' + (a.dataset.a1 || '') + '|' + a.className : null;
   const st = el.querySelector('.yd-list')?.scrollTop || 0;
-  el.innerHTML = `<div class="yd-t">${tNH('yd.title', _yd.ids.length)}</div>
+  el.innerHTML = `<div class="yd-t">${tNH('yd.title', rows.length)}</div>
     <div class="yd-list">${rows.map(h => ydRowHTML(h, y)).join('')}</div>
     <button type="button" class="yd-ok" onclick="ydDone()">${tH('yd.ok')}</button>
     <div class="yd-more"><button type="button" class="yd-x yd-later" onclick="ydLater()">${tH('yd.later')}</button><button type="button" class="yd-x yd-off" onclick="ydOff()">${tH('yd.offToday')}</button></div>`;
@@ -7639,6 +7648,7 @@ window.ydSet = (hid, how) => {
   const now = Date.now(); if (now - (_ydTap.get(hid) || 0) < 400) return; // dvojklik by volbu hned vrátil
   _ydTap.set(hid, now);
   const {y} = g, id = hid + '_' + y, l = hLog(id);
+  if (ydShielded(l)) return;
   const cur = l?.done ? 'done' : l?.failed ? 'fail' : l?.skipped ? 'skip' : '';
   let w;
   if (cur === how) w = hbClearLog(hid, y);
@@ -7647,21 +7657,25 @@ window.ydSet = (hid, how) => {
   else w = putHabitLog({id, habitId: hid, date: y, done: false, failed: false, skipped: true, value: 0});
   ydAfter(w);
 };
-// Počítaný návyk: + / − jako adjustHabit (bez reakcí), 0 = smazat záznam
+// Počítaný návyk: + / − jako adjustHabit (bez reakcí), 'goal' = rovnou na cíl, 0 = smazat záznam
 window.ydCnt = (hid, d) => {
   const g = ydGet(hid);
-  if (!g || (d !== 1 && d !== -1)) return;
-  const {h, y} = g, id = hid + '_' + y, goal = Number(h.goal) || 1, cur = Number(hLog(id)?.value) || 0, nv = Math.max(0, cur + d);
+  if (!g || (d !== 1 && d !== -1 && d !== 'goal')) return;
+  const {h, y} = g, id = hid + '_' + y, l = hLog(id);
+  if (ydShielded(l)) return;
+  const goal = Number(h.goal) || 1, cur = Number(l?.value) || 0, nv = d === 'goal' ? goal : Math.max(0, cur + d);
   if (nv === cur) return;
   if (nv >= goal && cur < goal) installUnlock('habits');
   ydAfter(nv === 0 ? delHabitLog(id) : putHabitLog({id, habitId: hid, date: y, done: nv >= goal, failed: false, skipped: false, value: nv}));
 };
+const ydShielded = l => !!(l && l.shield && !l.done);
 const ydLeft = () => { if (!_yd) return 0; const y = addDays(_yd.day, -1); return _yd.ids.filter(id => !hMarked(id, y)).length; };
 // Hotovo: vše doplněné = pochvala, jinak jako „Později“
 window.ydDone = () => {
   const left = ydLeft();
   ydClose();
-  if (left) { ydSave({later: Date.now()}); _ydSess = true; } else toast(t('yd.allT'));
+  _ydSess = true; // v téže relaci se panel sám znovu neotevře
+  if (left) ydSave({later: Date.now()}); else toast(t('yd.allT'));
   ydCardSync();
 };
 window.ydLater = () => { ydSave({later: Date.now()}); _ydSess = true; ydClose(); };
@@ -20539,6 +20553,7 @@ window.togModSet=(id,on)=>{
   prof.modules=[...ms];
   if(on) subModules(); // listenery zapnutého modulu
   buildNav();rDash();rSetMods();
+  if(id==='habits') ydKick(); // Doplň včerejšek (5.09): vypnutý modul panel zavře, zapnutý ho může nabídnout
   const md=MODS.find(m=>m.id===id), nm=md?modName(md):id;
   toast(t(on?'set.mod.on':'set.mod.off',{name:nm}));
   const uid=CU.uid;
