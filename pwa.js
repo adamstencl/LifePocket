@@ -46,8 +46,8 @@ function showInstallBanner() {
   if (window.matchMedia('(display-mode: standalone)').matches) return;
   // Nezobrazuj na desktopu — banner je určen jen pro mobil
   if (!navigator.maxTouchPoints && window.innerWidth > 768) return;
-  // Uživatel banner už zavřel — znovu ho nenabízet
-  try { if (localStorage.getItem('pwa-dismissed')) return; } catch (e) { /* bez úložiště — ukaž */ }
+  // Zavřený banner se nabídne ještě jednou po 7 dnech, po druhém zavření už ne
+  if (bannerDismissed('pwa-dismissed')) return;
   const banner = document.getElementById('pwa-banner');
   if (banner) banner.style.display = 'flex';
 }
@@ -72,11 +72,31 @@ window.installPWA = async () => {
 
 window.dismissInstall = () => {
   hideInstallBanner();
-  try { localStorage.setItem('pwa-dismissed', Date.now()); } catch (e) { /* bez úložiště — banner se může ukázat znovu */ }
+  rememberDismiss('pwa-dismissed');
 };
 
+// Zavření banneru: 1. = čas (znovu za 7 dní), 2. = natrvalo (klíč + '2'). Starší hodnota '1' = dávno zavřeno.
+const BANNER_AGAIN_MS = 7 * 24 * 3600 * 1000;
+function bannerDismissed(key) {
+  try {
+    if (localStorage.getItem(key + '2')) return true;
+    const v = localStorage.getItem(key);
+    if (!v) return false;
+    const ts = Number(v) || 0;
+    return Date.now() - ts < BANNER_AGAIN_MS;
+  } catch (e) { return false; } // bez úložiště — ukaž
+}
+function rememberDismiss(key) {
+  try {
+    const v = localStorage.getItem(key);
+    // Už jednou zavřený a po 7 dnech ukázaný znovu → podruhé natrvalo
+    if (v && Date.now() - (Number(v) || 0) >= BANNER_AGAIN_MS) localStorage.setItem(key + '2', '1');
+    else localStorage.setItem(key, String(Date.now()));
+  } catch (e) { /* bez úložiště — banner se může ukázat znovu */ }
+}
+
 // ── PWA: iOS návod (Safari nevyvolává beforeinstallprompt) ──
-// Notifikace fungují na iPhonu jen v aplikaci přidané na plochu, proto se návod ukáže jednorázově.
+// Notifikace fungují na iPhonu jen v aplikaci přidané na plochu; po zavření se návod ukáže ještě jednou za 7 dní.
 function lpIsIOS() {
   const ua = navigator.userAgent || '';
   // iPadOS 13+ se hlásí jako Macintosh, ale má dotykový displej
@@ -88,7 +108,7 @@ function showIosBanner() {
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
   // Vestavěný prohlížeč FB/Messenger/Instagram (4.93): „Přidat na plochu“ tam nejde, radí karta v appce
   if (/FBAN|FBAV|Instagram|Line\//.test(navigator.userAgent || '')) return;
-  try { if (localStorage.getItem('ios-dismissed')) return; } catch (e) { /* bez úložiště — ukaž */ }
+  if (bannerDismissed('ios-dismissed')) return; // znovu po 7 dnech, pak už ne
   const banner = document.getElementById('ios-banner');
   if (banner) banner.style.display = 'block';
 }
@@ -96,7 +116,7 @@ function showIosBanner() {
 window.dismissIosBanner = () => {
   const banner = document.getElementById('ios-banner');
   if (banner) banner.style.display = 'none';
-  try { localStorage.setItem('ios-dismissed', '1'); } catch (e) { /* bez úložiště — ukáže se znovu */ }
+  rememberDismiss('ios-dismissed');
 };
 
 window.addEventListener('load', () => setTimeout(showIosBanner, 3000));

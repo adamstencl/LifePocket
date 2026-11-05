@@ -77,9 +77,16 @@ window.__lpLang=l; // rychlý start landingu (skript za #s-login)
     <button onclick="dismissIosBanner()" data-i18n-attr="aria-label:common.close" aria-label="Zavřít" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;margin-left:auto;min-width:44px;min-height:44px">×</button>
   </div>
   <div style="font-size:14px;color:var(--text2);line-height:1.7">
-    1. <span data-i18n="ios.s1a">Klepni na</span> <b style="color:var(--accent-text)" data-i18n="ios.s1b">⬆️ Sdílet</b> <span data-i18n="ios.s1c">v Safari</span><br>
+    1. <span data-i18n="ios.s1a">Klepni na</span> <b style="color:var(--accent-text)" data-i18n="ios.s1b">⬆️ Sdílet</b> <span data-i18n="ios.s1c">v Safari</span> <span style="color:var(--text3)" data-i18n="ios.s1d">(v iOS 26 je pod ⋯)</span><br>
     2. <span data-i18n="ios.s2a">Vyber</span> <b style="color:var(--accent-text)" data-i18n="ios.s2b">„Přidat na plochu“</b><br>
     3. <span data-i18n="ios.s3">Potvrď a otevři LifePocket z plochy — tam fungují i notifikace 🎉</span>
+  </div>
+  <!-- 5.10: appka na ploše má vlastní přihlášení (iOS nesdílí přihlášení se Safari) -->
+  <div style="font-size:14px;color:var(--text);margin-top:8px" data-i18n="ios.sameAcc">🔑 Na ploše se přihlas stejným účtem.</div>
+  <!-- Účet jen přes Google: okno Google se v appce na ploše často nedokončí → heslo předem (app.js renderIosGoogle) -->
+  <div id="ios-google" hidden style="margin-top:8px;font-size:14px;color:var(--text2)">
+    <span data-i18n="ios.googleD">Přihlašuješ se přes Google? V appce na ploše se přihlásíš snáz e-mailem a heslem.</span>
+    <button type="button" class="btn-s" id="ios-google-btn" onclick="iosSetPassword()" style="width:100%;margin-top:6px;min-height:44px;font-size:15px" data-i18n="ios.googleBtn">🔑 Nastav si heslo pro appku na ploše</button>
   </div>
 </div>
 <div class="orb orb1"></div><div class="orb orb2"></div>
@@ -144,7 +151,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
       <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i deník na jednom místě. A celá rodina vidí, co je potřeba.</p>
       <div class="lp-invite" id="lp-invite" hidden>
         <span aria-hidden="true">🔗</span>
-        <span data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
+        <span id="lp-invite-t" data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
       </div>
       <div class="lp-free" data-i18n="landing.free">Zdarma, bez reklam, česky</div>
       <div class="lp-ctas">
@@ -190,7 +197,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
       <button type="button" class="lp-back" onclick="showLanding()" data-i18n="common.back">← Zpět</button>
       <div class="lp-invite" id="auth-invite" hidden>
         <span aria-hidden="true">🔗</span>
-        <span data-i18n="auth.invite">Máš pozvánku do skupiny. Po přihlášení se tě zeptáme, jestli se chceš připojit.</span>
+        <span id="auth-invite-t" data-i18n="auth.invite">Máš pozvánku do skupiny. Po přihlášení se tě zeptáme, jestli se chceš připojit.</span>
       </div>
       <div id="auth-mode-lbl" tabindex="-1" style="text-align:center;font-size:18px;font-weight:700;color:var(--text);margin:0 0 14px;letter-spacing:-.01em" data-i18n="auth.modeLogin">🔑 Přihlásit se</div>
       <button class="google-btn" id="login-btn" onclick="window.doLogin()" style="margin-bottom:14px">
@@ -360,7 +367,7 @@ else show();
     <div class="ssub" data-i18n="onb.buddy.sub">Jen vzhled a styl, jakým ti bude psát. Jednoho jsme ti doporučili, klidně vyber jiného.</div>
     <div class="av-grid" id="av-grid"></div>
     <button class="btn-s" onclick="onbBack(&#39;s-step2&#39;)" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
-    <button class="btn-p" id="onb-finish-btn" style="margin-top:6px" onclick="finishOnboard()" data-i18n="onb.finish">🚀 Jdeme na to!</button>
+    <button class="btn-p" id="onb-finish-btn" style="margin-top:6px" onclick="finishOnboard()" data-i18n="onb.finish">🚀 Otevřít LifePocket</button>
   </div>
 </div>
 
@@ -390,8 +397,6 @@ else show();
         <div class="dgreet" id="d-greet">Ahoj!</div>
         <div class="d-date-lbl" id="d-date-lbl"></div>
       </div>
-      <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi) -->
-      <div class="verify-note" id="verify-note" role="status" hidden></div>
       <!-- Avatar banner -->
       <div class="avbanner" role="button" tabindex="0" onclick="sp(&#39;avatar&#39;)">
         <div class="avbig" id="d-avem">⭐</div>
@@ -404,6 +409,8 @@ else show();
         <button type="button" class="avchat-btn" id="d-avchat" hidden onclick="event.stopPropagation();sp(&#39;avatar&#39;)"><span aria-hidden="true">💬</span></button>
         <div class="avarrow" style="color:var(--text3);font-size:12px">→</div>
       </div>
+      <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi); 5.10: pod bannerem parťáka -->
+      <div class="verify-note" id="verify-note" role="status" hidden></div>
       <!-- WIDGETY — generované dle zapnutých modulů -->
       <div id="d-widgets"></div>
     </div>
@@ -925,7 +932,7 @@ else show();
         </div>
         <!-- Day summary bar -->
         <div class="asstop">
-          <div class="dsum-bar">
+          <div class="dsum-bar" id="dsum-bar">
             <span>🎙️ <strong data-i18n="chat.ds.title">Přehled dne</strong> <span data-i18n="chat.ds.desc">— řekni, co se dnes dělo, a já to zaznamenám</span></span>
             <button class="btn-rec" id="dsBtn" onclick="togDS()" data-i18n="chat.dsBtn">🎤 Nahrát přehled dne</button>
           </div>
@@ -940,8 +947,9 @@ else show();
           <div class="cwelcome" id="cwelcome">
             <span class="cwem" id="cwem">⭐</span>
             <div class="cwtitle" id="cwtitle" data-i18n="chat.cwTitle">Čím ti mohu pomoci?</div>
-            <div class="cwsub" data-i18n="chat.cwSub">Ptej se na cíle, návyky nebo nahraj přehled dne.</div>
-            <div class="chips">
+            <div class="cwsub" id="cwsub" data-i18n="chat.cwSub">Ptej se na cíle, návyky nebo nahraj přehled dne.</div>
+            <!-- Návrhy dotazů skládá rChatWelcome podle zapnutých modulů a odpovědi z onboardingu (5.10) -->
+            <div class="chips" id="cw-chips">
               <div class="chip" onclick="getRexWeeklyReport()" data-i18n="chat.chip.report">📊 Týdenní report</div>
               <div class="chip" data-q="Jak plním své cíle?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.goals" data-i18n-attr="data-q:chat.q.goals">Jak plním cíle?</div>
               <div class="chip" data-q="Co mám dnes udělat pro svou vizi?" onclick="askC(this.dataset.q)" data-i18n="chat.chip.today" data-i18n-attr="data-q:chat.q.today">Co dělat dnes?</div>

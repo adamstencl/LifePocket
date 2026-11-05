@@ -112,6 +112,22 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .lp-b-t{font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
 .lp-b-d{font-size:14px;color:var(--text2);line-height:1.4;margin-top:2px}
 .lp-invite{display:flex;gap:8px;align-items:flex-start;background:var(--card2);border:1px solid var(--accent);border-radius:12px;padding:10px 12px;font-size:15px;color:var(--text);margin-bottom:14px}
+/* Vestavěný prohlížeč FB/Messengeru (5.10): kompaktní karta s „Otevřít v Chrome/Safari“, tlačítko Začít zůstane nad ohybem */
+.lp-inapp{font-size:14px;padding:8px 10px;margin-bottom:10px}
+.lp-inapp-b{flex:1;min-width:0}
+.lp-inapp-t{font-weight:700;line-height:1.3}
+.lp-inapp-d{font-size:13px;color:var(--text2);line-height:1.35;margin:2px 0 6px}
+.lp-inapp-row{display:flex;flex-wrap:wrap;gap:6px}
+.lp-inapp .lp-inapp-open{display:inline-flex;align-items:center;justify-content:center;width:auto;flex:1 1 auto;min-height:44px;padding:0 12px;font-size:15px;border-radius:12px;box-shadow:none;text-decoration:none;box-sizing:border-box}
+.lp-inapp .lp-inapp-copy{flex:0 1 auto;min-height:44px;padding:0 10px;font-size:14px}
+.lp-inapp-on .app-icon-wrap{display:none}
+.lp-inapp-on .logo-name{font-size:24px;margin-top:0}
+.lp-inapp-on .lp-hero{font-size:22px;margin:6px 0 4px}
+.lp-inapp-on .lp-sub{font-size:15px;margin-bottom:10px}
+.lp-inapp-on .lp-free{margin-bottom:10px;padding:4px 12px}
+.lp-inapp-on .lp-invite:not(.lp-inapp){padding:8px 10px;margin-bottom:10px;font-size:14px}
+/* Návrat z ověřovacího e-mailu (5.10) */
+.lp-verified{background:var(--card2);border:1px solid var(--green);border-radius:12px;padding:10px 12px;font-size:15px;color:var(--text);margin:10px 0 4px;text-align:center}
 .lp-legal{text-align:center;font-size:13px;color:var(--text2);margin-top:10px}
 .lp-legal a{color:var(--text2);text-decoration:underline;display:inline-block;padding:10px 4px}
 .lp-lang{margin-top:0}
@@ -1698,6 +1714,13 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .ct-hb{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:16px;cursor:pointer;text-align:left}
 .ct-hb:hover{border-color:var(--accent)}
 .ct-hb-c{width:24px;height:24px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0}
+/* Bublina po onboardingu (5.10, místo průvodce): ukazuje na kartu pod sebou */
+.ct-tip{position:relative;display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:8px 4px 8px 14px;background:var(--card);border:1px solid var(--accent);border-radius:16px;font-size:15px;color:var(--text);line-height:1.35;box-shadow:0 4px 16px rgba(0,0,0,.18);animation:fadeIn .3s ease}
+.ct-tip::after{content:'';position:absolute;left:28px;bottom:-7px;width:12px;height:12px;background:var(--card);border-right:1px solid var(--accent);border-bottom:1px solid var(--accent);transform:rotate(45deg)}
+.ct-tip-em{font-size:22px;flex:none}
+.ct-tip-t{flex:1;min-width:0}
+.ct-tip-x{flex:none;min-width:44px;min-height:44px;background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer}
+@media(prefers-reduced-motion:reduce){.ct-tip{animation:none}}
 
 
 /* ── DAILY FOCUS ────────────────────────────────────── */
@@ -2305,12 +2328,12 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .acc-uid-v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text3)}
 .acc-uid-b{flex:none;min-width:44px;min-height:44px}
 /* Neověřený e-mail (4.76) */
-.verify-note{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;background:var(--card2);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:10px 12px;margin-bottom:16px;font-size:14px;color:var(--text2)}
+.verify-note{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;background:var(--card2);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:10px 40px 10px 12px;margin-bottom:16px;font-size:14px;color:var(--text2)}
 .verify-note[hidden],#set-verify[hidden]{display:none}
 .verify-note-t{flex:1 1 180px;min-width:0}
 .verify-b{padding:8px 14px;font-size:14px;min-height:44px}
 .verify-b:disabled{opacity:.5;cursor:default}
-.verify-note-x{flex:none;background:none;border:none;color:var(--text3);font-size:16px;min-width:44px;min-height:44px;cursor:pointer}
+.verify-note-x{position:absolute;top:0;right:0;background:none;border:none;color:var(--text3);font-size:16px;min-width:44px;min-height:44px;cursor:pointer} /* 5.10: vpravo nahoře */
 .acc-verify{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-top:10px;font-size:14px;color:var(--text2)}
 .acc-verify-t{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
 .pcadm-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:6px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:12px;background:var(--card2);color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;text-align:left;cursor:pointer;box-sizing:border-box}
