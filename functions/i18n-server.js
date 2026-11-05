@@ -9,6 +9,7 @@ const cs = {
   'nick.friend': 'příteli',
   'morning.t': '☀️ Dobré ráno, {name}!',
   'morning.b': {one: 'Čeká tě {n} návyk na dnes. Pojď na to! ☀️', few: 'Čeká tě {n} návyky na dnes. Pojď na to! ☀️', other: 'Čeká tě {n} návyků na dnes. Pojď na to! ☀️'},
+  'morning.yd': {one: '🌙 Včera nevyplněno: {n} – doplň ho', few: '🌙 Včera nevyplněno: {n} – doplň je', other: '🌙 Včera nevyplněno: {n} – doplň je'},
   'evening.t': '🌙 Večerní shrnutí',
   // one = jediný dnešní návyk, few = „všechny 2–4 návyky“ (4. pád), other = „všech 5+ návyků“
   'evening.all': {one: '🏆 Perfektní den! Splnil jsi svůj návyk!', few: '🏆 Perfektní den! Splnil jsi všechny {n} návyky!', other: '🏆 Perfektní den! Splnil jsi všech {n} návyků!'},
@@ -208,6 +209,7 @@ const en = {
   'nick.friend': 'friend',
   'morning.t': '☀️ Good morning, {name}!',
   'morning.b': {one: 'You have {n} habit for today. Let’s go! ☀️', other: 'You have {n} habits for today. Let’s go! ☀️'},
+  'morning.yd': {one: '🌙 Not filled in yesterday: {n} – fill it in', other: '🌙 Not filled in yesterday: {n} – fill them in'},
   'evening.t': '🌙 Evening summary',
   'evening.all': {one: '🏆 Perfect day! You completed your habit!', other: '🏆 Perfect day! You completed all {n} habits!'},
   'evening.zero': 'You didn’t complete any habit today. Tomorrow is another chance! 💪',

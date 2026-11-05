@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.08';
+const APP_VERSION = '5.09';
 const CHANGELOG = [
+  { v:'5.09', items:[
+    '🌙 Ráno ti appka připomene nevyplněné návyky ze včerejška a doplníš je pár klepnutími'
+  ], en:[
+    '🌙 In the morning the app reminds you of yesterday’s unfilled habits and you fill them in with a few taps'
+  ]},
   { v:'5.08', items:[
     '🛠️ Opravy po kontrole: soukromé termíny cílů se nepřesouvají do kalendáře skupiny, úprava mezitím smazané události ji nevrací zpět, recept se dvojím klepnutím neuloží dvakrát',
     '✨ Denní citát šetří AI dotazy, karty na Domů sedí na šířku jako ostatní, bezpečnější obnova skupin a mazání účtu',
@@ -1815,6 +1820,7 @@ onAuthStateChanged(auth,async u=>{
     clearNotifTimers(); clearInterval(_weeklyReportIv); _weeklyReportIv=null; clearTimeout(_foodDayTimer);
     resetHabitLogCache();
     clearTimeout(_gTimer); game=null; _bdCtx=null; _wkCache=new Map(); _atCache.clear(); _gameLoadP=null; _gameFailAt=0; _goalsOk=false; _goalsSrvOk=false; _shieldDay=''; _gameDay=''; _hlServerOk=false; _hlCacheNow=true;
+    ydClose(); _ydSess=false; _ydCardSig=''; // Doplň včerejšek (5.09)
     _nudgeSyncAt=0; _nudgeSyncP=null; _nudgeSyncWant=false; _nudgeQ=false; clearTimeout(_nudgeWait); _nudgeWait=0; // fronta nabídek (4.69)
     [unsub,unsubHabits,unsubLogs,unsubFamily,unsubFamilyCal].forEach(u=>{if(u)u();});
     unsubAllGroupShops(); shopViewSel=undefined;
@@ -3851,6 +3857,7 @@ function habitDayRoll(){
   const td=toDS();
   if(_habitToday===td) return;
   chainBarClose(); // nový den: rutina začíná od 1. kroku (4.89)
+  ydClose(); _ydSess=false; ydCardSync(); // včerejšek je teď jiný den (5.09)
   const follow=habitDay===_habitToday;
   _habitToday=td;
   if(follow){ habitDay=td; if(CU) renderHabits(); }
@@ -6428,6 +6435,7 @@ const NOTIF_DEFAULTS = {
   evening: '21:00',
   habits: true,
   morningDigest: true,
+  yday: true,       // Doplň včerejšek (5.09): panel v appce a věta v ranním souhrnu ze serveru
   eveningDigest: true,
   weekly: true,     // týdenní souhrn ze serveru: neděle v čase večerního souhrnu, místo něj
   birthday: true,
@@ -6632,8 +6640,8 @@ function loadNotifSettings() {
   // jen platné HH:MM, jinak výchozí čas
   if (m) m.value = TP_RE.test(notifSettings.morning || '') ? notifSettings.morning : NOTIF_DEFAULTS.morning;
   if (ev) ev.value = TP_RE.test(notifSettings.evening || '') ? notifSettings.evening : NOTIF_DEFAULTS.evening;
-  const ids = ['nt-habits','nt-morning','nt-evening','nt-weekly','nt-pc'];
-  const keys = ['habits','morningDigest','eveningDigest','weekly','pc'];
+  const ids = ['nt-habits','nt-morning','nt-yday','nt-evening','nt-weekly','nt-pc'];
+  const keys = ['habits','morningDigest','yday','eveningDigest','weekly','pc'];
   ids.forEach((id,i) => {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
@@ -6670,6 +6678,7 @@ window.saveNotifSettings = () => {
   if (ev) notifSettings.evening = ev.value || '21:00';
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
   notifSettings.morningDigest = document.getElementById('nt-morning')?.checked ?? true;
+  notifSettings.yday = document.getElementById('nt-yday')?.checked ?? true;
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
   notifSettings.weekly = document.getElementById('nt-weekly')?.checked ?? true;
   notifSettings.pc = document.getElementById('nt-pc')?.checked ?? true;
@@ -6681,6 +6690,8 @@ window.saveNotifSettings = () => {
     prof.notifSettings = notifSettings;
     setDoc(doc(db,'users',CU.uid,'profile','main'), {notifSettings}, {merge:true}).catch(()=>{});
   }
+  if (notifSettings.yday === false) ydClose();
+  ydCardSync();
   toast(t('notif.saved'));
 };
 
@@ -7266,8 +7277,10 @@ function sendMorningNotif() {
   });
   const todayDow = new Date().getDay();
   const habitCount = hasMod('habits') ? habits.filter(h => isHabitRemindDue(h, today, todayDow)).length : 0;
-  if (!habitCount) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
-  let body = tN('ln.morningHabits', habitCount);
+  // Doplň včerejšek (5.09): věta navíc, jen po štítech (ydReady) a se zapnutou volbou
+  const ydN = hasMod('habits') && ydPref() && ydReady() ? ydList(today).length : 0;
+  if (!habitCount && !ydN) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
+  let body = [habitCount ? tN('ln.morningHabits', habitCount) : '', ydN ? tN('ln.morningYd', ydN) : ''].filter(Boolean).join(' ');
   if (todayEvents.length > 0) {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
@@ -7413,6 +7426,7 @@ function hspClose() {
   _hsp = null;
   document.getElementById('habit-snz')?.remove();
   document.body.classList.remove('hsp-on');
+  setTimeout(ydKick, 0); // panel „Doplň včerejšek“ mohl čekat (5.09)
 }
 window.hspClose = hspClose;
 // Jen dnešní připomínka a dosud neoznačený návyk; jiný účet než v podpisu → podpis zahodit (jen lokálně)
@@ -7425,6 +7439,7 @@ function hspShow(hid, nz) {
   const used = Math.max(p.sn, hsnzCount(hid, today), 0), left = HSNZ_MAX - used;
   _hsp = {hid, ...p, used};
   chainBarClose();
+  ydClose(); // panel „Doplň včerejšek“ se vrátí, až bude volno (5.09)
   const el = document.createElement('div');
   el.id = 'habit-snz'; el.className = 'cta-ask hsp-ask'; el.setAttribute('role', 'region');
   el.setAttribute('aria-label', t('hsp.aria'));
@@ -7479,6 +7494,184 @@ window.hspSnooze = async hid => {
   else if (!st || st >= 500) hspLocal(p);
   else toast(t('hsp.fail'), 3500); // 400 / 403 / 404
 };
+
+// ── Doplň včerejšek (5.09) ──
+// Po otevření appky (i po návratu do ní) spodní panel s návyky, které byly včera na řadě a nemají záznam (!hMarked).
+// Jen z dat ze serveru a po štítech (gameAutoShield), jen dnes. Odložení v zařízení lp_yd {u, d, off, later}:
+// „Později“ = do dalšího otevření, nejdřív za hodinu; „Nepřipomínat dnes“ = do půlnoci (i karta na Domů).
+const YD_LATER_MS = 3600000, YD_WAIT_MS = 600000;
+let _yd = null, _ydSess = false, _ydWait = false, _ydCardSig = '';
+const _ydTap = new Map();
+function ydSt() {
+  const s = lsGet('lp_yd', {});
+  return s && typeof s === 'object' && CU && s.u === CU.uid && s.d === toDS() ? s : {};
+}
+function ydSave(patch) { if (CU) lsSave('lp_yd', {...ydSt(), ...patch, u: CU.uid, d: toDS()}); }
+// Modul Návyky, volba v Nastavení → Upozornění a dnes nezamítnuto. Volba přímo z profilu: notifSettings se načte až 2 s po startu
+function ydPref() { const s = prof?.notifSettings; return (s && typeof s === 'object' && 'yday' in s ? s.yday : notifSettings.yday) !== false; }
+function ydOn() { return !!CU && !!prof && hasMod('habits') && ydPref() && !ydSt().off; }
+// Úplná data ze serveru a štíty už zalepily mezery (jinak by se nabídl den, který štít pokryje)
+function ydReady() { return habitRemindReady() && _shieldDay === toDS(); }
+// Návyky na řadě včera bez záznamu (pravidla habitDayState: frekvence, pauza, založení, archiv).
+// Týdenní jen v pondělí, když včera skončil nesplněný týden (doplněním ho ještě jde splnit), jinak žádný den není povinný.
+function ydList(today = toDS()) {
+  const y = addDays(today, -1);
+  return habits.filter(h => {
+    if (!h || h.archived || hMarked(h.id, y)) return false;
+    if (isWeekly(h)) return weekStartDS(today) === today && habitWeekDay(h, y, today) === 'wmiss';
+    return habitDayState(h, y, today) === 'miss';
+  }).sort((a, b) => CHAIN_GROUPS.indexOf(a.group || 'day') - CHAIN_GROUPS.indexOf(b.group || 'day') || (a.order || 0) - (b.order || 0));
+}
+// Nic jiného dole ani v okně (panel z notifikace, lišta rutiny, dotaz na upozornění, instalace, průvodce, oslava)
+function ydFree() {
+  return !!document.getElementById('app')?.classList.contains('active') && !uiBusy() && !naCovered()
+    && !document.getElementById('notif-ask') && !_pendingOpen && !_openBusy;
+}
+// Karta na Domů (nahoře, i v jednoduchém režimu): dokud včerejšek není doplněný
+function ydCardSigNow() { return ydOn() && ydReady() ? String(ydList().length) : '0'; }
+function ydCardHTML() {
+  _ydCardSig = ydCardSigNow();
+  const n = Number(_ydCardSig);
+  if (!n) return '';
+  return `<div class="dw yd-card" role="region" aria-label="${tH('yd.aria')}">
+    <div class="yd-card-t">${tNH('yd.title', n)}</div>
+    <button type="button" class="yd-card-b" onclick="ydOpen()">${tH('yd.card.btn')}</button>
+  </div>`;
+}
+function ydCardSync() {
+  if (ydCardSigNow() !== _ydCardSig && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+}
+// Spouštěč: data návyků (gameKick), návrat do appky. Panel počká, až bude dole i v oknech volno (nejdéle 10 min).
+function ydKick() {
+  if (!CU) return;
+  ydCardSync();
+  if (_yd) { if (_yd.day !== toDS()) ydClose(); else ydRender(); return; }
+  if (_ydSess || _ydWait || !ydOn() || !ydReady()) return;
+  if (Date.now() - (Number(ydSt().later) || 0) < YD_LATER_MS) return;
+  if (!ydList().length) return;
+  _ydWait = true;
+  const uid = CU.uid, t0 = Date.now();
+  const tick = () => {
+    if (!CU || CU.uid !== uid || _yd || _ydSess || !ydOn()) { _ydWait = false; return; }
+    if (ydFree()) { _ydWait = false; ydShow(); return; }
+    if (Date.now() - t0 < YD_WAIT_MS) setTimeout(tick, 1500); else _ydWait = false;
+  };
+  setTimeout(tick, 1200);
+}
+function ydClose() {
+  _yd = null;
+  document.getElementById('yd-ask')?.remove();
+  document.body.classList.remove('yd-on');
+}
+function ydShow() {
+  const today = toDS(), list = ydList(today);
+  ydClose();
+  if (!list.length) return false;
+  _yd = {day: today, ids: list.map(h => h.id)};
+  const el = document.createElement('div');
+  el.id = 'yd-ask'; el.className = 'cta-ask yd-ask'; el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', t('yd.aria'));
+  document.body.appendChild(el);
+  ydRender();
+  return true;
+}
+// Karta na Domů: otevřít panel i po „Později“
+window.ydOpen = () => {
+  if (!ydReady()) return;
+  chainBarClose(); hspClose();
+  if (!ydShow()) { toast(t('yd.allT')); ydCardSync(); }
+};
+function ydBtn(hid, how, cur, label) {
+  return `<button type="button" class="yd-b yd-${how}${cur === how ? ' on' : ''}" aria-pressed="${cur === how}" data-a0="${esc(hid)}" data-a1="${how}" onclick="ydSet(this.dataset.a0,this.dataset.a1)">${label}</button>`;
+}
+function ydRowHTML(h, y) {
+  const l = hLog(h.id + '_' + y), id = esc(h.id), name = (h.emoji || '🎯') + ' ' + h.name;
+  const cur = l?.done ? 'done' : l?.failed ? 'fail' : l?.skipped ? 'skip' : '';
+  const fs = ydBtn(h.id, 'fail', cur, tH('yd.fail')) + ydBtn(h.id, 'skip', cur, tH('yd.skip'));
+  let ctl;
+  if (h.type === 'count') {
+    const goal = Number(h.goal) || 1, v = Number(l?.value) || 0;
+    ctl = `<div class="yd-btns"><button type="button" class="yd-b yd-c" data-a0="${id}" data-a1="-" onclick="ydCnt(this.dataset.a0,-1)" aria-label="${tH('yd.minus', {name})}"${v > 0 ? '' : ' disabled'}>−</button>
+      <span class="yd-v${v >= goal ? ' ok' : ''}">${v}/${goal}</span>
+      <button type="button" class="yd-b yd-c" data-a0="${id}" data-a1="+" onclick="ydCnt(this.dataset.a0,1)" aria-label="${tH('yd.plus', {name})}">+</button></div>
+      <div class="yd-btns">${fs}</div>`;
+  } else ctl = `<div class="yd-btns">${ydBtn(h.id, 'done', cur, tH('yd.done'))}${fs}</div>`;
+  return `<div class="yd-row"><div class="yd-n">${esc(name)}</div>${ctl}</div>`;
+}
+function ydRender() {
+  const el = document.getElementById('yd-ask');
+  if (!el || !_yd) return;
+  const y = addDays(_yd.day, -1);
+  const rows = _yd.ids.map(id => habits.find(h => h.id === id)).filter(h => h && !h.archived);
+  // Překreslení nesmí ztratit fokus (klávesnice, čtečka) ani posun seznamu
+  const a = document.activeElement, fk = a && el.contains(a) ? (a.dataset.a0 || '') + '|' + (a.dataset.a1 || '') + '|' + a.className : null;
+  const st = el.querySelector('.yd-list')?.scrollTop || 0;
+  el.innerHTML = `<div class="yd-t">${tNH('yd.title', _yd.ids.length)}</div>
+    <div class="yd-list">${rows.map(h => ydRowHTML(h, y)).join('')}</div>
+    <button type="button" class="yd-ok" onclick="ydDone()">${tH('yd.ok')}</button>
+    <div class="yd-more"><button type="button" class="yd-x yd-later" onclick="ydLater()">${tH('yd.later')}</button><button type="button" class="yd-x yd-off" onclick="ydOff()">${tH('yd.offToday')}</button></div>`;
+  const ls = el.querySelector('.yd-list'); if (ls) ls.scrollTop = st;
+  if (fk) {
+    const b = [...el.querySelectorAll('button')].find(x => (x.dataset.a0 || '') + '|' + (x.dataset.a1 || '') + '|' + x.className.replace(' on', '') === fk.replace(' on', ''));
+    if (b && !b.disabled) b.focus({preventScroll: true});
+  }
+  document.body.style.setProperty('--yd-h', el.offsetHeight + 'px'); // toast nad panel
+  document.body.classList.add('yd-on');
+}
+// Po zápisu: panel, seznam návyků, body za včerejšek (gameSync přepočítá dnešek i včerejšek), karta na Domů
+function ydAfter(w) {
+  ydRender(); renderHabits(); gameQueue(); ydCardSync();
+  Promise.resolve(w).catch(e => { toast(t('common.saveFailed', {err: userErr(e, 'habit')})); ydRender(); renderHabits(); ydCardSync(); });
+}
+// Platný panel a návyk z něj; přes půlnoc už jen zavřít
+function ydGet(hid) {
+  const p = _yd;
+  if (!p || !CU || !p.ids.includes(hid)) return null;
+  if (p.day !== toDS()) { ydClose(); return null; }
+  const h = habits.find(x => x.id === hid);
+  return h && !h.archived ? {h, y: addDays(p.day, -1)} : null;
+}
+// Splněno / Nesplněno / Přeskočit (druhé klepnutí na zvolené vrátí prázdný den). Stejné záznamy jako toggleHabitDay a skipHabitDay,
+// bez reakcí avatara a lišty rutiny (ty jsou jen pro dnešek). skipped:false přepíše i přeskočení v paměti (Object.assign v putHabitLog).
+window.ydSet = (hid, how) => {
+  const g = ydGet(hid);
+  if (!g || !['done', 'fail', 'skip'].includes(how)) return;
+  const now = Date.now(); if (now - (_ydTap.get(hid) || 0) < 400) return; // dvojklik by volbu hned vrátil
+  _ydTap.set(hid, now);
+  const {y} = g, id = hid + '_' + y, l = hLog(id);
+  const cur = l?.done ? 'done' : l?.failed ? 'fail' : l?.skipped ? 'skip' : '';
+  let w;
+  if (cur === how) w = hbClearLog(hid, y);
+  else if (how === 'done') { installUnlock('habits'); w = putHabitLog({id, habitId: hid, date: y, done: true, failed: false, skipped: false, value: 1}); }
+  else if (how === 'fail') w = putHabitLog({id, habitId: hid, date: y, done: false, failed: true, skipped: false, value: 0});
+  else w = putHabitLog({id, habitId: hid, date: y, done: false, failed: false, skipped: true, value: 0});
+  ydAfter(w);
+};
+// Počítaný návyk: + / − jako adjustHabit (bez reakcí), 0 = smazat záznam
+window.ydCnt = (hid, d) => {
+  const g = ydGet(hid);
+  if (!g || (d !== 1 && d !== -1)) return;
+  const {h, y} = g, id = hid + '_' + y, goal = Number(h.goal) || 1, cur = Number(hLog(id)?.value) || 0, nv = Math.max(0, cur + d);
+  if (nv === cur) return;
+  if (nv >= goal && cur < goal) installUnlock('habits');
+  ydAfter(nv === 0 ? delHabitLog(id) : putHabitLog({id, habitId: hid, date: y, done: nv >= goal, failed: false, skipped: false, value: nv}));
+};
+const ydLeft = () => { if (!_yd) return 0; const y = addDays(_yd.day, -1); return _yd.ids.filter(id => !hMarked(id, y)).length; };
+// Hotovo: vše doplněné = pochvala, jinak jako „Později“
+window.ydDone = () => {
+  const left = ydLeft();
+  ydClose();
+  if (left) { ydSave({later: Date.now()}); _ydSess = true; } else toast(t('yd.allT'));
+  ydCardSync();
+};
+window.ydLater = () => { ydSave({later: Date.now()}); _ydSess = true; ydClose(); };
+window.ydOff = () => { ydSave({off: true}); ydClose(); toast(t('yd.offT'), 4000); ydCardSync(); };
+// Návrat do appky = další otevření („Později“ platí do něj, nejdřív ale za hodinu)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !CU) return;
+  _ydSess = false;
+  setTimeout(ydKick, 1500);
+});
 
 function checkBirthdayNotifs() {
   if (!notifGranted()) return;
@@ -9126,6 +9319,7 @@ function gameKick(){
   if(!CU||!_hlServerOk) return;
   if(_wtHbWait) wtHabitSync(); // propojení s pitným režimem čekalo na návyky
   if(_habitsSnapOk) gameAutoShield();      // štíty fungují i s vypnutými body
+  setTimeout(ydKick,0); // Doplň včerejšek (5.09): až po štítech
   if(!game){ if(_goalsOk&&_habitsSnapOk) gameLoad(); return; }
   gameQueue();
 }
@@ -19356,7 +19550,7 @@ function rDash(){
   const mw={}; // karty modulů podle id (v jednoduchém režimu se vybírají v pořadí lišty)
   // Upravitelné karty (4.86): mimo sloty se sbírají do mw a řadí přes dashOrder(); schované se nevykreslí
   const dHid=slots?new Set():new Set(dashLayout().hidden), dEd=slots?[]:dashEditAvail();
-  let html='';
+  let html=ydCardHTML(); // Doplň včerejšek (5.09): nahoře, i v jednoduchém režimu (mimo sloty)
   if(!slots){
   // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
   html+=quickStartHTML();

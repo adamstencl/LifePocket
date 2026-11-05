@@ -2528,6 +2528,29 @@ body.chn-on .toast{bottom:calc(144px + var(--chn-h,64px))}
 .hsp-x{align-self:center;min-width:44px;min-height:44px;padding:6px 16px;background:none;border:none;color:var(--text2);font:inherit;font-size:14px;cursor:pointer}
 .hsp-b:focus-visible,.hsp-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
+/* Doplň včerejšek (5.09): spodní panel a karta na Domů */
+.yd-ask{flex-direction:column;align-items:stretch;gap:8px;width:calc(100vw - 32px);max-width:420px;max-height:calc(100vh - 200px);max-height:calc(100dvh - 200px);padding:12px}
+.yd-t{font-size:15px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.yd-list{display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.yd-row{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--border)}
+.yd-n{font-size:15px;line-height:1.3;overflow-wrap:anywhere}
+.yd-btns{display:flex;align-items:center;gap:6px}
+.yd-b{flex:1 1 0;min-width:0;min-height:44px;padding:6px 4px;border-radius:10px;background:var(--card2);color:var(--text);border:1px solid var(--border2);font-family:'Crimson Pro',serif;font-size:14px;font-weight:700;line-height:1.15;overflow-wrap:anywhere;cursor:pointer}
+.yd-b.on.yd-done{background:var(--green);color:var(--on-green);border-color:var(--green)}
+.yd-b.on.yd-fail{background:rgba(255,107,107,.18);border-color:var(--red)}
+.yd-b.on.yd-skip{background:var(--card3);border-color:var(--accent)}
+.yd-c{flex:0 0 48px;font-size:20px}
+.yd-b:disabled{opacity:.45;cursor:default}
+.yd-v{flex:1 1 auto;text-align:center;font-size:15px;font-weight:700}
+.yd-v.ok{color:var(--green)}
+.yd-ok{flex:none;min-height:48px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:16px;font-weight:700;cursor:pointer}
+.yd-more{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
+.yd-x{min-height:44px;padding:6px 12px;background:none;border:none;color:var(--text2);font:inherit;font-size:14px;cursor:pointer}
+.yd-b:focus-visible,.yd-ok:focus-visible,.yd-x:focus-visible,.yd-card-b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px))}
+.yd-card{cursor:default;display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-color:var(--accent)}
+.yd-card-t{flex:1 1 200px;min-width:0;font-size:15px;line-height:1.4;color:var(--text);overflow-wrap:anywhere}
+.yd-card-b{flex:none;min-height:44px;padding:6px 16px;border:none;border-radius:10px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
 .hd-chain-own{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:14px;color:var(--text2)}
 .hd-chain-own span{flex:1 1 180px}
 .hd-chain-own .btn-s{min-height:44px}

@@ -1138,6 +1138,10 @@ else show();
                 <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-yday" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.yday">🌙 Ptát se na nevyplněný včerejšek</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
                 <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co se ti dnes povedlo)</span>
               </label>

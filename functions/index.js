@@ -1131,6 +1131,47 @@ async function weekHabitState(uid, habitDoc, today, dow) {
   return {met: done >= weekTimesS(habitDoc.data()), todayMarked};
 }
 
+// Doplň včerejšek (5.09, jako ydList v app.js): návyky na řadě včera (wkDayState) bez záznamu (splněno, nesplněno, přeskočeno).
+// Týdenní jen v pondělí, když včera skončil nesplněný týden. Jen v ranním běhu, čtení getAll po ID `${hid}_${den}`:
+// 1 na denní návyk / návyk na dny, který byl včera na řadě, v pondělí navíc 7 na týdenní návyk. Vrací {n, reads}.
+async function ydayUnfilled(uid, docs, today, tz) {
+  const y = addDaysDS(today, -1), monday = dowDS(today) === 1, none = new Map();
+  const daily = [], weekly = [];
+  for (const d of docs) {
+    const h = d.data();
+    if (!h || typeof h !== 'object' || h.archived) continue;
+    const start = wkHabitStart(h, tz);
+    if (isWeeklyHabit(h)) {
+      if (monday && !(start && y < start) && !wkPaused(h, y, today)) weekly.push({id: d.id, h, start});
+      continue;
+    }
+    if (wkDayState(h, d.id, y, today, none, start) === 'miss') daily.push(d.id);
+  }
+  const week = monday ? [6, 5, 4, 3, 2, 1, 0].map(i => addDaysDS(y, -i)) : []; // po–ne minulého týdne
+  const ids = [...daily.map(id => `${id}_${y}`), ...weekly.flatMap(w => week.map(ds => `${w.id}_${ds}`))];
+  if (!ids.length) return {n: 0, reads: 0};
+  const logs = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const snaps = await db.getAll(...ids.slice(i, i + 100).map(id => db.doc(`users/${uid}/habitLogs/${id}`)));
+    snaps.forEach(s => { if (s.exists) logs.set(s.id, s.data() || {}); });
+  }
+  const marked = (l) => !!(l && (l.done || l.failed || l.skipped));
+  let n = daily.filter(id => !marked(logs.get(`${id}_${y}`))).length;
+  for (const w of weekly) {
+    if (marked(logs.get(`${w.id}_${y}`))) continue;
+    // Cíl týdne podle aktivních dnů jako habitWeekStat
+    let done = 0, active = 0;
+    for (const ds of week) {
+      if (logs.get(`${w.id}_${ds}`)?.done) { done++; active++; continue; }
+      if (w.start && ds < w.start) continue;
+      if (wkPaused(w.h, ds, today)) continue;
+      active++;
+    }
+    if (active && done < Math.min(active, Math.max(1, Math.ceil(weekTimesS(w.h) * active / 7)))) n++;
+  }
+  return {n, reads: ids.length};
+}
+
 // Upozornění na události s časem hodinu předem (S4). Počítá se z absolutních okamžiků, ne z minut dne:
 // začátek události (datum + čas v zóně uživatele → okamžik) musí ležet EV_LEAD_MIN až EV_LEAD_MAX minut
 // (včetně) po začátku minuty běhu. Běh každých 5 min → každá minuta začátku spadne do okna právě jednou,
@@ -1806,8 +1847,15 @@ exports.sendScheduledNotifications = onSchedule(
         // ── Ranní notifikace ──
         if (habitsOn && ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
           const total = (await getDigestHabits()).length;
-          if (total > 0) {
-            try { await push(tS(L, 'morning.t', {name: nickname}), tS(L, 'morning.b', {n: total}), 'morning', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
+          // Doplň včerejšek (5.09): věta navíc, volba notifSettings.yday (undefined = zapnuto); chyba čtení = jen bez věty
+          let yd = 0;
+          if (ns.yday !== false) {
+            try { yd = (await ydayUnfilled(uid, await getAllHabits(), today, zn.tz)).n; }
+            catch(e) { console.error(`[LP] včerejšek uid=${uid}:`, e.message); }
+          }
+          if (total > 0 || yd > 0) {
+            const body = [total > 0 ? tS(L, 'morning.b', {n: total}) : '', yd > 0 ? tS(L, 'morning.yd', {n: yd}) : ''].filter(Boolean).join(' ');
+            try { await push(tS(L, 'morning.t', {name: nickname}), body, 'morning', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
             catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
           }
         }
