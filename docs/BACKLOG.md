@@ -169,3 +169,8 @@
 - privacy bod 5: po nasazení nových `firestore.rules` upravit formulaci „po nasazení…“.
 - Indexy: nepoužitý `participants (n ASC, joinedAt ASC)`; TTL `activity`/`reactions`/`challenges.expireAt` jen v konzoli – zapsat do `fieldOverrides`.
 - Workflow: připnout `actions/*` a `firebase-tools` na přesné verze.
+
+## Z 5.09 (Doplň včerejšek)
+- Ranní push „Včera nevyplněno“ nepočítá štíty – den, který štít zalepí, server hlásí, appka pak nic nenabídne.
+- Samostatná volba připomenutí včerejška i bez ranního souhrnu; odložení „Později/Nepřipomínat“ je jen v zařízení.
+- Popup „Nový odznak“ přesahuje spodní okraj panelu o 5–10 px.
