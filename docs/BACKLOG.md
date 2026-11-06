@@ -187,3 +187,11 @@
 - Pozvaný člen, který použije „Opravit adresu“, dál zabírá místo ve skupině přes starý účet (do jeho smazání).
 - `err.aiVerify` tvrdí „odkaz ti přišel“, i když odeslání při registraci selhalo (`_verifyUnsent`).
 - ci-check: allowlist českých literálů snížit na 196.
+
+## Z 5.14 (finální kontrola)
+- `destroyAllFireSubs()` nemaže `_subReady` (dnes nevadí kvůli reloadu).
+- Jídelníček: jídlo k neděli zapsané v neděli po 12:00 jde na příští neděli – ověřit s UX (dnešní večeře „posunutá“).
+- `pnPlace`: na nízkém displeji lišta Zpět, která se nevejde nad panel, hned zmizí; na iOS (`html.lp-iosb` !important bottom) může překrýt panel.
+- `ctMarkOpen`: poděkování se neukáže, když se krok splní dřív než `ctSync`.
+- Vestavěný prohlížeč: neověřeno na skutečném FB/Instagramu; mealplan člen smí zapisovat dle pravidel (omezení jen klient); App Check; profil čten cronem i bez tokenu.
+- Snížit allowlisty ci-check (inline interpolace 8, české literály 197).
