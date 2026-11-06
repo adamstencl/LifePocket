@@ -2805,6 +2805,24 @@ function habitShieldSectionHTML(h){
     </div>`;
 }
 
+// Proužek 7 teček po–ne (5.13) pro týden dne `day`: jen přehled (neklikací), bez volby „Týden“.
+// done = plná zelená, fail = červený ×, empty = obrys, off = malá tečka (mimo frekvenci, pauza, přeskočeno, před založením), fut = budoucnost
+function habitWeekStripHTML(h,day){
+  const today=toDS(), mon=weekStartDS(day);
+  let dots='', nd=0, nf=0;
+  for(let i=0;i<7;i++){
+    const ds=addDays(mon,i), l=hLog(h.id+'_'+ds);
+    let st;
+    if(ds>today) st='fut';
+    else if(hDone(h.id,ds)) st='done';
+    else if(l?.failed) st='fail';
+    else if(isWeekly(h)){ const w=habitWeekDay(h,ds,today); st=w==='open'||w==='wmiss'?'empty':'off'; } // stejné stavy jako řádek týdne
+    else st=habitDayState(h,ds,today)==='miss'?'empty':'off';
+    if(st==='done') nd++; else if(st==='fail') nf++;
+    dots+=`<span class="hws-d hws-${st}${ds===today?' hws-today':''}">${st==='fail'?'×':''}</span>`;
+  }
+  return `<span class="hws" role="img" aria-label="${tH('hb.weekStripAria',{done:nd,fail:nf})}">${dots}</span>`;
+}
 // ch (4.89): {cls, next} = třídy spojnice rutiny a příznak dalšího kroku
 function buildHabitCard(h,ch){
   const logId=h.id+'_'+habitDay;
@@ -2865,13 +2883,17 @@ function buildHabitCard(h,ch){
   const tableHtml=habitWeekOn()?habitWeekTableHTML(h,habitDay,false):'';
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
+  // 5.13: ✕ Nesplněno vedle ⏭ (dnes i otevřený den, ne budoucnost); druhé klepnutí vrátí den na prázdný
+  const failBtn=habitDay<=todayDS?`<button type="button" class="hb-fail${failed?' on':''}" data-a0="${esc(h.id)}" aria-pressed="${!!failed}" onclick="failHabitDay(this.dataset.a0,'${habitDay}')" title="${tH('hb.failBtn')}" aria-label="${tH('hb.failBtn')}"><span aria-hidden="true">✕</span></button>`:'';
+  const skipBtn=habitDay===todayDS?`<button type="button" class="hb-skip${(log&&log.skipped)?' on':''}" data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" aria-label="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}"><span>${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</span></button>`:'';
 
   // 5.10: kompaktní karta – emoji, název, série, kroužek (u počítaného − hodnota +); šipky ▲▼ jsou v úpravě návyku, Sdílet v detailu
-  return `<div class="habit-card${cardDone?' done':''}${ch?ch.cls:''}${ch&&ch.next?' hb-next':''}" data-drag-id="${esc(h.id)}">
+  return `<div class="habit-card${cardDone?' done':failed?' hb-failed':''}${ch?ch.cls:''}${ch&&ch.next?' hb-next':''}" data-drag-id="${esc(h.id)}">
     <div class="habit-card-top${h.type==='count'&&!isPaused?' cnt':''}">
       <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
       <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">
         <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}${ch&&ch.next?`<span class="hb-next-tag">${tH('hb.chain.next')}</span>`:''}</div>
+        ${habitWeekOn()?'':habitWeekStripHTML(h,habitDay)}
         ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
         ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
         ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
@@ -2887,10 +2909,11 @@ function buildHabitCard(h,ch){
                 <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
               </div>
               <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
+              ${failBtn}${skipBtn}
             </div>`
           : `<div class="habit-ctl hb-ctl-yn">
               <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
-              ${habitDay===todayDS?`<button type="button" class="hb-skip${(log&&log.skipped)?' on':''}" data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" aria-label="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}"><span>${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</span></button>`:''}
+              ${failBtn}${skipBtn}
             </div>`
       }
     </div>
@@ -4092,6 +4115,15 @@ window.toggleHabitDay=async(hid,date)=>{
   renderHabits();
 };
 
+// ✕ Nesplněno na kartě (5.13): nesplněno ↔ prázdné (stejný záznam jako „Nesplněno“ v řádku týdne); paměť hned, zápis se dočká
+window.failHabitDay=async(hid,date)=>{
+  if(!CU||date>toDS()) return;
+  const logId=hid+'_'+date;
+  const w=hLog(logId)?.failed?hbClearLog(hid,date):putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
+  renderHabits();
+  await w;
+  renderHabits();
+};
 window.skipHabitDay=async(hid,date)=>{
   if(!CU)return;
   const logId=hid+'_'+date;

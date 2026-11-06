@@ -1628,6 +1628,8 @@ export default {
   'hb.historyTitle': 'Zobrazit historii',
   'hb.unskip': 'Zrušit přeskočení',
   'hb.skipToday': 'Přeskočit dnes',
+  'hb.failBtn': 'Nesplněno',
+  'hb.weekStripAria': 'Tento týden: splněno {done}, nesplněno {fail}',
   'hb.skipped': '⏭ Přeskočeno',
   'hb.allArchived': 'Všechny návyky jsou archivovány. 📦',
   'hb.pendOnly': '⏳ Jen nevyřízené',

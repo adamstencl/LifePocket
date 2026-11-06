@@ -1597,6 +1597,8 @@ export default {
   'hb.historyTitle': 'Show history',
   'hb.unskip': 'Undo skip',
   'hb.skipToday': 'Skip today',
+  'hb.failBtn': 'Not done',
+  'hb.weekStripAria': 'This week: {done} done, {fail} not done',
   'hb.skipped': '⏭ Skipped',
   'hb.allArchived': 'All habits are archived. 📦',
   'hb.pendOnly': '⏳ Pending only',
