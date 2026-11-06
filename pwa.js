@@ -109,13 +109,25 @@ function showIosBanner() {
   // Vestavěný prohlížeč FB/Messenger/Instagram (4.93): „Přidat na plochu“ tam nejde, radí karta v appce
   if (/FBAN|FBAV|Instagram|Line\//.test(navigator.userAgent || '')) return;
   if (bannerDismissed('ios-dismissed')) return; // znovu po 7 dnech, pak už ne
+  // 5.13: appka pustí banner až po kartě „Co teď“ nebo při další návštěvě a ve frontě oken (app.js, lpIosWait)
+  if (typeof window.lpIosWait === 'function') window.lpIosWait(iosBannerOn);
+  else iosBannerOn();
+}
+function iosBannerOn() {
+  if (bannerDismissed('ios-dismissed')) return;
   const banner = document.getElementById('ios-banner');
-  if (banner) banner.style.display = 'block';
+  if (!banner) return;
+  banner.style.display = 'block';
+  banner.classList.add('lp-on'); // obsazená fronta oken (uiBusy v app.js)
+  // Místo pod obsahem, ať banner nezakryje konec stránky
+  document.documentElement.style.setProperty('--iosb-h', (banner.offsetHeight || 0) + 'px');
+  document.documentElement.classList.add('lp-iosb');
 }
 
 window.dismissIosBanner = () => {
   const banner = document.getElementById('ios-banner');
-  if (banner) banner.style.display = 'none';
+  if (banner) { banner.style.display = 'none'; banner.classList.remove('lp-on'); }
+  document.documentElement.classList.remove('lp-iosb');
   rememberDismiss('ios-dismissed');
 };
 

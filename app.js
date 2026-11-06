@@ -1102,7 +1102,8 @@ const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // připomínka #habit-snz, lišta rutiny …), otevřený panel Více, dotaz na upozornění nebo toast z fronty (5.10: jedna vyskakovací věc naráz)
 let _popUntil = 0, _popPend = 0;
 function uiBusy() {
-  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open');
+  // 5.13: nápověda modulu je řádek ve stránce (nic nepřekrývá); iPhone „Přidat na plochu“ (pwa.js, třída lp-on) ano
+  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open,html:not(.lp-noinstall) #ios-banner.lp-on');
 }
 // Toast z fronty (štíty …): počká na volno a po dobu zobrazení drží frontu obsazenou
 function popToast(msg, ms = 4000, maxMs = 600000) {
@@ -1141,9 +1142,30 @@ function installVisitCheck() {
     sessionStorage.setItem('lp_open_counted', '1');
     const first = Number(localStorage.getItem('lp_first_open')) || 0;
     if (!first) localStorage.setItem('lp_first_open', String(Date.now()));
-    else if (Date.now() - first > 30 * 60000) localStorage.setItem('lp_inst_ok', '1');
+    else if (Date.now() - first > 30 * 60000) { localStorage.setItem('lp_inst_ok', '1'); _instNextVisit = true; }
   } catch (e) {}
 }
+// iPhone „Přidat na plochu“ (5.13, pwa.js volá lpIosWait): až po kartě „Co teď“ / Začínáme nebo při další návštěvě,
+// jen v appce s povolenou instalací a přes frontu oken (whenUiFree), nikdy přes kartu; čeká nejdéle 2 h relace
+let _instNextVisit = false, _iosQ = false;
+function qsActive() {
+  if (!CU || !prof || lsGet('lp_qs_dismissed')) return false;
+  if (prof.createdAt && (Date.now() - new Date(prof.createdAt).getTime()) / 86400000 > 21) return false;
+  if (isSimple()) { const c = ctCur(); return c !== '' && c !== 'done'; }
+  return !!document.getElementById('qs-card');
+}
+window.lpIosWait = fn => {
+  if (_iosQ) return;
+  _iosQ = true;
+  const t0 = Date.now();
+  const tick = () => {
+    if (Date.now() - t0 > 7200000) { _iosQ = false; return; }
+    const inApp = !!CU && !!prof && !!document.getElementById('app')?.classList.contains('active');
+    if (!inApp || document.documentElement.classList.contains('lp-noinstall') || (!_instNextVisit && qsActive())) { setTimeout(tick, 3000); return; }
+    whenUiFree(() => { _iosQ = false; fn(); }, 600000, () => { _iosQ = false; });
+  };
+  tick();
+};
 
 const AVS=[
   {id:'rex',emoji:'⚔️',name:'Rex'},
@@ -1595,10 +1617,12 @@ function renderVerifyUi(){
   const n=document.getElementById('verify-note');
   if(n){
     n.hidden=!on||_verifyHidden;
-    const k=on?(_verifyUnsent?'u':'1'):'';
+    const k=on?(_verifyUnsent?'u:':'1:')+String(CU.email||''):'';
+    // 5.13: adresa (překlep = odkaz nedorazí) a „Opravit adresu“ (odhlásit a zaregistrovat znovu, verifyFixEmail)
     if(n.dataset.k!==k){ n.dataset.k=k;
       n.innerHTML=on?`<span class="verify-note-t">${tH(_verifyUnsent?'auth.verifyNoteUnsent':'auth.verifyNote')}</span>
       <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySend':'auth.verifyResend')}</button>
+      <span class="verify-note-a">${tH('auth.verifyAddr',{email:CU.email||''})} · <button type="button" class="verify-fix" onclick="verifyFixEmail()">${tH('auth.fixEmail')}</button></span>
       <button type="button" class="verify-note-x" aria-label="${tH('common.close')}" onclick="hideVerifyNote()">✕</button>`:''; }
   }
   const s=document.getElementById('set-verify');
@@ -1610,6 +1634,7 @@ function renderVerifyUi(){
       <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySendSet':'auth.verifyResendSet')}</button></div>`:''; }
   }
   document.querySelectorAll('#verify-note .verify-b,#set-verify .verify-b').forEach(b=>{ b.disabled=wait>0; });
+  ctSync(); // krok „Ověř e-mail“ v kartě Co teď (5.13) se po ověření vymění
   // Po uplynutí 60 s znovu povolit tlačítka
   clearTimeout(_verifyTimer); _verifyTimer=0;
   if(on&&wait>0) _verifyTimer=setTimeout(renderVerifyUi,wait+50);
@@ -1898,7 +1923,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -5474,7 +5499,7 @@ window.delEvent=async(id)=>{
   await Promise.all(delPromises);
 };
 
-function om(id){window.ctaAskClose?.();window.wtLinkClose?.();chainBarClose();document.getElementById('module-hint')?.remove();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení, propojení pití ani nápověda modulu (5.08) nesmí ležet nad oknem (4.85)
+function om(id){window.ctaAskClose?.();window.wtLinkClose?.();chainBarClose();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení ani propojení pití nesmí ležet nad oknem (4.85); nápověda modulu je od 5.13 ve stránce
 function cm(id){document.getElementById(id).classList.remove('open');if(id==='m-dashedit')dashSave(true);} // editor Domů: uložit hned (i Zpět, Esc)
 window.cm=cm; // volá se z inline onclick v index.html (app.js je modul)
 
@@ -5695,7 +5720,15 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!(await lpConfirm(t('auth.logoutConfirm'),{ok:t('set.logout.btn')})))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();};
+async function logoutNow(){flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();}
+window.doLogout=async()=>{if(!(await lpConfirm(t('auth.logoutConfirm'),{ok:t('set.logout.btn')})))return;await logoutNow();};
+// Překlep v adrese neověřeného účtu (5.13): změna e-mailu v appce není → odhlásit a po načtení rovnou registrace
+window.verifyFixEmail=async()=>{
+  if(!needsVerify()) return;
+  if(!(await lpConfirm(t('auth.fixEmailQ',{email:CU.email||''}),{ok:t('auth.fixEmailOk')}))) return;
+  try{ sessionStorage.setItem('lp_auth_panel','register'); }catch(e){}
+  await logoutNow();
+};
 // Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování).
 // Příznak lp_fs_clear zůstane, dokud mazání neprojde → další start bez přihlášení to zkusí znovu (viz onAuthStateChanged).
 // Po terminate je db nepoužitelná: volající vždy končí přechodem na jinou stránku / reloadem. Nejvýš 2,5 s.
@@ -6938,6 +6971,13 @@ async function checkNotifStatusInner() {
   if (!box) return;
   await msgReady;
 
+  // Vestavěný prohlížeč Messengeru / FB (5.13): místo „Zkus Chrome nebo Edge“ rovnou tlačítko Otevřít v Chrome/Safari
+  if (IN_APP_BROWSER) {
+    [enableBtn, testBtn, testServerBtn, refreshTokenBtn].forEach(b => { if (b) b.style.display = 'none'; });
+    box.style.borderColor = 'rgba(255,107,107,0.3)';
+    box.innerHTML = '<div>' + tH('inapp.notif') + '</div><div class="inapp-row">' + inAppOpenHTML('inapp-open') + '</div>';
+    return;
+  }
   if (typeof Notification === 'undefined') {
     [enableBtn, testBtn, testServerBtn, refreshTokenBtn].forEach(b => { if (b) b.style.display = 'none'; });
     box.style.borderColor = 'rgba(255,107,107,0.3)';
@@ -7786,7 +7826,7 @@ function ydCardHTML() {
   const n = Number(_ydCardSig);
   if (!n) return '';
   return `<div class="dw yd-card" role="region" aria-label="${tH('yd.aria')}">
-    <div class="yd-card-t">${tNH('yd.title', n)}</div>
+    <div class="yd-card-t">${tNH('yd.strip', n)}</div>
     <button type="button" class="yd-card-b" onclick="ydOpen()">${tH('yd.card.btn')}</button>
   </div>`;
 }
@@ -9222,7 +9262,11 @@ const CT = {
   checklist:{em: '✅', done: () => checklists.some(c => Array.isArray(c?.items) && c.items.length), kind: () => 'inp'},
   // Krok 3 s parťákem (5.10): dotaz podle odpovědi z onboardingu, jen se zapnutým AI parťákem
   ask:      {em: '💬', done: () => !!lsGet('lp_ct_asked') || chatH.some(m => m && m.role === 'user'), kind: () => 'ask'},
+  // Neověřený účet s heslem (5.13): místo „Zeptej se“ krok s odesláním ověřovacího e-mailu (AI bez ověření nejde)
+  verify:   {em: '📧', done: () => !needsVerify(), kind: () => 'verify'},
 };
+// Krok splněný bez uživatele (5.13): pozvaný člen v den připojení má nákup / jídelníček / kalendář / úkoly ze skupiny
+const CT_GRP = ['shopping', 'mealplan', 'calendar', 'checklist'];
 // Dotaz kroku „Zeptej se …“ podle odpovědi z onboardingu (prof.start); jen na zapnutý modul
 function ctAskKey() {
   const st = prof?.start, on = id => (prof?.modules || []).includes(id);
@@ -9238,8 +9282,13 @@ function ctSteps() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const ids = simpleModOrder().filter(id => id !== 'ask' && Object.prototype.hasOwnProperty.call(CT, id));
   // S AI parťákem (5.10): 2 kroky z modulů + „Zeptej se {av} …“
-  return ((prof?.modules || []).includes('rex') ? [...ids.slice(0, 2), 'ask'] : ids.slice(0, 3))
-    .map(id => ({id, done: done.includes('ct.' + id) || !!nudgeSafe(CT[id].done)}));
+  const ask = needsVerify() && !done.includes('ct.ask') && !nudgeSafe(CT.ask.done) ? 'verify' : 'ask'; // 5.13: neověřený místo „Zeptej se“
+  return ((prof?.modules || []).includes('rex') ? [...ids.slice(0, 2), ask] : ids.slice(0, 3))
+    .map(id => {
+      const ok = !!nudgeSafe(CT[id].done);
+      // pre = hotový ze skupiny (pozvaný, den 0, vlastní aktivita v modulu žádná): kroky se pak číslují od 1 bez něj
+      return {id, done: done.includes('ct.' + id) || ok, pre: ok && CT_GRP.includes(id) && actN(id) === 0 && dashJoinedDay0()};
+    });
 }
 // Aktuální krok ('done' = všechny hotové, '' = karta se neukazuje)
 function ctCur() {
@@ -9260,7 +9309,7 @@ function coTedHTML() {
   if (add.length) lsSave('lp_qs_done', [...done, ...add]);
   st.forEach(s => { if (!s.done) _ctOpen.add(s.id); });
   const i = st.findIndex(s => !s.done);
-  if (i !== 0) ctTipOff(); // první krok splněný → bublina z onboardingu už není potřeba
+  if (st.some(s => s.done && !s.pre)) ctTipOff(); // první krok splněný → bublina z onboardingu už není potřeba
   if (_ctThanks || i < 0) {
     lsSave('lp_qs_dismissed', true);
     if (!_ctThanks && !st.some(s => _ctOpen.has(s.id))) return ''; // vše hotové už dřív: bez poděkování, tiše pryč
@@ -9272,14 +9321,25 @@ function coTedHTML() {
     </div>`;
   }
   const id = st[i].id, c = CT[id], kind = c.kind(), k = 'ct.' + id + (c.key ? '.' + c.key() : ''), m = esc(id);
+  // Číslování bez kroků hotových ze skupiny (5.13: pozvaný začíná krokem 1); „Přeskočit“ posune na další krok
+  const vis = st.filter(s => !s.pre), head = `<div class="ct-head"><span class="ct-lbl">${tH('ct.title')} · ${tH('ct.step', {n: vis.indexOf(st[i]) + 1, total: vis.length})}</span>
+    <button type="button" class="ct-skip" data-a0="${m}" onclick="ctSkip(this.dataset.a0)">${tH('ct.skip')}</button>
+    <button type="button" class="qs-dismiss ct-x" onclick="dismissQS()" aria-label="${tH('common.hide')}">×</button></div>`;
   let body = '';
   if (kind === 'ask') {
     const q = ctAskKey();
     return ctTipHTML() + `<div class="ct-card" id="ct-card" data-step="${m}" role="region" aria-label="${tH('ct.aria')}">
-    <div class="ct-head"><span class="ct-lbl">${tH('ct.title')} · ${tH('ct.step', {n: i + 1, total: st.length})}</span>
-    <button type="button" class="qs-dismiss ct-x" onclick="dismissQS()" aria-label="${tH('common.hide')}">×</button></div>
+    ${head}
     <div class="ct-t"><span aria-hidden="true">${esc(av.emoji || '💬')}</span> ${tH('ct.ask.' + q, {av: av.name})}</div>
     <button type="button" class="btn-p ct-btn" data-a0="${esc(q)}" onclick="ctAsk(this.dataset.a0)">${tH('ct.ask.btn')}</button>
+  </div>`;
+  }
+  if (kind === 'verify') {
+    return `<div class="ct-card" id="ct-card" data-step="${m}" role="region" aria-label="${tH('ct.aria')}">
+    ${head}
+    <div class="ct-t"><span aria-hidden="true">📧</span> ${tH('ct.verify', {av: av.name})}</div>
+    <div class="ct-sub">${tH(_verifyUnsent ? 'auth.verifyAddr' : 'ct.verifyD', {email: CU?.email || ''})}</div>
+    <button type="button" class="btn-p ct-btn" onclick="resendVerify()">${tH(_verifyUnsent ? 'auth.verifySendSet' : 'auth.verifyResendSet')}</button>
   </div>`;
   }
   if (kind === 'inp') {
@@ -9301,12 +9361,21 @@ function coTedHTML() {
       + (id === 'cooking' ? `<button type="button" class="lp-es-ex ct-ex" data-a0="${m}" onclick="esEx(this.dataset.a0)">${tH('es.cooking.ex')}</button>` : '');
   }
   return ctTipHTML() + `<div class="ct-card" id="ct-card" data-step="${m}" role="region" aria-label="${tH('ct.aria')}">
-    <div class="ct-head"><span class="ct-lbl">${tH('ct.title')} · ${tH('ct.step', {n: i + 1, total: st.length})}</span>
-    <button type="button" class="qs-dismiss ct-x" onclick="dismissQS()" aria-label="${tH('common.hide')}">×</button></div>
+    ${head}
     <div class="ct-t"><span aria-hidden="true">${esc(ctVal(c.em))}</span> ${tH(k)}</div>
     ${body}${habits.some(h => h && h.sample === true) ? `<button type="button" class="btn-s ct-nos" onclick="removeSamples()">${tH('qs.noSamples')}</button>` : ''}
   </div>`;
 }
+// „Přeskočit“ (5.13): krok se zapamatuje jako vyřízený (lp_qs_done) a karta ukáže další; po posledním zmizí bez poděkování
+window.ctSkip = id => {
+  if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(CT, id)) return;
+  const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
+  if (!done.includes('ct.' + id)) lsSave('lp_qs_done', [...done, 'ct.' + id]);
+  _ctOpen.delete(id); // přeskočený krok není důvod k poděkování
+  rDash();
+  const c = document.getElementById('ct-card');
+  c?.querySelector('.ct-skip')?.focus({preventScroll: true}); // fokus zůstane v kartě (pole ne, otevřelo by klávesnici)
+};
 // Po změně dat (snapshot, odškrtnutí): Domů překreslit, jen když se krok karty změnil
 function ctSync() {
   const card = document.getElementById('ct-card');
@@ -9355,13 +9424,10 @@ window.ctAsk = q => {
 };
 // Bublina po onboardingu (5.10, místo průvodce): jedna věta nad kartou „Co teď“ / „Začínáme“, jen v den založení,
 // zmizí po zavření nebo po prvním splněném kroku
+// 5.13: bublina je sloučená do textu banneru parťáka („Začni tady 👇 …“, dashBannerDay0), vlastní prvek už nemá
 function ctTipHTML() {
-  if (!lsGet('lp_ct_tip')) return '';
-  if (accDay() !== 0) { ctTipOff(); return ''; }
-  const av = curAv();
-  return `<div class="ct-tip" id="ct-tip" role="note"><span class="ct-tip-em" aria-hidden="true">${esc(av.emoji || '⭐')}</span>
-    <span class="ct-tip-t">${tH('ct.tip')}</span>
-    <button type="button" class="ct-tip-x" onclick="ctTipClose()" aria-label="${tH('common.close')}">×</button></div>`;
+  if (lsGet('lp_ct_tip') && accDay() !== 0) ctTipOff();
+  return '';
 }
 function ctTipOff() { if (lsGet('lp_ct_tip')) { try { localStorage.removeItem('lp_ct_tip'); } catch (e) {} } }
 window.ctTipClose = () => { ctTipOff(); document.getElementById('ct-tip')?.remove(); };
@@ -9739,9 +9805,11 @@ function gameBarHTML(){
 function gameRenderUI(){
   const av=curAv(), on=gameUiOn();
   const dem=document.getElementById('d-avem');
-  if(dem){ if(on){ dem.innerHTML=gameRingHTML(64); dem.classList.add('has-ring'); } else { dem.textContent=av.emoji; dem.classList.remove('has-ring'); } }
+  // 5.13: kompaktní banner – menší kruh, úroveň zkráceně (celý název v title) a tenký proužek XP
+  if(dem){ if(on){ dem.innerHTML=gameRingHTML(44); dem.classList.add('has-ring'); } else { dem.textContent=av.emoji; dem.classList.remove('has-ring'); } }
   const dl=document.getElementById('d-avlvl');
-  if(dl) dl.innerHTML=on?`<div class="avlvl-name">${tH('game.lvl',{n:gameLevel()})} · ${esc(lvlName(gameLevel()))}</div>${gameBarHTML()}`:'';
+  dl?.closest('.avbanner')?.classList.toggle('av-nolvl',!on); // bez bodů jen jeden řádek (jméno pro čtečku)
+  if(dl) dl.innerHTML=on?`<span class="avlvl-name" title="${tH('game.lvl',{n:gameLevel()})} · ${esc(lvlName(gameLevel()))}">${tH('game.lvlShort',{n:gameLevel()})}</span>${gameBarHTML()}`:'';
   const aem=document.getElementById('av-em');
   if(aem){ if(on){ aem.innerHTML=gameRingHTML(56); aem.classList.add('has-ring'); } else { aem.textContent=av.emoji; aem.classList.remove('has-ring'); } }
   const al=document.getElementById('av-lvl');
@@ -10427,7 +10495,7 @@ window.saveGoalVal=async()=>{
 // ── AVATAR REAKCE ─────────────────────────────────────
 let avReactionTimer = null;
 // Reakce počká (5.10): panel Doplň včerejšek / připomínka, dotaz na upozornění, novinky, nápověda, toast z fronty nebo jiná reakce
-const avrBusy = () => tourActive() || Date.now() < _popUntil || !!document.querySelector('#yd-ask,#habit-snz,#notif-ask,#changelog-modal,#module-hint,#coach-tip,#av-reaction.show');
+const avrBusy = () => tourActive() || Date.now() < _popUntil || !!document.querySelector('#yd-ask,#habit-snz,#notif-ask,#changelog-modal,#coach-tip,#av-reaction.show');
 // q.page = jen na této stránce (jinde se zahodí)
 function showAvReaction(emoji, title, msg, confetti=false, q=null) {
   if(q?.page && !document.getElementById('p-' + q.page)?.classList.contains('active')) return;
@@ -11905,7 +11973,7 @@ function initLoginScreen(){
   const early=window.__lpAuthMode; // panel otevřený před načtením appky (rychlý start v index.html)
   if(back==='login'||back==='register') showAuthPanel(back);
   else if(early==='login'||early==='register'){ window.toggleLoginMode(early); preStepPush(); } // bez posunu a fokusu, uživatel už píše; otevřel ho klik
-  else if(known || isStandaloneApp()) showAuthPanel('login', false);
+  else if(known || isStandaloneApp() || _verifiedBack) showAuthPanel('login', false); // návrat z ověřovacího e-mailu (5.13): rovnou přihlášení
   window.__lpAuthMode=null;
   const inv=readPendingJoin();
   ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!inv; });
@@ -11944,9 +12012,17 @@ function inAppOpenUrl(plat){
   if(plat==='ios') return 'x-safari-https://'+rest;
   return '';
 }
+// Platforma vestavěného prohlížeče: android | ios | '' (jinde jen zkopírovat odkaz)
+const inAppPlat=()=>/Android/i.test(navigator.userAgent||'')?'android':isIOSDevice()?'ios':'';
+// Tlačítko „Otevřít v Chrome/Safari“ (5.13: i na Domů a v Nastavení → Upozornění), jinak „Kopírovat odkaz“
+function inAppOpenHTML(cls){
+  const plat=inAppPlat(), k=plat==='android'?'Chrome':plat==='ios'?'Safari':'', open=inAppOpenUrl(plat);
+  return open?'<a class="btn-p '+cls+'" href="'+esc(open)+'">'+tH('landing.inAppOpen'+k)+'</a>'
+    :'<button type="button" class="btn-s '+cls+'" onclick="copyInAppLink()">'+tH('landing.inAppCopy')+'</button>';
+}
 function initInAppBrowser(){
   if(!IN_APP_BROWSER||document.getElementById('lp-inapp')) return;
-  const plat=/Android/i.test(navigator.userAgent||'')?'android':isIOSDevice()?'ios':'';
+  const plat=inAppPlat();
   const k=plat==='android'?'Chrome':plat==='ios'?'Safari':'';
   document.getElementById('s-login')?.classList.add('lp-inapp-on'); // menší hlavička, tlačítko Začít nad ohybem (5.10)
   const card=()=>{
@@ -11961,6 +12037,9 @@ function initInAppBrowser(){
   };
   const ctas=document.querySelector('#lp-landing .lp-ctas');
   if(ctas){ const c=card(); c.id='lp-inapp'; ctas.parentNode.insertBefore(c,ctas); }
+  // 5.13: hlavní (žluté) je jen „Otevřít v Chrome/Safari“, registrace tady jako šedé „Pokračovat tady“
+  const st=document.getElementById('lp-start-btn');
+  if(st&&inAppOpenUrl(plat)){ st.classList.replace('btn-p','btn-s'); st.classList.add('lp-have'); st.dataset.i18n='landing.continueHere'; st.textContent=t('landing.continueHere'); }
   const g=document.getElementById('login-btn');
   if(g){
     g.parentNode.insertBefore(card(),g);
@@ -19812,7 +19891,8 @@ const NUDGES = [
   { id:'water', when:() => hasMod('habits') && !waterOn() && accDay() >= 7 && actN('habits') >= 5,
     txt:() => ({em:'💧', t:tH('nd.water.t'), d:tH('nd.water.d'), btn:tH('nd.on')}),
     yes:() => { lsSave('lp_wt_intro', 1); wtEnableModule(); window.sp('water'); } },
-  { id:'groups', when:() => hasMod('shopping') && actN('shopping') >= 3 && !myGroupIds().length,
+  // Start „Nákupy a jídlo doma“ (5.13): stačí 1 položka nákupu (ostatní po 3 dnech s nákupem)
+  { id:'groups', when:() => hasMod('shopping') && (prof?.start === 'home' ? actN('shopping') >= 1 || shopItems.length >= 1 : actN('shopping') >= 3) && !myGroupIds().length,
     txt:() => ({em:'🏠', t:tH('nd.groups.t'), d:tH('nd.groups.d'), btn:tH('nd.groups.btn')}),
     yes:() => window.openNewGroup() },
   { id:'mealplan', when:() => hasMod('shopping') && !hasMod('mealplan') && shopItems.length >= 10,
@@ -19878,7 +19958,15 @@ function nudgePick() {
   if (!nudgeFree()) return null;
   // Nová nabídka až s čerstvým stavem (jiné zařízení mohlo odpovědět nebo ukázat jinou); offline po chybě s místním
   if (_nudgeSyncP || nudgeSyncDue()) { _nudgeSyncWant = true; nudgeSync(); return null; }
-  return NUDGES.find(n => nudgeOpen(n.id) && nudgeSafe(n.when)) || null;
+  return nudgeOrder().find(n => nudgeOpen(n.id) && nudgeSafe(n.when)) || null;
+}
+// Pořadí priority: start „home“ (5.13) má pozvání domácnosti před hlavním úkolem dne
+function nudgeOrder() {
+  if (prof?.start !== 'home') return NUDGES;
+  const g = NUDGES.find(n => n.id === 'groups');
+  const out = NUDGES.filter(n => n !== g);
+  out.splice(out.findIndex(n => n.id === 'focus'), 0, g);
+  return out;
 }
 function nudgeSafe(fn) { try { return !!fn(); } catch (e) { return false; } }
 // Karta pro rDash. Poprvé se ukáže, až je otevřené Domů a žádné jiné okno (whenUiFree), pak se zapíše do limitu
@@ -19943,7 +20031,8 @@ function simpleModOrder(){
 // ── Přizpůsobení Domů (4.86): prof.dashLayout = {order, hidden} v users/{uid}/profile/main ──
 // Bez úprav pole neexistuje (platí výchozí pořadí). Pevné pásmo (Začínáme, nabídky, souhrn) se neupravuje.
 // 5.10: Návyky hned pod bannerem parťáka, citát a energie níž (uložené pořadí uživatele se nemění)
-const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'focus',em:'🎯'},{id:'water',em:'💧'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
+// 5.13: Pití hned pod Návyky (jen výchozí pořadí, uložené dashLayout zůstává)
+const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'focus',em:'🎯'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
   {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},
   {id:'mood',em:'😊'},{id:'quote',em:'💬'},{id:'energy',em:'⭐'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
 // Ve výchozím stavu (bez vlastního dashLayout) schované herní karty: energie parťáka a Aktivní série (5.10)
@@ -20216,6 +20305,7 @@ function rDash(){
   // Pitný režim (4.62, šablona Zdraví / návyk o pití výš), upozornění ze skupin (4.38), body a úrovně (4.40)
   html+=dashIntroHTML([avNameOfferHTML,
     ...(simple?[nudgeForDash]:[()=>wtIntroSlot(true),groupNotifIntroHTML,gameIntroHTML,()=>wtIntroSlot(false)])]);
+  html+=inAppDashHTML(); // vestavěný prohlížeč Messengeru (5.13)
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
   // Výzva měsíce / týdne pro všechny (4.63), nad výzvami skupin
@@ -20454,9 +20544,15 @@ function rDash(){
   if(slots){
     // Sloty (kap. 3): 1 = Začínáme, 2 = karta modulu č. 1, 3 = nabídka z fronty, jinak hlavní úkol / souhrn / další moduly.
     // Nálada (starší modul 'mood', není v MODS ani v liště) patří k Poznámkám, proto hned za ně.
-    const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(Boolean);
-    const cards=[quickStartHTML(),modCards[0],nudgeForDash(),avNameOfferHTML(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean);
-    html+=cards.slice(0,3).join('');
+    // 5.13: pozvaný člen v den připojení má nákup skupiny nad „Co teď“; nabídky z fronty až po kartě „Co teď“
+    const qs=quickStartHTML(), gShop=dashJoinedDay0()&&shopGid()===familyId?mw.shopping||'':'';
+    const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(c=>c&&c!==gShop);
+    const cards=[gShop,qs,modCards[0],qs?'':nudgeForDash(),qs?'':avNameOfferHTML(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean)
+      .slice(0,gShop?4:3);
+    // Karta vestavěného prohlížeče (5.13) hned pod „Co teď“, slot nezabírá
+    const ia=inAppDashHTML();
+    if(ia) cards.splice(qs?cards.indexOf(qs)+1:0,0,ia);
+    html+=cards.join('');
     if(unl('pc')||pcJoined()) html+='<div id="pc-dash">'+pcDashHTML()+'</div>';
     html+='<div id="ch-dash">'+chDashHTML()+'</div>'; // běžící výzvy skupiny (pozvaný je vidí hned)
   } else {
@@ -20525,11 +20621,47 @@ function rDash(){
   if(dw){
     // Rozepsaný text v kartě „Co teď“ přežije překreslení (snapshot během psaní)
     const ci=document.getElementById('ct-inp'), cv=ci?{m:ci.dataset.a0,v:ci.value,f:document.activeElement===ci}:null;
+    // Upozornění na ověření (5.13) leží pod kartou „Co teď“ uvnitř d-widgets: před přepsáním zpět, ať nezmizí
+    const vn=document.getElementById('verify-note');
+    if(vn&&vn.parentNode===dw) dw.before(vn);
     dw.innerHTML=html;
+    const intro=dw.querySelector('#ct-card,#qs-card');
+    if(vn&&intro) intro.after(vn);
     const ni=cv&&(cv.v||cv.f)?document.getElementById('ct-inp'):null;
     if(ni&&ni.dataset.a0===cv.m){ ni.value=cv.v; if(cv.f){ ni.focus({preventScroll:true}); try{ ni.setSelectionRange(cv.v.length,cv.v.length); }catch(e){} } }
   }
+  dashBannerDay0(); // den 0 (5.13): „Začni tady 👇“ / „Jsi ve skupině …“ v bublině parťáka
 }
+// Pozvaný člen v den připojení (5.13): hlavní skupina, kterou nezaložil, a účet založený dnes
+function dashJoinedDay0(){
+  return accDay()===0&&!!familyId&&!!familyData&&typeof familyData.createdBy==='string'&&familyData.createdBy!==CU?.uid;
+}
+// Text bubliny v den založení: pozvaný „Jsi ve skupině {grp} …“, jinak bublina „Začni tady“ (lp_ct_tip) sloučená do textu (textContent)
+function dashBannerDay0(){
+  const dtx=document.getElementById('d-avtxt');
+  if(!dtx||accDay()!==0) return;
+  let msg=dtx.textContent;
+  if(dashJoinedDay0()){
+    const mem=familyData.members&&typeof familyData.members==='object'?familyData.members:{};
+    const names=Object.keys(mem).filter(u=>u!==CU?.uid).map(u=>cutName(mem[u]?.name,20)).filter(Boolean).slice(0,3);
+    let list=names.join(', ');
+    try{ list=new Intl.ListFormat(LOCALE,{type:'conjunction'}).format(names); }catch(e){}
+    msg=names.length?tN('dash.inGroup',names.length,{grp:groupLabel(familyId),names:list}):t('dash.inGroup0',{grp:groupLabel(familyId)});
+  }
+  if(lsGet('lp_ct_tip')) msg=t('dash.startHere')+' '+msg;
+  dtx.textContent=msg;
+}
+// Malá karta na Domů ve vestavěném prohlížeči (5.13): připomínky tu nejdou → Otevřít v Chrome/Safari; zavření v zařízení (lp_inapp_off)
+function inAppDashHTML(){
+  if(!IN_APP_BROWSER||lsGet('lp_inapp_off')) return '';
+  return `<div class="dw inapp-dash" role="region" aria-label="${tH('inapp.dashT')}">
+    <span class="inapp-dash-em" aria-hidden="true">🔔</span>
+    <div class="inapp-dash-b"><div class="inapp-dash-t">${tH('inapp.dashT')}</div><div class="inapp-dash-d">${tH('inapp.dashD')}</div>
+    <div class="inapp-row">${inAppOpenHTML('inapp-open')}</div></div>
+    <button type="button" class="inapp-x" aria-label="${tH('common.close')}" onclick="inAppDashClose()">×</button>
+  </div>`;
+}
+window.inAppDashClose=()=>{ lsSave('lp_inapp_off',1); document.querySelector('#d-widgets .inapp-dash')?.remove(); };
 window.selMood=em=>{
   mood=em;
   const today = toDS();
@@ -22054,10 +22186,14 @@ function chatVerifyCard(){
   const c=document.getElementById('chatmsgs'); if(!c) return;
   document.getElementById('chat-verify')?.closest('.msg-row')?.remove();
   const av=curAv();
-  const {row}=makeBotBubble(`<div id="chat-verify"><div style="font-weight:700;margin-bottom:4px">${tH('chat.verifyT')}</div>
-    <div style="font-size:14px;color:var(--text2);margin-bottom:10px">${tH('chat.verifyD',{email:CU?.email||''})}</div>
-    <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('chat.verifyBtn')}</button></div>`,av.emoji,av.name);
+  const {row}=makeBotBubble(`<div id="chat-verify">${verifyCardHTML()}</div>`,av.emoji,av.name);
   c.appendChild(row); scrollChat();
+}
+// Obsah karty „Nejdřív ověř e-mail“ (chat, 5.13 i Vaření)
+function verifyCardHTML(){
+  return `<div style="font-weight:700;margin-bottom:4px">${tH('chat.verifyT')}</div>
+    <div style="font-size:14px;color:var(--text2);margin-bottom:10px">${tH('chat.verifyD',{email:CU?.email||''})}</div>
+    <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH('chat.verifyBtn')}</button>`;
 }
 window.rexRecipe=async(food,btnEl)=>{
   btnEl?.remove();
@@ -23441,6 +23577,7 @@ window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
   const query=inp.value.trim();
   cookInpUpd();
+  document.getElementById('cook-verify')?.remove(); // karta „Nejdřív ověř e-mail“ z minulého pokusu (5.13)
 
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
@@ -23470,7 +23607,11 @@ window.askRecipe=async()=>{
     renderRecipe(recipe); // odečet ze zásob až tlačítkem „Uvařeno“ (4.83)
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
-    toast('❌ '+userErr(e,'recept'));
+    // Neověřený e-mail (5.13): stejná karta jako v chatu, ne chyba
+    if(e?.code==='functions/failed-precondition'&&needsVerify()){
+      document.querySelector('#p-cooking .cook-prompt-wrap')?.insertAdjacentHTML('afterend',`<div class="dw cook-verify" id="cook-verify" role="status">${verifyCardHTML()}</div>`);
+      document.getElementById('cook-verify')?.scrollIntoView({behavior:'smooth',block:'center'});
+    } else toast('❌ '+userErr(e,'recept'));
   }
 };
 
@@ -25187,28 +25328,29 @@ function showModuleHint(moduleId) {
   const key = 'lp_hint_' + moduleId;
   if(localStorage.getItem(key)) return; // už viděl
   if(!localStorage.getItem('lp_tour_done')) return; // probíhá tour, nepřekrývat
-  if(uiBusy() && !document.getElementById('module-hint')) return; // jiné okno, nápověda se ukáže při další návštěvě
   const info = TOUR_MODULES[moduleId];
   if(!info) return;
+  // 5.13: modul s vlastním prázdným stavem (ES) ho vysvětlí sám → nápověda až při návštěvě s daty
+  const es = Object.prototype.hasOwnProperty.call(ES, moduleId) ? ES[moduleId] : null;
+  if(es && (nudgeSafe(es.empty) || nudgeSafe(es.wait))) return;
+  const page = document.getElementById('p-' + moduleId);
+  if(!page?.classList.contains('active')) return; // mezitím jiná stránka
   const av = curAv();
 
   localStorage.setItem(key, '1');
 
+  // 5.13: řádek pod nadpisem stránky (ne přes obsah), drží do zavření nebo odchodu ze stránky
   document.getElementById('module-hint')?.remove();
   const hint = document.createElement('div');
   hint.id = 'module-hint';
-  hint.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:9999;width:calc(100% - 32px);max-width:400px;animation:fadeIn .3s ease';
-  hint.innerHTML = `
-    <div style="background:var(--card);border:1px solid var(--accent);border-radius:16px;padding:16px 18px;box-shadow:0 6px 24px rgba(0,0,0,.3);display:flex;gap:12px;align-items:flex-start">
-      <span style="font-size:24px;flex-shrink:0">${av.emoji}</span>
-      <div style="flex:1">
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:15px;color:var(--accent);font-weight:700;margin-bottom:4px">${info.title}</div>
-        <div style="font-size:13px;color:var(--text2);line-height:1.5">${info.text}</div>
-      </div>
-      <button onclick="document.getElementById('module-hint')?.remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;flex-shrink:0;line-height:1;padding:0 0 0 4px">×</button>
-    </div>`;
-  document.body.appendChild(hint);
-  setTimeout(() => hint.remove(), 8000); // zmizí po 8s
+  hint.className = 'mod-hint';
+  hint.setAttribute('role', 'note');
+  hint.innerHTML = `<span class="mod-hint-em" aria-hidden="true">${esc(av.emoji || '⭐')}</span>
+    <div class="mod-hint-b"><div class="mod-hint-t">${info.title}</div><div class="mod-hint-d">${info.text}</div></div>
+    <button type="button" class="mod-hint-x" aria-label="${tH('common.close')}" onclick="document.getElementById('module-hint')?.remove()">×</button>`;
+  // Hlavička stránky: .gh, v Deníku horní lišta seznamu, jinak řádek s nadpisem (Checklist, Mazlíček)
+  const gh = page.querySelector(':scope > .gh, .journal-sidebar-top') || page.querySelector('.ptitle')?.parentElement;
+  if(gh && gh !== page) gh.after(hint); else page.prepend(hint);
 }
 
 // Po onboardingu (5.10) se průvodce sám nespouští: jedna bublina u karty „Co teď“ / „Začínáme“ (lp_ct_tip),
@@ -25239,6 +25381,7 @@ function maybeStartTourOnInit() {
 const _origSp = window.sp;
 window.sp = id => {
   _origSp(id);
+  document.getElementById('module-hint')?.remove(); // nápověda patří ke stránce, kde vznikla (5.13)
   window.ctaAskClose?.(); // nabídka sdílení patří ke stránce, kde vznikla
   document.getElementById('notif-ask')?.remove(); // dotaz na upozornění patří ke chvíli, kdy vznikl
   window.hideAvReaction?.(); // hláška parťáka (bez aktivity …) se netáhne na další obrazovku (5.10)

@@ -262,6 +262,7 @@ function show(){
   // Režim panelu převezme __lpAuthMode a záznam se smaže: Zpět během načítání pak app.js panel znovu neotevře (4.75)
   var b=null;try{b=sessionStorage.getItem('lp_auth_panel');sessionStorage.removeItem('lp_auth_panel');}catch(e){}
   if(b==='login'||b==='register'){window.__lpAuthMode=b;panel(true);}
+  else if(/[?&]verified=1(&|$)/.test(location.search)){window.__lpAuthMode='login';panel(true);} // návrat z ověřovacího e-mailu (5.13)
   ld.classList.remove('active');lg.classList.add('active');
 }
 // Čeština je přímo v HTML; jiný jazyk nejdřív přeloží landing (stejný modul i18n.js jako app.js)

@@ -2768,6 +2768,61 @@ body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px)
 .avbanner.av-simple .avlvl:empty{display:none}
 .avbanner.av-simple>.rex-dash-msg{order:6}
 .avbanner.av-simple .avtxt::before{left:22px;top:-7px;border-left:1px solid var(--border2);border-top:1px solid var(--border2);border-bottom:none}
+/* 5.13: kompaktní banner (asi poloviční výška) – avatar, zpráva v bublině (💬 v jednoduchém režimu) v jednom řádku,
+   pod nimi jméno a úroveň s XP jako tenký proužek; rámeček a bublina z 5.06 zůstávají */
+.avbanner,.avbanner.av-simple{flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 12px;margin-bottom:12px}
+.avbanner>.avinfo,.avbanner.av-simple>.avinfo{display:contents}
+.avbanner>.avbig{order:0;font-size:34px}
+.avbanner .avtxt,.avbanner.av-simple .avtxt{order:1;flex:1 1 0;min-width:0;margin:0 0 0 6px;padding:5px 10px;font-size:14px;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+.avbanner .avtxt::before,.avbanner.av-simple .avtxt::before{left:-7px;top:calc(50% - 6px);border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);border-top:none}
+.avbanner>.avchat-btn,.avbanner.av-simple>.avchat-btn{order:2}
+.avbanner>.avarrow,.avbanner.av-simple>.avarrow{display:none}
+.avbanner::after{content:'';order:3;flex-basis:100%;height:0}
+.avbanner .avsnm,.avbanner.av-simple .avsnm{order:4;flex:0 1 auto;max-width:40%;margin:0;font-size:13px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avbanner .avlvl,.avbanner.av-simple .avlvl{order:5;flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px}
+.avbanner .avlvl:empty{display:none}
+.avbanner .avlvl-name{margin:0;font-size:12px;white-space:nowrap;flex:none}
+.avbanner .avlvl .gbar-row{flex:1;margin:0;flex-wrap:nowrap;gap:6px;min-width:0}
+.avbanner .avlvl .gbar{height:4px;min-width:30px}
+.avbanner .avlvl .gbar-txt{font-size:12px}
+.avbanner>.rex-dash-msg,.avbanner.av-simple>.rex-dash-msg{order:6}
+@media(max-width:400px){.avbanner,.avbanner.av-simple{padding:10px;gap:6px 8px}}
+/* 5.13: Doplň včerejšek na Domů jako úzký pruh */
+.dw.yd-card{flex-wrap:nowrap;gap:8px;padding:6px 6px 6px 12px;margin-bottom:12px}
+.yd-card .yd-card-t{flex:1 1 auto;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yd-card .yd-card-b{min-height:44px;padding:4px 14px;font-size:14px}
+/* 5.13: Co teď – Přeskočit */
+.avbanner.av-nolvl::after{display:none}
+.avbanner.av-nolvl .avsnm{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ct-head .ct-skip{margin-left:auto}
+.ct-skip{flex:none;min-height:44px;padding:0 6px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;text-decoration:underline;cursor:pointer}
+.ct-skip:focus-visible,.verify-fix:focus-visible,.inapp-x:focus-visible,.mod-hint-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 5.13: adresa v upozornění na ověření a „Opravit adresu“ */
+.verify-note-a{flex:1 1 100%;margin-top:-6px;font-size:13px;overflow-wrap:anywhere}
+.verify-fix{min-height:44px;margin:-8px 0;padding:0 2px;background:none;border:none;color:var(--accent-text,var(--accent));font-family:'Crimson Pro',serif;font-size:13px;text-decoration:underline;cursor:pointer;vertical-align:middle}
+/* 5.13: vestavěný prohlížeč – karta na Domů a tlačítko v Nastavení → Upozornění */
+.dw.inapp-dash{position:relative;display:flex;gap:10px;align-items:flex-start;cursor:default;padding:10px 44px 10px 12px}
+.inapp-dash-em{font-size:20px;line-height:1.3;flex:none}
+.inapp-dash-b{flex:1;min-width:0}
+.inapp-dash-t{font-size:15px;font-weight:700;color:var(--text);line-height:1.3}
+.inapp-dash-d{font-size:13px;color:var(--text2);line-height:1.35;margin:2px 0 8px}
+.inapp-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.inapp-dash .inapp-row{margin-top:0}
+.inapp-open{display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:44px;padding:0 16px;font-size:15px;border-radius:12px;box-shadow:none;text-decoration:none;box-sizing:border-box}
+.inapp-x{position:absolute;top:0;right:0;width:44px;height:44px;background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer}
+/* 5.13: nápověda modulu jako řádek pod nadpisem stránky */
+.mod-hint{display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;padding:8px 0 8px 12px;background:var(--card2);border:1px solid var(--border2);border-left:3px solid var(--accent);border-radius:12px;animation:fadeIn .3s ease}
+.journal-sidebar .mod-hint{margin:0 12px 10px}
+.mod-hint-em{font-size:20px;line-height:1.3;flex:none}
+.mod-hint-b{flex:1;min-width:0}
+.mod-hint-t{font-size:14px;font-weight:700;color:var(--text);line-height:1.3}
+.mod-hint-d{font-size:13px;color:var(--text2);line-height:1.4;margin-top:1px}
+.mod-hint-x{flex:none;width:44px;height:44px;margin:-8px 0 -8px;background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer}
+@media(prefers-reduced-motion:reduce){.mod-hint{animation:none}}
+/* 5.13: Vaření – karta „Nejdřív ověř e-mail“ */
+.cook-verify{cursor:default;margin:0 0 14px}
+/* 5.13: iPhone „Přidat na plochu“ nezakryje konec stránky */
+html.lp-iosb:not(.lp-noinstall) .abody{padding-bottom:calc(var(--iosb-h,0px) + 90px)}
 /* Jméno parťáka (5.07): ✏️ u jména, okno přejmenování, nabídka na úrovni 10 */
 .av-chat-left,.av-chat-info{min-width:0}
 .av-nm-row{display:flex;align-items:center;gap:6px;min-width:0}
