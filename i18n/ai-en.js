@@ -294,5 +294,5 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.fin.sum': 'income {inc}, spending {exp}, left {left}',
   'aip.ctx.fin.prev': '; last month left {left}',
   'aip.ctx.fin.top': '; top: {list}',
-  'aip.ctx.fin.wish': '; wishlist: {n} items for {total}',
+  'aip.ctx.fin.wish': '; wishlist: {total} in total (number of items: {n})',
 };

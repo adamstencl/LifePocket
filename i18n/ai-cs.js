@@ -310,5 +310,5 @@ PRAVIDLO JAZYK: Vysvětlení piš VÝHRADNĚ česky. ZAKÁZÁNO použít jakéko
   'aip.ctx.fin.sum': 'příjmy {inc}, výdaje {exp}, zbývá {left}',
   'aip.ctx.fin.prev': '; minulý měsíc zbylo {left}',
   'aip.ctx.fin.top': '; nejvíc: {list}',
-  'aip.ctx.fin.wish': '; Chceme koupit: {n} položek za {total}',
+  'aip.ctx.fin.wish': '; Chceme koupit: celkem {total} (počet věcí: {n})',
 };
