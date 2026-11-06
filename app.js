@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.10';
+const APP_VERSION = '5.11';
 const CHANGELOG = [
+  { v:'5.11', items:[
+    '🍳 Vaření: recept navrhnu i bez zadání – podle stylu, typu jídla a tvých zásob'
+  ], en:[
+    '🍳 Cooking: I’ll suggest a recipe even with nothing typed – based on style, meal type and your pantry'
+  ]},
   { v:'5.10', items:[
     '🔥 Návyky přímo z Domů – kroužek v kartě Návyky dnes je rovnou odškrtne, nevyřízené jsou nahoře; karta energie a Aktivní série jsou teď na Domů skryté, zapneš je v Upravit Domů',
     '📋 Kompaktnější seznam návyků – týden a sdílení najdeš v detailu (týden zapneš tlačítkem 📅 Týden), kroužek přepíná jen splněno',
@@ -1942,7 +1947,7 @@ function clearUserSessionState(){
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
   // Lišty zásob a opakování pravidelných nákupů patří odhlášenému účtu (4.78)
   // Recepty a vazby nákup → zásoby patří odhlášenému účtu (4.83)
-  try{ lastRecipe=null; _rexRecipes.clear(); _shopPantry.clear(); _shopAskLive.clear(); _shopUndo.clear(); }catch(e){}
+  try{ lastRecipe=null; _cookRecent=[]; _rexRecipes.clear(); _shopPantry.clear(); _shopAskLive.clear(); _shopUndo.clear(); }catch(e){}
   try{ _pantryAsk.clear(); document.getElementById('pantry-notes')?.remove(); clearTimeout(_recRetry.tm); _recRetry.uid=''; _recRetry.n=0; _recRetry.tm=0; }catch(e){}
   // Dynamická okna skupin (4.51): zavřít bez návratu fokusu a vynulovat jejich stav
   try{
@@ -23382,10 +23387,55 @@ document.querySelectorAll('.cook-chip-scroll').forEach(el=>{
 });
 window.addEventListener('resize',refreshCookChipFade);
 
+// 5.11: recept i bez zadání – podle stylu, typu jídla, zásob; bez opakování nedávných návrhů
+let _cookRecent=[]; // názvy receptů vygenerovaných v této relaci (nejnovější první)
+// Názvy zobrazených zásob (Vaření) s množstvím > 0; nenačtené zásoby = []
+function cookPantryNames(max){
+  const gid=pantryGid();
+  if(!CU||!pantryReady(gid)) return [];
+  const seen=new Set(), out=[];
+  for(const i of pantryItemsOf(gid)){
+    if(!i||!i.name||(i.qty!=null&&i.qty!==''&&Number(i.qty)<=0)) continue; // došlé (0) ne, bez množství ano
+    const k=pantryNorm(i.name);
+    if(!k||seen.has(k)) continue;
+    seen.add(k); out.push(String(i.name));
+  }
+  out.sort((a,b)=>a.localeCompare(b,LANG));
+  return max?out.slice(0,max):out;
+}
+// Nedávné recepty (vygenerované, pak uložené) – AI je nemá navrhovat znovu
+function cookRecentNames(max){
+  const seen=new Set(), out=[];
+  for(const n of [..._cookRecent,...(savedRecipes||[]).map(r=>r&&r.name)]){
+    const k=pantryNorm(n);
+    if(!k||seen.has(k)) continue;
+    seen.add(k); out.push(String(n));
+    if(out.length>=max) break;
+  }
+  return out;
+}
+// Tlačítko a nápověda podle pole: prázdné = „Navrhni mi něco“
+window.cookInpUpd=()=>{
+  const empty=!document.getElementById('cook-inp')?.value.trim();
+  const btn=document.getElementById('cook-gen-btn');
+  if(btn) btn.textContent=t(empty?'ck.genAny':'ck.genBtn');
+  const h=document.getElementById('cook-any-hint');
+  if(h) h.hidden=!cookPantryNames(1).length;
+};
+// Uživatelská zpráva pro AI: s textem jako dřív, bez textu zásoby a „nenavrhuj“ jako data
+function cookUserPrompt(query,n,pantry,recent){
+  if(query) return tA('aip.rcp.user',{food:query,n});
+  const list=a=>a.map(x=>ctxT(x,40)).filter(Boolean).join('\n');
+  const pl=list(pantry), rl=list(recent);
+  return tA('aip.rcp.userAny',{n})
+    +(pl?'\n'+tA('aip.rcp.anyPantry',{list:pl}):'')
+    +(rl?'\n'+tA('aip.rcp.avoid',{list:rl}):'');
+}
+
 window.askRecipe=async()=>{
   const inp=document.getElementById('cook-inp');
   const query=inp.value.trim();
-  if(!query){toast(t('ck.queryReq'));return;}
+  cookInpUpd();
 
   document.getElementById('cook-result').style.display='none';
   document.getElementById('cook-welcome').style.display='none';
@@ -23402,12 +23452,16 @@ window.askRecipe=async()=>{
   const sys=tA('aip.rcp.sys',{portions:cookPortions,hints:[typeHint,mealTypeHint].filter(Boolean).join(' ')});
 
   try{
-    const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:tA('aip.rcp.user',{food:query,n:cookPortions})}],1500);
+    // Bez textu: zásoby (počká nejvýš 2 s na načtení) a nedávné recepty
+    const pantry=query?[]:((await pantryItemsReady(pantryGid()))?cookPantryNames(25):[]);
+    const user=cookUserPrompt(query,cookPortions,pantry,query?[]:cookRecentNames(8));
+    const rawR=await callClaude([{role:'system',content:sys},{role:'user',content:user}],1500);
     if(!rawR)throw new Error('AI unavailable');
     let raw=aiFixCs(rawR,{recipe:true}).trim().replace(/`{3}json/g,'').replace(/`{3}/g,'').trim();
     const recipe=normRecipe(JSON.parse(raw));
     if(!recipe) throw new SyntaxError('JSON recept');
     lastRecipe=recipe;
+    if(recipe.name) _cookRecent=[recipe.name,..._cookRecent.filter(x=>x!==recipe.name)].slice(0,10);
     renderRecipe(recipe); // odečet ze zásob až tlačítkem „Uvařeno“ (4.83)
   }catch(e){
     document.getElementById('cook-loading').style.display='none';
@@ -24088,6 +24142,7 @@ function renderPantry() {
   const html = buildPantryHtml(gid);
   ['pantry-content', 'shop-pantry-content'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
   updatePantryBadge();
+  window.cookInpUpd?.(); // nápověda „z tvých zásob“ ve Vaření (5.11)
 }
 
 window.openPantryAdd = function(prefill = {}) {

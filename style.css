@@ -1165,7 +1165,9 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cook-what-input::placeholder{color:var(--text3);font-family:inherit;opacity:1}
 .cook-what-input:focus{border-color:var(--accent)}
 .cook-btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.btn-cook-gen{min-height:44px;background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);border-radius:12px;padding:0 12px;font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cook-any-hint{font-size:12px;color:var(--text3);line-height:1.4;margin-top:-2px}
+.cook-any-hint[hidden]{display:none}
+.btn-cook-gen{min-height:44px;background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);border-radius:12px;padding:4px 10px;font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer;line-height:1.15;overflow-wrap:anywhere}
 .btn-cook-gen--ghost{background:var(--card2);border-color:var(--border2);color:var(--text)}
 .btn-cook-gen:active{transform:scale(.98)}
 .cook-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center}

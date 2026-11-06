@@ -730,11 +730,12 @@ else show();
       <div class="cook-prompt-wrap">
         <div class="cook-input-card">
           <div class="cook-top-row">
-            <input class="cook-what-input" type="text" id="cook-inp" placeholder="Co chceš vařit? Třeba „rychlá večeře z kuřete“" enterkeyhint="go" autocomplete="off" aria-label="Co chceš vařit" data-i18n-attr="placeholder:ck.inpPh;aria-label:ck.inpAria" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
+            <input class="cook-what-input" type="text" id="cook-inp" placeholder="Volitelné – třeba kuře nebo „rychlá večeře“ (nebo nech prázdné)" enterkeyhint="go" autocomplete="off" aria-label="Co chceš vařit" data-i18n-attr="placeholder:ck.inpPh;aria-label:ck.inpAria" oninput="cookInpUpd()" onkeydown="if(event.key===&#39;Enter&#39;)askRecipe()">
             <div class="cook-btn-row">
-              <button class="btn-cook-gen" onclick="askRecipe()">🔮 Navrhnout</button>
+              <button class="btn-cook-gen" id="cook-gen-btn" onclick="askRecipe()" data-i18n="ck.genAny">🎲 Navrhni mi něco</button>
               <button class="btn-cook-gen btn-cook-gen--ghost" onclick="openManualRecipe()" data-i18n="ck.mr.title">✏️ Vlastní recept</button>
             </div>
+            <div class="cook-any-hint" id="cook-any-hint" hidden data-i18n="ck.anyHint">Bez zadání navrhnu jídlo hlavně z tvých zásob.</div>
           </div>
           <div class="cook-filter-box">
             <div class="cook-filter-label" id="cook-lbl-type">Styl</div>
