@@ -174,3 +174,10 @@
 - Ranní push „Včera nevyplněno“ nepočítá štíty – den, který štít zalepí, server hlásí, appka pak nic nenabídne.
 - Samostatná volba připomenutí včerejška i bez ranního souhrnu; odložení „Později/Nepřipomínat“ je jen v zařízení.
 - Popup „Nový odznak“ přesahuje spodní okraj panelu o 5–10 px.
+
+## Z 5.10 (UX úpravy)
+- Zpět u skupinových dat (checklist, smazat splněné, událost) obnovuje přes `setDoc` – při souběhu dvou členů může vzkřísit nebo přepsat; obnovovat transakcí jen když dokument neexistuje.
+- `lpAsk` okna nemají vlastní záznam v historii (systémové Zpět).
+- Den 0 v jednoduchém režimu: „Co teď · Odškrtni návyk“ a „Návyky dnes“ ukazují stejné návyky.
+- Karta „Mám ti připomínat nákup?“ v Co teď pro profil Nákupy (nedodělané).
+- Převést zbylé `confirm()` (`archiveHabit`, `removeSamples`, `dashReset`, `grp.codeFixedQ`) a `prompt()` v `landing.inAppCopy` na `lpConfirm`/`lpCopy`.
