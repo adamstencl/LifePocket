@@ -808,9 +808,8 @@ else show();
       <div class="gh">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:26px">🧺</span><div class="ptitle" data-i18n="shop.title">Nákupy</div></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button type="button" class="gf-bell" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button>
-          <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px" onclick="shareShoppingList()" data-i18n="shop.share">📤 Sdílet</button>
-          <button class="btn-p" style="width:auto;padding:7px 16px;font-size:14px" onclick="clearDoneItems()" data-i18n="shop.clearDone">✓ Vymazat splněné</button>
+          <button type="button" class="gf-bell gf-bell-lbl" id="gf-bell-shop" hidden data-a0="shop" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria"><span aria-hidden="true">🔔</span> <span class="gf-bell-t" aria-hidden="true" data-i18n="gf.bellShort">Novinky</span></button>
+          <button class="btn-s" style="width:auto;padding:7px 14px;font-size:14px;min-height:44px" onclick="shareShoppingList()" data-i18n="shop.share">📤 Sdílet</button>
         </div>
       </div>
 
@@ -856,14 +855,6 @@ else show();
             <div id="shop-parse-hint" class="shop-parse-hint" hidden aria-live="polite"></div>
             <div id="shop-pantry-hint" style="display:none;font-size:12px;color:var(--text3);padding:2px 4px;font-family:'Crimson Pro',serif;font-style:italic"></div>
           </div>
-          <select id="shop-cat-sel" style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 8px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:14px;outline:none;min-width:0;max-width:130px">
-            <option value="Zelenina &amp; ovoce" data-i18n="shop.sel.produce">🥦 Zelenina & ovoce</option>
-            <option value="Maso &amp; ryby" data-i18n="shop.sel.meat">🥩 Maso</option>
-            <option value="Mléčné výrobky" data-i18n="shop.sel.dairy">🧀 Mléčné</option>
-            <option value="Pečivo" data-i18n="shop.sel.bakery">🍞 Pečivo</option>
-            <option value="Trvanlivé" data-i18n="shop.sel.pantry">🥫 Trvanlivé</option>
-            <option value="Ostatní" selected="" data-i18n="shop.sel.other">📦 Ostatní</option>
-          </select>
           <button class="btn-p" style="width:auto;padding:10px 18px" onclick="addShopItem()" data-i18n="shop.addBtn">+ Přidat</button>
         </div>
 
@@ -878,6 +869,8 @@ else show();
 
         <!-- Categories -->
         <div id="shop-list"></div>
+        <!-- Vymazat koupené (5.10): vedlejší odkaz pod seznamem, smazání jde vrátit -->
+        <button type="button" class="shop-clear-link" id="shop-clear-done" hidden onclick="clearDoneItems()" data-i18n="shop.clearDone">✓ Vymazat splněné</button>
 
         <!-- Empty state -->
         <div id="shop-empty" style="display:none"></div><!-- prázdný stav: emptyHTML('shopping') v app.js (4.72) -->
@@ -1014,10 +1007,19 @@ else show();
     <!-- STATISTIKY -->
 
     <div class="page" id="p-settings">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="font-size:26px">🔧</span><div class="ptitle" data-i18n="nav.settings">Nastavení</div></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:26px">🔧</span><div class="ptitle" data-i18n="nav.settings">Nastavení</div></div>
+      <!-- Rozcestník (5.10): posune na sekci, sbalenou skupinu otevře (setJump) -->
+      <nav class="set-jump" aria-label="Části nastavení" data-i18n-attr="aria-label:set.jump.aria">
+        <button type="button" class="set-jump-b" onclick="setJump('set-sec-profile')" data-i18n="set.jump.profile">👤 Profil</button>
+        <button type="button" class="set-jump-b" onclick="setJump('set-sec-mods')" data-i18n="set.jump.mods">📱 Moduly</button>
+        <button type="button" class="set-jump-b" onclick="setJump('set-sec-notif')" data-i18n="set.jump.notif">🔔 Upozornění</button>
+        <button type="button" class="set-jump-b" onclick="setJump('set-sec-groups')" data-i18n="set.jump.groups">👨‍👩‍👧 Skupiny</button>
+        <button type="button" class="set-jump-b" onclick="setJump('set-sec-look')" data-i18n="set.jump.look">🎨 Vzhled</button>
+        <button type="button" class="set-jump-b" onclick="setJump('set-account')" data-i18n="set.jump.account">🔐 Účet</button>
+      </nav>
 
       <!-- Základní nastavení (4.68): 6 sekcí nahoře, zbytek ve sbalených skupinách níž -->
-      <div class="setsec">
+      <div class="setsec" id="set-sec-profile">
         <div class="setsec-t" data-i18n="set.profile.title">👤 Ty a parťák</div>
         <div class="setsec-d" data-i18n="set.profile.desc">Tvoje osobní nastavení.</div>
         <div class="avprofile">
@@ -1032,14 +1034,14 @@ else show();
         </div>
       </div>
 
-      <div class="setsec">
+      <div class="setsec" id="set-sec-mods">
         <div class="setsec-t" data-i18n="set.mods.title">📱 Moduly</div>
         <div class="setsec-d" data-i18n="set.mods.desc">Zapni nebo vypni části aplikace.</div>
         <div id="set-mods"></div>
       </div>
 
       <!-- NOTIFIKACE -->
-      <div class="setsec">
+      <div class="setsec" id="set-sec-notif">
         <div class="setsec-t" data-i18n="set.notif.title">🔔 Upozornění</div>
         <div class="setsec-d" data-i18n="set.notif.desc">Připomínky návyků a denní přehled přímo do telefonu nebo prohlížeče. Funguje na Android a PC (Chrome/Edge). iPhone má omezení.</div>
         <div id="notif-status-box" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:var(--card2);border:1px solid var(--border);font-size:14px;color:var(--text2)" data-i18n="set.notif.checking">
@@ -1064,9 +1066,47 @@ else show();
             </div>
           </div>
         </div>
+        <!-- 5.10: typy připomínek a upozornění ze skupin v jedné sekci (dřív v Pokročilých) -->
+        <div class="set-sub" id="set-notif-which" data-i18n="set.notif.which">🔔 Které připomínky chceš?</div>
+        <div style="display:flex;flex-direction:column;gap:8px" id="notif-toggles" role="group" aria-labelledby="set-notif-which">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-habits" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.habits">🎯 Připomínka nesplněných návyků</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-morning" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-yday" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.yday">🌙 Ptát se na nevyplněný včerejšek</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co se ti dnes povedlo)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-weekly" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.weekly">🗓️ Týdenní souhrn (neděle večer)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
+              </label>
+
+            </div>
+
+        <!-- Upozornění ze skupin a noční klid (vykresluje renderGroupNotifSettings), sbalené -->
+        <details class="setgrp setgrp-in" id="setgrp-gn">
+          <summary class="setgrp-s"><span data-i18n="set.notif.grpT">👨‍👩‍👧 Skupiny a noční klid</span><span class="setgrp-d" data-i18n="set.notif.grpD">co ti pošlou ostatní a kdy být potichu</span></summary>
+          <div id="gn-box" class="gn-box" hidden></div>
+        </details>
+        <div style="margin-top:12px;font-size:13px;color:var(--text3)" data-i18n="set.notif.hint">
+            💡 Připomínky návyků nastavíš u každého návyku zvlášť. Narozeniny dostaneš automaticky 7 dní předem a ráno v den události. Události s nastaveným časem tě upozorní hodinu předem.
+        </div>
       </div>
 
-      <div class="setsec">
+      <div class="setsec" id="set-sec-groups">
         <div class="setsec-t" data-i18n="set.groups.title">👨‍👩‍👧 Skupiny &amp; sdílení</div>
         <div class="setsec-d" data-i18n="set.groups.desc">Sdílej moduly s různými lidmi. Každá skupina sdílí jen to, co chceš — kalendář s kamarády, nákupy jen se ženou.</div>
         <div id="grp-what"></div>
@@ -1093,7 +1133,7 @@ else show();
       </div>
 
       <!-- Vzhled a jazyk (názvy jazyků se nepřekládají) -->
-      <div class="setsec">
+      <div class="setsec" id="set-sec-look">
         <div class="setsec-t" data-i18n="set.look.title">🎨 Vzhled a jazyk</div>
         <div class="setsec-d" data-i18n="set.theme.desc">Tmavé, světlé nebo oranžové — vyber, co ti sedí.</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px" id="theme-cards">
@@ -1122,57 +1162,19 @@ else show();
       </div>
 
       <!-- Jednoduchý režim (vykresluje renderSimpleSetting) -->
-      <div class="setsec">
+      <div class="setsec" id="set-sec-simple">
         <div class="setsec-t" data-i18n="set.simple.title">🌱 Jednoduchý režim</div>
         <div id="set-simple"></div>
       </div>
 
       <!-- Pokročilé: sbalené, stav pamatuje lp_set_open -->
       <details class="setgrp" id="setgrp-adv">
-        <summary class="setgrp-s"><span data-i18n="set.adv.t">⚙️ Pokročilé</span><span class="setgrp-d" data-i18n="set.adv.d">body, připomínky, průvodce</span></summary>
+        <summary class="setgrp-s"><span data-i18n="set.adv.t">⚙️ Pokročilé</span><span class="setgrp-d" data-i18n="set.adv.d">body, průvodce, řešení potíží</span></summary>
         <div class="setsec">
           <!-- Body a úrovně (vykresluje renderGameSetting) -->
           <div id="set-game"></div>
         </div>
-        <div class="setsec">
-            <div class="setsec-t" data-i18n="set.notif.which">🔔 Které připomínky chceš?</div>
-            <div style="display:flex;flex-direction:column;gap:8px" id="notif-toggles">
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-habits" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.habits">🎯 Připomínka nesplněných návyků</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-morning" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-yday" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.yday">🌙 Ptát se na nevyplněný včerejšek</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-evening" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.eveningOpt">🌙 Večerní shrnutí (co se ti dnes povedlo)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-weekly" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.weekly">🗓️ Týdenní souhrn (neděle večer)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
-                <input type="checkbox" id="nt-pc" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
-                <span data-i18n="set.notif.pc">🏆 Výzvy měsíce (nová výzva, večerní připomínka)</span>
-              </label>
-
-            </div>
-
-          <!-- Upozornění ze skupin (vykresluje renderGroupNotifSettings) -->
-          <div id="gn-box" class="gn-box" hidden></div>
-
-          <div style="margin-top:12px;font-size:13px;color:var(--text3)" data-i18n="set.notif.hint">
-            💡 Připomínky návyků nastavíš u každého návyku zvlášť. Narozeniny dostaneš automaticky 7 dní předem a ráno v den události. Události s nastaveným časem tě upozorní hodinu předem.
-          </div>
-
-        </div>
-        <div class="setsec">
+        <div class="setsec" id="set-sec-tour">
         <div class="setsec-t" data-i18n="set.tour.title">🗺️ Průvodce</div>
         <div class="setrow">
           <span class="setlbl" style="font-size:13px;color:var(--text3)" data-i18n="set.tour.desc">Projdi si znovu co LifePocket umí</span>
@@ -1199,7 +1201,7 @@ else show();
 
       <details class="setgrp" id="setgrp-sup">
         <summary class="setgrp-s"><span data-i18n="set.supGrp.t">💛 Podpora, kontakt a dokumenty</span><span class="setgrp-d" data-i18n="set.supGrp.d">doporučit, podpořit, napsat nám</span></summary>
-        <div class="setsec">
+        <div class="setsec" id="set-sec-share">
         <div class="setsec-t" data-i18n="set.share.title">💛 Doporuč LifePocket</div>
         <div class="setsec-d" data-i18n="set.share.desc">Nejvíc pomůžeš, když o appce řekneš kamarádům. Stačí jedno klepnutí.</div>
         <button type="button" class="share-app-btn" onclick="shareApp()" data-i18n="set.share.btn">📤 Sdílet LifePocket</button>
@@ -1234,7 +1236,7 @@ else show();
         </div>
         </div>
 
-        <div class="setsec-t" style="margin-top:20px" data-i18n="set.contact.title">📬 Napiš nám</div>
+        <div class="setsec-t" style="margin-top:20px" id="set-sec-contact" data-i18n="set.contact.title">📬 Napiš nám</div>
         <div class="setsec-d" data-i18n="set.contact.desc">Máš dotaz, nápad nebo chybu v appce? Napiš nám!</div>
         <div style="margin-top:10px">
           <form class="contact-form" action="https://formspree.io/f/xlgpyjaa" method="POST" onsubmit="handleContactSubmit(event)">
@@ -1284,7 +1286,7 @@ else show();
       </div>
       </details>
 
-      <div class="setsec">
+      <div class="setsec" id="set-sec-logout">
         <div class="setsec-t" data-i18n="set.logout.title">🚪 Odhlášení</div>
         <div class="setrow">
           <span class="setlbl" data-i18n="set.logout.label">Účet</span>
@@ -1570,42 +1572,48 @@ else show();
   <div class="modal">
     <div class="mtitle" data-i18n="cal.newTitle">📅 Nová událost</div>
     <div class="fg">
-      <label class="flbl" data-i18n="cal.f.name">Název</label>
+      <label class="flbl" for="ev-name-inp" data-i18n="cal.f.name">Název</label>
       <input class="finp" type="text" id="ev-name-inp" placeholder="Narozeniny maminky…">
     </div>
-    <div class="fg">
-      <label class="flbl">Typ</label>
-      <div class="ev-type-row" id="ev-type-row">
-        <!-- dynamicky renderováno přes renderEvTypeButtons() -->
-        <button class="ev-type-btn sel" data-t="event" onclick="selEvType(&#39;event&#39;,this)" data-i18n="cal.f.event">📌 Událost</button>
-        <button class="ev-type-btn" data-t="birthday" onclick="selEvType(&#39;birthday&#39;,this)">🎂 Narozeniny</button>
-      </div>
-    </div>
+    <!-- 5.10: viditelné jen název, datum a čas; zbytek pod „Další možnosti“ (souhrn plní evMoreSync) -->
     <div class="frow">
       <div class="fg">
-        <label class="flbl" data-i18n="cal.f.start">Datum začátku</label>
+        <label class="flbl" for="ev-date-inp" data-i18n="cal.f.date">Datum</label>
         <input class="finp" type="date" id="ev-date-inp">
       </div>
-      <div class="fg" id="ev-end-date-row" style="display:none">
-        <label class="flbl"><span data-i18n="cal.f.end">Datum konce</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
-        <input class="finp" type="date" id="ev-end-date-inp">
-      </div>
       <div class="fg" id="ev-time-row" style="display:none">
-        <label class="flbl"><span data-i18n="cal.f.time">⏰ Čas</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
+        <label class="flbl" for="ev-time-inp"><span data-i18n="cal.f.time">⏰ Čas</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
         <input class="finp time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="ev-time-inp">
       </div>
+    </div>
+    <details class="ev-more" id="ev-more">
+      <summary class="ev-more-s"><span data-i18n="cal.f.more">Další možnosti</span><span class="ev-more-sum" id="ev-more-sum"></span></summary>
       <div class="fg">
-        <label class="flbl" data-i18n="cal.f.repeat">Opakovat každý rok</label>
-        <select class="finp" id="ev-repeat-inp">
-          <option value="no" data-i18n="cal.f.repeatNo">Ne (jednorázová událost)</option>
-          <option value="yes" data-i18n="cal.f.repeatYes">Ano (narozeniny, výročí…)</option>
-        </select>
+        <label class="flbl" data-i18n="cal.f.type">Typ</label>
+        <div class="ev-type-row" id="ev-type-row">
+          <!-- dynamicky renderováno přes renderEvTypeButtons() -->
+          <button class="ev-type-btn sel" data-t="event" onclick="selEvType(&#39;event&#39;,this)" data-i18n="cal.f.event">📌 Událost</button>
+          <button class="ev-type-btn" data-t="birthday" onclick="selEvType(&#39;birthday&#39;,this)">🎂 Narozeniny</button>
+        </div>
       </div>
-    </div>
-    <div class="fg" id="ev-share-row" style="display:none">
-      <label class="flbl">👁️ Viditelnost</label>
-      <div id="ev-share-pick"></div>
-    </div>
+      <div class="frow">
+        <div class="fg" id="ev-end-date-row" style="display:none">
+          <label class="flbl" for="ev-end-date-inp"><span data-i18n="cal.f.end">Datum konce</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
+          <input class="finp" type="date" id="ev-end-date-inp">
+        </div>
+        <div class="fg">
+          <label class="flbl" for="ev-repeat-inp" data-i18n="cal.f.repeat">Opakovat každý rok</label>
+          <select class="finp" id="ev-repeat-inp" onchange="evMoreSync()">
+            <option value="no" data-i18n="cal.f.repeatNo">Ne (jednorázová událost)</option>
+            <option value="yes" data-i18n="cal.f.repeatYes">Ano (narozeniny, výročí…)</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg" id="ev-share-row" style="display:none">
+        <label class="flbl">👁️ Viditelnost</label>
+        <div id="ev-share-pick"></div>
+      </div>
+    </details>
     <div class="macts">
       <button class="btn-s" onclick="resetAndCloseEventModal()" data-i18n="common.cancel">Zrušit</button>
       <button class="btn-p" onclick="saveEvent()" data-i18n="cal.f.save">Uložit událost</button>

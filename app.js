@@ -2221,11 +2221,14 @@ window.saveEntry=async(opts)=>{
 };
 
 window.deleteEntry=async()=>{
-  if(!CU||!curEntryId||!confirm(t('nt.delQ')))return;
+  if(!CU||!curEntryId)return;
+  // 5.10: bez potvrzení, lišta se Zpět (zápisek i sdílení ve skupinách se vrátí)
+  const delId=curEntryId, gone=entries.find(e=>e.id===delId), shG=sharedGids('n',delId);
   try{
     unshareAll('n',curEntryId); // zrcadla ve skupinách pryč dřív, než poznámka zmizí
     await deleteDoc(doc(db,'users',CU.uid,'entries',curEntryId));
     entries=entries.filter(e=>e.id!==curEntryId);
+    if(gone) undoNote(t('undo.entry',{name:cutName(gone.title||'',40)||t('undo.noTitle')}),()=>undoRestoreItem('n',delId,doc(db,'users',CU.uid,'entries',delId),gone,shG,()=>{ if(!entries.some(e=>e.id===delId)) entries.unshift(gone); renderEntryList(); }));
     curEntryId=null; entryMood=''; entryDirty=false; curEntryPhoto=null; // 4.93: flush při skrytí appky ho nesmí vrátit
     const jt=document.getElementById('j-title'); if(jt) jt.value='';
     const jx=document.getElementById('j-text'); if(jx) jx.value='';
@@ -2233,7 +2236,7 @@ window.deleteEntry=async()=>{
     document.getElementById('j-empty').style.display='flex';
     setJournalOpen(false);
     renderEntryList();
-    toast(t('nt.deleted'));
+    if(!gone) toast(t('nt.deleted'));
   }catch(e){toast(t('nt.delFail',{err:userErr(e,'zápisek')}));}
 };
 
@@ -4350,7 +4353,7 @@ function renderArchivedHabits() {
     </div>`).join('');
 }
 // Smazání z archivu je nevratné → potvrdit
-window.deleteArchivedHabit=id=>{ if(confirm(t('hd.delQ'))) window.deleteHabit(id); };
+window.deleteArchivedHabit=async id=>{ if(await lpConfirm(t('hd.delQ'),{danger:true,ok:t('common.delete')})) window.deleteHabit(id); }; // historie se nevrací → potvrzení (5.10: vlastní okno)
 
 
 // ── CALENDAR ─────────────────────────────────────────
@@ -4540,7 +4543,7 @@ function renderEvList(){
         :fmtDate(ev._date,'wdm'))+(okEvTime(ev.time)?' · '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+'</div>'
       +(author?'<div class="ev-author">👤 '+esc(author)+'</div>':'')
       +'</div>'
-      +'<button class="ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
+      +'<button type="button" class="ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
       +'</div>';
   }).join('');
 }
@@ -5012,7 +5015,8 @@ window.migrateCalEvents = function() {
 let _calMigrating = false;
 async function migrateCalEventsTo(fid) {
   if(!CU || !calMigratable().length || _calMigrating || !calMigrateGids().includes(fid)) return;
-  if(!confirm(t('cal.migrateQ',{n:calMigratable().length, to:grpLabel(fid)}))) return;
+  if(!(await lpConfirm(t('cal.migrateQ',{n:calMigratable().length, to:grpLabel(fid)})))) return;
+  if(!CU || !calMigratable().length || _calMigrating || !calMigrateGids().includes(fid)) return; // mezitím změněno
   // Během dotazu mohla skupina kalendář vypnout → nepřesouvat
   if(!groupModShared(fid, 'cal')) { toast(t('cal.grpGone')); return; }
   _calMigrating = true;
@@ -5052,6 +5056,7 @@ window.calDayClick=(ds)=>{
     selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
     document.getElementById('m-event').querySelector('.mtitle').textContent=t('cal.newTitle');
     updateEvShareUI(false);
+    evMoreOpen(false);
     om('m-event');
     setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
   }
@@ -5070,8 +5075,8 @@ function showDayEventsModal(ds, dayEvs) {
       +'<div style="font-weight:600;color:var(--text1);overflow-wrap:anywhere">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
       +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type,ev))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
       +'</div>'
-      +'<button data-a0="'+esc(JSON.stringify(ev))+'" aria-label="'+tH('a11y.editName',{name:ev.name})+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">✏️</button>'
-      +'<button data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:4px">🗑️</button>'
+      +'<button type="button" class="ev-act" data-a0="'+esc(JSON.stringify(ev))+'" aria-label="'+tH('a11y.editName',{name:ev.name})+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();">✏️</button>'
+      +'<button type="button" class="ev-act ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();">🗑️</button>'
       +'</div>';
   }).join('');
   const modal = document.createElement('div');
@@ -5082,7 +5087,7 @@ function showDayEventsModal(ds, dayEvs) {
     <div style="margin-bottom:16px">${evHtml}</div>
     <div class="macts">
       <button class="btn-s" onclick="document.getElementById('m-day-events').remove()">${tH('common.close')}</button>
-      <button class="btn-p" onclick="addEventForDay('${ds}')">${tH('cal.addMore')}</button>
+      <button class="btn-p" data-a0="${esc(ds)}" onclick="addEventForDay(this.dataset.a0)">${tH('cal.addDay')}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -5102,6 +5107,7 @@ window.addEventForDay = (ds) => {
   selEvType('event', document.querySelector('.ev-type-btn[data-t="event"]'));
   document.getElementById('m-event').querySelector('.mtitle').textContent = t('cal.newTitle');
   updateEvShareUI(false);
+  evMoreOpen(false);
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
@@ -5129,6 +5135,7 @@ window.openEditEvent = function(ev) {
   }
   document.getElementById('m-event').querySelector('.mtitle').textContent = t('cal.editTitle');
   updateEvShareUI(!!(ev.shared), ev.groupId || (ev.shared ? familyId : null));
+  evMoreOpen(selEvType_val !== 'event' || ev.repeat === 'yes' || !!ev.dateEnd);
   om('m-event');
   setTimeout(() => document.getElementById('ev-name-inp')?.focus(), 100);
 };
@@ -5145,6 +5152,7 @@ window.openEvModal=()=>{
   selEvType('event',document.querySelector('.ev-type-btn[data-t="event"]'));
   document.getElementById('m-event').querySelector('.mtitle').textContent=t('cal.newTitle'); // po úpravě jinak zůstane „Upravit“
   updateEvShareUI(false);
+  evMoreOpen(false);
   om('m-event');
   setTimeout(()=>document.getElementById('ev-name-inp')?.focus(),100);
 };
@@ -5155,7 +5163,22 @@ window.calEmptyBday=()=>{
   selEvType_val='birthday';
   window.selEvType('birthday',document.querySelector('.ev-type-btn[data-t="birthday"]'));
   const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='yes';
+  evMoreOpen(true); // příklad ukáže typ a opakování
   const eni=document.getElementById('ev-name-inp'); if(eni){ eni.value=t('cal.es.exName'); setTimeout(()=>eni.select(),120); }
+};
+// Formulář události (5.10): typ, konec, opakování a viditelnost pod „Další možnosti“, souhrn v řádku
+function evMoreOpen(open) {
+  const d = document.getElementById('ev-more');
+  if(d) d.open = !!open;
+  evMoreSync();
+}
+window.evMoreSync = function() {
+  const el = document.getElementById('ev-more-sum');
+  if(!el) return;
+  const parts = [getEvIcon(selEvType_val) + ' ' + getEvLabel(selEvType_val)];
+  if(document.getElementById('ev-repeat-inp')?.value === 'yes') parts.push(t('cal.yearly'));
+  if(document.getElementById('ev-share-row')?.style.display !== 'none') parts.push(evShareLabel(selEvShareGroupId));
+  el.textContent = parts.join(' · ');
 };
 
 // ── Vlastní typy událostí ──────────────────────────────────────────────────
@@ -5212,10 +5235,22 @@ window.confirmCustomEvType=async()=>{
   toast(t('cal.catAdded',{name:label}));
 };
 window.delCustomEvType=async(key)=>{
-  if(!CU||!confirm(t('cal.catDelQ')))return;
-  const customEvTypes=(prof.customEvTypes||[]).filter(t=>t.key!==key);
+  if(!CU)return;
+  // 5.10: bez potvrzení, lišta se Zpět (typ se vrátí na stejné místo)
+  const all=prof.customEvTypes||[], idx=all.findIndex(x=>x.key===key), gone=all[idx];
+  const customEvTypes=all.filter(t=>t.key!==key);
   prof.customEvTypes=customEvTypes;
-  await updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes});
+  if(gone) undoNote(t('undo.evType',{name:cutName(gone.label||'',40)}),()=>{
+    const cur=prof.customEvTypes||[];
+    if(cur.some(x=>x.key===key)) return;
+    const next=[...cur]; next.splice(Math.min(idx,next.length),0,gone);
+    prof.customEvTypes=next;
+    renderEvTypeButtons();
+    selEvType(selEvType_val,[...document.querySelectorAll('.ev-type-btn')].find(b=>b.dataset.t===selEvType_val));
+    toast(t('undo.done'));
+    return updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes:next});
+  });
+  updateDoc(doc(db,'users',CU.uid,'profile','main'),{customEvTypes}).catch(e=>toast(t('common.saveFailed',{err:userErr(e,'calendar')})));
   if(selEvType_val===key){selEvType_val='event';}
   renderEvTypeButtons();
   const selBtn=[...document.querySelectorAll('.ev-type-btn')].find(b=>b.dataset.t===selEvType_val);
@@ -5232,6 +5267,7 @@ window.selEvType=(t,btn)=>{
   if(er) er.style.display=evHasEnd(t)?'block':'none';
   // Nové narozeniny: předvolit opakování každý rok
   if(t==='birthday'&&!editingEventId){ const ri=document.getElementById('ev-repeat-inp'); if(ri) ri.value='yes'; }
+  window.evMoreSync();
 };
 
 window.saveEvent=()=>guardSave('ev','#m-event .btn-p[onclick="saveEvent()"]',saveEventImpl);
@@ -5304,21 +5340,28 @@ window.delEvent=async(id)=>{
     const cid=pev.care==='food'?'food':pev.careId;
     // Plán jen u skutečného zrcadla (ID i kalendář sedí); jinak osiřelá kopie → smaže se jen událost (5.05)
     if(pp&&typeof cid==='string'&&pev.id==='pet_'+pp.id+'_'+cid&&(cid==='food'?!!pp.food:!!pp.care[cid])){
-      if(!confirm(cid==='food'?t('pet.delEvFoodQ'):t('pet.delEvQ',{care:pev.name})))return;
       petCareRemove(pp,cid);
-      toast(t('cal.deleted'));
+      petCareUndoNote(pp,cid,pev.name);
       return;
     }
   }
-  if(!confirm(t('cal.delQ')))return;
+  // 5.10: bez potvrzení, lišta se Zpět; obnoví se stejný dokument (autor, createdAt…) ve stejném kalendáři
   const allGids = [familyId, ...extraGroupIds].filter(Boolean);
   // Sdílená událost: do aktivity jen její skupina (maže se naslepo ve všech)
   const famEv = getAllFamilyEvents().find(e => e.id === id);
+  const myEv = events.find(e => e.id === id);
+  const uid = CU.uid, undoEv = famEv || myEv, undoGid = famEv ? (famEv.groupId || familyId) : null;
+  if(undoEv) undoNote(t('undo.event', {name: cutName(undoEv.name || '', 40)}), () => {
+    if(undoGid && !groupModShared(undoGid, 'cal')) { toast(t('cal.grpGone')); return; }
+    if(undoGid) unlogGroupActivity(undoGid, 'cal', 'del', gaTitle(undoEv.name||'', undoEv.date ? fmtDate(undoEv.date,'dm') : ''), undoEv.date ? {ref: undoEv.date} : null);
+    toast(t('undo.done'));
+    return setDoc(undoGid ? doc(db,'families',undoGid,'events',id) : doc(db,'users',uid,'events',id), undoData(undoEv));
+  });
   const delPromises = allGids.map(gid => deleteDoc(doc(db,'families',gid,'events',id)).catch(()=>{}));
   delPromises.push(deleteDoc(doc(db,'users',CU.uid,'events',id)).catch(()=>{}));
-  await Promise.all(delPromises);
   if(famEv) logGroupActivity(famEv.groupId || familyId, 'cal', 'del', gaTitle(famEv.name||'', famEv.date ? fmtDate(famEv.date,'dm') : ''), 1, famEv.date ? {ref: famEv.date} : null);
-  toast(t('cal.deleted'));
+  if(!undoEv) toast(t('cal.deleted'));
+  await Promise.all(delPromises);
 };
 
 function om(id){window.ctaAskClose?.();window.wtLinkClose?.();chainBarClose();document.getElementById('module-hint')?.remove();document.getElementById(id).classList.add('open');history.pushState({type:'modal',id},'')} // nabídka sdílení, propojení pití ani nápověda modulu (5.08) nesmí ležet nad oknem (4.85)
@@ -5473,6 +5516,8 @@ window.addEventListener('popstate', () => {
   if(!preApp) setTimeout(backGuard, 0); // po zpracování Zpět znovu založit pojistku, pokud jsme spadli na kořen
   // 0. Výběr času leží nad ostatními modaly, zavírá se první
   if (timePickerOpen()) { closeTimePicker(); return; }
+  const lpAskEl = document.getElementById('lp-ask'); // potvrzení / krátký text (5.10) leží nad vším
+  if (lpAskEl) { lpAskEl._cancel?.(); return; }
   // 0a. Prohlídka appky (4.84): o krok zpět, na prvním kroku zavřít
   if (document.getElementById('tour-step')) { window.prevTourStep(); return; }
   // 1. Zavři otevřený modal
@@ -5540,7 +5585,7 @@ function resetLoginBtn(){
   const b=document.getElementById('login-btn');
   if(b) b.innerHTML='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"/><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"/><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"/></svg> <span>'+tH('auth.google')+'</span>';
 }
-window.doLogout=async()=>{if(!confirm(t('auth.logoutConfirm')))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();};
+window.doLogout=async()=>{if(!(await lpConfirm(t('auth.logoutConfirm'),{ok:t('set.logout.btn')})))return;flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();};
 // Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování).
 // Příznak lp_fs_clear zůstane, dokud mazání neprojde → další start bez přihlášení to zkusí znovu (viz onAuthStateChanged).
 // Po terminate je db nepoužitelná: volající vždy končí přechodem na jinou stránku / reloadem. Nejvýš 2,5 s.
@@ -10716,7 +10761,7 @@ function updateEvShareUI(isShared, gid) {
   if (editingEventId) selEvShareGroupId = isShared && gid ? gid : null;
   else selEvShareGroupId = isShared ? (gid && gs.includes(gid) ? gid : gs[0] || null) : null;
   selEvShare = !!selEvShareGroupId;
-  if (!gs.length && !selEvShare) { row.style.display = 'none'; return; }
+  if (!gs.length && !selEvShare) { row.style.display = 'none'; window.evMoreSync?.(); return; }
   row.style.display = '';
   renderEvSharePick();
 }
@@ -10729,6 +10774,7 @@ function renderEvSharePick() {
   w.innerHTML = grpChoiceHTML({opts, cur, label: evShareLabel, aria: t('cal.f.visAria'), pick: 'setEvShareGroup', sheet: 'openEvShareSheet', disabled: editing})
     + (editing ? '<div class="ev-share-note">'+tH('cal.f.visEdit')+'</div>' : '');
   if (hadFocus) w.querySelector('.seg-btn.active, .grp-pick')?.focus(); // fokus zůstane na výběru
+  window.evMoreSync?.();
 }
 window.setEvShareGroup = (gid) => {
   if (editingEventId) return;
@@ -11314,7 +11360,7 @@ window.copyFamilyCode = (gid) => {
   const code = gid || familyId;
   if(!code) return;
   // Schránka nemusí být dostupná (http, starší prohlížeč, odepřeno) → nabídnout ruční kopii
-  Promise.resolve().then(()=>navigator.clipboard.writeText(code)).then(()=>toast(t('grp.codeCopied'))).catch(()=>prompt(t('grp.copyPrompt'), code));
+  Promise.resolve().then(()=>navigator.clipboard.writeText(code)).then(()=>toast(t('grp.codeCopied'))).catch(()=>lpCopy(t('grp.copyPrompt'), code));
 };
 
 // Pozvánka do skupiny: odkaz ?join=KÓD&od=JMÉNO (po přihlášení se appka zeptá, zda se připojit)
@@ -11360,7 +11406,7 @@ window.shareApp = async () => {
     catch(e) { if(e.name==='AbortError') return; }
   }
   try { await navigator.clipboard.writeText(text + '\n' + url); toast(t('set.share.copied')); }
-  catch(e) { prompt(t('set.share.copyPrompt'), url); }
+  catch(e) { lpCopy(t('set.share.copyPrompt'), url); }
 };
 
 // ── Dobrovolný příspěvek: IBAN, SPAYD (česká QR platba), QR generátor ──
@@ -11617,7 +11663,7 @@ window.copySupportAccount=async()=>{
   if(!supCfg) return;
   const acc=czAccountFromIban(supCfg.iban);
   try{ await navigator.clipboard.writeText(acc); toast(t('set.support.copied')); }
-  catch(e){ prompt(t('set.support.copyPrompt'), acc); }
+  catch(e){ lpCopy(t('set.support.copyPrompt'), acc); }
 };
 
 // ── Pozvánka do skupiny odkazem (?join=WORD-XXXXXX, starší WORD-NNNN) ─────────
@@ -11875,7 +11921,8 @@ window.toggleFamilyModule = async (key, gid = null) => {
   const oldVal = targetData[key];
   const newVal = !groupModVal(targetData, key); // checklist bez pole = zapnutý
   // Vypnutí modulu: data zůstanou, jen je skupina přestane vidět → potvrdit
-  if(!newVal && !confirm(t('grp.modOffQ', {mod: grpModName(key), name: cutName(targetData.groupName, 40) || t('grp.defName')}))) return;
+  if(!newVal && !(await lpConfirm(t('grp.modOffQ', {mod: grpModName(key), name: cutName(targetData.groupName, 40) || t('grp.defName')})))) return;
+  if(!newVal && !groupModVal(targetData, key)) return; // mezitím vypnuto jinde
   targetData[key] = newVal;
   try {
     await setDoc(doc(db,'families',targetGid), {[key]: newVal}, {merge:true});
@@ -12241,7 +12288,7 @@ window.removeFamilyMember = async (uid, gid) => {
   const gData = targetGid === familyId ? familyData : extraGroupsData[targetGid];
   // Odebírat smí jen správce té skupiny, o kterou jde
   if(!gData || gData.members?.[CU.uid]?.role !== 'admin' || uid === CU.uid) return;
-  if(!confirm(t('grp.rmQ'))) return;
+  if(!(await lpConfirm(t('grp.rmQ'),{danger:true}))) return;
   try {
     // deleteField – merge vnořené mapy by klíč nesmazal. Profil odebraného si uklidí jeho klient sám.
     await updateDoc(doc(db,'families',targetGid), {[`members.${uid}`]: deleteField()});
@@ -14060,9 +14107,10 @@ window.chDay = (gid, cid, ds) => {
   updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), entry).catch(chErr);
   chApplyLocal(gid, c, entry);
 };
-window.chLeave = (gid, cid) => {
+window.chLeave = async (gid, cid) => {
+  if(!chFind(gid, cid)) return;
+  if(!(await lpConfirm(t('ch.leaveConfirm'), {danger: true}))) return;
   const c = chFind(gid, cid); if(!CU || !c || !c.p?.[CU.uid]) return;
-  if(!confirm(t('ch.leaveConfirm'))) return;
   updateDoc(chRef(gid, cid), new FieldPath('p', CU.uid), deleteField()).catch(chErr);
   chApplyLocal(gid, c, null);
 };
@@ -14072,16 +14120,18 @@ window.chBoard = (gid, cid, on) => {
   updateDoc(chRef(gid, cid), {board: !!on}).catch(chErr);
   renderChallengeUI();
 };
-window.chEnd = (gid, cid) => {
+window.chEnd = async (gid, cid) => {
+  if(!chFind(gid, cid)) return;
+  if(!(await lpConfirm(t('ch.endConfirm')))) return;
   const c = chFind(gid, cid); if(!c || !chCanManage(gid, c) || chOver(c)) return;
-  if(!confirm(t('ch.endConfirm'))) return;
   c.ended = true;
   updateDoc(chRef(gid, cid), {ended: true}).catch(chErr);
   renderChallengeUI();
 };
-window.chDelete = (gid, cid) => {
+window.chDelete = async (gid, cid) => {
+  if(!chFind(gid, cid)) return;
+  if(!(await lpConfirm(t('ch.deleteConfirm'), {danger: true, ok: t('common.delete')}))) return;
   const c = chFind(gid, cid); if(!c || !chCanManage(gid, c)) return;
-  if(!confirm(t('ch.deleteConfirm'))) return;
   chByGroup[gid] = (chByGroup[gid] || []).filter(x => x.id !== cid);
   deleteDoc(chRef(gid, cid)).catch(chErr);
   cm('m-chal');
@@ -14914,9 +14964,10 @@ window.pcNickSave = cid => {
   pcLoadBoard(cid, true);
 };
 window.pcRemind = (cid, on) => { if(pcMe[cid]) { pcSyncProf(cid, !!on); toast(t(on ? 'pc.remindOn' : 'pc.remindOff')); } };
-window.pcLeave = cid => {
+window.pcLeave = async cid => {
   if(!CU || !pcMe[cid]) return;
-  if(!confirm(t('pc.leaveQ'))) return;
+  if(!(await lpConfirm(t('pc.leaveQ'), {danger: true}))) return;
+  if(!CU || !pcMe[cid]) return;
   const uid = CU.uid, prev = pcMe[cid];
   pcMe[cid] = null;
   pcPid(uid, cid).then(pid => deleteDoc(pcPartRef(cid, pid))).catch(e => {
@@ -14978,7 +15029,7 @@ function renderPcSettings() {
 window.copyUid = async () => {
   if(!CU) return;
   try { await navigator.clipboard.writeText(CU.uid); toast(t('pc.uidCopied')); }
-  catch(e) { prompt(t('pc.uid'), CU.uid); }
+  catch(e) { lpCopy(t('pc.uid'), CU.uid); }
 };
 
 // ── Přehled pro správce (4.73): statistiky, chyby a zprávy přes adminOverview / adminFeedback ──
@@ -15242,7 +15293,7 @@ window.pcAdmSave = async publish => {
   const goal = x && x.c.active && x.c.start <= toDS() ? x.c.goal : Math.round(Number(f.goal));
   if(!title) { toast(t('pc.adm.errTitle')); document.getElementById('pca-title')?.focus(); return; }
   if(!Number.isFinite(goal) || goal < 1 || goal > per.days) { toast(t('pc.adm.errGoal', {n: per.days})); document.getElementById('pca-goal')?.focus(); return; }
-  if(publish && !(x && x.c.active) && !confirm(t('pc.adm.publishQ', {title}))) return;
+  if(publish && !(x && x.c.active) && !(await lpConfirm(t('pc.adm.publishQ', {title})))) return;
   const active = !!publish || !!(x && x.c.active);
   // pub: výzva už někdy byla zveřejněná (pak ji nejde smazat); dokument bez pole se bere jako zveřejněný
   const data = {title, emoji, kind: x ? x.c.kind : f.kind, start: per.start, end: per.end, days: per.days, goal, active, pub: active || (!!x && x.data.pub !== false),
@@ -15323,7 +15374,8 @@ window.pcAdmToggle = async cid => {
   const x = pcAdmFind(cid);
   if(!x || !_pcAdm || _pcAdm.busy) return;
   const on = !x.c.active;
-  if(!confirm(t(on ? 'pc.adm.publishQ' : 'pc.adm.hideQ', {title: x.c.title}))) return;
+  if(!(await lpConfirm(t(on ? 'pc.adm.publishQ' : 'pc.adm.hideQ', {title: x.c.title})))) return;
+  if(!_pcAdm || _pcAdm.busy) return;
   try {
     await updateDoc(doc(db,'publicChallenges',cid), {active: on, pub: on || x.data.pub !== false, updatedAt: serverTimestamp()});
     toast(t(on ? 'pc.adm.published' : 'pc.adm.hidden'));
@@ -15333,7 +15385,7 @@ window.pcAdmToggle = async cid => {
 };
 window.pcAdmDelete = async cid => {
   const x = pcAdmFind(cid);
-  if(!x || x.c.active || x.data.pub !== false || !confirm(t('pc.adm.deleteQ', {title: x.c.title}))) return;
+  if(!x || x.c.active || x.data.pub !== false || !(await lpConfirm(t('pc.adm.deleteQ', {title: x.c.title}), {danger: true, ok: t('common.delete')}))) return;
   try {
     await deleteDoc(doc(db,'publicChallenges',cid));
     toast(t('pc.adm.deleted'));
@@ -15344,7 +15396,7 @@ window.pcAdmDelete = async cid => {
 // Odebrání účastníka: smazat účast a zablokovat nové přihlášení do této výzvy (jedna dávka); obojí podle ID účasti
 window.pcAdmRemove = async (cid, pid) => {
   const A = _pcAdm, r = A?.parts.find(p => p.pid === pid);
-  if(!A || !r || !PC_PID_RE.test(pid) || !confirm(t('pc.adm.removeQ', {nick: r.nick}))) return;
+  if(!A || !r || !PC_PID_RE.test(pid) || !(await lpConfirm(t('pc.adm.removeQ', {nick: r.nick}), {danger: true}))) return;
   try {
     const b = writeBatch(db);
     b.delete(pcPartRef(cid, pid));
@@ -15560,7 +15612,7 @@ function coachCheck() {
 function coachBusy() {
   const a = document.activeElement;
   if(a && a.matches?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return true;
-  if(document.querySelector('#cta-ask,#direct-input-modal,.tp-overlay.open,.moverlay.open')) return true;
+  if(document.querySelector('#cta-ask,#direct-input-modal,#lp-ask,.tp-overlay.open,.moverlay.open')) return true;
   return [...document.querySelectorAll('[role="dialog"]')].some(d => d.id !== 'coach-tip' && d.getClientRects().length);
 }
 function coachShow(c, el, anchor) {
@@ -16208,13 +16260,15 @@ window.sendRxComment = () => {
   inp.value = ''; window.rxCount();
   refreshRxUI(gid);
 };
-window.delRxComment = rid => {
+window.delRxComment = async rid => {
   if(!CU || !_rx || typeof rid !== 'string' || !rid) return;
   const {gid} = _rx, list = rxByGroup[gid] || [];
   const i = list.findIndex(r => r._id === rid);
   if(i < 0 || !(list[i].uid === CU.uid || list[i].to === CU.uid)) return;
-  if(!confirm(t('rx.delConfirm'))) return;
-  list.splice(i, 1);
+  if(!(await lpConfirm(t('rx.delConfirm'), {danger: true, ok: t('common.delete')}))) return;
+  const j = (rxByGroup[gid] || []).findIndex(r => r._id === rid); // seznam se mezitím mohl změnit
+  if(j < 0) return;
+  rxByGroup[gid].splice(j, 1);
   deleteDoc(doc(db,'families',gid,'reactions',rid)).catch(e => console.warn('[LP] komentar', e?.code || e?.name));
   refreshRxUI(gid);
 };
@@ -16654,7 +16708,7 @@ window.setGroupQuiet = () => {
 window.openGroupNotifSettings = () => {
   cm('m-grpfeed');
   sp('settings');
-  setGrpOpen(document.getElementById('gn-box')); // je ve sbalené skupině Pokročilé (4.68)
+  setGrpOpen(document.getElementById('gn-box')); // sbalená část sekce Upozornění (5.10)
   setTimeout(() => document.getElementById('gn-box')?.scrollIntoView({block:'start', behavior:'smooth'}), 200);
 };
 
@@ -16892,7 +16946,8 @@ window.generateMealPlanAI = async () => {
   // Člen bez práv nesmí přepsat rodinný jídelníček
   if(!canEditMealPlan()) { toast(t('mp.adminOnlyShared')); return; }
   if(_mealAiBusy) return;
-  if(mealPlanHasAny(currentMealPlan()) && !confirm(t('mp.aiOverwrite'))) return;
+  if(mealPlanHasAny(currentMealPlan()) && !(await lpConfirm(t('mp.aiOverwrite')))) return;
+  if(_mealAiBusy || !canEditMealPlan()) return; // mezitím spuštěno / změněna práva
   _mealAiBusy = true;
   // Cíl se určí předem – přepnutí pohledu během generování nesmí změnit, kam se plán zapíše
   const fid = mealGid(), shared = !!fid;
@@ -17902,7 +17957,8 @@ window.confirmAddToMealplan = async () => {
   const target = canShare && mealGroups().includes(_mealplanTarget) ? _mealplanTarget : '';
   // Obsazené místo: zeptat se, než se přepíše (4.83)
   const prev = String(mealPlanOf(target)?.['d'+_mealplanSelDay]?.['m'+_mealplanSelMeal] || '').trim();
-  if(prev && prev !== String(lastRecipe.name || '').trim() && !confirm(t('mp.slotTaken', {name: prev}))) return;
+  if(prev && prev !== String(lastRecipe.name || '').trim() && !(await lpConfirm(t('mp.slotTaken', {name: prev})))) return;
+  if(!lastRecipe) return;
   if(!saveMealPlanItem('d'+_mealplanSelDay, 'm'+_mealplanSelMeal, lastRecipe.name, target)) return;
   document.getElementById('add-to-mealplan-modal')?.remove();
   // Jídelníček ukáže plán, kam se jídlo uložilo
@@ -18069,6 +18125,13 @@ const clOps = {
   set: (id, patch) => items => { const it = items.find(i => i.id === id); if (it) Object.assign(it, patch); return items; },
   del: id => items => items.filter(i => i.id !== id),
   clearDone: () => items => items.filter(i => !i.done),
+  // Zpět po smazání (5.10): položky [{item, idx}] zpět na původní místa (co mezitím vzniklo jinde, zůstane)
+  restore: back => items => {
+    [...back].sort((a, b) => a.idx - b.idx).forEach(({item, idx}) => {
+      if (!items.some(i => i.id === item.id)) items.splice(Math.min(idx, items.length), 0, {...item});
+    });
+    return items;
+  },
   // Prohození se sousední nesplněnou položkou
   move: (id, dir) => items => {
     const undone = items.filter(i => !i.done), k = undone.findIndex(i => i.id === id), j = k + dir;
@@ -18156,8 +18219,8 @@ function renderChecklist() {
       ${sortedItems.length ? sortedItems.map(item => {
         const isExpanded = expandedCheckItemId === item.id;
         return `
-        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}" data-cid="${esc(item.id)}"${!item.done && !expandedCheckItemId ? ` data-drag-id="${esc(item.id)}"` : ''}>
-          <button class="cl-check" data-a0="${esc(item.id)}" onclick="toggleCheckItem(this.dataset.a0)">
+        <div class="cl-item ${item.done ? 'done' : ''} ${isExpanded ? 'cl-item-open' : ''}" data-cid="${esc(item.id)}"${!item.done && !expandedCheckItemId ? ` data-drag-id="${esc(item.id)}"` : ''}${!isExpanded ? ` data-a0="${esc(item.id)}" onclick="clRowTap(event,this)"` : ''}>
+          <button class="cl-check" data-a0="${esc(item.id)}" onclick="toggleCheckItem(this.dataset.a0)" aria-pressed="${!!item.done}" aria-label="${tH('cl.checkAria', {name: item.text || '📷'})}">
             ${item.done ? '✓' : ''}
           </button>
           <div class="cl-item-body" style="flex:1;min-width:0">
@@ -18168,15 +18231,17 @@ function renderChecklist() {
                 <button class="cl-edit-cancel" onclick="cancelCheckEdit()">${tH('common.cancel')}</button>
                 <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 ${tH('hd.delete')}</button>
               </div>
+              <div class="cl-item-tools">
+                <button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)"><span aria-hidden="true">📷</span> ${tH('cl.photoBtn')}</button>
+                ${!item.done ? `<button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" aria-label="${tH('cl.up')}">↑</button><button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" aria-label="${tH('cl.down')}">↓</button>` : ''}
+              </div>
             ` : `
-              <span class="cl-item-text" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)">${esc(item.text)}</span>
+              <span class="cl-item-text">${esc(item.text)}</span>
             `}
             ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.photoDel')}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
-          ${!isExpanded ? `<button class="cl-item-photo-btn cl-always-show" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)" title="${tH('cl.addPhoto')}">📷</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" title="${tH('cl.up')}">↑</button>` : ''}
-          ${!isExpanded && !item.done ? `<button class="cl-item-move" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" title="${tH('cl.down')}">↓</button>` : ''}
-          ${!isExpanded ? `<button class="cl-item-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.delName',{name:item.text})}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
+          ${!isExpanded ? `<button type="button" class="cl-item-edit" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)" aria-label="${tH('a11y.editName',{name:item.text || '📷'})}"><span aria-hidden="true">✏️</span></button>` : ''}
+          ${!isExpanded ? `<button type="button" class="cl-item-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.delName',{name:item.text || '📷'})}" onclick="deleteCheckItem(this.dataset.a0)">×</button>` : ''}
         </div>`;
       }).join('') : emptyHTML('checklist')}
     </div>
@@ -18279,6 +18344,13 @@ window.toggleCheckItem = function(itemId) {
   renderChecklist();
 };
 
+// Klepnutí na řádek položky = odškrtnutí (5.10); úprava, fotka a pořadí přes ✏️, tah řádkem dál řadí
+window.clRowTap = function(e, row) {
+  if (e.target.closest('button,input,textarea,select,label,a,img')) return;
+  if (Date.now() < _dragSuppressClick || !row?.isConnected) return; // puštění po přetažení
+  try { if (String(window.getSelection?.() || '')) return; } catch(err) {} // označování textu myší
+  window.toggleCheckItem(row.dataset.a0);
+};
 window.expandCheckItem = function(itemId) {
   expandedCheckItemId = expandedCheckItemId === itemId ? null : itemId;
   renderChecklist();
@@ -18306,11 +18378,24 @@ window.saveExpandedCheckItem = function(itemId) {
 window.deleteCheckItem = function(itemId) {
   const list = clEditFind(activeChecklist);
   if (!list) return;
-  const gone = list.items.find(i => i.id === itemId);
+  const idx = list.items.findIndex(i => i.id === itemId), gone = list.items[idx];
+  if (expandedCheckItemId === itemId) expandedCheckItemId = null;
   clSave(list, clOps.del(itemId)).catch(clSaveErr);
-  if (gone) gaCheck(list, 'del', gone.text);
+  if (gone) { gaCheck(list, 'del', gone.text); clUndoNote(list.id, [{item: clCopyItems([gone])[0], idx}], t('undo.item', {name: cutName(gone.text || '', 40) || '📷'})); }
   renderChecklist();
 };
+// Lišta Zpět u položek checklistu (5.10): vrací do seznamu, který byl vidět při mazání
+function clUndoNote(listId, back, msg) {
+  if (!back.length) return;
+  undoNote(msg, () => {
+    const l = clEditFind(listId);
+    if (!l) { toast(t('cl.gone')); return; }
+    toast(t('undo.done'));
+    const p = clSave(l, clOps.restore(back));
+    renderChecklist();
+    return p.catch(clSaveErr);
+  });
+}
 
 // ── Checklist foto ────────────────────────────────────────
 window.triggerClItemPhoto = function(itemId) {
@@ -18368,16 +18453,17 @@ window.showClItemPhoto = function(itemId, photoIdx=0) {
 window.clearDoneChecklistItems = function() {
   const list = clEditFind(activeChecklist);
   if (!list) return;
-  const nDone = list.items.filter(i => i.done).length;
+  const back = clCopyItems(list.items).map((item, idx) => ({item, idx})).filter(x => x.item.done);
+  const nDone = back.length;
   clSave(list, clOps.clearDone()).catch(clSaveErr);
-  if (nDone) gaCheck(list, 'clear', '', nDone);
+  if (nDone) { gaCheck(list, 'clear', '', nDone); clUndoNote(list.id, back, tN('shop.deletedN', nDone)); } // 5.10: Zpět
   renderChecklist();
 };
 
-window.addChecklist = function() {
-  const name = prompt(t('cl.newPrompt'));
-  if (!name?.trim()) return;
-  const newList = {id: genId(), name: name.trim(), items: [], shared: false, createdAt: Date.now()};
+window.addChecklist = async function() {
+  const name = await lpPrompt(t('cl.newPrompt'), {ok: t('cl.create'), ph: t('cl.newPh'), max: 60}); // 5.10: okno místo prompt()
+  if (!name?.trim() || !CU) return;
+  const newList = {id: genId(), name: cutName(name.trim(), 60), items: [], shared: false, createdAt: Date.now()};
   activeChecklist = newList.id;
   saveChecklistDoc(newList).catch(clSaveErr);
 };
@@ -18390,20 +18476,33 @@ window.deleteChecklist = async function(id) {
   // Vlastní sdílený seznam: smaže se i kopie ve skupině (zmizí i ostatním); bez načtené skupiny nic
   const shGid = !isFamilyList && list?.shared ? clSharedGid(list) : null;
   if (!isFamilyList && list?.shared && !clEditFind(id)) return;
-  if (!confirm(t(shGid ? 'cl.delSharedQ' : 'cl.delQ', {name: list?.name, grp: shGid ? grpLabel(shGid) : ''}))) return;
+  // 5.10: bez potvrzení, lišta se Zpět – seznam se vrátí celý (položky, autor, createdAt, sdílení)
+  const uid = CU.uid, fid = isFamilyList ? list._gid : shGid;
+  const copy = shGid ? clFind(id) : null; // kopie ve skupině (zdroj pravdy sdíleného seznamu)
+  const clData = o => { const {_family, _gid, ...d} = o; return {...d, items: clCopyItems(d.items)}; }; // pole jako v saveChecklistDoc (shared zůstává)
+  const ownData = !isFamilyList ? clData(checklists.find(c => c.id === id) || list) : null;
+  const grpData = isFamilyList ? clData(list) : (copy && copy._family ? clData(copy) : null);
   if (shGid) {
     try { await deleteDoc(doc(db,'families',shGid,'checklists',id)); }
     catch(err) { toast('⚠️ '+userErr(err,'seznam')); return; }
     logGroupActivity(shGid, 'check', 'del', list?.name || '');
     await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
   } else if (isFamilyList) {
-    const fid = list._gid;
     if (!fid) return;
     await deleteDoc(doc(db,'families',fid,'checklists',id));
     logGroupActivity(fid, 'check', 'del', list?.name || '');
   } else {
     await deleteDoc(doc(db,'users',CU.uid,'checklists',id));
   }
+  undoNote(t('undo.list', {name: cutName(list?.name || '', 40)}), () => {
+    if (fid && grpData && !checkGroups().includes(fid)) { toast(t('cl.gone')); return; }
+    const w = [];
+    if (ownData) w.push(setDoc(doc(db,'users',uid,'checklists',id), ownData));
+    if (fid && grpData) { w.push(setDoc(doc(db,'families',fid,'checklists',id), grpData)); unlogGroupActivity(fid, 'check', 'del', list?.name || ''); }
+    activeChecklist = id;
+    toast(t('undo.done'));
+    return Promise.all(w);
+  });
   activeChecklist = allChecklists().find(c => c.id !== id)?.id || null;
 };
 
@@ -18624,6 +18723,20 @@ function petCareRemove(p, cid) {
   updateDoc(petRef(p), upd).catch(petErr);
   deleteDoc(petEvRef(p, cid)).catch(() => {});
 }
+// Zpět po odebrání položky plánu (5.10): péče / granule zpět do dokumentu mazlíčka i zrcadlo v kalendáři
+function petCareUndoNote(p, cid, label) {
+  const val = cid === 'food' ? p.food : p.care?.[cid];
+  if(!val) { toast(t('cal.deleted')); return; }
+  const snap = JSON.parse(JSON.stringify(val));
+  undoNote(t('undo.event', {name: cutName(label || (cid === 'food' ? t('pet.food.ev', {name: p.name}) : snap.name), 40)}), () => {
+    const cur = petFind(p.id);
+    if(!cur) return; // mazlíček mezitím smazán
+    const pNew = cid === 'food' ? {...cur, food: snap} : {...cur, care: {...cur.care, [cid]: snap}};
+    toast(t('undo.done'));
+    petEvSync(pNew, cid, true);
+    return updateDoc(petRef(cur), {[cid === 'food' ? 'food' : 'care.' + cid]: snap, updatedAt: Date.now()});
+  });
+}
 // Událost z kalendáře: úprava vede do Mazlíčka (zdroj pravdy), ne do formuláře události
 function openPetFromEvent(ev) {
   if(CU && !_fireSubs['pets']) subPets();
@@ -18831,12 +18944,20 @@ window.petSave = () => {
 };
 window.petDelete = () => {
   const p = _petForm?.id ? petFind(_petForm.id) : null;
-  if(!p || !petCanManage(p) || !confirm(t('pet.delQ', {name: p.name}))) return;
+  if(!p || !petCanManage(p)) return;
   petMirrorsDel(p);
   deleteDoc(petRef(p)).catch(petErr);
   if(p._gid) logGroupActivity(p._gid, 'cal', 'del', gaTitle(p.name));
   petClose('m-pet');
-  toast(t('pet.deleted', {name: p.name}));
+  // 5.10: Zpět místo potvrzení – mazlíček se vrátí celý (plán, historie, granule, vlastník) i se zrcadly v kalendáři
+  const back = petDataOut(p, p.owner);
+  undoNote(t('pet.deleted', {name: p.name}), () => {
+    if(p._gid && !myGroupIds().includes(p._gid)) return;
+    if(p._gid) unlogGroupActivity(p._gid, 'cal', 'del', gaTitle(p.name));
+    petSyncAll(p, true);
+    toast(t('undo.done'));
+    return setDoc(petRef(p), back);
+  });
 };
 
 // Plán péče po založení (#m-petplan)
@@ -18950,10 +19071,11 @@ window.petCareSave = () => {
 };
 window.petCareDel = () => {
   const s = _petCare, p = s ? petFind(s.pid) : null, c = p && s.cid ? p.care[s.cid] : null;
-  if(!c || !confirm(t('pet.care.delQ', {care: c.name}))) return;
+  if(!c) return;
   petCareRemove(p, s.cid);
   if(p._gid) logGroupActivity(p._gid, 'cal', 'del', gaTitle(c.name + ' – ' + p.name));
   petClose('m-petcare');
+  petCareUndoNote(p, s.cid, c.name); // 5.10: Zpět místo potvrzení
 };
 
 // Hotovo (#m-petdone): záznam do historie, posun termínu od skutečného data
@@ -19051,9 +19173,10 @@ window.petFoodSave = () => {
 };
 window.petFoodStop = () => {
   const p = petFind(document.getElementById('m-petfood')?.dataset.pid || '');
-  if(!p || !confirm(t('pet.food.stopQ'))) return;
+  if(!p) return;
   petCareRemove(p, 'food');
   petClose('m-petfood');
+  petCareUndoNote(p, 'food', '🥣 ' + p.name); // 5.10: Zpět místo potvrzení
 };
 window.petFoodNewPack = () => {
   const p = petCur();
@@ -19120,7 +19243,7 @@ window.petShare = () => {
   if(!CU || !p || p._gid) return;
   const gs = myGroupIds().filter(g => groupModShared(g, 'cal'));
   if(!gs.length) { toast(t('pet.shareNoCal'), 5000); return; }
-  const go = g => { if(confirm(t('pet.shareQ', {name: p.name, to: grpLabel(g)}))) petShareTo(p.id, g); };
+  const go = async g => { if(await lpConfirm(t('pet.shareQ', {name: p.name, to: grpLabel(g)}))) petShareTo(p.id, g); };
   if(gs.length === 1) go(gs[0]);
   else openGrpChoiceSheet({opts: gs, cur: '', label: grpLabel, aria: t('pet.shareTo'), focusSel: '.pet-share-btn', onPick: go});
 };
@@ -19141,7 +19264,8 @@ window.petUnshare = async () => {
   const p = petCur();
   if(!CU || !p?._gid || !petCanManage(p)) return;
   const gid = p._gid;
-  if(!confirm(t('pet.unshareQ', {name: p.name, to: grpLabel(gid)}))) return;
+  if(!(await lpConfirm(t('pet.unshareQ', {name: p.name, to: grpLabel(gid)})))) return;
+  if(!CU || petCur()?.id !== p.id || p._gid !== gid) return;
   if(navigator.onLine === false) { toast(t('pet.offline')); return; }
   const uid = CU.uid;
   try { await setDoc(doc(db, 'users', uid, 'pets', p.id), petDataOut(p, uid)); }
@@ -19245,12 +19369,18 @@ function buildNav(){
   const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist','pets'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
   const settings={id:'settings',emoji:'🔧',label:t('nav.settings')};
-  let all;
+  let all, nPrim=4;
+  // Vlastní výběr do lišty (5.10, prof.navMods): jen zapnuté moduly (v jednoduchém režimu bez parťáka), max. 3
+  const pick=navPicked(isSimple()?uMods:[...rex,...uMods]);
   if(isSimple()){
     // Jednoduchý režim (4.69): Domů · 3 moduly · Více (parťák první, Nastavení, ostatní moduly); parťák i z banneru 💬
-    const first=simpleModOrder().map(id=>uMods.find(m=>m.id===id)).filter(Boolean).slice(0,3);
+    const first=pick||simpleModOrder().map(id=>uMods.find(m=>m.id===id)).filter(Boolean).slice(0,3);
     const rexS=showRex?[{id:'avatar',emoji:av.emoji,label:t('nav.rexMore',{av:av.name}),aria:t('nav.rexAria',{av:av.name})}]:[];
     all=[home,...first,...rexS,settings,...uMods.filter(m=>!first.includes(m))];
+    if(pick) nPrim=1+pick.length;
+  } else if(pick){
+    all=[home,...pick,...[...rex,...uMods].filter(m=>!pick.includes(m)),settings];
+    nPrim=1+pick.length;
   } else {
   // Šablona (4.59): Domů · hlavní moduly šablony · parťák · ostatní; bez šablony Domů · parťák · moduly
   const first=(Object.prototype.hasOwnProperty.call(NAV_TPL,prof.template)?NAV_TPL[prof.template]:[]).map(id=>uMods.find(m=>m.id===id)).filter(Boolean);
@@ -19258,7 +19388,9 @@ function buildNav(){
   }
   const hn=document.getElementById('hnav'); if(hn) hn.innerHTML=all.map(p=>`<button class="nbtn" id="nb-${p.id}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0)"><span>${p.emoji}</span><span class="nl">${esc(p.label)}</span></button>`).join('');
   // Build bottom nav - 4 primary + More
-  const primary=all.slice(0,4);
+  const primary=all.slice(0,nPrim);
+  _navBar=primary.slice(1).map(p=>p.id); // výběr v Nastavení ukazuje, co v liště skutečně je
+  _navCands=(isSimple()?uMods:[...rex,...uMods]).map(p=>({id:p.id,emoji:p.emoji,label:p.label}));
   const more=all.slice(4);
   const bni=document.getElementById('bottom-nav-inner');
   // Více (4.72): parťák a Nastavení, tvoje moduly mimo lištu, vypnuté moduly po kategoriích (zapnutí přímo z panelu)
@@ -19266,8 +19398,49 @@ function buildNav(){
   _bnMore=more;
   if(bni) bni.innerHTML=primary.map(p=>`<button class="bnbtn" id="bn-${p.id}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0)"><span class="bn-em" aria-hidden="true">${p.emoji}</span><span class="bn-lbl">${esc(p.label)}</span></button>`).join('')+(more.length||off.length?`<button class="bnbtn" id="bn-more" onclick="togBnMore()"><span class="bn-em" aria-hidden="true">⋯</span><span class="bn-lbl">${tH('nav.more')}</span></button>`:'');
   renderBnMore();
+  renderNavPick();
   const cur=document.querySelector('.page.active')?.id?.slice(2); if(cur) markBn(cur); // přestavba lišty (změna modulů)
 }
+// ── Upravitelná spodní lišta (5.10) ── prof.navMods: pole id (max. 3) mezi Domů a Více; chybí = výchozí pořadí,
+// [] = jen Domů a Více. Vypnutý modul z výběru vypadne; když nezbude nic z neprázdného výběru, platí výchozí.
+const NAV_MAX=3;
+let _navBar=[], _navCands=[];
+function navPicked(cands){
+  const sel=prof?.navMods;
+  if(!Array.isArray(sel)) return null;
+  const out=[...new Set(sel)].map(id=>cands.find(c=>c.id===id)).filter(Boolean).slice(0,NAV_MAX);
+  return out.length||!sel.length?out:null;
+}
+function renderNavPick(){
+  const el=document.getElementById('set-navmods'); if(!el) return;
+  const on=_navBar.filter(id=>_navCands.some(c=>c.id===id));
+  const custom=Array.isArray(prof?.navMods);
+  el.innerHTML=`<div class="set-sub" id="set-nav-t">${tH('set.nav.title')}</div><div class="setsec-d">${tH('set.nav.desc')}</div>`
+    +`<div class="nav-pick" role="group" aria-labelledby="set-nav-t">${_navCands.map(c=>{const k=on.indexOf(c.id);
+      return `<button type="button" class="nav-chip${k>=0?' on':''}" aria-pressed="${k>=0}" data-a0="${esc(c.id)}" onclick="navModTog(this.dataset.a0)"><span class="nav-chip-n" aria-hidden="true">${k>=0?k+1:''}</span><span aria-hidden="true">${esc(c.emoji)}</span> ${esc(c.label)}</button>`;}).join('')}</div>`
+    +(custom?`<button type="button" class="nav-reset" onclick="navModReset()">${tH('set.nav.reset')}</button>`:'');
+}
+function navModSave(v){
+  if(!CU||!prof) return;
+  const uid=CU.uid, prev=prof.navMods;
+  if(v===null) delete prof.navMods; else prof.navMods=v;
+  buildNav();
+  updateDoc(doc(db,'users',uid,'profile','main'),{navMods:v===null?deleteField():v}).catch(e=>{
+    if(CU?.uid!==uid||!prof) return;
+    if(prev===undefined) delete prof.navMods; else prof.navMods=prev;
+    buildNav();
+    toast(t('common.saveFailed',{err:userErr(e,'profil')}));
+  });
+}
+window.navModTog=id=>{
+  if(!_navCands.some(c=>c.id===id)) return;
+  const cur=_navBar.filter(x=>_navCands.some(c=>c.id===x));
+  if(cur.includes(id)) navModSave(cur.filter(x=>x!==id));
+  else if(cur.length>=NAV_MAX) toast(t('set.nav.max',{n:NAV_MAX}));
+  else navModSave([...cur,id]);
+  document.querySelector(`#set-navmods .nav-chip[data-a0="${CSS.escape(id)}"]`)?.focus();
+};
+window.navModReset=()=>{ navModSave(null); toast(t('set.nav.resetDone')); document.querySelector('#set-navmods .nav-chip')?.focus(); };
 // Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
 const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','water']};
 // Kategorie modulů v panelu Více (4.72)
@@ -19276,23 +19449,63 @@ let _bnMore=[];
 const bnmTile=p=>`<button type="button" class="bn-more-item" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bn-more-lbl">${esc(p.label)}</span></button>`;
 function renderBnMore(){
   const bmp=document.getElementById('bn-more-panel'); if(!bmp) return;
+  // Hledání (5.10): pole nahoře filtruje moduly a sekce Nastavení; obsah pod ním se překresluje bez ztráty fokusu
+  bmp.innerHTML=`<div class="bnm-search-w"><input type="search" class="finp bnm-search" id="bnm-q" autocomplete="off" enterkeyhint="search" placeholder="${tH('nav.searchPh')}" aria-label="${tH('nav.searchPh')}" aria-controls="bnm-body" oninput="bnmFilter(this.value)"></div><div id="bnm-body"></div>`;
+  bnmBody('');
+}
+function bnmBody(q){
+  const body=document.getElementById('bnm-body'); if(!body) return;
+  if(q){ body.innerHTML=bnmResults(q); return; }
   const mods=prof?.modules||[], isMod=p=>MODS.some(m=>m.id===p.id&&m.id!=='rex');
   const rows=_bnMore.filter(p=>!isMod(p)), mine=_bnMore.filter(isMod);
   let h=rows.map(p=>`<button type="button" class="bnm-row" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bnm-row-l">${esc(p.label)}</span><span class="bnm-row-a" aria-hidden="true">›</span></button>`).join('');
   if(mine.length) h+=`<div class="bnm-sec">${tH('nav.moreMine')}</div><div class="bnm-grid">${mine.map(bnmTile).join('')}</div>`;
   const cats=MORE_CATS.map(c=>({id:c.id,ms:c.mods.map(id=>MODS.find(m=>m.id===id)).filter(m=>m&&!mods.includes(m.id))})).filter(c=>c.ms.length);
-  if(cats.length) h+=`<div class="bnm-sec">${tH('nav.moreAdd')}</div>`+cats.map(c=>`<div class="bnm-cat"><div class="bnm-cat-l">${tH('nav.cat.'+c.id)}</div><div class="bnm-grid">${c.ms.map(m=>`<button type="button" class="bn-more-item bnm-off" data-a0="${esc(m.id)}" aria-label="${tH('nav.modAddAria',{name:modName(m)})}" onclick="bnmPick(this.dataset.a0)"><span class="bn-more-em" aria-hidden="true">${m.emoji}</span><span class="bn-more-lbl">${esc(modName(m))}</span><span class="bnm-off-tag" aria-hidden="true">${tH('nav.modOffTag')}</span></button>`).join('')}</div></div>`).join('');
-  bmp.innerHTML=h;
+  if(cats.length) h+=`<div class="bnm-sec">${tH('nav.moreAdd')}</div>`+cats.map(c=>`<div class="bnm-cat"><div class="bnm-cat-l">${tH('nav.cat.'+c.id)}</div><div class="bnm-grid">${c.ms.map(bnmOffTile).join('')}</div></div>`).join('');
+  body.innerHTML=h;
 }
+const bnmOffTile=m=>`<button type="button" class="bn-more-item bnm-off" data-a0="${esc(m.id)}" aria-label="${tH('nav.modAddAria',{name:modName(m)})}" onclick="bnmPick(this.dataset.a0)"><span class="bn-more-em" aria-hidden="true">${m.emoji}</span><span class="bn-more-lbl">${esc(modName(m))}</span><span class="bnm-off-tag" aria-hidden="true">${tH('nav.modOffTag')}</span></button>`;
+// Sekce Nastavení pro hledání: [id prvku, klíč názvu, další klíče k prohledání]
+const SET_FIND=[['set-sec-profile','set.profile.title',['set.profile.name','set.profile.changeAv']],['set-sec-mods','set.mods.title',['set.nav.title','set.mods.dash']],
+  ['set-sec-notif','set.notif.title',['set.notif.which','set.notif.yday','set.notif.weekly','set.notif.grpT']],['setgrp-gn','set.notif.grpT',['gn.quiet']],
+  ['set-sec-groups','set.groups.title',['set.groups.joinCode']],['set-sec-look','set.look.title',['set.theme.dark','set.theme.light','set.theme.orange']],
+  ['set-lang-t','set.lang.title',[]],['set-sec-simple','set.simple.title',[]],['set-game','set.adv.t',['set.adv.d']],['set-sec-tour','set.tour.title',[]],
+  ['set-sec-share','set.share.title',[]],['set-sec-contact','set.contact.title',[]],['set-account','set.account.title',['set.account.export','set.account.delete']],
+  ['set-sec-logout','set.logout.title',['set.logout.btn']]];
+const bnmNorm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').trim();
+function bnmResults(q){
+  const n=bnmNorm(q);
+  if(!n) return '';
+  const hit=(...ss)=>ss.some(x=>bnmNorm(x).includes(n));
+  const mods=prof?.modules||[];
+  const onM=[..._bnMore, ...(_navBar.map(id=>_navCands.find(c=>c.id===id)).filter(Boolean))].filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i&&hit(p.label));
+  const offM=MODS.filter(m=>m.id!=='rex'&&!mods.includes(m.id)&&MORE_CATS.some(c=>c.mods.includes(m.id))&&hit(modName(m),modDesc(m)));
+  const sets=SET_FIND.filter(([, k, ks])=>hit(t(k),...ks.map(x=>t(x))));
+  let h='';
+  if(onM.length) h+=`<div class="bnm-sec">${tH('nav.moreMine')}</div><div class="bnm-grid">${onM.map(bnmTile).join('')}</div>`;
+  if(offM.length) h+=`<div class="bnm-sec">${tH('nav.moreAdd')}</div><div class="bnm-grid">${offM.map(bnmOffTile).join('')}</div>`;
+  if(sets.length) h+=`<div class="bnm-sec">${tH('nav.settings')}</div>`+sets.map(([id,k])=>`<button type="button" class="bnm-row" data-a0="${esc(id)}" onclick="closeBnMore();setJump(this.dataset.a0)"><span class="bnm-row-l">${tH(k)}</span><span class="bnm-row-a" aria-hidden="true">›</span></button>`).join('');
+  return h||`<div class="bnm-none" role="status">${tH('nav.searchNone')}</div>`;
+}
+window.bnmFilter=q=>bnmBody(String(q||'').slice(0,40));
 // Vypnutý modul z Více: malý list (emoji, popis, Zapnout / Zpět) přímo v panelu
 window.bnmPick=id=>{
-  const m=MODS.find(x=>x.id===id), bmp=document.getElementById('bn-more-panel');
+  const m=MODS.find(x=>x.id===id), bmp=document.getElementById('bnm-body')||document.getElementById('bn-more-panel');
   if(!m||!bmp) return;
   bmp.innerHTML=`<div class="bnm-pick" role="group" aria-label="${esc(modName(m))}"><div class="bnm-pick-em" aria-hidden="true">${m.emoji}</div><div class="bnm-pick-n">${esc(modName(m))}</div><p class="bnm-pick-d">${esc(modDesc(m))}</p>`
-    +`<div class="bnm-pick-btns"><button type="button" class="btn-s" onclick="renderBnMore()">${tH('nav.modBack')}</button><button type="button" class="btn-p" data-a0="${esc(m.id)}" onclick="bnmOn(this.dataset.a0)">${tH('nav.modOn')}</button></div></div>`;
+    +`<div class="bnm-pick-btns"><button type="button" class="btn-s" onclick="bnmBody(document.getElementById('bnm-q')?.value||'')">${tH('nav.modBack')}</button><button type="button" class="btn-p" data-a0="${esc(m.id)}" onclick="bnmOn(this.dataset.a0)">${tH('nav.modOn')}</button></div></div>`;
   bmp.querySelector('.btn-p')?.focus();
 };
-window.renderBnMore=renderBnMore;
+window.renderBnMore=renderBnMore; window.bnmBody=bnmBody;
+// Rozcestník Nastavení a výsledky hledání (5.10): otevře Nastavení, sbalenou skupinu a posune na sekci
+window.setJump=id=>{
+  if(!document.getElementById('p-settings')?.classList.contains('active')) window.sp('settings');
+  const el=document.getElementById(id); if(!el) return;
+  setGrpOpen(el);
+  if(el.tagName==='DETAILS'&&!el.open) el.open=true;
+  const smooth=!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  requestAnimationFrame(()=>{ el.scrollIntoView({block:'start',behavior:smooth?'smooth':'auto'}); const f=el.querySelector('summary,button,input,select'); try{ f?.focus({preventScroll:true}); }catch(e){} });
+};
 // Zapnutí: optimisticky (lišta a modul hned, i offline), zápis do profilu na pozadí; při chybě zápisu zpět + toast
 window.bnmOn=id=>{
   const m=MODS.find(x=>x.id===id);
@@ -20350,12 +20563,25 @@ async function saveGImpl(){
 }
 
 window.delG=async id=>{
-  if(!CU||!confirm(t('goal.delQ')))return;
+  if(!CU)return;
+  // 5.10: bez potvrzení, lišta se Zpět (cíl, podcíle, termíny v kalendáři i sdílení)
+  const uid=CU.uid, gone=goals.find(g=>g.id===id), shG=sharedGids('g',id);
+  const subData=new Map((subs[id]||[]).map(s=>[s.id,s]));
   unshareAll('g',id); // zrcadla ve skupinách pryč dřív, než cíl zmizí
   // Podcíle (podkolekce s cílem nezmizí) a jejich termíny v kalendáři (4.81); seznam z paměti + ze serveru
   const sids=new Set((subs[id]||[]).map(s=>s.id));
-  try{ (await getDocs(collection(db,'users',CU.uid,'goals',id,'subgoals'))).docs.forEach(d=>sids.add(d.id)); }
+  try{ (await getDocs(collection(db,'users',CU.uid,'goals',id,'subgoals'))).docs.forEach(d=>{ sids.add(d.id); if(!subData.has(d.id)) subData.set(d.id,{id:d.id,...d.data()}); }); }
   catch(e){ console.warn('[LP] delG subgoals:',e?.code||e?.name); }
+  if(CU?.uid!==uid) return;
+  const evIds=['goal-'+id,...[...sids].map(s=>'subgoal-'+s)], evData=events.filter(e=>evIds.includes(e.id));
+  if(gone) undoNote(t('undo.goal',{name:cutName(gone.name||'',40)}),()=>{
+    subData.forEach((s,sid)=>setDoc(doc(db,'users',uid,'goals',id,'subgoals',sid),undoData(s)).catch(()=>{}));
+    evData.forEach(e=>setDoc(doc(db,'users',uid,'events',e.id),undoData(e)).catch(()=>{}));
+    return undoRestoreItem('g',id,doc(db,'users',uid,'goals',id),gone,shG,()=>{
+      if(!goals.some(g=>g.id===id)) goals.push(gone);
+      if(subData.size&&!subs[id]) subs[id]=[...subData.values()];
+    });
+  });
   for(const sid of sids){
     deleteDoc(doc(db,'users',CU.uid,'goals',id,'subgoals',sid)).catch(()=>{});
     deleteDoc(doc(db,'users',CU.uid,'events',`subgoal-${sid}`)).catch(()=>{});
@@ -20363,7 +20589,7 @@ window.delG=async id=>{
   await deleteDoc(doc(db,'users',CU.uid,'goals',id));
   try{await deleteDoc(doc(db,'users',CU.uid,'events',`goal-${id}`));}catch(e){}
   delete subs[id];
-  toast(t('goal.deleted'));
+  if(!gone) toast(t('goal.deleted'));
 };
 
 window.togSubs=gid=>{
@@ -20745,6 +20971,8 @@ function rSetMods(){
   document.getElementById('set-mods').innerHTML=MODS.map(m=>`<div class="togrow"><div class="toginf"><div class="tognm">${m.emoji} ${modName(m)}</div><div class="togds">${modDesc(m)}</div></div><label class="togswitch"><input type="checkbox" ${(prof.modules||[]).includes(m.id)?'checked':''} onchange="togModSet('${m.id}',this.checked)"><span class="togsl"></span></label></div>`).join('');
   // Úprava Domů (4.86): ne v prvních 14 dnech jednoduchého režimu
   document.getElementById('set-mods').insertAdjacentHTML('beforeend',simpleDash()?'':`<button type="button" class="dl-set" onclick="openDashEdit()"><span>${tH('set.mods.dash')}</span><span aria-hidden="true">→</span></button>`);
+  document.getElementById('set-mods').insertAdjacentHTML('beforeend','<div id="set-navmods" class="set-navmods"></div>'); // spodní lišta (5.10)
+  renderNavPick();
 }
 // Optimisticky (4.84): lišta a Domů hned (i offline), zápis na pozadí; při chybě původní moduly zpět
 window.togModSet=(id,on)=>{
@@ -21813,10 +22041,14 @@ function renderShop(){
 
   // Místo ručního „Informovat ostatní“: ostatní dostanou upozornění samy (cron), odkaz do nastavení
   const gnNote = document.getElementById('shop-gn-note');
+  // 5.10: jen dokud ji uživatel nezavře (× nebo Nastavit), zavření si pamatuje lp_gn_shop (jen zařízení, bez osobních dat)
   if(gnNote) {
-    gnNote.hidden = !isShared;
-    if(isShared && !gnNote.firstChild) gnNote.innerHTML = `<span aria-hidden="true">🔔</span> ${tH('gn.autoNote')} <button type="button" class="gn-note-link" onclick="openGroupNotifSettings()">${tH('gn.setup')}</button>`;
+    const gnShow = isShared && !lsGet('lp_gn_shop');
+    gnNote.hidden = !gnShow;
+    if(gnShow && !gnNote.firstChild) gnNote.innerHTML = `<span aria-hidden="true">🔔</span> <span class="gn-note-t">${tH('gn.autoNote')} <button type="button" class="gn-note-link" onclick="shopGnNoteClose();openGroupNotifSettings()">${tH('gn.setup')}</button></span><button type="button" class="gn-note-x" onclick="shopGnNoteClose()" aria-label="${tH('common.close')}">×</button>`;
   }
+  const clr = document.getElementById('shop-clear-done');
+  if(clr) clr.hidden = !activeItems.some(i => i.done);
   updateGroupFeedBells();
   renderQuickShop(); // často nakupované i u prázdného seznamu
 
@@ -21860,11 +22092,11 @@ function renderShop(){
     return `<div class="shop-category">
       <div class="shop-cat-label">${esc(catLabel(cat))}</div>
       ${items.map(i=>`
-        <div class="shop-item ${i.done?'done':''}" data-sid="${esc(i.id)}">
+        <div class="shop-item ${i.done?'done':''}" data-sid="${esc(i.id)}" data-a0="${esc(i.id)}" data-done="${i.done?1:0}" onclick="shopRowTap(event,this)">
           <div class="shop-check ${i.done?'done':''}" role="button" tabindex="0" aria-pressed="${!!i.done}" aria-label="${tH('shop.checkAria',{name:i.name})}" data-a0="${esc(i.id)}" onclick="toggleShopItem(this.dataset.a0,${i.done})">${i.done?'✓':''}</div>
           <span class="shop-item-name">${esc(i.name)}</span>
           <button type="button" class="shop-item-qty${i.qty?'':' empty'}" data-a0="${esc(i.id)}" data-a1="${esc(i.qty||'')}" onclick="editShopQty(this.dataset.a0,this.dataset.a1,this)" aria-label="${i.qty?tH('shop.qtyAria',{name:i.name,qty:i.qty}):tH('shop.qtyAddAria',{name:i.name})}">${i.qty?esc(i.qty):tH('shop.qtyAdd')}</button>
-          <span class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="${tH('shop.catEdit')}" style="font-size:11px;color:var(--text3);cursor:pointer;opacity:.5;flex-shrink:0">✏️</span>
+          <button type="button" class="shop-item-cat" data-id="${esc(i.id)}" data-a0="${esc(i.id)}" data-a1="${esc(i.category||'Ostatní')}" onclick="editShopCat(this.dataset.a0,this.dataset.a1)" title="${tH('shop.catEdit')}" aria-label="${tH('shop.catEditAria',{name:i.name,cat:catLabel(i.category||'Ostatní')})}"><span aria-hidden="true">✏️</span></button>
           ${i.fromRecipe?`<span class="shop-from-recipe">🍳 ${esc(i.fromRecipe)}</span>`:''}
           <button class="shop-item-fav" data-a0="${esc(i.name)}" data-a1="${esc(i.category||'Ostatní')}" onclick="toggleFavShopItem(this.dataset.a0,this.dataset.a1)" title="${tH('shop.favAdd')}" aria-label="${tH('shop.favAdd')}" aria-pressed="${isFavShopItem(i.name)}">${isFavShopItem(i.name)?'⭐':'☆'}</button>
           <button class="shop-item-del" data-a0="${esc(i.id)}" aria-label="${tH('a11y.delName',{name:i.name})}" onclick="delShopItem(this.dataset.a0)">×</button>
@@ -21874,6 +22106,16 @@ function renderShop(){
   scrollAnchorRestore(anchor);
 }
 
+// Klepnutí kamkoli na řádek položky = odškrtnutí (5.10); tlačítka, pole a výběr v řádku mají vlastní akci
+window.shopRowTap = (e, row) => {
+  if(e.target.closest('button,input,select,textarea,a,label,.shop-check')) return;
+  if(!row?.isConnected || row.querySelector('input,select')) return; // rozepsané množství / kategorie
+  toggleShopItem(row.dataset.a0, row.dataset.done === '1');
+};
+window.shopGnNoteClose = () => {
+  lsSave('lp_gn_shop', 1);
+  const n = document.getElementById('shop-gn-note'); if(n) { n.hidden = true; n.innerHTML = ''; }
+};
 function guessShopCategory(name){
   const n=name.toLowerCase();
   const rules=[
@@ -22004,10 +22246,7 @@ window.onShopInpKey=()=>{
   const ph=document.getElementById('shop-parse-hint');
   if(ph){ ph.hidden=!(qty&&name); ph.textContent=qty&&name?t('shop.preview',{name,qty}):''; }
   if(name.length<2){ const h=document.getElementById('shop-pantry-hint'); if(h)h.style.display='none'; return; }
-  const cat=guessShopCategory(name);
-  const sel=document.getElementById('shop-cat-sel');
-  if(sel&&cat!=='Ostatní') sel.value=cat;
-  // Pantry hint
+  // Pantry hint (kategorie se odhadne až při přidání, 5.10)
   const hint=document.getElementById('shop-pantry-hint');
   // Zásoby stejné skupiny jako zobrazený seznam (4.70), načtou se při prvním psaní
   const hpg=pantryForShop(shopGid()), hItems=pantryItemsOf(hpg).filter(p=>p&&p.name);
@@ -22089,8 +22328,7 @@ window.addShopItem=async()=>{
   const rawInp=inp.value;
   const {name, qty}=parseShopInput(rawInp);
   if(!name)return;
-  const selCat=document.getElementById('shop-cat-sel')?.value||'Ostatní';
-  const cat=selCat==='Ostatní'?guessShopCategory(name):selCat;
+  const cat=guessShopCategory(name); // 5.10: bez výběru kategorie, opravuje se přes ✏️ u položky
   inp.value='';
   const ph=document.getElementById('shop-parse-hint'); if(ph){ph.hidden=true;ph.textContent='';}
   const ph2=document.getElementById('shop-pantry-hint'); if(ph2)ph2.style.display='none';
@@ -22220,7 +22458,8 @@ window.quickAddShop = async key => {
 window.hideQuickShop = async key => {
   const e = _qsList.find(([k]) => k === key)?.[1];
   if(!e || !CU) return;
-  if(e.pin && !confirm(t('shop.quickUnfavConfirm',{name:e.n}))) return;
+  if(e.pin && !(await lpConfirm(t('shop.quickUnfavConfirm',{name:e.n})))) return;
+  if(!CU) return;
   const favs = getFavShopItems();
   const rest = favs.filter(f => shopKey(f.name) !== key);
   if(rest.length !== favs.length) saveFavShopItems(rest);
@@ -22414,7 +22653,10 @@ window.addFromRecurring = async (id) => {
 };
 
 window.delRecurringShopItem = async (id) => {
-  if (!confirm(t('shop.rec.delConfirm'))) return;
+  if (!CU) return;
+  // 5.10: bez potvrzení, lišta se Zpět
+  const uid = CU.uid, gone = recurringShopItems.find(r => r.id === id);
+  if (gone) undoNote(t('undo.item', {name: cutName(gone.name || '', 40)}), () => { toast(t('undo.done')); return setDoc(doc(db,'users',uid,'recurringShop',id), undoData(gone)); });
   await deleteDoc(doc(db,'users',CU.uid,'recurringShop',id));
 };
 
@@ -22606,6 +22848,100 @@ function pantryNoteDrop(r, expired) {
   if(expired && r._exp) r._exp();
 }
 window.pantryNoteClose = el => pantryNoteDrop(el?.closest('.pantry-note'), false);
+// Smazání se Zpět (5.10): lišta „Smazáno · Vrátit“ (vzor delShopItem), restore() vrátí data pod stejným ID
+const _undoAct = new Map();
+function undoNote(msg, restore, ms = 7000) {
+  if(!CU || typeof restore !== 'function') return;
+  const key = genId();
+  _undoAct.set(key, {uid: CU.uid, restore});
+  setTimeout(() => _undoAct.delete(key), ms + 2000);
+  pantryNote(`<span style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--text2)">${esc(msg)}</span><button type="button" class="undo-btn" data-a0="${esc(key)}" onclick="undoDo(this.dataset.a0,this)" style="${PN_BTN}">${tH('common.undo')}</button>`, ms);
+}
+window.undoDo = (key, el) => {
+  const u = _undoAct.get(key);
+  if(el) pantryNoteClose(el);
+  if(!u) return;
+  _undoAct.delete(key);
+  if(CU?.uid !== u.uid) return; // lišta z jiného (odhlášeného) účtu
+  Promise.resolve().then(u.restore).catch(e => toast(t('common.saveFailed', {err: userErr(e)})));
+};
+// Data dokumentu k obnovení: bez ID a pomocných polí klienta (shared, groupId, _gid, _family…)
+function undoData(o) {
+  const d = {...o};
+  ['id', 'shared', 'groupId'].forEach(k => delete d[k]);
+  Object.keys(d).forEach(k => { if(k[0] === '_') delete d[k]; });
+  return d;
+}
+// Obnovení smazané položky (5.10): dokument pod stejným ID, hned v paměti (local), pak sdílení ve skupinách (shG)
+function undoRestoreItem(type, id, ref, obj, shG, local) {
+  const w = setDoc(ref, undoData(obj));
+  local?.();
+  const gs = (shG || []).filter(g => myGroupIds().includes(g));
+  if(gs.length) {
+    const k = type + '_' + id;
+    if(!mySharedIn.has(k)) mySharedIn.set(k, new Set());
+    gs.forEach(g => mySharedIn.get(k).add(g));
+    writeMirror(type, id);
+  }
+  toast(t('undo.done'));
+  return w;
+}
+// Potvrzení vlastním oknem místo confirm() (5.10): Promise<boolean>. Jen u nevratných akcí; běžné mazání má Zpět.
+function lpConfirm(msg, o = {}) {
+  return lpAsk(msg, o, false);
+}
+// Krátký text místo prompt() (5.10): Promise<string|null>
+function lpPrompt(msg, o = {}) {
+  return lpAsk(msg, o, true);
+}
+// Ruční kopírování, když schránka nejde (5.10, místo prompt()): text označený v poli
+function lpCopy(msg, text) {
+  return lpAsk(msg, {value: String(text ?? ''), copy: true, ok: t('common.close')}, true);
+}
+function lpAsk(msg, o, withInput) {
+  return new Promise(res => {
+    document.getElementById('lp-ask')?._cancel?.(); // starší dotaz = zrušeno
+    const ov = document.createElement('div');
+    ov.id = 'lp-ask'; ov.className = 'di-ov';
+    ov.setAttribute('role', withInput ? 'dialog' : 'alertdialog'); ov.setAttribute('aria-modal', 'true');
+    ov.setAttribute('aria-labelledby', 'lp-ask-m');
+    ov.innerHTML = `<div class="modal di-card lp-ask">
+      ${o.title ? `<div class="mtitle di-title">${esc(o.title)}</div>` : ''}
+      <div class="lp-ask-m" id="lp-ask-m">${esc(msg)}</div>
+      ${withInput ? `<input class="finp lp-ask-inp" id="lp-ask-inp" type="text"${o.copy ? ' readonly' : ` maxlength="${Number(o.max) || 60}"`} autocomplete="off" placeholder="${esc(o.ph || '')}" value="${esc(o.value || '')}">` : ''}
+      <div class="macts">${o.copy ? '' : `<button type="button" class="btn-s" data-v="0">${tH('common.cancel')}</button>`}<button type="button" class="btn-p${o.danger ? ' lp-ask-danger' : ''}" data-v="1">${esc(o.ok || t('common.ok'))}</button></div>
+    </div>`;
+    const prev = document.activeElement;
+    const inp = () => ov.querySelector('#lp-ask-inp');
+    const done = v => {
+      if(!ov.isConnected) return;
+      ov.remove();
+      try { if(prev?.isConnected) prev.focus({preventScroll: true}); } catch(e) {}
+      res(v);
+    };
+    const ok = () => {
+      if(!withInput) return done(true);
+      const v = (inp()?.value || '').trim();
+      if(o.copy) return done(v);
+      if(!v) { inp()?.focus(); return; }
+      done(v);
+    };
+    ov._cancel = () => done(withInput ? null : false); // i systémové Zpět (popstate)
+    ov.addEventListener('click', e => {
+      const b = e.target.closest('[data-v]');
+      if(b) { if(b.dataset.v === '1') ok(); else done(withInput ? null : false); }
+      else if(e.target === ov) done(withInput ? null : false);
+    });
+    ov.addEventListener('keydown', e => {
+      if(e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(withInput ? null : false); }
+      else if(e.key === 'Enter' && e.target.id === 'lp-ask-inp') { e.preventDefault(); ok(); }
+    });
+    document.body.appendChild(ov);
+    (inp() || ov.querySelector(o.danger ? '[data-v="0"]' : '[data-v="1"]'))?.focus();
+    if(o.copy) inp()?.select();
+  });
+}
+window.lpConfirm = lpConfirm; // pro inline handlery
 // Nejasná shoda: lišta „Přičíst / Jako nová“; bez volby (12 s, vytlačení) = nová zásoba jako dřív „Zrušit“ u confirm(), jen s toastem
 const _pantryAsk = new Map();
 const _shopAskLive = new Set(); // odškrtnuté nákupy (relace): dotaz na zásoby u nich ještě platí
@@ -22782,7 +23118,19 @@ window.clearDoneItems=()=>{
   const done=activeShopItems().filter(i=>i.done);
   if(!done.length){toast(t('shop.noneDone'));return;}
   // Jedna dávka bez await (4.83): offline se smažou všechny, ne jen první
-  toast(tN('shop.deletedN', done.length));
+  // 5.10: místo toastu lišta se Zpět – položky se vrátí pod stejnými ID (autor, createdAt…)
+  const uid = CU?.uid, back = done.map(i => ({id: i.id, data: undoData(i)}));
+  undoNote(tN('shop.deletedN', done.length), () => {
+    if(CU?.uid !== uid || (fid && !shopGroups().includes(fid))) return;
+    toast(t('undo.done'));
+    const ws = [];
+    for(let k=0;k<back.length;k+=400){
+      const b=writeBatch(db);
+      back.slice(k,k+400).forEach(x=>b.set(doc(shopCol(fid),x.id),x.data));
+      ws.push(b.commit());
+    }
+    return Promise.all(ws);
+  });
   for(let k=0;k<done.length;k+=400){
     const b=writeBatch(db);
     done.slice(k,k+400).forEach(i=>b.delete(doc(shopCol(fid),i.id)));
@@ -23152,11 +23500,14 @@ window.saveRecipe=()=>{
 
 window.deleteSavedRecipe=async(id,e)=>{
   e.stopPropagation();
-  if(!CU||!confirm(t('ck.delQ')))return;
+  if(!CU)return;
+  // 5.10: bez potvrzení, lišta se Zpět (recept i sdílení ve skupinách)
+  const uid=CU.uid, gone=savedRecipes.find(r=>r.id===id), shG=sharedGids('r',id);
   try{
     unshareAll('r',id); // zrcadla ve skupinách pryč dřív, než recept zmizí
     await deleteDoc(doc(db,'users',CU.uid,'savedRecipes',id));
-    toast(t('ck.deleted'));
+    if(gone) undoNote(t('undo.recipe',{name:cutName(gone.name||'',40)}),()=>undoRestoreItem('r',id,doc(db,'users',uid,'savedRecipes',id),gone,shG,()=>{ if(!savedRecipes.some(r=>r.id===id)){ savedRecipes.push(gone); renderSavedRecipes(); } }));
+    else toast(t('ck.deleted'));
   }catch(err){toast(t('nt.delFail',{err:userErr(err)}));}
 };
 
@@ -23604,8 +23955,14 @@ window.changePantryQty = async function(id, delta, gidArg) {
 window.deletePantryItem = async function(id, gidArg) {
   const gid = pantryTarget(gidArg);
   if (gid === undefined || !CU) return;
-  if (!confirm(t('pantry.delConfirm'))) return;
+  // 5.10: bez potvrzení, lišta se Zpět
   const gone = pantryItemsOf(gid).find(i => i.id === id);
+  if (gone) undoNote(t('undo.item', {name: cutName(gone.name || '', 40)}), () => {
+    if (gid && pantryTarget(gid) !== gid) return; // skupina už zásoby nesdílí
+    if (gid) unlogGroupActivity(gid, 'pantry', 'del', gone.name || '');
+    toast(t('undo.done'));
+    return setDoc(pantryDoc(gid, id), undoData(gone));
+  });
   try {
     await deleteDoc(pantryDoc(gid, id));
     if (gid) logGroupActivity(gid, 'pantry', 'del', gone?.name || '');
@@ -24039,8 +24396,8 @@ window.removePlanned = (idx) => {
   renderPlannedMeals();
 };
 
-window.clearPlannedMeals = () => {
-  if (!confirm(t('nt.clearPlannedQ'))) return;
+window.clearPlannedMeals = async () => {
+  if (!(await lpConfirm(t('nt.clearPlannedQ'), {danger: true}))) return;
   plannedMeals = [];
   savePlannedMeals();
   renderPlannedMeals();
