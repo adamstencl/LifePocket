@@ -70,7 +70,7 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '5.10';
 const CHANGELOG = [
   { v:'5.10', items:[
-    '🔥 Návyky přímo z Domů – kroužek v kartě Návyky dnes je rovnou odškrtne, nevyřízené jsou nahoře',
+    '🔥 Návyky přímo z Domů – kroužek v kartě Návyky dnes je rovnou odškrtne, nevyřízené jsou nahoře; karta energie a Aktivní série jsou teď na Domů skryté, zapneš je v Upravit Domů',
     '📋 Kompaktnější seznam návyků – týden a sdílení najdeš v detailu (týden zapneš tlačítkem 📅 Týden), kroužek přepíná jen splněno',
     '✨ Jednodušší přidání návyku s příklady a připomínkou; při startu se ukáže vždy jen jedna věc naráz',
     '🗑️ Mazání bez otravných dotazů: smazané události, cíle, zápisky, seznamy, recepty, zásoby i mazlíčka vrátíš tlačítkem Vrátit',
@@ -79,7 +79,7 @@ const CHANGELOG = [
     '📲 Odkaz z Messengeru nebo Facebooku otevřeš jedním klepnutím v Chrome nebo Safari; pozvánka ukáže, kdo tě zve',
     '👋 Nový účet bez dlouhého průvodce a AI parťák nabízí dotazy podle toho, co tě zajímá; přesnější návod pro iPhone'
   ], en:[
-    '🔥 Habits right from Home – tap the circle in Today’s habits to tick them off, pending ones come first',
+    '🔥 Habits right from Home – tap the circle in Today’s habits to tick them off, pending ones come first; the energy card and Active streaks are now hidden on Home by default, turn them on in Edit Home',
     '📋 A more compact habit list – the week view and sharing are in the habit detail (turn the week on with 📅 Week), the circle only toggles done',
     '✨ Easier new habits with examples and reminders; only one pop-up at a time when the app opens',
     '🗑️ Deleting without nagging questions: events, goals, entries, lists, recipes, pantry items and pets come back with Undo',
@@ -1089,10 +1089,10 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // Odkryté rozšíření nebo uplynulých 14 dní jednoduchého Domů (pak jako dřív, kromě zamítnuté nabídky)
 const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip, spodní panel (.cta-ask: Doplň včerejšek #yd-ask,
-// připomínka #habit-snz, lišta rutiny …), dotaz na upozornění nebo toast z fronty (5.10: jedna vyskakovací věc naráz)
+// připomínka #habit-snz, lišta rutiny …), otevřený panel Více, dotaz na upozornění nebo toast z fronty (5.10: jedna vyskakovací věc naráz)
 let _popUntil = 0, _popPend = 0;
 function uiBusy() {
-  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask');
+  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open');
 }
 // Toast z fronty (štíty …): počká na volno a po dobu zobrazení drží frontu obsazenou
 function popToast(msg, ms = 4000, maxMs = 600000) {
@@ -1888,7 +1888,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2853,26 +2853,6 @@ function buildHabitCard(h,ch){
 
   // Řádek týdne jen s volbou „Týden“ nad seznamem (5.10), jinak v detailu návyku
   const tableHtml=habitWeekOn()?habitWeekTableHTML(h,habitDay,false):'';
-
-  let controlHtml='';
-  if(h.type==='count'){
-    const pct=Math.min(Math.round(val/goal*100),100);
-    controlHtml=`
-      <div class="habit-counter">
-        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
-        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
-          <div class="cnt-val cnt-clickable">${val}</div>
-          <div class="cnt-goal">/ ${goal} ✎</div>
-        </div>
-        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
-      </div>
-      <div class="habit-progress" style="margin-top:8px">
-        <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
-        <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
-      </div>`;
-  } else {
-    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
-  }
 
   const cardDone = h.type==='count' ? (val>=goal) : done;
 
@@ -7042,10 +7022,14 @@ function notifAskSoon(why) {
 // Hned po uložení návyku s připomínkou nebo události s časem (5.10): i v den založení a v jednoduchém režimu,
 // bez limitu nabídek (1 za 3 dny) a bez odložení „Teď ne“ – připomínka bez povolení nepřijde. Ne, když je povoleno
 // nebo trvale zamítnuto (notifAskMode). Během průvodce nebo otevřeného okna počká (whenUiFree). true = karta se ukáže
+// Nejvýš 1× za relaci a po „Teď ne“ v téže relaci už ne (5.10)
+let _naNowUsed = false, _naLaterSess = false;
 function notifAskNow(why) {
   if (!CU || !prof || !notifAskMode()) return false;
   if (document.getElementById('notif-ask')) return true;
-  const go = () => { if (notifAskMode() && !document.getElementById('notif-ask')) notifAskShow(why); };
+  if (_naNowUsed || _naLaterSess) return false;
+  _naNowUsed = true;
+  const go = () => { if (!_naLaterSess && notifAskMode() && !document.getElementById('notif-ask')) notifAskShow(why); };
   if (tourActive() || document.querySelector('.moverlay.open,.di-ov')) whenUiFree(go, 120000); else go();
   return true;
 }
@@ -7071,7 +7055,7 @@ function notifAskShow(why) {
   document.body.appendChild(el);
 }
 function notifAskClose() { document.getElementById('notif-ask')?.remove(); }
-window.notifAskLater = () => { lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); notifAskClose(); };
+window.notifAskLater = () => { _naLaterSess = true; lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); notifAskClose(); };
 window.notifAskEnable = () => {
   lsSave('lp_na_snooze', Date.now() + NA_SNOOZE_MS); // zamítnutí v systémovém okně = už se neptat (permission 'denied')
   notifAskClose();
@@ -11854,6 +11838,9 @@ function cleanInviter(raw) {
     .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   let s = full.length > 30 ? full.slice(0, 31).replace(/\s+\S*$/, '') : full; // dlouhé jméno: celá slova do 30 znaků
   s = cutName(s, 30);
+  // Jméno, které se vydává za aplikaci nebo podporu (i s mezerami, tečkami a diakritikou): pryč
+  const k = s.toLowerCase().normalize('NFD').replace(/[^a-z]+/g, '');
+  if (/lifepocket|admin|podpora|support/.test(k)) return '';
   return /^[\p{L}][\p{L}\p{M} .'’-]*$/u.test(s) ? s : '';
 }
 function capturePendingJoin() {
@@ -19558,7 +19545,7 @@ function buildNav(){
   const primary=all.slice(0,nPrim);
   _navBar=primary.slice(1).map(p=>p.id); // výběr v Nastavení ukazuje, co v liště skutečně je
   _navCands=(isSimple()?uMods:[...rex,...uMods]).map(p=>({id:p.id,emoji:p.emoji,label:p.label}));
-  const more=all.slice(4);
+  const more=all.slice(nPrim); // vše mimo lištu (i při výběru < 3 modulů)
   const bni=document.getElementById('bottom-nav-inner');
   // Více (4.72): parťák a Nastavení, tvoje moduly mimo lištu, vypnuté moduly po kategoriích (zapnutí přímo z panelu)
   const off=MORE_CATS.flatMap(c=>c.mods).filter(id=>hasUI.includes(id)&&!(prof.modules||[]).includes(id));
@@ -20117,9 +20104,14 @@ function dashIntroHTML(fns){
 }
 // Kroužek v kartě Návyky dnes (5.10): ano/ne stejnou cestou jako kroužek v Návycích (splněno ↔ prázdné),
 // počítaný rovnou na cíl (jako Co teď a lišta rutiny); splněný počítaný otevře Návyky (hodnotu nemaže)
+// Pořadí řádků karty (fixní pro den a relaci) a krátká pojistka proti dvojímu klepnutí
+let _dwHOrd={day:'',uid:'',ids:[]}, _dwHLock=0;
 window.dwHabitTap=hid=>{
   const td=toDS(), h=habits.find(x=>x.id===hid);
   if(!CU||!h||h.archived) return;
+  if(Date.now()<_dwHLock) return; // ~400 ms po klepnutí jsou všechny kroužky karty zablokované
+  _dwHLock=Date.now()+400;
+  if(isHabitPausedOn(h,td)){ window.sp('habits'); return; } // pauza: neodškrtávat, otevřít Návyky
   const l=hLog(hid+'_'+td);
   if(h.type==='count'){
     const goal=Number(h.goal)||1, cur=Number(l?.value)||0;
@@ -20267,10 +20259,14 @@ function rDash(){
     const totalH=dueH.length;
     const pct=totalH?Math.round(doneTodayH/totalH*100):0;
     const pctColor=pct===100?'var(--green)':pct>50?'var(--accent)':'var(--accent2)';
-    // 5.10: nevyřízené nahoru (stabilně, jinak v původním pořadí)
-    const shownH=actH.map((h,i)=>({h,i,p:isHabitPending(h,today)?0:1})).sort((a,b)=>a.p-b.p||a.i-b.i).map(x=>x.h);
+    // 5.10: nevyřízené nahoru (stabilně), pořadí se zafixuje při prvním vykreslení dne/relace – po klepnutí
+    // se řádky nepřeřadí (jinak by druhé klepnutí trefilo jiný návyk), nové návyky jdou na konec
+    if(_dwHOrd.day!==today||_dwHOrd.uid!==CU?.uid) _dwHOrd={day:today,uid:CU?.uid||'',ids:actH.map((h,i)=>({h,i,p:isHabitPending(h,today)?0:1})).sort((a,b)=>a.p-b.p||a.i-b.i).map(x=>x.h.id)};
+    else _dwHOrd.ids.push(...actH.filter(h=>!_dwHOrd.ids.includes(h.id)).map(h=>h.id));
+    const shownH=_dwHOrd.ids.map(id=>actH.find(h=>h.id===id)).filter(Boolean);
     const habRows=shownH.slice(0,4).map(hb=>{
       const log=hLogHD(hb.id,today);
+      const paused=isHabitPausedOn(hb,today);
       const done=log?.done||false;
       const failed=log?.failed||false;
       const isCount=hb.type==='count';
@@ -20278,9 +20274,9 @@ function rDash(){
       const streak=habitStreak(hb.id,today);
       // Týdenní návyk (4.91): místo ohníčku stav týdne, splněný týden zeleně
       const wk=isWeekly(hb)?habitWeekStat(hb,weekStartDS(today),today):null;
-      // Kroužek (5.10): splní přímo (dotyková plocha 44 px), klik vedle otevře Návyky
+      // Kroužek (5.10): splní přímo (dotyková plocha 44 px), klik vedle otevře Návyky; pozastavený návyk kroužek nemá
       return `<div class="dw-habit-row">
-        <button type="button" class="dw-hbtn" data-a0="${esc(hb.id)}" aria-pressed="${!!done}" aria-label="${tH('hb.checkAria',{name:hb.name})}" onclick="event.stopPropagation();dwHabitTap(this.dataset.a0)"><span class="dw-hcheck ${done?'done':failed?'failed':''}" aria-hidden="true">${done?'✓':failed?'✕':''}</span></button>
+        ${paused?`<span class="dw-hpause" aria-hidden="true">⏸</span>`:`<button type="button" class="dw-hbtn" data-a0="${esc(hb.id)}" aria-pressed="${!!done}" aria-label="${tH('hb.checkAria',{name:hb.name})}" onclick="event.stopPropagation();dwHabitTap(this.dataset.a0)"><span class="dw-hcheck ${done?'done':failed?'failed':''}" aria-hidden="true">${done?'✓':failed?'✕':''}</span></button>`}
         <div class="dw-hname">${esc(hb.emoji)} ${esc(hb.name)}</div>
         ${val?`<div class="dw-hval">${val}</div>`:''}
         ${wk?(wk.state==='none'?'':`<div class="dw-hfire"${wk.state==='met'?' style="color:var(--green);font-weight:700"':''}>${wk.state==='met'?'✓':''}${wk.done}/${wk.target}</div>`)
