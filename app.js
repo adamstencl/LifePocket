@@ -72,11 +72,11 @@ const CHANGELOG = [
   { v:'5.15', items:[
     '💰 Nový modul Finance: rozpočet na měsíc pro tebe nebo celou rodinu. Pravidelné příjmy a platby se přenášejí samy, útraty přidáš jedním klepnutím a hned vidíš, kolik zbývá a kam peníze jdou',
     '🛍️ V seznamu Chceme koupit spočítám, za jak dlouho na věci našetříte; cenu ti na klepnutí odhadne AI',
-    '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Moduly'
+    '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Ty a parťák'
   ], en:[
     '💰 New Budget module: a monthly budget for you or the whole family. Regular income and payments carry over by themselves, add spending with one tap and see right away what’s left and where the money goes',
     '🛍️ In the Wishlist I’ll work out how long until you can afford things; AI can estimate a price with one tap',
-    '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → Modules'
+    '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → You & your buddy'
   ]},
   { v:'5.14', items:[
     '🥗 Jídelníček na nový týden: minulé dny vyčistíš jedním klepnutím (se Zpět) a Do nákupu bere jen zbývající dny',
@@ -6064,6 +6064,7 @@ function stopSessionActivity() {
   unsubFamily = null; unsubFamilyCal = null;
   unsubExtraGroupDocs = {}; unsubExtraGroupCals = {};
   unsubAllGroupPantries();
+  finReset(); // Finance (5.15)
   entryDirty = false; _chatDirty = false;  // automatické uložení zápisku a chatu nic nezapíše
   _errLogCount = ERRLOG_MAX;               // zapisovač chyb nesmí znovu založit data
 }
@@ -11584,7 +11585,8 @@ window.confirmLeaveGroup = async (gid) => {
       try {
         const n = await copyGroupToPersonal(gid, mode);
         _leaveCopied.add(gid);
-        if(n) toast(tN('grp.leave.copied', n), 4000);
+        const msg = [n && tN('grp.leave.copied', n), _leaveFinSkip && tN('grp.leave.finSkip', _leaveFinSkip, {max: FIN_MAX.budgets})].filter(Boolean).join(' ');
+        if(msg) toast(msg, _leaveFinSkip ? 7000 : 4000);
       } catch(e) {
         console.warn('[LP] kopie skupiny:', e?.code || e?.name);
         leaveSetStatus(t('grp.leave.copyFail', {err: userErr(e, 'kopie skupiny'), g: prof?.gender}), true);
@@ -11603,8 +11605,10 @@ window.confirmLeaveGroup = async (gid) => {
 // Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
 // Každá skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby podle sdílených modulů (zásoby 4.70).
 // Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
+let _leaveFinSkip = 0; // rozpočty, které se při kopii nevešly do limitu (pro hlášení)
 async function copyGroupToPersonal(gid, mode) {
   const uid = CU.uid;
+  _leaveFinSkip = 0;
   const isMain = gid === familyId;
   const gData = (isMain ? familyData : extraGroupsData[gid]) || {};
   const src = cutName(gData.groupName, 40) || gid;
@@ -11663,10 +11667,24 @@ async function copyGroupToPersonal(gid, mode) {
       petCopies.push({...pn, id, _gid: null});
     });
   }
-  // Finance (5.15, bez příznaku skupiny): 'mine' jen rozpočty, které jsem přidal (owner), 'all' všechny; nové ID i se všemi měsíci
+  // Finance (5.15, bez příznaku skupiny): 'mine' jen rozpočty, které jsem přidal (owner), 'all' všechny; nové ID i se všemi měsíci.
+  // Jen do volného místa (limit 5 po odchodu: osobní + ostatní skupiny), zbytek zůstane ve skupině (finSkip)
+  let finMonN = 0;
   {
     const sn = await getDocs(collection(db,'families',gid,'finBudgets'));
-    const bs = sn.docs.map(d => finNorm(d.data(), d.id, null)).filter(b => b && (mode === 'all' || b.owner === uid));
+    let bs = sn.docs.map(d => finNorm(d.data(), d.id, null)).filter(b => b && (mode === 'all' || b.owner === uid))
+      .sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
+    if(bs.length) {
+      let used = (await getDocs(collection(db,'users',uid,'finBudgets'))).size;
+      for(const g of myGroupIds()) {
+        if(g === gid) continue;
+        if(finGrp[g]?.ready) { used += finGrp[g].list.length; continue; }
+        try { used += (await getDocs(collection(db,'families',g,'finBudgets'))).size; } catch(e) { /* skupina nedostupná: nepočítá se */ }
+      }
+      const free = Math.max(0, FIN_MAX.budgets - used);
+      _leaveFinSkip = Math.max(0, bs.length - free);
+      bs = bs.slice(0, free);
+    }
     if(bs.length) {
       const ms = await getDocs(collection(db,'families',gid,'finMonths'));
       bs.forEach(b => {
@@ -11676,6 +11694,7 @@ async function copyGroupToPersonal(gid, mode) {
           const x = d.data() || {}, ym = d.id.slice(b.id.length + 1);
           if(x.bid !== b.id || !d.id.startsWith(b.id + '_') || !FIN_YM_RE.test(ym)) return;
           writes.push([doc(db,'users',uid,'finMonths',nid + '_' + ym), {...x, bid: nid, ym}]);
+          finMonN++;
         });
       });
     }
@@ -11686,7 +11705,7 @@ async function copyGroupToPersonal(gid, mode) {
     writes.slice(i, i + 400).forEach(([ref, data, merge]) => merge ? b.set(ref, data, {merge: true}) : b.set(ref, data));
     await b.commit();
   }
-  n += writes.length;
+  n += writes.length - finMonN; // měsíce rozpočtů se nepočítají, uživatel vidí rozpočty
   petCopies.forEach(p => petSyncAll(p, true));
   if(mode === 'all') {
     // Jídelníček: doplní jen prázdná políčka osobního plánu (vlastní plán se nepřepíše)
@@ -19898,14 +19917,15 @@ function finSym(cur) {
   try { return new Intl.NumberFormat(LOCALE, {style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol'}).formatToParts(0).find(p => p.type === 'currency').value; }
   catch(e) { return cur; }
 }
-// Zadání částky → setiny; '1 250', '1 250,50', '1.250', '1,250.5', '450 Kč'; neplatné nebo záporné → null
+// Zadání částky → setiny; '1 250', '1 250,50', '1.250', '1,250.5', '450 Kč', '150,-'; neplatné nebo záporné → null
 function finParse(s) {
-  const x = String(s ?? '').replace(/[\s']/g, '').replace(/(Kč|CZK|EUR|USD|€|\$)/gi, '');
+  const x = String(s ?? '').replace(/[\s']/g, '').replace(/(Kč|CZK|EUR|USD|€|\$)/gi, '').replace(/[.,][-–—]?$/, '');
   if(!/^\d[\d.,]*$/.test(x)) return null;
   const m = x.match(/[.,](\d{1,2})$/); // 1–2 číslice za posledním oddělovačem = desetiny
   let int = m ? x.slice(0, -m[0].length) : x;
   const frac = m ? m[1].padEnd(2, '0') : '00';
-  int = int.replace(/[.,]/g, ''); // ostatní tečky a čárky = tisíce
+  if(!/^\d{1,3}([.,]\d{3})*$/.test(int) && !/^\d+$/.test(int)) return null; // tisíce jen po trojicích ('1.2.3' ne)
+  int = int.replace(/[.,]/g, '');
   if(!/^\d{1,12}$/.test(int)) return null;
   const v = Number(int) * 100 + Number(frac);
   return v <= FIN_AMT_MAX ? v : null;
@@ -20068,12 +20088,13 @@ function unsubGroupFin(gid) { const e = finGrp[gid]; if(e?.unsub) e.unsub(); del
 function unsubAllGroupFin() { Object.keys(finGrp).forEach(unsubGroupFin); }
 // Odhlášení: vše z paměti pryč
 function finReset() { unsubAllGroupFin(); finMonDrop(() => true); finBudgets = []; _finReady = false; finSel = undefined; finViewYm = null; _finAiBusy = false; }
-// Osobní + skupinové (kopie ve skupině má přednost při krátkém souběhu během přesunu), max. 5
+// Osobní + skupinové (kopie ve skupině má přednost při krátkém souběhu během přesunu). Limit 5 hlídá jen zakládání:
+// po připojení ke skupině jich může být víc a žádný se neschová (jde přepnout i smazat)
 function allFin() {
   const m = new Map();
   finBudgets.forEach(b => m.set(b.id, b));
   myGroupIds().forEach(g => (finGrp[g]?.list || []).forEach(b => m.set(b.id, b)));
-  return [...m.values()].sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt)).slice(0, FIN_MAX.budgets);
+  return [...m.values()].sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
 }
 function finFind(id) { return allFin().find(b => b.id === id) || null; }
 function finSelGet() {
@@ -20731,6 +20752,8 @@ window.finItemSave = () => {
   finClose('m-finitem');
   toast(t('fin.saved'));
 };
+// Výjimka měsíce ovr.<rid> k zápisu přes merge: merge slučuje vnořené mapy, druhé pole se proto vždy maže
+const finOvrOut = o => (!o ? deleteField() : o.off ? {off: true, amt: deleteField()} : {amt: o.amt, off: deleteField()});
 // Úprava pravidelné položky: 'one' = jen tento měsíc (ovr), 'fwd' = nová verze od měsíce ym (starší měsíce beze změny)
 function finRecSave(b, rid, x, scope, ym) {
   const r = b.rec[rid], v = r && finRecAt(r, ym);
@@ -20738,7 +20761,7 @@ function finRecSave(b, rid, x, scope, ym) {
   const ovr = finMonData(b, ym)?.ovr?.[rid], now = Date.now();
   if(scope === 'one') {
     if(x.amt === v.amt && !ovr) return;
-    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: x.amt === v.amt ? deleteField() : {amt: x.amt}}, updatedAt: now}, {merge: true}).catch(finErr);
+    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: finOvrOut(x.amt === v.amt ? null : {amt: x.amt})}, updatedAt: now}, {merge: true}).catch(finErr);
     return;
   }
   const same = v.name === x.name && v.amt === x.amt && (r.kind === 'inc' || v.cat === x.cat);
@@ -20746,7 +20769,8 @@ function finRecSave(b, rid, x, scope, ym) {
     const nv = {from: ym, name: x.name, amt: x.amt};
     if(r.kind === 'exp') nv.cat = x.cat;
     const vs = r.v.filter(q => q.from < ym).concat([nv]).slice(-FIN_MAX.ver);
-    updateDoc(finRef(b), {['rec.' + rid]: {...finRecOut(r), v: vs}, updatedAt: now}).catch(finErr);
+    // Jen pole verzí (field path): souběžná změna konce nebo pořadí jiným členem se nepřepíše; transakce by offline nešla
+    updateDoc(finRef(b), {['rec.' + rid + '.v']: vs.map(q => ({...q})), updatedAt: now}).catch(finErr);
   }
   // Stará výjimka „jen tento měsíc“ by novou hodnotu přebila
   if(ovr) setDoc(finMonRef(b, ym), {ovr: {[rid]: deleteField()}, updatedAt: now}, {merge: true}).catch(finErr);
@@ -20796,12 +20820,12 @@ function finRecDel(b, rid, scope, ym) {
   const now = Date.now();
   if(scope === 'one') {
     const prev = finMonData(b, ym)?.ovr?.[rid] || null;
-    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: {off: true}}, updatedAt: now}, {merge: true}).catch(finErr);
+    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: finOvrOut({off: true})}, updatedAt: now}, {merge: true}).catch(finErr);
     undoNote(t('fin.deleted', {name: v.name}), () => {
       const cur = finFind(b.id);
       if(!cur) return;
       toast(t('undo.done'));
-      return setDoc(finMonRef(cur, ym), {ovr: {[rid]: prev ? {...prev} : deleteField()}, updatedAt: Date.now()}, {merge: true});
+      return setDoc(finMonRef(cur, ym), {ovr: {[rid]: finOvrOut(prev)}, updatedAt: Date.now()}, {merge: true});
     });
     return;
   }
@@ -20884,10 +20908,11 @@ window.finWishSave = () => {
   const old = s.id ? b.wish[s.id] : null;
   if(s.id && !old) { finClose('m-finwish'); return; }
   const wid = s.id || genId();
-  const w = {name, price, prio: s.prio, cat: b.cats[cv] ? cv : 'other', ai: !!(s.ai && price != null && price === s.aiPrice),
-    order: old ? old.order : Object.values(b.wish).reduce((mx, x) => Math.max(mx, x.order), -1) + 1,
-    createdAt: old ? old.createdAt : Date.now(), by: old ? old.by : CU.uid, bought: old?.bought ? {...old.bought} : null};
-  updateDoc(finRef(b), {['wish.' + wid]: w, updatedAt: Date.now()}).catch(finErr);
+  const f = {name, price, prio: s.prio, cat: b.cats[cv] ? cv : 'other', ai: !!(s.ai && price != null && price === s.aiPrice)};
+  // Úprava jen po polích bez bought: souběžné „koupeno“ od jiného člena se nepřepíše
+  const up = old ? Object.fromEntries(Object.entries(f).map(([k, v]) => ['wish.' + wid + '.' + k, v]))
+    : {['wish.' + wid]: {...f, order: Object.values(b.wish).reduce((mx, x) => Math.max(mx, x.order), -1) + 1, createdAt: Date.now(), by: CU.uid, bought: null}};
+  updateDoc(finRef(b), {...up, updatedAt: Date.now()}).catch(finErr);
   _finWish = null;
   finClose('m-finwish');
   toast(t('fin.saved'));
