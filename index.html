@@ -426,53 +426,22 @@ else show();
 
       <!-- Add habit form -->
       <div class="add-habit-wrap" id="add-habit-wrap" style="display:none">
+        <!-- 5.10: název → příklady → frekvence → připomínka; část dne, typ, cíl a ikona pod „Další možnosti“ -->
         <div class="add-habit-form">
           <div class="fg">
-            <label class="flbl">Skupina</label>
-            <div class="habit-type-row" id="habit-group-row">
-              <button class="ev-type-btn" id="hgroup-morning" onclick="setHabitGroup(&#39;morning&#39;,this)" data-i18n="hb.f.morning">🌅 Ráno</button>
-              <button class="ev-type-btn" id="hgroup-day" onclick="setHabitGroup(&#39;day&#39;,this)">☀️ Den</button>
-              <button class="ev-type-btn" id="hgroup-evening" onclick="setHabitGroup(&#39;evening&#39;,this)" data-i18n="hb.f.evening">🌙 Večer</button>
-            </div>
-          </div>
-          <div class="fg">
-            <label class="flbl" data-i18n="hb.f.name">Název návyku</label>
+            <label class="flbl" for="habit-name-inp" data-i18n="hb.f.name">Název návyku</label>
             <input class="finp" type="text" id="habit-name-inp" maxlength="100" placeholder="Cvičení, voda, meditace…" data-i18n-attr="placeholder:hb.f.namePh">
+            <div class="hb-ex-row" id="hb-ex-row" role="group" data-i18n-attr="aria-label:hb.f.exAria" aria-label="Příklady návyků"></div>
           </div>
           <div class="fg">
-            <label class="flbl">Typ</label>
-            <div class="habit-type-row">
-              <button class="ev-type-btn sel" id="htype-yesno" onclick="setHabitType(&#39;yesno&#39;,this)">✓ Ano/Ne</button>
-              <button class="ev-type-btn" id="htype-count" onclick="setHabitType(&#39;count&#39;,this)" data-i18n="hb.f.count">🔢 Počet</button>
-            </div>
-          </div>
-          <div class="fg" id="habit-goal-wrap" style="display:none">
-            <label class="flbl" data-i18n="hb.f.goal">Denní cíl (počet)</label>
-            <input class="finp" type="number" id="habit-goal-inp" placeholder="10" min="1" max="9999" value="10">
-          </div>
-          <div class="fg">
-            <label class="flbl">Emoji</label>
-            <div class="habit-emoji-row" id="habit-emoji-row" role="group" data-i18n-attr="aria-label:a11y.habitEmoji" aria-label="Ikona návyku">
-              <button class="emoji-pick-btn sel" data-e="🏃" onclick="setHabitEmoji(&#39;🏃&#39;,this)">🏃</button>
-              <button class="emoji-pick-btn" data-e="💧" onclick="setHabitEmoji(&#39;💧&#39;,this)">💧</button>
-              <button class="emoji-pick-btn" data-e="📚" onclick="setHabitEmoji(&#39;📚&#39;,this)">📚</button>
-              <button class="emoji-pick-btn" data-e="🧘" onclick="setHabitEmoji(&#39;🧘&#39;,this)">🧘</button>
-              <button class="emoji-pick-btn" data-e="🥗" onclick="setHabitEmoji(&#39;🥗&#39;,this)">🥗</button>
-              <button class="emoji-pick-btn" data-e="😴" onclick="setHabitEmoji(&#39;😴&#39;,this)">😴</button>
-              <button class="emoji-pick-btn" data-e="🚭" onclick="setHabitEmoji(&#39;🚭&#39;,this)">🚭</button>
-              <button class="emoji-pick-btn" data-e="💪" onclick="setHabitEmoji(&#39;💪&#39;,this)">💪</button>
-              <button class="emoji-pick-btn" data-e="🎵" onclick="setHabitEmoji(&#39;🎵&#39;,this)">🎵</button>
-              <button class="emoji-pick-btn" data-e="✍️" onclick="setHabitEmoji(&#39;✍️&#39;,this)">✍️</button>
-            </div>
-          </div>
-          <div class="fg">
-            <label class="flbl">Frekvence</label>
+            <label class="flbl" data-i18n="hd.edit.freq">Frekvence</label>
             <div class="freq-type-row">
               <button class="ev-type-btn sel" data-f="daily" onclick="setFreqType(&#39;daily&#39;,this)" data-i18n="hb.f.daily">📅 Každý den</button>
               <button class="ev-type-btn" data-f="weekly" onclick="setFreqType(&#39;weekly&#39;,this)" data-i18n="hb.f.weekly">🔢 X× týdně</button>
               <button class="ev-type-btn" data-f="days" onclick="setFreqType(&#39;days&#39;,this)" data-i18n="hb.f.days">📆 Konkrétní dny</button>
             </div>
           </div>
+
           <div class="fg" id="freq-weekly-wrap" style="display:none">
             <label class="flbl" data-i18n="hb.f.timesWeek">Kolikrát týdně</label>
             <div class="freq-times-row">
@@ -503,11 +472,48 @@ else show();
               <span style="font-size:13px;color:var(--text3)" data-i18n="hb.f.remindDesc">Každý den tě upozorním, pokud návyk ještě nesplníš</span>
             </div>
           </div>
-          <div class="fg" id="habit-goal-wrap2">
-            <label class="flbl"><span data-i18n="hb.f.linkGoal">🏆 Propojit s cílem</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
-            <select class="finp" id="habit-goal-sel">
-              <option value="" data-i18n="goal.none">— bez cíle —</option>
-            </select>
+          <button type="button" class="hb-more-btn" id="hb-more-btn" aria-expanded="false" aria-controls="hb-more" onclick="toggleHabitMore()"><span data-i18n="hb.f.more">Další možnosti</span> <span class="hb-more-arr" aria-hidden="true">▾</span></button>
+          <div class="hb-more" id="hb-more" hidden>
+            <div class="fg">
+              <div class="flbl" data-i18n="hd.edit.emoji">Ikona</div>
+              <div class="habit-emoji-row" id="habit-emoji-row" role="group" data-i18n-attr="aria-label:a11y.habitEmoji" aria-label="Ikona návyku">
+                <button class="emoji-pick-btn sel" data-e="🏃" onclick="setHabitEmoji(&#39;🏃&#39;,this)">🏃</button>
+                <button class="emoji-pick-btn" data-e="💧" onclick="setHabitEmoji(&#39;💧&#39;,this)">💧</button>
+                <button class="emoji-pick-btn" data-e="📚" onclick="setHabitEmoji(&#39;📚&#39;,this)">📚</button>
+                <button class="emoji-pick-btn" data-e="🧘" onclick="setHabitEmoji(&#39;🧘&#39;,this)">🧘</button>
+                <button class="emoji-pick-btn" data-e="🥗" onclick="setHabitEmoji(&#39;🥗&#39;,this)">🥗</button>
+                <button class="emoji-pick-btn" data-e="😴" onclick="setHabitEmoji(&#39;😴&#39;,this)">😴</button>
+                <button class="emoji-pick-btn" data-e="🚭" onclick="setHabitEmoji(&#39;🚭&#39;,this)">🚭</button>
+                <button class="emoji-pick-btn" data-e="💪" onclick="setHabitEmoji(&#39;💪&#39;,this)">💪</button>
+                <button class="emoji-pick-btn" data-e="🎵" onclick="setHabitEmoji(&#39;🎵&#39;,this)">🎵</button>
+                <button class="emoji-pick-btn" data-e="✍️" onclick="setHabitEmoji(&#39;✍️&#39;,this)">✍️</button>
+              </div>
+            </div>
+            <div class="fg">
+              <div class="flbl" data-i18n="hd.edit.group">Část dne</div>
+              <div class="habit-type-row" id="habit-group-row">
+                <button class="ev-type-btn" id="hgroup-morning" onclick="setHabitGroup(&#39;morning&#39;,this)" data-i18n="hb.f.morning">🌅 Ráno</button>
+                <button class="ev-type-btn" id="hgroup-day" onclick="setHabitGroup(&#39;day&#39;,this)" data-i18n="hb.f.dayGrp">☀️ Den</button>
+                <button class="ev-type-btn" id="hgroup-evening" onclick="setHabitGroup(&#39;evening&#39;,this)" data-i18n="hb.f.evening">🌙 Večer</button>
+              </div>
+            </div>
+            <div class="fg">
+              <div class="flbl" data-i18n="hb.f.type">Typ</div>
+              <div class="habit-type-row" id="habit-type-row">
+                <button class="ev-type-btn sel" id="htype-yesno" onclick="setHabitType(&#39;yesno&#39;,this)" data-i18n="hb.f.yesno">✓ Ano/Ne</button>
+                <button class="ev-type-btn" id="htype-count" onclick="setHabitType(&#39;count&#39;,this)" data-i18n="hb.f.count">🔢 Počet</button>
+              </div>
+            </div>
+            <div class="fg" id="habit-goal-wrap" style="display:none">
+              <label class="flbl" data-i18n="hb.f.goal">Denní cíl (počet)</label>
+              <input class="finp" type="number" id="habit-goal-inp" placeholder="10" min="1" max="9999" value="10">
+            </div>
+            <div class="fg" id="habit-goal-wrap2">
+              <label class="flbl"><span data-i18n="hb.f.linkGoal">🏆 Propojit s cílem</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label>
+              <select class="finp" id="habit-goal-sel">
+                <option value="" data-i18n="goal.none">— bez cíle —</option>
+              </select>
+            </div>
           </div>
           <div class="add-habit-actions">
             <button class="btn-s" onclick="toggleAddHabit()" data-i18n="common.cancel">Zrušit</button>
@@ -524,8 +530,8 @@ else show();
         <button onclick="toggleArchivedHabits()" id="arch-toggle-btn" data-i18n="hb.archShow" style="background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:6px 18px;font-size:13px;color:var(--text2);cursor:pointer;transition:all .2s">📦 Zobrazit archiv</button>
       </div>
 
-      <!-- Filtr „Jen nevyřízené“ (toggleHabitPending) -->
-      <div class="hb-filter" hidden><button type="button" id="hb-pend-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitPending()" data-i18n="hb.pendOnly">⏳ Jen nevyřízené</button><button type="button" id="hb-chain-chip" class="hb-pend-chip" onclick="openChainSheet()" aria-haspopup="dialog" data-i18n="hb.chain.chip" hidden>🔗 Rutina</button></div>
+      <!-- Filtr „Jen nevyřízené“ (toggleHabitPending), řádek týdne na kartách (toggleHabitWeek, 5.10) -->
+      <div class="hb-filter" hidden><button type="button" id="hb-week-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitWeek()" data-i18n="hb.weekChip">📅 Týden</button><button type="button" id="hb-pend-chip" class="hb-pend-chip" aria-pressed="false" onclick="toggleHabitPending()" data-i18n="hb.pendOnly">⏳ Jen nevyřízené</button><button type="button" id="hb-chain-chip" class="hb-pend-chip" onclick="openChainSheet()" aria-haspopup="dialog" data-i18n="hb.chain.chip" hidden>🔗 Rutina</button></div>
 
       <!-- Habits list -->
       <div id="habits-list"></div>
