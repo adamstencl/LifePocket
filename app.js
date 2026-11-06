@@ -2858,7 +2858,7 @@ function buildHabitCard(h,ch){
   // 5.10: kompaktní karta – čip frekvence jen u konkrétních dnů (každý den je výchozí, týdenní má pilulku týdne)
   const streakHtml=(weekly
     ? weekPill+streakBadge
-    : streak>0 ? streakBadge : `<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`)
+    : streak>0 ? streakBadge : `<span style="color:var(--text3);font-size:11px">${h.type==='count'&&val>0&&val<goal?tH('hb.leftCnt',{n:goal-val}):tH('hb.startToday')}</span>`) // 5.13: rozpracovaný počítaný „Ještě 18 ×“
     +(freq.type==='days'?`<span class="habit-freq-badge hb-freq-days">${freqLabel}</span>`:''); // 4.90: čipy ve vlastním <span> (nelámou se uvnitř)
 
   // Řádek týdne jen s volbou „Týden“ nad seznamem (5.10), jinak v detailu návyku
@@ -3318,7 +3318,7 @@ function renderHabits(){
     const dueG=groupHabits.filter(h=>habitDueOrDone(h,habitDay));
     const doneCount=dueG.filter(h=>hDone(h.id,habitDay)).length;
     const pct=dueG.length?Math.round(doneCount/dueG.length*100):0;
-    const pctCls=!dueG.length?'empty':pct===100?'full':pct>0?'partial':'empty';
+    const pctCls=!dueG.length?'zero':pct===100?'full':pct>0?'partial':'zero';
 
     // Is group open? Default: all open (i při filtru jde skupinu sbalit)
     const isOpen=openGroups.has(g.id);
@@ -10626,6 +10626,11 @@ function shopGrpFreq(gid) { return (gid && shopGrp[gid]?.freq) || {}; }
 // Položky zobrazeného seznamu
 function activeShopItems() { const g = shopGid(); return g ? shopGrpItems(g) : shopItems; }
 // Zobrazený seznam (skupiny nebo osobní) už dorazil ze snapshotu
+// Počet nevyřízených položek seznamu (gid, null = Moje); null = seznam ještě nedorazil (5.13)
+function shopPendingOf(gid) {
+  if(gid ? !shopGrp[gid]?.loaded : !shopItemsLoaded) return null;
+  return shopItemsOf(gid).filter(i => !i.done).length;
+}
 function shopListReady() { const g = shopGid(); return g ? !!shopGrp[g]?.loaded : shopItemsLoaded; }
 function shopWaitToast() { const g = shopGid(); if (g) subscribeGroupShop(g); toast(t(g ? 'mp.shopLoading' : 'shop.loading')); }
 // Kolekce seznamu: gid = skupina, null = osobní
@@ -10655,8 +10660,16 @@ function renderShopViewToggle(cur) {
     const opts = ['', ...gs];
     cur = cur || '';
     if(opts.length <= 3) {
+      // 5.13: počet nevyřízených u každé záložky (jen načtený seznam; skupin jsou tu nejvýš 2)
+      gs.forEach(subscribeGroupShop);
       html = '<div class="seg seg--block seg--grp" role="group" aria-label="'+tH('shop.viewAria')+'">'
-        + opts.map(g => '<button type="button" class="seg-btn'+(g===cur?' active':'')+'" data-gid="'+esc(g)+'" aria-pressed="'+(g===cur)+'" onclick="setShopView(this.dataset.gid)">'+esc(shopViewLabel(g))+'</button>').join('')
+        + opts.map(g => {
+            const n = shopPendingOf(g || null), lbl = shopViewLabel(g);
+            return '<button type="button" class="seg-btn seg-btn--n'+(g===cur?' active':'')+'" data-gid="'+esc(g)+'" aria-pressed="'+(g===cur)+'"'
+              + (n === null ? '' : ' aria-label="'+esc(lbl)+', '+tH('dash.s.left',{n})+'"')
+              + ' onclick="setShopView(this.dataset.gid)"><span class="seg-l">'+esc(lbl)+'</span>'
+              + (n === null ? '' : '<span class="seg-n" aria-hidden="true">'+n+'</span>')+'</button>';
+          }).join('')
         + '</div>';
     } else {
       html = '<button type="button" class="grp-pick" aria-haspopup="dialog" aria-label="'+tH('shop.viewAria')+': '+esc(shopViewLabel(cur))+'" onclick="openShopViewSheet()">'
@@ -10740,10 +10753,9 @@ function subscribeGroupShop(gid) {
     e.items = snap.docs.map(d=>({id:d.id,...d.data()}));
     e.loaded = true; e.err = 0;
     if(_recShopWait && gid === recShopGid()) checkRecurringShop(); // odložené pravidelné přidání
-    if(gid === shopGid()) {
-      renderShop();
-      if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); // widget Nákupy
-    }
+    if(gid === shopGid()) renderShop();
+    else renderShopViewToggle(shopGid()); // počty u přepínače (5.13)
+    if(gid === shopHomeGid() && document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); // widget Nákupy (Moje + hlavní skupina)
   }, onErr);
   // Často nakupované ve skupině (4.45) – jeden dokument, ruší se spolu se seznamem
   const u2 = onSnapshot(doc(db,'families',gid,'shopStats','freq'), snap => {
@@ -20116,6 +20128,17 @@ function dashIntroHTML(fns){
 // počítaný rovnou na cíl (jako Co teď a lišta rutiny); splněný počítaný otevře Návyky (hodnotu nemaže)
 // Pořadí řádků karty (fixní pro den a relaci) a krátká pojistka proti dvojímu klepnutí
 let _dwHOrd={day:'',uid:'',ids:[]}, _dwHLock=0;
+// 5.13: počítaný na cíl → lišta „Kliky 30/30 · Vrátit“; druhé klepnutí do 10 s vrátí původní hodnotu
+let _dwHUndo=null; // {hid, day, uid, key, until}
+let _dwHAll=false; // karta rozbalená na všechny návyky (jen v paměti relace)
+window.dwHabitsAll=v=>{ _dwHAll=!!v; rDash(); document.getElementById('dw-hmore')?.focus({preventScroll:true}); };
+function dwHRedraw(hid){
+  renderHabits();
+  if(document.getElementById('p-dashboard')?.classList.contains('active')){
+    rDash();
+    if(hid) [...document.querySelectorAll('#dw-habits .dw-hbtn')].find(b=>b.dataset.a0===hid)?.focus({preventScroll:true});
+  }
+}
 window.dwHabitTap=hid=>{
   const td=toDS(), h=habits.find(x=>x.id===hid);
   if(!CU||!h||h.archived) return;
@@ -20125,8 +20148,25 @@ window.dwHabitTap=hid=>{
   const l=hLog(hid+'_'+td);
   if(h.type==='count'){
     const goal=Number(h.goal)||1, cur=Number(l?.value)||0;
-    if(cur>=goal){ window.sp('habits'); return; }
-    quickOnce('dw-h-'+hid,()=>window.adjustHabit(hid,td,goal-cur,goal));
+    if(cur>=goal){
+      const u=_dwHUndo;
+      if(u&&u.hid===hid&&u.day===td&&u.uid===CU.uid&&Date.now()<u.until&&_undoAct.has(u.key)){
+        _dwHUndo=null;
+        window.undoDo(u.key,document.querySelector(`.undo-btn[data-a0="${u.key}"]`));
+        return;
+      }
+      window.sp('habits'); return;
+    }
+    const backup=l?{...l}:null, id=hid+'_'+td;
+    if(!quickOnce('dw-h-'+hid,()=>window.adjustHabit(hid,td,goal-cur,goal))) return;
+    // Vrátit: původní záznam (nebo žádný), ne jen hodnotu
+    const key=undoNote(`${h.name} ${goal}/${goal}`,async()=>{
+      if(_dwHUndo?.key===key) _dwHUndo=null;
+      const w=backup?putHabitLog(backup):delHabitLog(id);
+      dwHRedraw(hid);
+      await w;
+    },10000);
+    if(key) _dwHUndo={hid,day:td,uid:CU.uid,key,until:Date.now()+10000};
   } else quickOnce('dw-h-'+hid,()=>window.toggleHabit(hid,td,l?.done?'done':l?.failed?'failed':'empty'));
   // Paměť je změněná hned (putHabitLog), zápis se nečeká: překreslit a vrátit fokus na kroužek
   if(document.getElementById('p-dashboard')?.classList.contains('active')){
@@ -20171,7 +20211,7 @@ function rDash(){
   const evStr = nextEv ? t('dash.ev',{name:nextEv.name}) : '';
   const remaining_r = totalHabits_r - doneToday_r;
   // Vybere náhodnou ze zpráv dash.m.<prefix>1..3 (textContent, proměnné bez escapování)
-  const dv = {name:nm, n:totalHabits_r, done:doneToday_r, total:totalHabits_r, left:remaining_r, ev:evStr, g};
+  const dv = {name:nm, n:remaining_r, done:doneToday_r, total:totalHabits_r, left:remaining_r, ev:evStr, g}; // n = zbývající návyky (5.13)
   const pickMsg = pre => t('dash.m.'+pre+(1+Math.floor(Math.random()*3)), dv);
   let dynamicMsg = gr;
   if(accDay()===0 && !doneToday_r){
@@ -20180,7 +20220,7 @@ function rDash(){
     if((prof.modules||[]).includes('habits')) dynamicMsg = pickMsg('none'); // bez Návyků žádné „přidej si návyk“ (5.10)
   } else if(totalHabits_r===0){
     // dnes nic na řadě (pauza, mimo dny frekvence): obecný pozdrav
-  } else if(h_r<9){
+  } else if(h_r<9 && remaining_r>0){ // 5.13: ráno se vším hotovým → zpráva „vše splněno“
     dynamicMsg = pickMsg('morning');
   } else if(h_r>=21){
     if(doneToday_r===totalHabits_r && totalHabits_r>0){
@@ -20274,7 +20314,7 @@ function rDash(){
     if(_dwHOrd.day!==today||_dwHOrd.uid!==CU?.uid) _dwHOrd={day:today,uid:CU?.uid||'',ids:actH.map((h,i)=>({h,i,p:isHabitPending(h,today)?0:1})).sort((a,b)=>a.p-b.p||a.i-b.i).map(x=>x.h.id)};
     else _dwHOrd.ids.push(...actH.filter(h=>!_dwHOrd.ids.includes(h.id)).map(h=>h.id));
     const shownH=_dwHOrd.ids.map(id=>actH.find(h=>h.id===id)).filter(Boolean);
-    const habRows=shownH.slice(0,4).map(hb=>{
+    const habRows=shownH.slice(0,_dwHAll?shownH.length:4).map(hb=>{
       const log=hLogHD(hb.id,today);
       const paused=isHabitPausedOn(hb,today);
       const done=log?.done||false;
@@ -20295,7 +20335,8 @@ function rDash(){
          :streak>1?`<div class="dw-hfire">🔥${streak}</div>`:''}
       </div>`;
     }).join('');
-    const more=actH.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:actH.length-4})}</div>`:'';
+    // 5.13: „+ N další“ rozbalí kartu na všechny návyky (stav jen v paměti relace), „Méně“ ji sbalí
+    const more=shownH.length>4?`<button type="button" id="dw-hmore" class="dw-hmore" aria-expanded="${_dwHAll}" onclick="event.stopPropagation();dwHabitsAll(${!_dwHAll})">${_dwHAll?tH('dash.h.less'):tH('dash.h.more',{n:shownH.length-4})}</button>`:'';
     mw.habits=`<div class="dw" id="dw-habits" onclick="sp('habits')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.h.title')}</div>
@@ -20400,18 +20441,26 @@ function rDash(){
 
   // ── WIDGET: NÁKUPY ──
   if(mods.includes('shopping')&&!dHid.has('shopping')){ // schované Nákupy neodebírají seznam skupiny
-    // Naposledy zobrazený seznam v Nákupech (osobní nebo skupiny, 4.50)
-    const sg=shopGid(); if(sg) subscribeGroupShop(sg);
-    const shopItemsArr=sg?shopGrpItems(sg):(typeof shopItems!=='undefined'?shopItems:[]);
-    const pending=shopItemsArr.filter(i=>!i.done);
-    const done=shopItemsArr.filter(i=>i.done).length;
+    // 5.13: Moje + hlavní skupina dohromady (bez duplicit podle shopKey); osobní seznam až po načtení
+    const sg=shopHomeGid(); if(sg) subscribeGroupShop(sg);
+    const sgItems=sg?shopGrpItems(sg):[], myItems=shopItemsLoaded?shopItems:[];
+    const sKeys=new Map(); // klíč → {name, pending}; položky skupiny první (pořadí jako dřív)
+    for(const i of [...sgItems,...myItems]){
+      const k=shopKey(i.name)||('#'+i.id), o=sKeys.get(k);
+      if(!o) sKeys.set(k,{name:i.name,pending:!i.done});
+      else if(!i.done&&!o.pending){ o.pending=true; o.name=i.name; }
+    }
+    const shopItemsArr=[...sKeys.values()];
+    const pending=shopItemsArr.filter(i=>i.pending);
+    const done=shopItemsArr.length-pending.length;
+    const sgOnly=sg&&!myItems.length; // jen seznam skupiny → v nadpisu její název
     if(shopItemsArr.length){
       const shopPct = shopItemsArr.length ? Math.round(done/shopItemsArr.length*100) : 0;
       const shopLabel = pending.length===0 ? tH('dash.s.allDone') : tH('dash.s.left',{n:pending.length});
       const firstItems = esc(pending.slice(0,3).map(i=>i.name).join(', ')); // názvy můžou být od členů skupiny
       mw.shopping=`<div class="dw" onclick="sp('shopping')">
         <div class="dw-head">
-          <div class="dw-title">${tH('dash.s.title')}${sg?` <span class="dw-grp">· ${esc(grpLabel(sg))}</span>`:''}</div>
+          <div class="dw-title">${tH('dash.s.title')}${sgOnly?` <span class="dw-grp">· ${esc(grpLabel(sg))}</span>`:''}</div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:13px;color:var(--text2)">${tH('dash.s.done',{done,total:shopItemsArr.length})}</span>
             <div class="dw-arrow">→</div>
@@ -22229,6 +22278,7 @@ function subShop(){
       shopItemsLoaded=true;
       if(_recShopWait) checkRecurringShop(); // pravidelné nákupy čekaly na osobní seznam
       renderShop();
+      if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); // widget Nákupy počítá i Moje (5.13)
     },
     // Chyba (4.77): listener skončil → uvolnit klíč, ať nabídky nečekají na seznam a subModules ho může přihlásit znovu
     () => { if(_fireSubs['shop'] === un) delete _fireSubs['shop']; }
@@ -23083,6 +23133,7 @@ function undoNote(msg, restore, ms = 7000) {
   _undoAct.set(key, {uid: CU.uid, restore});
   setTimeout(() => _undoAct.delete(key), ms + 2000);
   pantryNote(`<span style="flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--text2)">${esc(msg)}</span><button type="button" class="undo-btn" data-a0="${esc(key)}" onclick="undoDo(this.dataset.a0,this)" style="${PN_BTN}">${tH('common.undo')}</button>`, ms);
+  return key;
 }
 window.undoDo = (key, el) => {
   const u = _undoAct.get(key);

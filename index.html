@@ -427,7 +427,7 @@ else show();
           <div class="habit-day-lbl" id="habit-day-lbl">Dnes</div>
           <button class="cal-nav-btn" data-i18n-attr="aria-label:a11y.nextDay" aria-label="Další den" onclick="habitNextDay()">›</button>
           </div>
-          <button id="habit-month-btn" onclick="toggleHabitMonth()" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:13px;color:var(--text2);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="hb.f.month">📊 Měsíc</button>
+          <button id="habit-month-btn" onclick="toggleHabitMonth()" style="min-height:44px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:13px;color:var(--text2);cursor:pointer;font-family:'Crimson Pro',serif" data-i18n="hb.f.month">📊 Měsíc</button>
         </div>
       </div>
 
@@ -647,7 +647,7 @@ else show();
         <div class="journal-sidebar" id="j-sidebar">
           <div class="journal-sidebar-top">
             <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">📒</span><div class="ptitle" style="font-size:18px;margin:0" data-i18n="mod.journal">Deník</div></div>
-            <button class="btn-p" style="width:auto;padding:7px 14px;font-size:14px" onclick="newEntry()" data-i18n="nt.newBtn">+ Nový</button>
+            <button class="btn-p" style="width:auto;min-height:44px;padding:7px 14px;font-size:14px" onclick="newEntry()" data-i18n="nt.newBtn">+ Nový</button>
           </div>
           <div id="j-seg"></div>
           <div class="j-search-wrap">
@@ -869,7 +869,7 @@ else show();
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
             <div style="font-size:12px;color:var(--text3);font-family:'Crimson Pro',serif" data-i18n="shop.recLabel">🔄 Pravidelný nákup</div>
-            <button onclick="openAddRecurringModal()" style="background:none;border:none;color:var(--accent);font-size:13px;font-family:'Crimson Pro',serif;cursor:pointer;padding:0 2px" data-i18n="shop.recAdd">+ přidat</button>
+            <button onclick="openAddRecurringModal()" style="min-height:44px;margin:-14px 0;background:none;border:none;color:var(--accent);font-size:13px;font-family:'Crimson Pro',serif;cursor:pointer;padding:0 6px" data-i18n="shop.recAdd">+ přidat</button>
           </div>
           <div id="recurring-shop-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
