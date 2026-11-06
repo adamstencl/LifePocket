@@ -222,7 +222,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
         <div class="lp-auth-links">
           <button type="button" class="lp-link" id="login-forgot" onclick="window.doPasswordReset()" data-i18n="auth.forgot">Zapomenuté heslo?</button>
           <button type="button" class="lp-link" id="login-toggle-reg" onclick="window.toggleLoginMode('register')" data-i18n="auth.toRegister">Registrovat se →</button>
-          <button type="button" class="lp-link" id="login-toggle-login" style="display:none" onclick="window.toggleLoginMode('login')" data-i18n="auth.toLogin">← Zpět na přihlášení</button>
+          <button type="button" class="lp-link" id="login-toggle-login" style="display:none" onclick="window.toggleLoginMode('login')" data-i18n="auth.toLogin">Už máš účet? Přihlas se</button>
         </div>
       </div>
       <div class="err" id="login-err" role="alert"></div>
@@ -760,10 +760,11 @@ else show();
       </div>
 
       <!-- Welcome state - viditelný dokud nepřijde recept -->
-      <div id="cook-welcome" style="text-align:center;padding:32px 16px 8px">
-        <div style="font-size:48px;margin-bottom:12px">👨‍🍳</div>
-        <div style="font-family:&#39;Playfair Display&#39;,serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:8px" data-i18n="ck.welcomeT">Co dnes vaříme?</div>
-        <div style="font-size:14px;color:var(--text3);max-width:280px;margin:0 auto;line-height:1.6" data-i18n="ck.welcomeX">Napiš jídlo nebo téma a Rex ti navrhne celý recept se surovinami a postupem.</div>
+      <!-- S uloženými recepty jen krátký řádek (cook-welcome--compact, 5.14) -->
+      <div id="cook-welcome" class="cook-welcome">
+        <div class="cw-ico" aria-hidden="true">👨‍🍳</div>
+        <div class="cw-t" data-i18n="ck.welcomeT">Co dnes vaříme?</div>
+        <div class="cw-x" data-i18n="ck.welcomeX">Napiš, na co máš chuť, nebo nech pole prázdné – Rex ti navrhne celý recept se surovinami a postupem.</div>
       </div>
 
       <!-- Recipe result -->
@@ -797,11 +798,13 @@ else show();
       </div>
 
       <!-- Saved recipes -->
-      <div id="saved-recipes-section" style="margin-top:24px">
+      <div id="saved-recipes-section">
         <div class="gh" style="margin-bottom:10px">
           <div class="sec-lbl" style="margin:0" data-i18n="ck.savedTitle">🔖 Uložené recepty</div>
         </div>
         <div id="rc-seg"></div>
+        <!-- Hledání podle názvu při víc než 5 receptech (5.14) -->
+        <input class="j-search rc-search" type="search" id="rc-search" hidden placeholder="🔍 Hledat recept…" aria-label="Hledat v uložených receptech" autocomplete="off" enterkeyhint="search" data-i18n-attr="placeholder:ck.searchPh;aria-label:ck.searchAria" oninput="rcSearch()">
         <div id="saved-recipes-list"></div>
       </div>
 

@@ -593,6 +593,9 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 /* Nahlášení odpovědi AI v chatu */
 .msg-report{display:inline-block;background:none;border:none;padding:6px 0 0;min-height:24px;color:var(--text3);font-family:inherit;font-size:11px;cursor:pointer;opacity:.8}
 .msg-report:hover{opacity:1;text-decoration:underline}
+.msg-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+.msg-foot .msg-time{margin:0 0 0 auto}
+.msg-foot .msg-report{padding:0;min-height:24px}
 /* Přepínač jazyka v Nastavení */
 .lang-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .lang-btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 12px;background:var(--card2);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;cursor:pointer;transition:border-color .2s}
@@ -1372,6 +1375,17 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .saved-recipe-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .saved-recipe-del{width:44px;height:44px;margin:-8px -8px -8px 0;flex-shrink:0;background:none;border:none;border-radius:10px;font-size:18px;color:var(--text3);cursor:pointer}
 .saved-recipe-del:active{background:var(--card2)}
+/* Úvod Vaření (5.14): s uloženými recepty jen krátký řádek, seznam výš */
+.cook-welcome{text-align:center;padding:32px 16px 8px}
+.cw-ico{font-size:48px;margin-bottom:12px}
+.cw-t{font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--accent);margin-bottom:8px}
+.cw-x{font-size:14px;color:var(--text3);max-width:280px;margin:0 auto;line-height:1.6}
+.cook-welcome--compact{padding:10px 4px 0;text-align:left}
+.cook-welcome--compact .cw-ico,.cook-welcome--compact .cw-t{display:none}
+.cook-welcome--compact .cw-x{max-width:none;font-size:13px;line-height:1.45}
+#saved-recipes-section{margin-top:24px}
+.cook-welcome--compact~#saved-recipes-section{margin-top:16px}
+.rc-search{margin:0 0 10px;min-height:44px}
 .cook-empty{font-size:15px;color:var(--text2);font-style:italic;padding:8px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .cook-empty-btn{min-height:44px;padding:0 14px;background:none;border:1px solid var(--border2);border-radius:22px;font-family:'Crimson Pro',serif;font-size:14px;font-style:normal;color:var(--accent);cursor:pointer}
 
@@ -1400,6 +1414,10 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .mp-day--today{border:2px solid var(--accent);padding:11px}
 .mp-day-h{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--text)}
 .mp-today{font-family:'Crimson Pro',serif;font-size:13px;font-weight:700;padding:2px 10px;border-radius:12px;background:var(--accent);color:var(--on-accent)}
+/* Minulé dny plánu a karta Nový týden (5.14) */
+.mp-day--past{opacity:.7}
+.mp-past{font-family:'Crimson Pro',serif;font-size:13px;font-weight:600;padding:2px 10px;border-radius:12px;background:var(--card2);border:1px solid var(--border2);color:var(--text2)}
+.mp-nw{margin:0 0 12px}
 .mp-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .mp-row:last-child{margin-bottom:0}
 .mp-slot-l{width:76px;flex-shrink:0;font-size:14px;color:var(--text2);white-space:nowrap}
@@ -2651,6 +2669,9 @@ body.hsp-on .toast{bottom:calc(144px + var(--hsp-h,150px))}
 .yd-x{min-height:44px;padding:6px 12px;background:none;border:none;color:var(--text2);font:inherit;font-size:14px;cursor:pointer}
 .yd-b:focus-visible,.yd-ok:focus-visible,.yd-x:focus-visible,.yd-card-b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px))}
+/* Toast nahoře (5.14, štíty mimo Domů): nezakryje spodní lištu ani pole chatu */
+.toast.toast--top{top:calc(env(safe-area-inset-top) + 64px);bottom:auto!important;transform:translateX(-50%) translateY(-20px)}
+.toast.toast--top.show{transform:translateX(-50%) translateY(0)}
 .yd-card{cursor:default;display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-color:var(--accent)}
 .yd-card-t{flex:1 1 200px;min-width:0;font-size:15px;line-height:1.4;color:var(--text);overflow-wrap:anywhere}
 .yd-card-b{flex:none;min-height:44px;padding:6px 16px;border:none;border-radius:10px;background:var(--accent);color:var(--on-accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:700;cursor:pointer}
