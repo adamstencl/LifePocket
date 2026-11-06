@@ -1014,6 +1014,12 @@ else show();
       <div id="pets-content"></div>
     </div>
 
+    <!-- FINANCE DOMÁCNOSTI (5.15) -->
+    <div class="page" id="p-finance">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px" aria-hidden="true">💰</span><div class="ptitle" data-i18n="mod.finance">Finance</div><span style="margin-left:auto"></span><button type="button" class="pet-add-btn fin-set-btn" id="fin-set-top" hidden onclick="finSetOpen()" aria-label="Nastavení rozpočtu" data-i18n-attr="aria-label:fin.set.aria">⚙️</button></div>
+      <div id="fin-content"></div>
+    </div>
+
     <!-- SETTINGS -->
     <!-- STATISTIKY -->
 
@@ -1043,6 +1049,7 @@ else show();
           <input class="setinp" type="text" id="set-nick" placeholder="Tvoje jméno…" data-i18n-attr="placeholder:onb.namePh">
           <button class="btn-sv" onclick="saveNick()" data-i18n="common.save">Uložit</button>
         </div>
+        <div id="set-finai"></div>
       </div>
 
       <div class="setsec" id="set-sec-mods">
