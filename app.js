@@ -1117,8 +1117,8 @@ const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 // připomínka #habit-snz, lišta rutiny …), otevřený panel Více, dotaz na upozornění nebo toast z fronty (5.10: jedna vyskakovací věc naráz)
 let _popUntil = 0, _popPend = 0;
 function uiBusy() {
-  // 5.13: nápověda modulu je řádek ve stránce (nic nepřekrývá); iPhone „Přidat na plochu“ (pwa.js, třída lp-on) ano
-  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open,html:not(.lp-noinstall) #ios-banner.lp-on');
+  // 5.13: nápověda modulu je řádek ve stránce (nic nepřekrývá); iPhone „Přidat na plochu“ drží frontu jen 8 s po zobrazení (lpIosWait)
+  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open');
 }
 // Toast z fronty (štíty …): počká na volno a po dobu zobrazení drží frontu obsazenou
 function popToast(msg, ms = 4000, maxMs = 600000) {
@@ -1177,7 +1177,7 @@ window.lpIosWait = fn => {
     if (Date.now() - t0 > 7200000) { _iosQ = false; return; }
     const inApp = !!CU && !!prof && !!document.getElementById('app')?.classList.contains('active');
     if (!inApp || document.documentElement.classList.contains('lp-noinstall') || (!_instNextVisit && qsActive())) { setTimeout(tick, 3000); return; }
-    whenUiFree(() => { _iosQ = false; fn(); }, 600000, () => { _iosQ = false; });
+    whenUiFree(() => { _iosQ = false; fn(); _popUntil = Math.max(_popUntil, Date.now() + 8000); }, 600000, () => { _iosQ = false; }); // banner zůstává, frontu blokuje jen chvíli
   };
   tick();
 };
@@ -1633,7 +1633,7 @@ function renderVerifyUi(){
   if(n){
     n.hidden=!on||_verifyHidden;
     const k=on?(_verifyUnsent?'u:':'1:')+String(CU.email||''):'';
-    // 5.13: adresa (překlep = odkaz nedorazí) a „Opravit adresu“ (odhlásit a zaregistrovat znovu, verifyFixEmail)
+    // 5.13: adresa (překlep = odkaz nedorazí) a „Opravit adresu“ (smazat účet a zaregistrovat znovu, verifyFixEmail)
     if(n.dataset.k!==k){ n.dataset.k=k;
       n.innerHTML=on?`<span class="verify-note-t">${tH(_verifyUnsent?'auth.verifyNoteUnsent':'auth.verifyNote')}</span>
       <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySend':'auth.verifyResend')}</button>
@@ -1648,7 +1648,7 @@ function renderVerifyUi(){
       s.innerHTML=on?`<div class="acc-verify"><span class="acc-verify-t">${tH('auth.verifySet',{email:CU.email||''})}</span>
       <button type="button" class="btn-s verify-b" onclick="resendVerify()">${tH(_verifyUnsent?'auth.verifySendSet':'auth.verifyResendSet')}</button></div>`:''; }
   }
-  document.querySelectorAll('#verify-note .verify-b,#set-verify .verify-b').forEach(b=>{ b.disabled=wait>0; });
+  document.querySelectorAll('#verify-note .verify-b,#set-verify .verify-b,#ct-card .ct-verify-b').forEach(b=>{ b.disabled=wait>0; });
   ctSync(); // krok „Ověř e-mail“ v kartě Co teď (5.13) se po ověření vymění
   // Po uplynutí 60 s znovu povolit tlačítka
   clearTimeout(_verifyTimer); _verifyTimer=0;
@@ -4158,11 +4158,21 @@ window.toggleHabitDay=async(hid,date)=>{
 // ✕ Nesplněno na kartě (5.13): nesplněno ↔ prázdné (stejný záznam jako „Nesplněno“ v řádku týdne); paměť hned, zápis se dočká
 window.failHabitDay=async(hid,date)=>{
   if(!CU||date>toDS()) return;
-  const logId=hid+'_'+date;
-  const w=hLog(logId)?.failed?hbClearLog(hid,date):putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
+  const logId=hid+'_'+date, l=hLog(logId), h=habits.find(x=>x.id===hid);
+  const wasFailed=!!l?.failed, backup=l?{...l}:null; // kopie před zápisem (putHabitLog mění záznam v paměti)
+  const w=wasFailed?hbClearLog(hid,date):putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
+  // Počítaný návyk: ✕ smaže načítané množství → Vrátit obnoví celý původní záznam (vzor Domů)
+  if(!wasFailed&&h?.type==='count'){
+    undoNote(`${h.name} · ${t('hb.failed')}`,async()=>{
+      const r=backup?putHabitLog(backup):hbClearLog(hid,date);
+      renderHabits();
+      try{ await r; }finally{ renderHabits(); }
+    },10000);
+  }
   renderHabits();
-  await w;
-  renderHabits();
+  try{ await w; }
+  catch(e){ toast(t('common.saveFailed',{err:userErr(e)})); }
+  finally{ renderHabits(); }
 };
 window.skipHabitDay=async(hid,date)=>{
   if(!CU)return;
@@ -5769,13 +5779,15 @@ function resetLoginBtn(){
 }
 async function logoutNow(){flushAllGroupActivity();await unregisterFcmDevice();await signOut(auth);clearUserSessionState();clearLocalPersonalOnLogout();clearLangLocal();await clearFsCache();location.reload();}
 window.doLogout=async()=>{if(!(await lpConfirm(t('auth.logoutConfirm'),{ok:t('set.logout.btn')})))return;await logoutNow();};
-// Překlep v adrese neověřeného účtu (5.13): změna e-mailu v appce není → odhlásit a po načtení rovnou registrace
+// Překlep v adrese neověřeného účtu (5.13): změna e-mailu v appce není → nejdřív smazat účet (data se nepřenesou),
+// po smazání „Na úvod“ otevře rovnou registraci
 window.verifyFixEmail=async()=>{
   if(!needsVerify()) return;
-  if(!(await lpConfirm(t('auth.fixEmailQ',{email:CU.email||''}),{ok:t('auth.fixEmailOk')}))) return;
-  try{ sessionStorage.setItem('lp_auth_panel','register'); }catch(e){}
-  await logoutNow();
+  if(!(await lpConfirm(t('auth.fixEmailQ'),{ok:t('auth.fixEmailOk'),danger:true}))) return;
+  _delThenReg=true; // registraci otevře až skutečné smazání (finishAccountDeleted)
+  openDeleteAccount();
 };
+let _delThenReg=false;
 // Odhlášení (4.75): osobní data z trvalé cache Firestore v zařízení smazat; jiný otevřený tab mazání odmítne (jen varování).
 // Příznak lp_fs_clear zůstane, dokud mazání neprojde → další start bez přihlášení to zkusí znovu (viz onAuthStateChanged).
 // Po terminate je db nepoužitelná: volající vždy končí přechodem na jinou stránku / reloadem. Nejvýš 2,5 s.
@@ -6117,6 +6129,7 @@ window.confirmDeleteAccount = async () => {
 };
 async function finishAccountDeleted() {
   _accDeleted = true;
+  if (_delThenReg) { try { sessionStorage.setItem('lp_auth_panel', 'register'); } catch (e) {} } // z „Opravit adresu“: po „Na úvod“ registrace
   // Push token tohoto zařízení zneplatnit (profil s tokeny už smazal server)
   try { if (messaging && fcmState === 'ok') await Promise.race([fcmSdk.deleteToken(messaging), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
   try { await signOut(auth); } catch (e) {}
@@ -9381,12 +9394,13 @@ function coTedHTML() {
     <button type="button" class="btn-p ct-btn" data-a0="${esc(q)}" onclick="ctAsk(this.dataset.a0)">${tH('ct.ask.btn')}</button>
   </div>`;
   }
-  if (kind === 'verify') {
-    return `<div class="ct-card" id="ct-card" data-step="${m}" role="region" aria-label="${tH('ct.aria')}">
+  if (kind === 'verify') { // data-vu: ctSync překreslí po změně _verifyUnsent; tlačítko vypíná renderVerifyUi (60 s)
+    const vWait = _verifySentAt + VERIFY_GAP > Date.now();
+    return `<div class="ct-card" id="ct-card" data-step="${m}" data-vu="${_verifyUnsent ? 1 : 0}" role="region" aria-label="${tH('ct.aria')}">
     ${head}
     <div class="ct-t"><span aria-hidden="true">📧</span> ${tH('ct.verify', {av: av.name})}</div>
     <div class="ct-sub">${tH(_verifyUnsent ? 'auth.verifyAddr' : 'ct.verifyD', {email: CU?.email || ''})}</div>
-    <button type="button" class="btn-p ct-btn" onclick="resendVerify()">${tH(_verifyUnsent ? 'auth.verifySendSet' : 'auth.verifyResendSet')}</button>
+    <button type="button" class="btn-p ct-btn ct-verify-b" onclick="resendVerify()"${vWait ? ' disabled' : ''}>${tH(_verifyUnsent ? 'auth.verifySendSet' : 'auth.verifyResendSet')}</button>
   </div>`;
   }
   if (kind === 'inp') {
@@ -9425,11 +9439,14 @@ window.ctSkip = id => {
 };
 // Po změně dat (snapshot, odškrtnutí): Domů překreslit, jen když se krok karty změnil
 function ctSync() {
+  if (!CU) return; // po odhlášení rDash nekreslit
   const card = document.getElementById('ct-card');
   if (!card || !isSimple() || card.dataset.step === 'done') return;
   setTimeout(() => {
     const c = document.getElementById('ct-card');
-    if (c && c.dataset.step !== ctCur() && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+    if (!CU || !c || !document.getElementById('p-dashboard')?.classList.contains('active')) return;
+    const vu = c.dataset.step === 'verify' && c.dataset.vu !== (_verifyUnsent ? '1' : '0'); // „Poslat“ ↔ „Poslat znovu“
+    if (c.dataset.step !== ctCur() || vu) rDash();
   }, 0);
 }
 window.ctAdd = () => {
@@ -10775,8 +10792,8 @@ function renderShopViewToggle(cur) {
     const opts = ['', ...gs];
     cur = cur || '';
     if(opts.length <= 3) {
-      // 5.13: počet nevyřízených u každé záložky (jen načtený seznam; skupin jsou tu nejvýš 2)
-      gs.forEach(subscribeGroupShop);
+      // 5.13: počet nevyřízených u každé záložky (jen načtený seznam; skupin jsou tu nejvýš 2), další skupiny odebírat až na stránce Nákupy
+      if(document.getElementById('p-shopping')?.classList.contains('active')) gs.forEach(subscribeGroupShop);
       html = '<div class="seg seg--block seg--grp" role="group" aria-label="'+tH('shop.viewAria')+'">'
         + opts.map(g => {
             const n = shopPendingOf(g || null), lbl = shopViewLabel(g);
@@ -19882,6 +19899,7 @@ window.sp=id=>{
   if(id==='checklist'){ensureCheckSubs();renderChecklist();}
   if(id==='pets')renderPets();
   if(id==='cooking'){initPantry();refreshCookChipFade();}
+  if(id==='shopping')renderShopViewToggle(shopGid()); // počty u přepínače: odběr dalších skupin až tady (5.13)
 };
 
 // ── Denní motivační citát ────────────────────────────────
@@ -20345,7 +20363,7 @@ function rDash(){
   
   const nm = prof?.nickname || prof?.prezdivka || t('dash.friend');
   const evStr = nextEv ? t('dash.ev',{name:nextEv.name}) : '';
-  const remaining_r = totalHabits_r - doneToday_r;
+  const remaining_r = due_r.filter(h=>!hMarked(h.id,today_r)).length; // ✕ nesplněno a přeskočeno už nečekají (5.13)
   // Vybere náhodnou ze zpráv dash.m.<prefix>1..3 (textContent, proměnné bez escapování)
   const dv = {name:nm, n:remaining_r, done:doneToday_r, total:totalHabits_r, left:remaining_r, ev:evStr, g}; // n = zbývající návyky (5.13)
   const pickMsg = pre => t('dash.m.'+pre+(1+Math.floor(Math.random()*3)), dv);
@@ -20364,12 +20382,12 @@ function rDash(){
     } else {
       dynamicMsg = pickMsg('eve');
     }
+  } else if(remaining_r===0){ // nic nezbývá: vše splněno, nebo uzavřeno i s ✕ / přeskočením (bez „100 %“)
+    dynamicMsg = doneToday_r===totalHabits_r ? pickMsg('all') : t('dash.m.all3', dv);
   } else if(doneToday_r===0){
     dynamicMsg = pickMsg('zero');
-  } else if(doneToday_r>0 && doneToday_r<totalHabits_r){
+  } else {
     dynamicMsg = pickMsg('part');
-  } else if(doneToday_r===totalHabits_r && totalHabits_r>0){
-    dynamicMsg = pickMsg('all');
   }
   
   const dtx=document.getElementById('d-avtxt'); if(dtx) dtx.textContent=dynamicMsg;

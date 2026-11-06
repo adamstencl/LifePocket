@@ -118,7 +118,7 @@ function iosBannerOn() {
   const banner = document.getElementById('ios-banner');
   if (!banner) return;
   banner.style.display = 'block';
-  banner.classList.add('lp-on'); // obsazená fronta oken (uiBusy v app.js)
+  banner.classList.add('lp-on'); // zobrazený banner (frontu oken drží app.js jen chvíli, lpIosWait)
   // Místo pod obsahem, ať banner nezakryje konec stránky
   document.documentElement.style.setProperty('--iosb-h', (banner.offsetHeight || 0) + 'px');
   document.documentElement.classList.add('lp-iosb');

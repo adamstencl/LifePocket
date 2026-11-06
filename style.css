@@ -2808,6 +2808,8 @@ body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px)
 .avbanner>.avinfo,.avbanner.av-simple>.avinfo{display:contents}
 .avbanner>.avbig{order:0;font-size:34px}
 .avbanner .avtxt,.avbanner.av-simple .avtxt{order:1;flex:1 1 0;min-width:0;margin:0 0 0 6px;padding:5px 10px;font-size:14px;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+/* Spodní padding bubliny zakryje začátek 4. řádku (line-clamp ořízne až na okraji paddingu) */
+.avbanner .avtxt::after{content:'';position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--card);pointer-events:none}
 .avbanner .avtxt::before,.avbanner.av-simple .avtxt::before{left:-7px;top:calc(50% - 6px);border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);border-top:none}
 .avbanner>.avchat-btn,.avbanner.av-simple>.avchat-btn{order:2}
 .avbanner>.avarrow,.avbanner.av-simple>.avarrow{display:none}
@@ -2857,6 +2859,8 @@ body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px)
 .cook-verify{cursor:default;margin:0 0 14px}
 /* 5.13: iPhone „Přidat na plochu“ nezakryje konec stránky */
 html.lp-iosb:not(.lp-noinstall) .abody{padding-bottom:calc(var(--iosb-h,0px) + 90px)}
+/* Lišty „Vrátit“ a zásob nad bannerem (banner bottom 76px, z-index 999) */
+html.lp-iosb:not(.lp-noinstall) #pantry-notes{bottom:max(144px,calc(var(--iosb-h,0px) + 84px))!important;z-index:1000!important}
 /* Jméno parťáka (5.07): ✏️ u jména, okno přejmenování, nabídka na úrovni 10 */
 .av-chat-left,.av-chat-info{min-width:0}
 .av-nm-row{display:flex;align-items:center;gap:6px;min-width:0}
