@@ -9329,7 +9329,7 @@ function ctSteps() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const ids = simpleModOrder().filter(id => id !== 'ask' && Object.prototype.hasOwnProperty.call(CT, id));
   // S AI parťákem (5.10): 2 kroky z modulů + „Zeptej se {av} …“
-  const ask = needsVerify() && !done.includes('ct.ask') && !nudgeSafe(CT.ask.done) ? 'verify' : 'ask'; // 5.13: neověřený místo „Zeptej se“
+  const ask = needsVerify() && !done.includes('ct.' + 'ask') && !nudgeSafe(CT.ask.done) ? 'verify' : 'ask'; // 5.13: neověřený místo „Zeptej se“
   return ((prof?.modules || []).includes('rex') ? [...ids.slice(0, 2), ask] : ids.slice(0, 3))
     .map(id => {
       const ok = !!nudgeSafe(CT[id].done);
