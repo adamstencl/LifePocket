@@ -181,3 +181,9 @@
 - Den 0 v jednoduchém režimu: „Co teď · Odškrtni návyk“ a „Návyky dnes“ ukazují stejné návyky.
 - Karta „Mám ti připomínat nákup?“ v Co teď pro profil Nákupy (nedodělané).
 - Převést zbylé `confirm()` (`archiveHabit`, `removeSamples`, `dashReset`, `grp.codeFixedQ`) a `prompt()` v `landing.inAppCopy` na `lpConfirm`/`lpCopy`.
+
+## Z 5.13
+- Šipka bubliny parťáka (`.avtxt::before`) je kvůli `overflow:hidden` oříznutá – vyřešit jinak než overflow.
+- Pozvaný člen, který použije „Opravit adresu“, dál zabírá místo ve skupině přes starý účet (do jeho smazání).
+- `err.aiVerify` tvrdí „odkaz ti přišel“, i když odeslání při registraci selhalo (`_verifyUnsent`).
+- ci-check: allowlist českých literálů snížit na 196.
