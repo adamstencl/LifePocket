@@ -67,8 +67,23 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.12';
+const APP_VERSION = '5.13';
 const CHANGELOG = [
+  { v:'5.13', items:[
+    '✕ Na kartě návyku je vedle ⏭ tlačítko Nesplněno a pod názvem tečky týdne – hned vidíš, jak ti návyk jde',
+    '🔥 Počítaný návyk na Domů splníš jedním klepnutím a hned ho můžeš vrátit; karta Návyky se rozbalí na všechny návyky',
+    '🛒 Karta Nákupy na Domů sčítá tvůj seznam i seznam skupiny, přepínač Moje / skupina ukazuje, kolik zbývá',
+    '🏠 Přehlednější Domů: menší karta parťáka, Pití hned pod návyky, „Co teď“ jde přeskočit a nápovědy nic nepřekrývají',
+    '📲 V Messengeru appka rovnou nabídne otevření v Chrome nebo Safari, kde fungují připomínky',
+    '📧 Neověřený e-mail ukáže adresu a dá se opravit; parťák počítá zbývající návyky a malá tlačítka mají větší plochu'
+  ], en:[
+    '✕ Habit cards have a Not done button next to ⏭ and week dots under the name, so you see at a glance how it’s going',
+    '🔥 Complete a count habit on Home with one tap and undo it right away; the Habits card expands to all habits',
+    '🛒 The Shopping card on Home combines your list and your group’s list; the Mine / group switch shows what’s left',
+    '🏠 A tidier Home: smaller companion card, Water right under habits, skippable “What now” and hints that cover nothing',
+    '📲 In Messenger the app offers to open in Chrome or Safari, where reminders work',
+    '📧 An unverified e-mail shows the address and can be fixed; your buddy counts remaining habits and small buttons are easier to tap'
+  ]},
   { v:'5.12', items:[
     '✍️ Recepty od AI mají správnější češtinu v názvech a postupu'
   ], en:[
