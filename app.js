@@ -72,11 +72,15 @@ const CHANGELOG = [
   { v:'5.14', items:[
     '🥗 Jídelníček na nový týden: minulé dny vyčistíš jedním klepnutím (se Zpět) a Do nákupu bere jen zbývající dny',
     '🍳 S uloženými recepty je seznam hned nahoře a od 6 receptů ho prohledáš podle názvu',
-    '💬 Klidnější první chat a registrace: energie parťáka až po první aktivitě, Nahlásit na vlastním řádku, jasnější heslo'
+    '💬 Klidnější první chat a registrace: energie parťáka až po první aktivitě, Nahlásit na vlastním řádku, jasnější heslo',
+    '📅 Jídelníček vyplněný v neděli počítá s příštím týdnem a plán skupiny bez data už nikdy není „minulý“',
+    '🌍 Víc textů přeloženo do angličtiny; ve Facebooku, Messengeru a Instagramu appka píše, kde přesně připomínky nejdou'
   ], en:[
     '🥗 Meal plan for a new week: clear past days with one tap (with Undo), and To shopping only takes the remaining days',
     '🍳 With saved recipes the list sits right at the top, and from 6 recipes you can search it by name',
-    '💬 A calmer first chat and sign-up: your buddy’s energy shows after your first activity, Report has its own line, clearer password hint'
+    '💬 A calmer first chat and sign-up: your buddy’s energy shows after your first activity, Report has its own line, clearer password hint',
+    '📅 A meal plan filled in on Sunday counts on next week, and a group plan without dates is never “past”',
+    '🌍 More texts translated into English; in Facebook, Messenger and Instagram the app says exactly where reminders don’t work'
   ]},
   { v:'5.13', items:[
     '✕ Na kartě návyku je vedle ⏭ tlačítko Nesplněno a pod názvem tečky týdne – hned vidíš, jak ti návyk jde',
@@ -1454,12 +1458,15 @@ let entries=[];
 // Eliminuje opakující se vzor: if(unsub) unsub(); unsub = onSnapshot(...)
 const _fireSubs = {};
 // onErr (volitelné, 4.77): po zalogování chyby listeneru, např. úklid stavu „načítá se“
+const _subReady = new Set(); // klíče listenerů, které už poslaly první snapshot
 function createFireSub(key, ref, opts, callback, onErr) {
   if (!CU) return;
   if (typeof opts === 'function') { onErr = callback; callback = opts; opts = null; }
   if (_fireSubs[key]) { _fireSubs[key](); delete _fireSubs[key]; }
   const se = snapErr(key), err = onErr ? e => { se(e); onErr(e); } : se;
-  _fireSubs[key] = opts ? onSnapshot(ref, opts, callback, err) : onSnapshot(ref, callback, err);
+  _subReady.delete(key);
+  const cb = snap => { _subReady.add(key); return callback(snap); }; // první snapshot = data modulu načtená (karta Co teď)
+  _fireSubs[key] = opts ? onSnapshot(ref, opts, cb, err) : onSnapshot(ref, cb, err);
 }
 // Chyba listeneru (4.75): jen varování a technický záznam (bez dat), appka běží dál s posledními daty
 function snapErr(tag) {
@@ -2607,7 +2614,7 @@ function subHabits(){
     migrateReminderTimes();
     shieldCacheReset();
     renderHabits();
-    hOk=true;if(lOk)markReady();
+    hOk=true;_subReady.add('habits');if(lOk)markReady();
     gameKick();
   }, snapErr('habits'));
   _hlCutoff=hlCutoffDS();
@@ -2623,7 +2630,7 @@ function subHabits(){
     if(!snap.metadata.fromCache) _hlServerOk=true;
     renderHabits();
     gameKick();
-    lOk=true;if(hOk)markReady();
+    lOk=true;_subReady.add('habitLogs');if(hOk)markReady();
   }, snapErr('habitLogs'));
 }
 
@@ -4262,7 +4269,8 @@ async function saveHabitImpl(){
   const name=document.getElementById('habit-name-inp').value.trim();
   if(!name){toast(t('hb.nameReq'));return;}
   if(selFreqType==='days'&&selFreqDays.size===0){toast(t('hb.dayReq'));return;}
-  const goal=selHabitType==='count'?parseInt(document.getElementById('habit-goal-inp').value)||10:1;
+  const gIn=String(document.getElementById('habit-goal-inp')?.value||'').trim(); // prázdný cíl = 10, jinak 1–9999 (5.14)
+  const goal=selHabitType==='count'?(gIn?clampInt(parseInt(gIn,10),1,9999):10):1;
   const freq={type:selFreqType};
   if(selFreqType==='weekly')freq.times=selFreqTimes;
   if(selFreqType==='days')freq.days=[...selFreqDays];
@@ -7063,7 +7071,7 @@ async function checkNotifStatusInner() {
   if (IN_APP_BROWSER) {
     [enableBtn, testBtn, testServerBtn, refreshTokenBtn].forEach(b => { if (b) b.style.display = 'none'; });
     box.style.borderColor = 'rgba(255,107,107,0.3)';
-    box.innerHTML = '<div>' + tH('inapp.notif') + '</div><div class="inapp-row">' + inAppOpenHTML('inapp-open') + '</div>';
+    box.innerHTML = '<div>' + tH('inapp.notif', {app: inAppName()}) + '</div><div class="inapp-row">' + inAppOpenHTML('inapp-open') + '</div>';
     return;
   }
   if (typeof Notification === 'undefined') {
@@ -7793,6 +7801,7 @@ function hspClose() {
   _hsp = null;
   document.getElementById('habit-snz')?.remove();
   document.body.classList.remove('hsp-on');
+  pnPlace();
   setTimeout(ydKick, 0); // panel „Doplň včerejšek“ mohl čekat (5.09)
 }
 window.hspClose = hspClose;
@@ -7819,6 +7828,7 @@ function hspShow(hid, nz) {
   document.body.appendChild(el);
   document.body.style.setProperty('--hsp-h', el.offsetHeight + 'px'); // toast nad panel
   document.body.classList.add('hsp-on');
+  pnPlace(); // lišta Zpět nad panel
 }
 // Splněno: stejná cesta jako tlačítko Splněno v notifikaci (handleNotifHabitDone)
 window.hspDone = hid => {
@@ -7942,6 +7952,7 @@ function ydClose() {
   _yd = null;
   document.getElementById('yd-ask')?.remove();
   document.body.classList.remove('yd-on');
+  pnPlace();
 }
 function ydShow() {
   const today = toDS(), list = ydList(today);
@@ -8000,6 +8011,7 @@ function ydRender() {
   }
   document.body.style.setProperty('--yd-h', el.offsetHeight + 'px'); // toast nad panel
   document.body.classList.add('yd-on');
+  pnPlace(); // lišta Zpět nad panel
 }
 // Po zápisu: panel, seznam návyků, body za včerejšek (gameSync přepočítá dnešek i včerejšek), karta na Domů
 function ydAfter(w) {
@@ -9366,6 +9378,14 @@ function ctAskKey() {
 }
 let _ctThanks = false; // poděkování po 3. kroku drží do konce relace (pak karta zmizí, lp_qs_dismissed)
 const _ctOpen = new Set(); // kroky, které byly v této relaci nesplněné (poděkování jen po skutečném splnění)
+// Data modulu kroku už dorazila (5.14): před načtením by se krok jevil nesplněný a po načtení „splnil“ sám → falešné poděkování
+const CT_READY = {shopping: ['shop'], habits: ['habits', 'habitLogs'], calendar: ['events'], water: ['water'], goals: ['goals'],
+  journal: ['entries'], cooking: ['savedRecipes'], checklist: ['checklist']};
+function ctReady(id) {
+  if (id === 'mealplan') { const g = mealGid(); return !g || !!mealGrp[g]?.loaded; }
+  return (CT_READY[id] || []).every(k => _subReady.has(k));
+}
+function ctMarkOpen(st) { st.forEach(s => { if (!s.done && ctReady(s.id)) _ctOpen.add(s.id); }); }
 function ctSteps() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const ids = simpleModOrder().filter(id => id !== 'ask' && Object.prototype.hasOwnProperty.call(CT, id));
@@ -9395,7 +9415,7 @@ function coTedHTML() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const add = st.filter(s => s.done && !done.includes('ct.' + s.id)).map(s => 'ct.' + s.id);
   if (add.length) lsSave('lp_qs_done', [...done, ...add]);
-  st.forEach(s => { if (!s.done) _ctOpen.add(s.id); });
+  ctMarkOpen(st);
   const i = st.findIndex(s => !s.done);
   if (st.some(s => s.done && !s.pre)) ctTipOff(); // první krok splněný → bublina z onboardingu už není potřeba
   if (_ctThanks || i < 0) {
@@ -9473,6 +9493,7 @@ function ctSync() {
   setTimeout(() => {
     const c = document.getElementById('ct-card');
     if (!CU || !c || !document.getElementById('p-dashboard')?.classList.contains('active')) return;
+    if (c.dataset.step !== 'done') ctMarkOpen(ctSteps()); // krok, jehož data právě dorazila a zůstal nesplněný
     const vu = c.dataset.step === 'verify' && c.dataset.vu !== (_verifyUnsent ? '1' : '0'); // „Poslat“ ↔ „Poslat znovu“
     if (c.dataset.step !== ctCur() || vu) rDash();
   }, 0);
@@ -11651,7 +11672,8 @@ async function copyGroupToPersonal(gid, mode) {
           if(!/^m[0-2]$/.test(mk) || !v || String(prof.mealPlan?.[dk]?.[mk] || '').trim()) continue;
           (patch[dk] = patch[dk] || {})[mk] = v; filled++;
         }
-        if(patch[dk]) patch[dk].ds = typeof day.ds === 'string' && MP_DS_RE.test(day.ds) ? day.ds : mpTargetDS(+dk[1]); // datum dne (5.14)
+        // Datum dne (5.14): jen když osobní den nemá vlastní jídla (jejich datum se nepřepíše)
+        if(patch[dk] && !mpDayHas(prof.mealPlan?.[dk])) patch[dk].ds = typeof day.ds === 'string' && MP_DS_RE.test(day.ds) ? day.ds : mpTargetDS(+dk[1]);
       }
       if(filled) {
         await setDoc(doc(db,'users',uid,'profile','main'), {mealPlan: patch}, {merge:true});
@@ -12005,6 +12027,11 @@ const PENDING_JOIN_TTL = 7*24*3600*1000; // starší pozvánka se zahodí
 // Vestavěný prohlížeč Messengeru, Instagramu, FB, Line (4.84): Google přihlášení tam nejde → rada otevřít v Chrome/Safari
 // Ne v oficiální appce z Google Play (TWA): její záložní WebView má v UA také „; wv)“
 const IN_APP_BROWSER=!IS_TWA&&/FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent||'');
+// Název appky do textů (5.14): Messenger / Facebook / Instagram podle UA, jinak „této aplikace“
+function inAppName(){
+  const ua=navigator.userAgent||'';
+  return t(/Instagram/.test(ua)?'inapp.nmIg':/Orca|Messenger|MESSENGER/.test(ua)?'inapp.nmMsg':/FBAN|FBAV|FB_IAB/.test(ua)?'inapp.nmFb':'inapp.nmApp');
+}
 // Odstranit ?join= (a jméno zvoucího ?od=) z adresy (po převzetí nebo vyřízení pozvánky)
 function stripJoinParam() {
   try {
@@ -12135,7 +12162,7 @@ function initInAppBrowser(){
     d.className='lp-invite lp-inapp';
     const open=inAppOpenUrl(plat);
     d.innerHTML='<span aria-hidden="true">🌐</span><div class="lp-inapp-b"><div class="lp-inapp-t">'+tH('landing.inAppT'+k)+'</div>'
-      +'<div class="lp-inapp-d">'+tH('landing.inAppD'+k)+'</div>'
+      +'<div class="lp-inapp-d">'+tH('landing.inAppD'+k,{app:inAppName()})+'</div>'
       +'<div class="lp-inapp-row">'+(open?'<a class="btn-p lp-inapp-open" href="'+esc(open)+'">'+tH('landing.inAppOpen'+k)+'</a>':'')
       +'<button type="button" class="btn-s lp-inapp-copy" onclick="copyInAppLink()">'+tH('landing.inAppCopy')+'</button></div></div>';
     return d;
@@ -17093,8 +17120,7 @@ function canEditMealPlan() { return !isMealShared() || isMealAdmin(); }
 // Jeden zdroj pravdy: právě zobrazený plán (skupiny, nebo osobní)
 function currentMealPlan() { return mealPlanOf(mealGid()); }
 function mealPlanHasAny(plan) {
-  return Object.values(plan || {}).some(day =>
-    day && typeof day === 'object' && Object.values(day).some(v => typeof v === 'string' && v.trim()));
+  return [0,1,2,3,4,5,6].some(di => mpDayHas(plan?.['d' + di])); // jen jídla m0–m2, datum ds se nepočítá
 }
 // Index dnešního dne v plánu: 0 = pondělí (lokální čas)
 function mealTodayIdx() { return (new Date().getDay() + 6) % 7; }
@@ -17103,14 +17129,34 @@ function mealTodayIdx() { return (new Date().getDay() + 6) % 7; }
 // Plán je šablona d0–d6 bez dat. Den proto nese ds = datum, pro které se jídla plánovala:
 // nejbližší ten den v týdnu od zápisu (dnešek včetně) → plán z neděle na příští týden není „minulý“,
 // v pondělí je minulý celý předchozí týden. Starší dny bez ds: datum od mealPlanAt (osobní plán),
-// jinak den tohoto týdne (skupina bez razítka → minulé jsou jen dny před dneškem).
+// jinak nejbližší výskyt od dneška (skupina bez razítka → nikdy minulý).
+// Neděle: zápis k neděli (d6) v neděli patří na příští neděli, když plán už míří na příští týden
+// (pondělí má datum zítra a později) nebo je odpoledne (≥ 12:00).
 const MP_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
-function mpTargetDS(di, from = toDS()) { return addDays(from, (di - (new Date(from + 'T12:00:00').getDay() + 6) % 7 + 7) % 7); }
+function mpTargetDS(di, from = toDS(), sunNext = false) {
+  const n = (di - (new Date(from + 'T12:00:00').getDay() + 6) % 7 + 7) % 7;
+  return addDays(from, n === 0 && di === 6 && sunNext ? 7 : n);
+}
+function mpSunNext(plan, at = Date.now()) {
+  const d = new Date(at);
+  if(d.getDay() !== 0) return false;
+  const ds0 = plan?.d0?.ds;
+  return d.getHours() >= 12 || (typeof ds0 === 'string' && MP_DS_RE.test(ds0) && ds0 > toDS(d));
+}
 function mealPlanAtOf(gid) { const a = gid ? null : prof?.mealPlanAt; return typeof a === 'number' && a > 0 ? a : 0; }
 function mpDayDS(plan, di, at) {
   const ds = plan?.['d' + di]?.ds;
   if(typeof ds === 'string' && MP_DS_RE.test(ds)) return ds;
-  return at ? mpTargetDS(di, toDS(new Date(at))) : addDays(weekStartDS(toDS()), di);
+  return at ? mpTargetDS(di, toDS(new Date(at)), di === 6 && mpSunNext(plan, at)) : mpTargetDS(di);
+}
+// Migrace (5.14): dnům s jídlem bez ds doplní datum podle dosavadního mealPlanAt, než se razítko přepíše
+function mpLegacyDS(plan, at) {
+  const out = {};
+  for(let di = 0; di < 7; di++) {
+    const d = plan?.['d' + di];
+    if(mpDayHas(d) && !(typeof d.ds === 'string' && MP_DS_RE.test(d.ds))) out['d' + di] = {ds: mpDayDS(plan, di, at)};
+  }
+  return out;
 }
 function mpDayHas(day) { return !!day && typeof day === 'object' && [0,1,2].some(m => typeof day['m' + m] === 'string' && day['m' + m].trim()); }
 // Indexy minulých dnů s jídlem
@@ -17281,6 +17327,8 @@ function mpWriteDays(gid, patch) {
     if(mealGrp[gid]) merge(mealGrp[gid].plan = {...mealGrp[gid].plan});
     setDoc(doc(db,'families',gid,'mealplan','week'), patch, {merge:true}).catch(fail);
   } else {
+    const mig = mpLegacyDS(prof.mealPlan, mealPlanAtOf(null)); // před přepsáním mealPlanAt
+    for(const [k, v] of Object.entries(mig)) patch = {...patch, [k]: {...v, ...(patch[k] || {})}};
     merge(prof.mealPlan = prof.mealPlan || {});
     prof.mealPlanAt = Date.now();
     setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: patch, mealPlanAt: prof.mealPlanAt}, {merge:true}).catch(fail);
@@ -17303,6 +17351,10 @@ window.mpClearPast = () => {
   if(!mpWriteDays(gid, patch)) return;
   renderMealPlan();
   undoNote(tN('mp.nw.cleared', past.length), () => {
+    // Dny, které mezitím dostaly jídlo, se nepřepíšou
+    const cur = mealPlanOf(gid);
+    for(const k of Object.keys(prev)) if(mpDayHas(cur[k])) delete prev[k];
+    if(!Object.keys(prev).length) return;
     if(mpWriteDays(gid, prev) && document.getElementById('p-mealplan')?.classList.contains('active')) renderMealPlan();
   });
 };
@@ -17334,7 +17386,8 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
   if(gid && !isMealAdmin(gid)) { toast(t('mp.adminOnlyMine')); return false; }
   if(val.trim()) actDay('mealplan'); // aktivní den (jednoduchý režim, 4.69; nabídka Vaření po 2 týdnech), až po kontrole správce
   // Datum dne (5.14): jen při zápisu jídla, vymazání ho nemění
-  const dayUpd = val.trim() ? {[mealKey]: val, ds: mpTargetDS(+dayKey[1])} : {[mealKey]: val};
+  const di0 = +dayKey[1];
+  const dayUpd = val.trim() ? {[mealKey]: val, ds: mpTargetDS(di0, toDS(), di0 === 6 && mpSunNext(mealPlanOf(gid)))} : {[mealKey]: val};
   if(gid) {
     // Vnořená mapa (setDoc s merge bere tečku v klíči jako součást názvu pole)
     const update = {[dayKey]: dayUpd};
@@ -17347,10 +17400,12 @@ window.saveMealPlanItem = (dayKey, mealKey, val, target) => {
     else if(prev) logGroupActivity(fid, 'meal', 'del', gaTitle(prev, slot), 1, sx);
   } else {
     if(!prof.mealPlan) prof.mealPlan = {};
-    if(!prof.mealPlan[dayKey]) prof.mealPlan[dayKey] = {};
-    Object.assign(prof.mealPlan[dayKey], dayUpd);
+    // Migrace starých dnů bez ds podle dosavadního mealPlanAt (5.14)
+    const mp = mpLegacyDS(prof.mealPlan, mealPlanAtOf(null));
+    mp[dayKey] = {...(mp[dayKey] || {}), ...dayUpd};
+    for(const [k, v] of Object.entries(mp)) prof.mealPlan[k] = {...(prof.mealPlan[k] || {}), ...v};
     prof.mealPlanAt = Date.now(); // čas úpravy plánu: server podle něj vynechá připomínku plánování (5.00)
-    setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: {[dayKey]: dayUpd}, mealPlanAt: prof.mealPlanAt}, {merge:true})
+    setDoc(doc(db,'users',CU.uid,'profile','main'), {mealPlan: mp, mealPlanAt: prof.mealPlanAt}, {merge:true})
       .catch(e => toast('❌ '+userErr(e,'jídelníček')));
   }
   return true;
@@ -17690,7 +17745,7 @@ window.mealplanToShopping = async () => {
     });
   });
 
-  if(!mealNames.length){ toast(t(pastDays.length ? 'mp.onlyPast' : 'mp.emptyFirst')); return; }
+  if(!mealNames.length){ toast(t(!pastDays.length ? 'mp.emptyFirst' : canEditMealPlan() ? 'mp.onlyPast' : 'mp.onlyPastMember')); return; }
   const restSfx = pastDays.length ? ' ' + t('mp.restOnly') : ''; // „jen zbývající dny“ do toastu
 
   // Cíl: plán skupiny → nákupy té skupiny (když je sdílí, jinak Moje); osobní plán → hlavní skupina, jinak Moje (4.50)
@@ -19899,7 +19954,7 @@ function renderBnMore(){
 }
 function bnmBody(q){
   const body=document.getElementById('bnm-body'); if(!body) return;
-  if(q){ body.innerHTML=bnmResults(q); return; }
+  if(q.trim()){ body.innerHTML=bnmResults(q); return; }
   const mods=prof?.modules||[], isMod=p=>MODS.some(m=>m.id===p.id&&m.id!=='rex');
   const rows=_bnMore.filter(p=>!isMod(p)), mine=_bnMore.filter(isMod);
   let h=rows.map(p=>`<button type="button" class="bnm-row" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}"${p.aria?` aria-label="${esc(p.aria)}"`:''} onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bnm-row-l">${esc(p.label)}</span><span class="bnm-row-a" aria-hidden="true">›</span></button>`).join('');
@@ -19918,8 +19973,8 @@ const SET_FIND=[['set-sec-profile','set.profile.title',['set.profile.name','set.
   ['set-sec-logout','set.logout.title',['set.logout.btn']]];
 const bnmNorm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').trim();
 function bnmResults(q){
-  const n=bnmNorm(q);
-  if(!n) return '';
+  const n=bnmNorm(q), none=`<div class="bnm-none" role="status">${tH('nav.searchNone')}</div>`;
+  if(!n) return none; // jen symboly (5.14)
   const hit=(...ss)=>ss.some(x=>bnmNorm(x).includes(n));
   const mods=prof?.modules||[];
   const onM=[..._bnMore, ...(_navBar.map(id=>_navCands.find(c=>c.id===id)).filter(Boolean))].filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i&&hit(p.label));
@@ -19929,7 +19984,7 @@ function bnmResults(q){
   if(onM.length) h+=`<div class="bnm-sec">${tH('nav.moreMine')}</div><div class="bnm-grid">${onM.map(bnmTile).join('')}</div>`;
   if(offM.length) h+=`<div class="bnm-sec">${tH('nav.moreAdd')}</div><div class="bnm-grid">${offM.map(bnmOffTile).join('')}</div>`;
   if(sets.length) h+=`<div class="bnm-sec">${tH('nav.settings')}</div>`+sets.map(([id,k])=>`<button type="button" class="bnm-row" data-a0="${esc(id)}" onclick="closeBnMore();setJump(this.dataset.a0)"><span class="bnm-row-l">${tH(k)}</span><span class="bnm-row-a" aria-hidden="true">›</span></button>`).join('');
-  return h||`<div class="bnm-none" role="status">${tH('nav.searchNone')}</div>`;
+  return h||none;
 }
 window.bnmFilter=q=>bnmBody(String(q||'').slice(0,40));
 // Vypnutý modul z Více: malý list (emoji, popis, Zapnout / Zpět) přímo v panelu
@@ -20896,7 +20951,7 @@ function inAppDashHTML(){
   if(!IN_APP_BROWSER||lsGet('lp_inapp_off')) return '';
   return `<div class="dw inapp-dash" role="region" aria-label="${tH('inapp.dashT')}">
     <span class="inapp-dash-em" aria-hidden="true">🔔</span>
-    <div class="inapp-dash-b"><div class="inapp-dash-t">${tH('inapp.dashT')}</div><div class="inapp-dash-d">${tH('inapp.dashD')}</div>
+    <div class="inapp-dash-b"><div class="inapp-dash-t">${tH('inapp.dashT')}</div><div class="inapp-dash-d">${tH('inapp.dashD', {app: inAppName()})}</div>
     <div class="inapp-row">${inAppOpenHTML('inapp-open')}</div></div>
     <button type="button" class="inapp-x" aria-label="${tH('common.close')}" onclick="inAppDashClose()">×</button>
   </div>`;
@@ -21056,7 +21111,7 @@ function subGoals(){
   unsub=onSnapshot(query(collection(db,'users',CU.uid,'goals'),orderBy('createdAt','asc')),{includeMetadataChanges:true},async snap=>{
     const srv=!snap.metadata.fromCache;
     if(gOk&&!snap.docChanges().length){ if(srv&&!_goalsSrvOk){_goalsSrvOk=true;shOrphanSweep();} return; } // jen metadata
-    gOk=true;
+    gOk=true;_subReady.add('goals');
     goals=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(srv&&!_goalsSrvOk){_goalsSrvOk=true;setTimeout(shOrphanSweep,0);}
     // Podcíle chybějících cílů paralelně (ne jeden po druhém)
@@ -23441,7 +23496,19 @@ function pantryNote(html, ms, onExpire) {
   r._exp = onExpire || null;
   r._tm = setTimeout(() => pantryNoteDrop(r, true), ms);
   box.appendChild(r);
+  pnPlace();
   return r;
+}
+// Lišty nad spodním panelem (Doplň včerejšek, připomínka návyku) místo pod ním (5.14);
+// když se nad panel nevejdou, nejstarší se zavřou (jako po vypršení)
+function pnPlace() {
+  const box = document.getElementById('pantry-notes');
+  if(!box) return;
+  const pan = document.getElementById('habit-snz') || document.getElementById('yd-ask');
+  if(!pan) { box.style.bottom = '144px'; return; }
+  const top = pan.getBoundingClientRect().top;
+  box.style.bottom = Math.max(144, Math.round(innerHeight - top + 8)) + 'px';
+  while(box.isConnected && box.firstElementChild && top - box.offsetHeight < 16) pantryNoteDrop(box.firstElementChild, true);
 }
 // expired = vypršela / vytlačila ji novější → výchozí akce (onExpire)
 function pantryNoteDrop(r, expired) {

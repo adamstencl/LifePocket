@@ -308,7 +308,7 @@ try {
 
 // Ráčny vícejazyčnosti (docs/NAVRH-I18N.md): každá fáze překladu čísla sníží, nový český text mimo slovník CI shodí
 const I18N_ALLOW = { appCz: 198, // +2 v 4.58: AI_CS_FIX (opravy češtiny receptů, ne UI text); +2 v 4.63: PC_RULES_BAD (zakázaná slova přezdívky, shoda s pravidly)
-   htmlCz: 1, csCZ: 0, manualPlural: 0 };
+   htmlCz: 1, htmlTxt: 0, csCZ: 0, manualPlural: 0 };
 console.log('i18n: slovníky a použité klíče');
 // Slovník je ES modul „export default { … }“ s čistým objektem; načte se bez importu přes vm
 function loadDict(f) {
@@ -599,6 +599,39 @@ try {
   }
   ratchet('české texty v index.html bez data-i18n', count, I18N_ALLOW.htmlCz);
 } catch (e) { fail('ráčna index.html: ' + e.message); }
+try {
+  // 5.14: jakýkoli text s písmeny (i bez diakritiky: „Smazat“, „Barva“) a atributy placeholder/aria-label/title/alt
+  // v index.html bez data-i18n. Výjimky: značky a zástupné texty, které hned přepíše JS (HTML_TXT_OK).
+  const HTML_TXT_OK = new Set(['LifePocket', '✨ LifePocket', '⚡ BTC Lightning', 'ADAM-K7M2QX',
+    'Ahoj!', 'Dnes', 'Březen 2025']); // d-greet, habit-day-lbl, cal-month-lbl plní JS
+  const html = read('index.html').replace(/<!--[\s\S]*?-->/g, '').replace(/<!DOCTYPE[^>]*>/i, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
+  const VOID = new Set('area base br col embed hr img input link meta param source track wbr'.split(' '));
+  const stack = [], bad = [];
+  const re = /<\/?([a-zA-Z][\w-]*)\b([^>]*)>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(html))) {
+    if (m[3] !== undefined) {
+      const txt = m[3].replace(/&(#\d+|\w+);/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!/\p{L}/u.test(txt) || HTML_TXT_OK.has(txt)) continue;
+      const parent = stack[stack.length - 1];
+      if (stack.some(s => /\stranslate="no"/.test(s.attrs)) || (parent && /\sdata-i18n="/.test(parent.attrs))) continue;
+      bad.push(txt);
+      continue;
+    }
+    const name = m[1].toLowerCase(), attrs = m[2] || '';
+    if (m[0][1] === '/') {
+      const idx = stack.map(s => s.name).lastIndexOf(name);
+      if (idx >= 0) stack.length = idx;
+      continue;
+    }
+    const tr = ((attrs.match(/\sdata-i18n-attr="([^"]*)"/) || [])[1] || '').split(';').map(x => x.split(':')[0].trim());
+    for (const a of attrs.matchAll(/\s(placeholder|aria-label|title|alt)="([^"]*)"/g)) {
+      if (/\p{L}/u.test(a[2]) && !HTML_TXT_OK.has(a[2].trim()) && !tr.includes(a[1])) bad.push(a[1] + '="' + a[2] + '"');
+    }
+    if (!VOID.has(name) && !/\/\s*$/.test(attrs)) stack.push({ name, attrs });
+  }
+  ratchet('texty s písmeny v index.html bez data-i18n (mimo výjimky)', bad.length, I18N_ALLOW.htmlTxt, bad.slice(0, 5).join(' | '));
+} catch (e) { fail('ráčna textů index.html: ' + e.message); }
 {
   const csCz = (appSrc.match(/'cs-CZ'/g) || []).length;
   ratchet("'cs-CZ' v app.js (použij LOCALE / fmtDate)", csCz, I18N_ALLOW.csCZ);

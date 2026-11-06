@@ -652,7 +652,7 @@ else show();
           </div>
           <div id="j-seg"></div>
           <div class="j-search-wrap">
-            <input class="j-search" type="text" id="j-search" placeholder="🔍 Hledat…" oninput="filterEntries()">
+            <input class="j-search" type="text" id="j-search" placeholder="🔍 Hledat…" data-i18n-attr="placeholder:nt.searchPh" oninput="filterEntries()">
           </div>
           <div class="j-list" id="j-list"></div>
         </div>
@@ -674,7 +674,7 @@ else show();
               <input class="j-title-inp" type="text" id="j-title" placeholder="Název zápisku…" data-i18n-attr="placeholder:nt.titlePh" oninput="markDirty()">
               <div class="j-edit-actions">
                 <button class="j-mic-btn" id="j-mic-btn" onclick="toggleJournalMic()" title="Hlasový záznam" data-i18n-attr="title:nt.micTitle">🎤</button>
-                <button class="btn-s" onclick="deleteEntry()" style="color:var(--red);border-color:var(--red)">Smazat</button>
+                <button class="btn-s" onclick="deleteEntry()" style="color:var(--red);border-color:var(--red)" data-i18n="common.delete">Smazat</button>
                 <button class="btn-p" style="width:auto;padding:7px 18px" onclick="saveEntry()" data-i18n="common.save">Uložit</button>
               </div>
             </div>
@@ -689,7 +689,7 @@ else show();
                 <button class="j-mood-btn" data-m="😔" data-i18n-attr="aria-label:a11y.mood.sad" aria-label="Nálada: smutná" onclick="setEntryMood(&#39;😔&#39;,this)">😔</button>
                 <button class="j-mood-btn" data-m="😤" data-i18n-attr="aria-label:a11y.mood.angry" aria-label="Nálada: naštvaná" onclick="setEntryMood(&#39;😤&#39;,this)">😤</button>
                 <button class="j-mood-btn" data-m="😴" data-i18n-attr="aria-label:a11y.mood.sleepy" aria-label="Nálada: ospalá" onclick="setEntryMood(&#39;😴&#39;,this)">😴</button>
-                <button id="auto-mood-btn" onclick="autoDetectMood()" title="Rex navrhne náladu podle textu" data-i18n-attr="title:nt.autoMoodTitle" style="background:none;border:1px dashed rgba(245,200,66,.35);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text3);cursor:pointer;transition:all .2s;margin-left:4px;font-family:&#39;Crimson Pro&#39;,serif">
+                <button id="auto-mood-btn" onclick="autoDetectMood()" title="Rex navrhne náladu podle textu" data-i18n-attr="title:nt.autoMoodTitle" data-i18n="nt.autoMood" style="background:none;border:1px dashed rgba(245,200,66,.35);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text3);cursor:pointer;transition:all .2s;margin-left:4px;font-family:&#39;Crimson Pro&#39;,serif">
                   ✨ Auto
                 </button>
               </div>
@@ -698,7 +698,7 @@ else show();
             <div class="j-voice-bar" id="j-voice-bar" style="display:none">
               <div class="vdot"></div>
               <span id="j-voice-txt" data-i18n="nt.voiceTxt">Poslouchám… mluv volně.</span>
-              <button class="vstop" onclick="stopJournalMic()">⏹ Hotovo</button>
+              <button class="vstop" onclick="stopJournalMic()" data-i18n="common.stopDone">⏹ Hotovo</button>
             </div>
             <textarea class="j-textarea" id="j-text" placeholder="Piš co tě napadá… nebo klepni na 🎤 a mluv." data-i18n-attr="placeholder:nt.textPh" oninput="markDirty()"></textarea>
             <div id="j-photo-preview"></div>
@@ -721,7 +721,7 @@ else show();
       </div>
 
       <div class="cook-tabs">
-        <button class="cook-tab active" id="cook-tab-recipes" onclick="switchCookTab('recipes')">🍳 Recepty</button>
+        <button class="cook-tab active" id="cook-tab-recipes" onclick="switchCookTab('recipes')" data-i18n="ck.recipesTab">🍳 Recepty</button>
         <button class="cook-tab" id="cook-tab-pantry" onclick="switchCookTab('pantry')" data-i18n="ck.pantryTab">🧊 Zásoby</button>
       </div>
 
@@ -739,7 +739,7 @@ else show();
             <div class="cook-any-hint" id="cook-any-hint" hidden data-i18n="ck.anyHint">Bez zadání navrhnu jídlo hlavně z tvých zásob.</div>
           </div>
           <div class="cook-filter-box">
-            <div class="cook-filter-label" id="cook-lbl-type">Styl</div>
+            <div class="cook-filter-label" id="cook-lbl-type" data-i18n="ck.f.style">Styl</div>
             <div class="cook-chip-scroll" role="group" aria-labelledby="cook-lbl-type">
               <button class="cook-opt-btn active" aria-pressed="true" data-t="any" onclick="setCookType(&#39;any&#39;,this)" data-i18n="cal.all">Vše</button>
               <button class="cook-opt-btn" aria-pressed="false" data-t="quick" onclick="setCookType(&#39;quick&#39;,this)" data-i18n="ck.f.quick">⚡ Rychlé</button>
@@ -905,9 +905,9 @@ else show();
         <button class="btn-p" style="width:auto;padding:9px 18px;font-size:15px" onclick="openGM()" data-i18n="goal.newBtn">+ Nový cíl</button>
       </div>
       <div class="vcard">
-        <div class="vlbl">✦ Moje vize</div>
+        <div class="vlbl" data-i18n="goal.vm.title">✦ Moje vize</div>
         <div id="vision-areas"><div class="vtxt empty" data-i18n="goal.vm.empty">Klepni na ✏️ a napiš svoji vizi pro každou oblast…</div></div>
-        <button class="vedit" onclick="openVM()">✏️ Upravit</button>
+        <button class="vedit" onclick="openVM()" data-i18n="goal.vm.edit">✏️ Upravit</button>
       </div>
       <div id="goals-list"></div>
       <div id="goals-shared"></div>
@@ -927,7 +927,7 @@ else show();
             <div class="av-chat-info">
               <div class="av-nm-row"><div class="av-chat-name" id="av-nm" data-i18n="home.companion">Společník</div><button type="button" class="av-ren-btn" id="av-ren-btn" onclick="openAvRename()" data-i18n-attr="aria-label:avn.rename;title:avn.rename" aria-label="Přejmenovat" title="Přejmenovat"><span aria-hidden="true">✏️</span></button></div>
               <div id="av-lvl"></div>
-              <div class="av-chat-status">● Online</div>
+              <div class="av-chat-status" data-i18n="chat.online">● Online</div>
               <div class="av-chat-msg" id="av-msg" data-i18n="home.avMsg">Vítej! Jsem tady pro tebe každý den.</div>
               <div id="av-energy" style="padding:0 4px"></div>
             </div>
@@ -943,7 +943,7 @@ else show();
           <div class="vrec-banner" id="vrec-banner">
             <div class="vdot"></div>
             <span class="vtxt2" id="vrec-txt" data-i18n="chat.ds.listen">Poslouchám… Řekni co jsi dnes dělal.</span>
-            <button class="vstop" onclick="stopDS()">⏹ Hotovo</button>
+            <button class="vstop" onclick="stopDS()" data-i18n="common.stopDone">⏹ Hotovo</button>
           </div>
         </div>
         <!-- Chat -->
@@ -982,14 +982,14 @@ else show();
       </div>
       <div class="cook-tabs" role="tablist">
         <button class="cook-tab active" id="mp-tab-plan" role="tab" aria-selected="true" aria-controls="mp-section-plan" onclick="switchMealTab('plan')" data-i18n="mp.tabPlan">📅 Plán týdne</button>
-        <button class="cook-tab" id="mp-tab-kcal" role="tab" aria-selected="false" aria-controls="mp-section-kcal" onclick="switchMealTab('kcal')">🔥 Kalorie dnes</button>
+        <button class="cook-tab" id="mp-tab-kcal" role="tab" aria-selected="false" aria-controls="mp-section-kcal" onclick="switchMealTab('kcal')" data-i18n="mp.tabKcal">🔥 Kalorie dnes</button>
       </div>
 
       <div id="mp-section-plan" role="tabpanel" aria-labelledby="mp-tab-plan">
         <div id="meal-view-toggle" hidden></div>
         <p class="mp-note" id="mp-readonly-note" data-i18n="mp.roNote" hidden>👀 Jídelníček skupiny upravuje její správce. Svůj vlastní si můžeš vést v „Moje“.</p>
         <div class="mp-actions">
-          <button class="btn-s mp-act" id="mp-ai-btn" onclick="generateMealPlanAI()">✨ Navrhnout AI</button>
+          <button class="btn-s mp-act" id="mp-ai-btn" onclick="generateMealPlanAI()" data-i18n="mp.aiBtn">✨ Navrhnout AI</button>
           <button class="btn-s mp-act" onclick="mealplanToShopping()" data-i18n="mp.toShopBtn">🛒 Do nákupu</button>
         </div>
         <div id="mealplan-content"></div>
@@ -1004,7 +1004,7 @@ else show();
 
     <!-- CHECKLIST -->
     <div class="page" id="p-checklist">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle">Checklist</div><span style="margin-left:auto"></span><button type="button" class="gf-bell" id="gf-bell-check" hidden data-a0="check" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:26px">📋</span><div class="ptitle" data-i18n="mod.checklist">Checklist</div><span style="margin-left:auto"></span><button type="button" class="gf-bell" id="gf-bell-check" hidden data-a0="check" onclick="openGroupFeed(this.dataset.gid||null,this.dataset.a0)" aria-label="Co je nového ve skupině" data-i18n-attr="aria-label:gf.bellAria">🔔</button></div>
       <div id="checklist-content"></div>
     </div>
 
@@ -1314,7 +1314,7 @@ else show();
 <!-- MODALS -->
 <div class="moverlay" id="m-vision">
   <div class="modal">
-    <div class="mtitle">✦ Moje vize</div>
+    <div class="mtitle" data-i18n="goal.vm.title">✦ Moje vize</div>
     <div style="font-size:13px;color:var(--text3);margin-bottom:14px;line-height:1.5" data-i18n="goal.vm.desc">Vyber oblasti, které chceš sledovat, a napiš svoji vizi. Můžeš přidat i vlastní.</div>
     <div id="vision-modal-body" style="max-height:55dvh;overflow-y:auto;padding-right:4px"></div>
     <div class="macts"><button class="btn-s" onclick="cm('m-vision')" data-i18n="common.cancel">Zrušit</button><button class="btn-p" onclick="saveV()" data-i18n="goal.vm.save">Uložit vizi</button></div>
@@ -1327,7 +1327,7 @@ else show();
     <div class="fg"><label class="flbl" data-i18n="goal.f.name">Název cíle</label><input class="finp" type="text" id="g-name" placeholder="Zhubnout 10 kg…" data-i18n-attr="placeholder:goal.f.namePh" maxlength="60"></div>
     <div class="fg"><label class="flbl"><span data-i18n="goal.f.desc">Popis / poznámka</span> <span style="color:var(--text3);font-weight:400" data-i18n="air.optional">(volitelné)</span></label><textarea class="finp" id="g-desc" rows="2" placeholder="Proč je tento cíl důležitý, jak ho chci dosáhnout…" data-i18n-attr="placeholder:goal.f.descPh" style="resize:none;font-family:'Crimson Pro',serif;font-size:15px;line-height:1.5"></textarea></div>
     <div class="frow">
-      <div class="fg"><label class="flbl">Kategorie</label>
+      <div class="fg"><label class="flbl" data-i18n="goal.f.cat">Kategorie</label>
         <select class="finp" id="g-cat">
           <option value="zdraví" data-i18n="goal.cat.health">💪 Zdraví</option><option value="práce" data-i18n="goal.cat.work">💼 Práce</option>
           <option value="rodina" data-i18n="goal.cat.family">👨‍👩‍👧 Rodina</option><option value="finance" data-i18n="goal.cat.finance">💰 Finance</option>
@@ -1337,7 +1337,7 @@ else show();
       <div class="fg"><label class="flbl" data-i18n="goal.sf.deadline">Termín</label><input class="finp" type="date" id="g-dl"></div>
     </div>
     <div class="frow">
-      <div class="fg"><label class="flbl">Emoji</label>
+      <div class="fg"><label class="flbl" data-i18n="goal.f.emoji">Emoji</label>
         <div class="epick" id="g-epick">
           <button class="epbtn sel" data-e="🌟" onclick="sGE(&#39;🌟&#39;,this)">🌟</button>
           <button class="epbtn" data-e="💪" onclick="sGE(&#39;💪&#39;,this)">💪</button>
@@ -1348,7 +1348,7 @@ else show();
           <button class="epbtn" data-e="🎯" onclick="sGE(&#39;🎯&#39;,this)">🎯</button>
           <button class="epbtn" data-e="✈️" onclick="sGE(&#39;✈️&#39;,this)">✈️</button>
         </div></div>
-      <div class="fg"><label class="flbl">Barva</label>
+      <div class="fg"><label class="flbl" data-i18n="goal.f.color">Barva</label>
         <div class="cpick" id="g-cpick">
           <button type="button" class="cpbtn sel" data-c="#f5c842" style="background:#f5c842" aria-pressed="true" data-i18n-attr="aria-label:goal.col.gold" aria-label="Zlatá" onclick="sGC(&#39;#f5c842&#39;,this)"></button>
           <button type="button" class="cpbtn" data-c="#e0954a" style="background:#e0954a" aria-pressed="false" data-i18n-attr="aria-label:goal.col.orange" aria-label="Oranžová" onclick="sGC(&#39;#e0954a&#39;,this)"></button>
@@ -1363,7 +1363,7 @@ else show();
     <div class="fg" id="g-prog-wrap"><label class="flbl"><span data-i18n="goal.f.progress">Počáteční progres:</span> <span id="g-pval">0%</span></label>
       <input class="finp" type="range" id="g-prog" min="0" max="100" value="0" oninput="document.getElementById(&#39;g-pval&#39;).textContent=this.value+&#39;%&#39;" style="accent-color:var(--accent);padding:6px 0"></div>
     <div class="fg">
-      <label class="flbl">Priorita</label>
+      <label class="flbl" data-i18n="goal.f.prio">Priorita</label>
       <div class="habit-type-row" id="g-prio-row">
         <button class="ev-type-btn gprio-btn" data-p="1" onclick="sGP(1,this)" data-i18n="goal.prioHigh">🔴 Vysoká</button>
         <button class="ev-type-btn gprio-btn sel" data-p="2" onclick="sGP(2,this)" data-i18n="goal.prioMid">🟡 Střední</button>
@@ -1584,7 +1584,7 @@ else show();
     <div class="mtitle" data-i18n="cal.newTitle">📅 Nová událost</div>
     <div class="fg">
       <label class="flbl" for="ev-name-inp" data-i18n="cal.f.name">Název</label>
-      <input class="finp" type="text" id="ev-name-inp" placeholder="Narozeniny maminky…">
+      <input class="finp" type="text" id="ev-name-inp" placeholder="Narozeniny maminky…" data-i18n-attr="placeholder:cal.f.namePh">
     </div>
     <!-- 5.10: viditelné jen název, datum a čas; zbytek pod „Další možnosti“ (souhrn plní evMoreSync) -->
     <div class="frow">
@@ -1604,7 +1604,7 @@ else show();
         <div class="ev-type-row" id="ev-type-row">
           <!-- dynamicky renderováno přes renderEvTypeButtons() -->
           <button class="ev-type-btn sel" data-t="event" onclick="selEvType(&#39;event&#39;,this)" data-i18n="cal.f.event">📌 Událost</button>
-          <button class="ev-type-btn" data-t="birthday" onclick="selEvType(&#39;birthday&#39;,this)">🎂 Narozeniny</button>
+          <button class="ev-type-btn" data-t="birthday" onclick="selEvType(&#39;birthday&#39;,this)" data-i18n="cal.f.birthday">🎂 Narozeniny</button>
         </div>
       </div>
       <div class="frow">
@@ -1621,7 +1621,7 @@ else show();
         </div>
       </div>
       <div class="fg" id="ev-share-row" style="display:none">
-        <label class="flbl">👁️ Viditelnost</label>
+        <label class="flbl" data-i18n="cal.f.vis">👁️ Viditelnost</label>
         <div id="ev-share-pick"></div>
       </div>
     </details>
