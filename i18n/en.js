@@ -2402,7 +2402,7 @@ export default {
   'nt.textPh': 'Write whatever comes to mind… or tap 🎤 and speak.',
   'nt.photoBtn': '📷 Photo',
   'ck.pantryTab': '🧊 Pantry',
-  'ck.inpPh': 'Optional – e.g. chicken or “quick dinner” (or leave it empty)',
+  'ck.inpPh': 'Optional – e.g. chicken (or leave empty)',
   'ck.genBtn': '🔮 Suggest',
   'ck.genAny': '🎲 Surprise me',
   'ck.anyHint': 'With nothing typed, I’ll suggest a dish mainly from your pantry.',

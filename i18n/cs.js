@@ -2437,7 +2437,7 @@ export default {
   'nt.textPh': 'Piš co tě napadá… nebo klepni na 🎤 a mluv.',
   'nt.photoBtn': '📷 Fotka',
   'ck.pantryTab': '🧊 Zásoby',
-  'ck.inpPh': 'Volitelné – třeba kuře nebo „rychlá večeře“ (nebo nech prázdné)',
+  'ck.inpPh': 'Volitelné – třeba kuře (nebo nech prázdné)',
   'ck.genBtn': '🔮 Navrhnout',
   'ck.genAny': '🎲 Navrhni mi něco',
   'ck.anyHint': 'Bez zadání navrhnu jídlo hlavně z tvých zásob.',
