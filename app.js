@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.11';
+const APP_VERSION = '5.12';
 const CHANGELOG = [
+  { v:'5.12', items:[
+    '✍️ Recepty od AI mají správnější češtinu v názvech a postupu'
+  ], en:[
+    '✍️ Better Czech grammar in AI recipe names and steps'
+  ]},
   { v:'5.11', items:[
     '🍳 Vaření: recept navrhnu i bez zadání – podle stylu, typu jídla a tvých zásob'
   ], en:[
