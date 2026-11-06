@@ -2716,3 +2716,78 @@ body.yd-on .toast{bottom:min(calc(144px + var(--yd-h,200px)),calc(100vh - 120px)
 .lu-avn{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:12px 0;text-align:left}
 .lu-avn-t{font-weight:700;color:var(--text);margin-bottom:8px}
 .avn-offer .invite-hint-d{overflow-wrap:anywhere}
+
+/* ── 5.10: potvrzení a krátký text místo confirm()/prompt(), lišta Zpět ── */
+.lp-ask .lp-ask-m{font-size:15px;color:var(--text);line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
+.lp-ask .lp-ask-inp{width:100%;box-sizing:border-box;margin-top:12px;font-size:16px;min-height:44px} /* 16px = iOS nezoomuje */
+.lp-ask .btn-p.lp-ask-danger{background:var(--red);border-color:var(--red);color:#fff}
+.pantry-note .undo-btn{min-height:36px}
+/* Nákupy: celý řádek odškrtne, dotykové plochy 44 px (záporné okraje = řádek se nerozšíří) */
+.shop-item{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.shop-check{position:relative;width:44px;height:44px;margin:-11px -6px -11px -11px;border:none;border-radius:0;background:none;font-size:13px;color:var(--on-green);z-index:0}
+.shop-check::before{content:'';position:absolute;left:11px;top:11px;width:18px;height:18px;border-radius:6px;border:2px solid var(--border2);transition:all .2s;z-index:-1}
+.shop-check.done{background:none}
+.shop-check.done::before{background:var(--green);border-color:var(--green)}
+.shop-check:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:10px}
+.shop-item-cat,.shop-item-fav,.shop-item-del{min-width:44px;min-height:44px;margin:-8px -6px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:none;cursor:pointer}
+.shop-item-cat{font-size:12px;opacity:.55}
+.shop-item-cat:focus-visible,.shop-item-fav:focus-visible,.shop-item-del:focus-visible{outline:2px solid var(--accent);outline-offset:-6px;border-radius:10px}
+.shop-add-row{flex-wrap:nowrap}
+.shop-add-row .btn-p{flex:none;white-space:nowrap}
+.shop-clear-link{display:block;margin:4px auto 14px;min-height:44px;padding:0 14px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:14px;text-decoration:underline;cursor:pointer}
+.shop-clear-link[hidden]{display:none}
+.shop-clear-link:focus-visible,.gn-note-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+.gn-note:not([hidden]){display:flex;align-items:flex-start;gap:6px}
+.gn-note-t{flex:1;min-width:0}
+.gn-note-x{flex-shrink:0;min-width:44px;min-height:44px;margin:-12px -10px -12px 0;background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer}
+.gf-bell.gf-bell-lbl{display:inline-flex;align-items:center;gap:4px;padding:0 10px;font-size:16px}
+.gf-bell.gf-bell-lbl[hidden]{display:none}
+.gf-bell-t{font-family:'Crimson Pro',serif;font-size:14px;font-weight:600;color:var(--text2)}
+@media(max-width:380px){.gf-bell-t{display:none}.gf-bell.gf-bell-lbl{padding:0;justify-content:center}}
+/* Checklist: celý řádek odškrtne, ✏️ (úprava, fotka, pořadí) a × 44 px */
+.cl-item:not(.cl-item-open){cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cl-item{align-items:center}
+.cl-check{position:relative;width:44px;height:44px;margin:-10px -8px -10px -10px;border:none;background:none;z-index:0}
+.cl-check::before{content:'';position:absolute;left:10px;top:10px;width:20px;height:20px;border-radius:6px;border:2px solid var(--border);z-index:-1;transition:all .15s}
+.cl-item.done .cl-check{background:none;border:none}
+.cl-item.done .cl-check::before{background:var(--accent);border-color:var(--accent)}
+.cl-check:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:10px}
+.cl-item .cl-item-edit,.cl-item .cl-item-del{opacity:.6;min-width:44px;min-height:44px;margin:-10px -6px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
+.cl-item .cl-item-del{font-size:20px}
+.cl-item-edit:focus-visible,.cl-item-del:focus-visible,.cl-tool:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:-6px;border-radius:10px}
+.cl-item-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.cl-tool{min-height:44px;min-width:44px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}
+.cl-item-edit-actions button{min-height:44px}
+/* Kalendář: ✏️ a 🗑️ 44 px */
+.ev-del,.ev-act{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:none;border-radius:10px;font-size:16px;color:var(--text3);cursor:pointer;padding:0}
+.ev-act:focus-visible,.ev-del:focus-visible{outline:2px solid var(--accent);outline-offset:-4px}
+/* Formulář události: Další možnosti */
+.ev-more{margin:2px 0 14px;border:1px solid var(--border);border-radius:12px;background:var(--card2)}
+.ev-more-s{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-height:44px;box-sizing:border-box;padding:11px 40px 11px 14px;position:relative;cursor:pointer;list-style:none;font-weight:700;color:var(--text);font-size:15px}
+.ev-more-s::-webkit-details-marker{display:none}
+.ev-more-s::after{content:'›';position:absolute;right:14px;top:50%;margin-top:-12px;font-size:22px;line-height:24px;transform:rotate(90deg);color:var(--text2);transition:transform .2s}
+.ev-more[open] .ev-more-s::after{transform:rotate(-90deg)}
+.ev-more-s:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:12px}
+.ev-more-sum{font-weight:400;font-size:13px;color:var(--text2);overflow-wrap:anywhere;min-width:0}
+.ev-more[open] > :not(summary){margin-left:14px;margin-right:14px}
+.ev-more[open] > :last-child{margin-bottom:12px}
+/* Nastavení: rozcestník, upozornění ze skupin, spodní lišta */
+.set-jump{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.set-jump-b{min-height:44px;padding:0 12px;border-radius:22px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:'Crimson Pro',serif;font-size:14px;cursor:pointer;white-space:nowrap}
+.set-jump-b:hover{border-color:var(--accent)}
+.set-jump-b:focus-visible,.nav-chip:focus-visible,.nav-reset:focus-visible,.bnm-search:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#p-settings .setsec,#p-settings .setgrp,#set-lang-t,#set-sec-contact{scroll-margin-top:72px} /* pod hlavičkou appky */
+.setgrp.setgrp-in{margin:16px 0 0;background:var(--card2)}
+.setgrp-in .setgrp-s{padding-left:16px;font-size:15px}
+.setgrp-in .gn-box{padding:0 16px 14px}
+.set-navmods{margin-top:6px}
+.nav-pick{display:flex;flex-wrap:wrap;gap:8px}
+.nav-chip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 12px 0 8px;border-radius:22px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer;max-width:100%;overflow-wrap:anywhere}
+.nav-chip.on{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.nav-chip-n{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:20px;border-radius:50%;border:1px solid var(--border2);font-size:12px;font-weight:700}
+.nav-chip.on .nav-chip-n{border-color:currentColor}
+.nav-reset{margin-top:8px;min-height:44px;padding:0 4px;background:none;border:none;color:var(--accent);font-family:'Crimson Pro',serif;font-size:14px;text-decoration:underline;cursor:pointer}
+/* Více: hledání */
+.bnm-search-w{margin-bottom:6px}
+.bnm-search{width:100%;box-sizing:border-box;min-height:44px;font-size:16px}
+.bnm-none{padding:14px 4px;color:var(--text2);font-size:15px;text-align:center}
