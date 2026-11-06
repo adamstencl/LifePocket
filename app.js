@@ -67,8 +67,27 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.09';
+const APP_VERSION = '5.10';
 const CHANGELOG = [
+  { v:'5.10', items:[
+    '🔥 Návyky přímo z Domů – kroužek v kartě Návyky dnes je rovnou odškrtne, nevyřízené jsou nahoře',
+    '📋 Kompaktnější seznam návyků – týden a sdílení najdeš v detailu (týden zapneš tlačítkem 📅 Týden), kroužek přepíná jen splněno',
+    '✨ Jednodušší přidání návyku s příklady a připomínkou; při startu se ukáže vždy jen jedna věc naráz',
+    '🗑️ Mazání bez otravných dotazů: smazané události, cíle, zápisky, seznamy, recepty, zásoby i mazlíčka vrátíš tlačítkem Vrátit',
+    '🧭 Spodní lištu si upravíš v Nastavení › Moduly a ve Více můžeš hledat; Nastavení má nahoře rozcestník a všechna upozornění na jednom místě',
+    '🛒 Nákupy a checklist: odškrtneš klepnutím kamkoli na řádek, kategorie se doplní sama; nová událost ukazuje jen název, datum a čas',
+    '📲 Odkaz z Messengeru nebo Facebooku otevřeš jedním klepnutím v Chrome nebo Safari; pozvánka ukáže, kdo tě zve',
+    '👋 Nový účet bez dlouhého průvodce a AI parťák nabízí dotazy podle toho, co tě zajímá; přesnější návod pro iPhone'
+  ], en:[
+    '🔥 Habits right from Home – tap the circle in Today’s habits to tick them off, pending ones come first',
+    '📋 A more compact habit list – the week view and sharing are in the habit detail (turn the week on with 📅 Week), the circle only toggles done',
+    '✨ Easier new habits with examples and reminders; only one pop-up at a time when the app opens',
+    '🗑️ Deleting without nagging questions: events, goals, entries, lists, recipes, pantry items and pets come back with Undo',
+    '🧭 Customize the bottom bar in Settings › Modules and search in More; Settings has quick links and all notifications in one place',
+    '🛒 Shopping and checklists: tap anywhere on a row to tick it, categories fill in automatically; a new event shows just name, date and time',
+    '📲 Links from Messenger or Facebook open in Chrome or Safari with one tap; invites show who invited you',
+    '👋 New accounts skip the long tour and your AI companion suggests questions based on your interests; clearer iPhone steps'
+  ]},
   { v:'5.09', items:[
     '🌙 Ráno ti appka připomene nevyplněné návyky ze včerejška a doplníš je pár klepnutími'
   ], en:[
@@ -1069,9 +1088,16 @@ function nudgeSync() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') nudgeSync(); });
 // Odkryté rozšíření nebo uplynulých 14 dní jednoduchého Domů (pak jako dřív, kromě zamítnuté nabídky)
 const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
-// Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip
+// Běží průvodce nebo je otevřené jiné okno, nápověda modulu či tip, spodní panel (.cta-ask: Doplň včerejšek #yd-ask,
+// připomínka #habit-snz, lišta rutiny …), dotaz na upozornění nebo toast z fronty (5.10: jedna vyskakovací věc naráz)
+let _popUntil = 0, _popPend = 0;
 function uiBusy() {
-  return tourActive() || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show');
+  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#module-hint,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask');
+}
+// Toast z fronty (štíty …): počká na volno a po dobu zobrazení drží frontu obsazenou
+function popToast(msg, ms = 4000, maxMs = 600000) {
+  _popPend++; // čekající toast drží úvodní kartu na Domů (introHold)
+  whenUiFree(() => { _popPend--; toast(msg, ms); _popUntil = Date.now() + ms + 400; }, maxMs, () => { _popPend--; });
 }
 // Fronta: fn se spustí, až nebude otevřené jiné okno (kontrola po 1,5 s, nejdéle maxMs, pak se vzdá a zavolá onGiveUp)
 function whenUiFree(fn, maxMs = 600000, onGiveUp) {
@@ -1862,7 +1888,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2751,7 +2777,8 @@ function gameAutoShield(){
   }
   if(saved.length){
     shieldCacheReset();
-    toast(t('game.shield.used',{n:saved.length,name:cutName(saved[0].name,30)}),4000);
+    const av=curAv();
+    popToast(t('game.shield.used',{n:saved.length,av:av.name,g:av.id==='nora'?'f':''}),4000); // fronta: ne přes panel ani jiné okno (5.10)
     renderHabits();
   }
 }
@@ -2818,15 +2845,78 @@ function buildHabitCard(h,ch){
   } else if(streak > 0) {
     streakBadge = `<span><span class="habit-streak-fire">🔥</span> ${tNH('pl.days', streak)}</span>`;
   }
+  // 5.10: kompaktní karta – čip frekvence jen u konkrétních dnů (každý den je výchozí, týdenní má pilulku týdne)
   const streakHtml=(weekly
     ? weekPill+streakBadge
     : streak>0 ? streakBadge : `<span style="color:var(--text3);font-size:11px">${tH('hb.startToday')}</span>`)
-    +`<span class="habit-freq-badge${freq.type==='days'?' hb-freq-days':''}">${freqLabel}</span>`; // 4.90: čipy ve vlastním <span> (nelámou se uvnitř)
+    +(freq.type==='days'?`<span class="habit-freq-badge hb-freq-days">${freqLabel}</span>`:''); // 4.90: čipy ve vlastním <span> (nelámou se uvnitř)
 
-  // 7-day table
+  // Řádek týdne jen s volbou „Týden“ nad seznamem (5.10), jinak v detailu návyku
+  const tableHtml=habitWeekOn()?habitWeekTableHTML(h,habitDay,false):'';
+
+  let controlHtml='';
+  if(h.type==='count'){
+    const pct=Math.min(Math.round(val/goal*100),100);
+    controlHtml=`
+      <div class="habit-counter">
+        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
+          <div class="cnt-val cnt-clickable">${val}</div>
+          <div class="cnt-goal">/ ${goal} ✎</div>
+        </div>
+        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
+      </div>
+      <div class="habit-progress" style="margin-top:8px">
+        <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
+        <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
+      </div>`;
+  } else {
+    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
+  }
+
+  const cardDone = h.type==='count' ? (val>=goal) : done;
+
+  // 5.10: kompaktní karta – emoji, název, série, kroužek (u počítaného − hodnota +); šipky ▲▼ jsou v úpravě návyku, Sdílet v detailu
+  return `<div class="habit-card${cardDone?' done':''}${ch?ch.cls:''}${ch&&ch.next?' hb-next':''}" data-drag-id="${esc(h.id)}">
+    <div class="habit-card-top${h.type==='count'&&!isPaused?' cnt':''}">
+      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
+      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">
+        <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}${ch&&ch.next?`<span class="hb-next-tag">${tH('hb.chain.next')}</span>`:''}</div>
+        ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
+        ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
+        ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
+        <div class="habit-streak">${streakHtml}${shields?`<span class="shield-chip" role="img" aria-label="${tH('game.shield.aria',{n:shields})}">❄️ ${shields}</span>`:''}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
+      </div>
+      ${isPaused
+        ? `<span class="habit-ctl" style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
+        : h.type==='count'
+          ? `<div class="habit-ctl hb-ctl-cnt">
+              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
+              <div class="hb-cnt-v${cardDone?' ok':''}" data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
+                <div class="cnt-val cnt-clickable">${val}</div>
+                <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
+              </div>
+              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
+            </div>`
+          : `<div class="habit-ctl hb-ctl-yn">
+              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
+              ${habitDay===todayDS?`<button type="button" class="hb-skip${(log&&log.skipped)?' on':''}" data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" aria-label="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}"><span>${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</span></button>`:''}
+            </div>`
+      }
+    </div>
+    ${tableHtml}
+  </div>`;
+}
+
+// Řádek týdne po–ne, ve kterém leží den `day` (4.92; budoucí dny prázdné, neklikací).
+// Karta (s volbou „Týden“) i detail návyku (inDetail: klepnutí překreslí detail přes hdWeekTap). Nesplněno jde nastavit jen tady
+// (klepnutí cyklí splněno → nesplněno → prázdné, toggleHabitDay) a v Doplň včerejšek
+function habitWeekTableHTML(h,day,inDetail){
+  const todayDS=toDS(), goal=Number(h.goal)||1, habitDay=day;
+  const weekly=isWeekly(h), wMon=weekly?weekStartDS(day):'';
+  const freq=(typeof h.freq==='object'&&h.freq)?h.freq:{type:'daily'};
   const DAY_NAMES=dowNames();
   let thHtml='', tdHtml='';
-  // 4.92: všechny návyky ukazují týden po–ne, ve kterém leží vybraný den (budoucí dny prázdné, neklikací)
   const rowMon=weekly?wMon:weekStartDS(habitDay), hStart=habitStartDS(h);
   for(let i=0;i<7;i++){
     const ds=addDays(rowMon,i);
@@ -2881,78 +2971,22 @@ function buildHabitCard(h,ch){
     else inner='×';
 
     thHtml+=`<th>${DAY_NAMES[dow]}<br><span style="font-weight:400;color:var(--text3)">${d.getDate()}.${d.getMonth()+1}</span></th>`;
-    tdHtml+=isFuture?`<td><div class="${cls}"></div></td>`:`<td><div class="${cls}" data-a0="${esc(h.id)}" data-a1="${esc(h.id)}" onclick="${h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a1,'${ds}')`}" style="cursor:pointer">${inner}</div></td>`;
+    // Klepnutí: ano/ne cyklí splněno → nesplněno → prázdné (toggleHabitDay), počítaný zadá hodnotu (directInput)
+    const tap=inDetail?`hdWeekTap(this.dataset.a0,'${ds}')`:h.type==='count'?`directInput(this.dataset.a0,'${ds}',${Number(l?.value)||0},${goal})`:`toggleHabitDay(this.dataset.a0,'${ds}')`;
+    tdHtml+=isFuture?`<td><div class="${cls}"></div></td>`:`<td><div class="${cls}" role="button" tabindex="0" aria-label="${esc(fmtDate(d,'dm'))}" data-a0="${esc(h.id)}" onclick="${tap}" style="cursor:pointer">${inner}</div></td>`;
   }
-
-  let controlHtml='';
-  if(h.type==='count'){
-    const pct=Math.min(Math.round(val/goal*100),100);
-    controlHtml=`
-      <div class="habit-counter">
-        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
-        <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
-          <div class="cnt-val cnt-clickable">${val}</div>
-          <div class="cnt-goal">/ ${goal} ✎</div>
-        </div>
-        <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
-      </div>
-      <div class="habit-progress" style="margin-top:8px">
-        <div class="habit-prog-bar"><div class="habit-prog-fill" style="width:${pct}%"></div></div>
-        <div class="habit-prog-pct">${val} / ${goal} (${pct}%)</div>
-      </div>`;
-  } else {
-    controlHtml=`<div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')"> ${hState==='done'?'✓':hState==='failed'?'✕':''}</div>`;
-  }
-
-  const cardDone = h.type==='count' ? (val>=goal) : done;
-  const hasZeroLog = log && !log.done && !log.failed && log.value===0;
-  const badgeHtml = h.type==='count'
-    ? `<span class="habit-done-badge" style="${hasZeroLog?'color:var(--red)':''}">${val} / ${goal}${cardDone?' ✓':hasZeroLog?' ✕':''}</span>`
-    : `<span class="habit-done-badge" style="${failed?'color:var(--red)':''}">${ done?tH('hb.done'):failed?tH('hb.failed'):tH('hb.notDone')}</span>`;
-
-  const groupHabits=habits.filter(x=>( x.group||'day')===(h.group||'day')&&!x.archived).sort((a,b)=>(a.order||0)-(b.order||0));
-  const hIdx=groupHabits.findIndex(x=>x.id===h.id);
-  const canUp=hIdx>0, canDown=hIdx<groupHabits.length-1;
-
-  return `<div class="habit-card${cardDone?' done':''}${ch?ch.cls:''}${ch&&ch.next?' hb-next':''}" data-drag-id="${esc(h.id)}">
-    <div class="habit-card-top${h.type==='count'&&!isPaused?' cnt':''}">
-      <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
-        <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.upName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,-1)" style="background:none;border:none;color:${canUp?'var(--text3)':'transparent'};cursor:${canUp?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canUp?'':'disabled'}>▲</button>
-        <button data-a0="${esc(h.id)}" aria-label="${tH('a11y.downName',{name:h.name})}" onclick="moveHabit(this.dataset.a0,1)" style="background:none;border:none;color:${canDown?'var(--text3)':'transparent'};cursor:${canDown?'pointer':'default'};font-size:12px;padding:0;line-height:1" ${canDown?'':'disabled'}>▼</button>
-      </div>
-      <div class="habit-emoji" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">${esc(h.emoji||'🎯')}</div>
-      <div class="habit-info" data-a0="${esc(h.id)}" onclick="openHabitDetail(this.dataset.a0)" style="cursor:pointer" title="${tH('hb.historyTitle')}">
-        <div class="habit-name">${esc(h.name)}${shBadgeHTML('h',h.id)}${ch&&ch.next?`<span class="hb-next-tag">${tH('hb.chain.next')}</span>`:''}</div>
-        ${waterCfg()?.habitId===h.id?`<div class="habit-goal-link wt-hb-link">💧 ${tH('wt.habitTag')}</div>`:''}
-        ${linkedGoal?`<div class="habit-goal-link">🏆 ${esc(linkedGoal.name.length>24?linkedGoal.name.slice(0,24)+'…':linkedGoal.name)}</div>`:''}
-        ${isPaused?`<div class="habit-pause-badge">${tH('hp.badge',{date:fmtDate(new Date(pauseNow.to+'T12:00:00'),'dm')})}</div>`:''}
-        <div class="cta-slot" data-cta-sh="h" data-id="${esc(h.id)}">${ctaShareBtnHTML('h',h.id)}</div>
-        <div class="habit-streak">${streakHtml}${shields?`<span class="shield-chip" role="img" aria-label="${tH('game.shield.aria',{n:shields})}">❄️ ${shields}</span>`:''}${h.reminderTime ? `<span style="margin-left:6px;font-size:11px;color:var(--text3)">🔔 ${esc(h.reminderTime)}</span>` : ''}</div>
-      </div>
-      ${badgeHtml}
-      ${isPaused
-        ? `<span class="habit-ctl" style="font-size:18px;opacity:.5;flex-shrink:0">⏸</span>`
-        : h.type==='count'
-          ? `<div class="habit-ctl" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.lessName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',-1,${goal})">−</button>
-              <div data-a0="${esc(h.id)}" onclick="directInput(this.dataset.a0,'${habitDay}',${val},${goal})" style="cursor:pointer;text-align:center" title="${tH('hb.directTitle')}">
-                <div class="cnt-val cnt-clickable">${val}</div>
-                <div style="font-size:9px;color:var(--text3)">/${goal} ✎</div>
-              </div>
-              <button class="cnt-btn" data-a0="${esc(h.id)}" aria-label="${tH('a11y.moreName',{name:h.name})}" onclick="adjustHabit(this.dataset.a0,'${habitDay}',1,${goal})">+</button>
-            </div>`
-          : `<div class="habit-ctl" style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              <div class="habit-check ${hState==='done'?'done':hState==='failed'?'failed':''}" role="button" tabindex="0" aria-pressed="${hState==='done'}" aria-label="${tH('hb.checkAria',{name:h.name})}" data-a0="${esc(h.id)}" onclick="toggleHabit(this.dataset.a0,'${habitDay}','${hState}')">${hState==='done'?'✓':hState==='failed'?'✕':''}</div>
-              ${habitDay===todayDS?`<button data-a0="${esc(h.id)}" onclick="skipHabitDay(this.dataset.a0,'${habitDay}')" title="${(log&&log.skipped)?tH('hb.unskip'):tH('hb.skipToday')}" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:${(log&&log.skipped)?'var(--accent)':'var(--text3)'};font-size:11px;cursor:pointer">${(log&&log.skipped)?tH('hb.skipped'):'⏭'}</button>`:''}
-            </div>`
-      }
-    </div>
-    <table class="habit-table" style="margin-top:10px"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>
-  </div>`;
+  return `<table class="habit-table${inDetail?' hd-week-tbl':''}"><thead><tr>${thHtml}</tr></thead><tbody><tr>${tdHtml}</tr></tbody></table>`;
 }
 
 // Filtr „Jen nevyřízené“ (lp_hb_pending, jen zařízení): návyk na řadě ve zvolený den bez splnění, nesplnění i přeskočení
 function habitPendingOn(){ try{ return localStorage.getItem('lp_hb_pending')==='1'; }catch(e){ return false; } }
+// Volba „Týden“ (5.10, lp_hb_week, jen zařízení): řádek týdne na kartách návyků; bez ní kompaktní karty (týden je v detailu)
+function habitWeekOn(){ try{ return localStorage.getItem('lp_hb_week')==='1'; }catch(e){ return false; } }
+window.toggleHabitWeek=()=>{
+  const on=!habitWeekOn();
+  try{ if(on) localStorage.setItem('lp_hb_week','1'); else localStorage.removeItem('lp_hb_week'); }catch(e){}
+  renderHabits();
+};
 window.toggleHabitPending=()=>{
   const on=!habitPendingOn();
   try{ if(on) localStorage.setItem('lp_hb_pending','1'); else localStorage.removeItem('lp_hb_pending'); }catch(e){}
@@ -3258,7 +3292,8 @@ function renderHabits(){
   const archToggle = document.getElementById('habits-archive-toggle');
   if (archToggle) archToggle.style.display = archivedHabits.length ? 'block' : 'none';
   if(!activeHabits.length && !archivedHabits.length){
-    list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display='block';
+    // Otevřený formulář nového návyku: prázdný stav schovat (5.10)
+    list.innerHTML=''; empty.innerHTML=emptyHTML('habits'); empty.style.display=document.getElementById('add-habit-wrap')?.style.display==='block'?'none':'block';
     scrollAnchorRestore(anchor);
     return;
   }
@@ -3272,6 +3307,8 @@ function renderHabits(){
   const pendOnly=habitPendingOn()&&activeHabits.length>0; // bez aktivních návyků se filtr nepoužije
   const pendChip=document.getElementById('hb-pend-chip');
   if(pendChip){ pendChip.classList.toggle('on',pendOnly); pendChip.setAttribute('aria-pressed',String(pendOnly)); }
+  const weekChip=document.getElementById('hb-week-chip'), weekOn=habitWeekOn();
+  if(weekChip){ weekChip.classList.toggle('on',weekOn); weekChip.setAttribute('aria-pressed',String(weekOn)); }
 
   const GROUPS=[
     {id:'morning', emoji:'🌅', label:t('hb.grp.morning')},
@@ -3401,6 +3438,23 @@ window.hdAdj = (hid, d) => hdRun(hid, async () => {
   const h = habits.find(x => x.id === hid); if (!h) return;
   await window.adjustHabit(hid, toDS(), d, Number(h.goal) || 1);
 });
+// Řádek týdne v detailu (5.10, přesunutý z karty): ano/ne cyklí splněno → nesplněno → prázdné jako dřív na kartě,
+// počítaný zadá hodnotu (po zavření okna se detail překreslí)
+window.hdWeekTap = (hid, ds) => {
+  const h = habits.find(x => x.id === hid); if (!h || ds > toDS()) return;
+  if (h.type === 'count') {
+    const l = hLog(hid + '_' + ds), t0 = Date.now();
+    window.directInput(hid, ds, Number(l?.value) || 0, Number(h.goal) || 1);
+    const wait = () => {
+      if (document.getElementById('direct-input-modal')) { if (Date.now() - t0 < 600000) setTimeout(wait, 300); return; }
+      const hh = habits.find(x => x.id === hid);
+      if (hh && detailHabitId === hid && document.getElementById('p-habit-detail')?.classList.contains('active')) renderHabitDetail(hh);
+    };
+    setTimeout(wait, 300);
+    return;
+  }
+  hdRun(hid, () => window.toggleHabitDay(hid, ds));
+};
 window.hdDayTap = (hid, ds) => {
   const h = habits.find(x => x.id === hid); if (!h || ds > toDS()) return;
   if (h.type === 'count') { const l = hLog(hid + '_' + ds); window.directInput(hid, ds, Number(l?.value) || 0, Number(h.goal) || 1); return; }
@@ -3609,7 +3663,9 @@ function renderHabitDetail(h) {
     </div>`;
   }
 
-  body.innerHTML = todayHtml + `
+  // Řádek týdne (5.10, z karty v seznamu): splněno / nesplněno / prázdné po dnech
+  const weekRowHtml = `<div class="hd-week"><div class="hd-section-title" style="margin-top:0">${tH('hd.weekRow')}</div>${habitWeekTableHTML(h, today, true)}</div>`;
+  body.innerHTML = todayHtml + weekRowHtml + `
     <!-- Stats -->
     ${weekly ? hdWeekStatsHTML(h, today, curStreak, bestStreak, totalDone) : `    <div class="hd-stat-grid">
       <div class="hd-stat" style="${curStreak>0&&curStreak===bestStreak?'border-color:var(--accent);background:rgba(245,200,66,.08)':''}">
@@ -3757,6 +3813,7 @@ function hdEditHTML(h){
     <div class="fg"><div class="flbl" id="hde-grp-l">${tH('hd.edit.group')}</div>
       <div class="habit-type-row" role="group" aria-labelledby="hde-grp-l">${HB_EDIT_GROUPS.map(([g,em])=>btn('ev-type-btn',e.group===g,'group',g,em+' '+tH('hb.grp.'+g))).join('')}</div>
       ${moving?`<div class="hp-desc hde-note">${tH('hd.edit.chainNote')}</div>`:''}</div>
+    ${hdMoveHTML(h)}
     <div class="fg"><div class="flbl" id="hde-emo-l">${tH('hd.edit.emoji')}</div>
       <div class="habit-emoji-row" role="group" aria-labelledby="hde-emo-l">${emo.map(x=>btn('emoji-pick-btn',e.emoji===x,'emoji',x,esc(x))).join('')}</div></div>
     ${h.type==='count'?`<div class="fg"><label class="flbl" for="hde-goal">${tH('hb.f.goal')}</label>
@@ -3774,6 +3831,24 @@ function hdEditHTML(h){
     </div>
   </div>`;
 }
+// Pořadí ve skupině (5.10, místo šipek ▲▼ na kartě): hned se uloží (moveHabit, rutinu nerozdělí); přetažení v seznamu zůstává
+function hdMoveHTML(h){
+  if(_hdEdit&&_hdEdit.group!==(h.group||'day')) return ''; // nová část dne: návyk půjde na konec skupiny
+  const list=chainGroupList(h.group||'day'), i=list.findIndex(x=>x.id===h.id);
+  if(i<0||list.length<2) return '';
+  const b=(dir,on,k)=>`<button type="button" class="btn-s hde-mv" data-a0="${esc(h.id)}" data-dir="${dir}" ${on?'':'disabled'} onclick="hdEditMove(this.dataset.a0,${dir})">${tH(k)}</button>`;
+  return `<div class="fg"><div class="flbl" id="hde-mv-l">${tH('hd.edit.order',{group:t('hb.grp.'+(h.group||'day'))})}</div>
+      <div class="hde-mv-row" role="group" aria-labelledby="hde-mv-l">${b(-1,i>0,'hd.edit.up')}${b(1,i<list.length-1,'hd.edit.down')}</div></div>`;
+}
+window.hdEditMove=(hid,dir)=>{
+  const h=habits.find(x=>x.id===hid);
+  if(!h||!_hdEdit||_hdEdit.hid!==hid) return;
+  window.moveHabit(hid,dir);
+  hdEditRedraw();
+  // Fokus zůstane na stejném tlačítku (na kraji na opačném)
+  const q=d=>document.querySelector(`#hd-edit .hde-mv[data-dir="${d}"]`), btn=q(dir);
+  (btn&&!btn.disabled?btn:q(-dir))?.focus();
+};
 // Překreslit jen panel úpravy (detail kolem zůstane), fokus zpět na stejné tlačítko
 function hdEditRedraw(k,v){
   const box=document.getElementById('hd-edit'), h=_hdEdit&&habits.find(x=>x.id===_hdEdit.hid);
@@ -3893,9 +3968,9 @@ window.toggleHabit=async(hid,date,currentState)=>{
   if(!CU)return;
   if(date>toDS()) return; // budoucnost ne
   const logId=hid+'_'+date;
+  // 5.10: kroužek přepíná jen splněno ↔ prázdné (nesplněno jde nastavit v detailu, v týdnu a v Doplň včerejšek);
+  // nesplněný den klepnutím rovnou splní. Prázdný den sérii ani body neovlivní jinak než nesplněný (oba = bez splnění)
   if(currentState==='done'){
-    await putHabitLog({id:logId,habitId:hid,date,done:false,failed:true,value:0});
-  } else if(currentState==='failed'){
     await hbClearLog(hid,date);
   } else {
     xpPop(hid, XP.habit); // jen vizuální odezva (body počítá gameSync z logů)
@@ -3935,14 +4010,57 @@ window.toggleAddHabit=()=>{
   const btn=document.getElementById('add-habit-toggle');
   const showing=wrap.style.display!=='none';
   wrap.style.display=showing?'none':'block';
-  btn.textContent=showing?t('hb.add'):t('hb.addCancel');
+  btn.textContent=t('hb.add');
+  btn.hidden=!showing; // 5.10: při otevřeném formuláři jen jeho vlastní Zrušit
   if(!showing){
     // Auto-select group based on current time
     const h=new Date().getHours();
     const autoGroup=h<11?'morning':h<17?'day':'evening';
     setHabitGroup(autoGroup, document.getElementById('hgroup-'+autoGroup));
+    habitFormPrep();
     setTimeout(()=>document.getElementById('habit-name-inp').focus(),100);
   }
+  const em=document.getElementById('habits-empty');
+  if(!showing){ if(em) em.style.display='none'; } // prázdný stav pod formulářem by duplikoval tlačítko
+  else { renderHabits(); btn.focus({preventScroll:true}); }
+};
+// ── Formulář nového návyku (5.10): příklady, ikona podle názvu, Další možnosti (část dne, typ, cíl, ikona) ──
+const HB_EX=['💧','📚','🧘','🏃','😴','🥗']; // texty hb.ex.0 … hb.ex.5
+// Ikona podle názvu (cs i en), dokud ji uživatel nevybere sám; bez shody 🎯
+const HB_EMOJI_GUESS=[[/vod|pít|pit[íi]|water|drink/i,'💧'],[/čt|číst|cist|knih|read|book/i,'📚'],[/medit|jóg|jog[ay]|protaž|protaz|dých|dech|yoga|stretch|breath/i,'🧘'],
+  [/zelenin|ovoc|salát|salat|jídl|jidl|snída|snida|veg|fruit|salad|eat/i,'🥗'],[/spán|span|spát|spat|usn|postel|sleep|bed/i,'😴'],[/kouř|kour|cigar|smok/i,'🚭'],
+  [/klik|posil|cvi[čc]|gym|dřep|drep|push|workout|squat|lift/i,'💪'],[/hudb|kytar|klav|zpív|zpiv|music|guitar|piano|sing/i,'🎵'],[/deník|denik|psát|psat|journal|writ|diary/i,'✍️'],
+  [/běh|beh|chůz|chuz|procház|prochaz|krok|run|walk|jog\b|step/i,'🏃']];
+let _hbEmoManual=false;
+function habitEmojiGuess(name){ const n=String(name||''); const m=HB_EMOJI_GUESS.find(([re])=>re.test(n)); return m?m[1]:'🎯'; }
+function habitEmojiSel(e){
+  selHabitEmoji=e;
+  document.querySelectorAll('#habit-emoji-row .emoji-pick-btn').forEach(b=>b.classList.toggle('sel',b.dataset.e===e));
+}
+function habitFormPrep(){
+  _hbEmoManual=false;
+  const inp=document.getElementById('habit-name-inp');
+  if(inp&&!inp.dataset.guess){ inp.dataset.guess='1'; inp.addEventListener('input',()=>{ if(!_hbEmoManual) habitEmojiSel(habitEmojiGuess(inp.value)); }); }
+  habitEmojiSel(habitEmojiGuess(inp?.value));
+  const ex=document.getElementById('hb-ex-row');
+  if(ex) ex.innerHTML=`<span class="hb-ex-l">${tH('hb.f.exLbl')}</span>`+HB_EX.map((em,i)=>`<button type="button" class="hb-ex" data-a0="${i}" onclick="habitExPick(this.dataset.a0)">${em} ${tH('hb.ex.'+i)}</button>`).join('');
+  // Propojit s cílem jen s modulem Cíle a aspoň jedním aktivním cílem
+  const gw=document.getElementById('habit-goal-wrap2');
+  if(gw) gw.hidden=!(hasMod('goals')&&goals.some(g=>!g.archivedGoal));
+  const mb=document.getElementById('hb-more-btn'), mo=document.getElementById('hb-more');
+  if(mb&&mo){ mo.hidden=true; mb.setAttribute('aria-expanded','false'); }
+}
+window.habitExPick=i=>{
+  const n=Number(i), inp=document.getElementById('habit-name-inp');
+  if(!inp||!(n>=0&&n<HB_EX.length)) return;
+  inp.value=t('hb.ex.'+n);
+  _hbEmoManual=true; habitEmojiSel(HB_EX[n]);
+};
+window.toggleHabitMore=()=>{
+  const mb=document.getElementById('hb-more-btn'), mo=document.getElementById('hb-more');
+  if(!mb||!mo) return;
+  mo.hidden=!mo.hidden;
+  mb.setAttribute('aria-expanded',String(!mo.hidden));
 };
 
 window.setHabitGroup=(group,btn)=>{
@@ -4002,15 +4120,14 @@ window.skipHabitDay=async(hid,date)=>{
 
 window.setHabitType=(type,btn)=>{
   selHabitType=type;
-  document.querySelectorAll('.habit-type-row .ev-type-btn').forEach(b=>b.classList.remove('sel'));
+  document.querySelectorAll('#habit-type-row .ev-type-btn').forEach(b=>b.classList.remove('sel')); // jen typ (ne část dne)
   btn.classList.add('sel');
   document.getElementById('habit-goal-wrap').style.display=type==='count'?'block':'none';
 };
 
 window.setHabitEmoji=(e,btn)=>{
-  selHabitEmoji=e;
-  document.querySelectorAll('.emoji-pick-btn').forEach(b=>b.classList.remove('sel'));
-  btn.classList.add('sel');
+  _hbEmoManual=true; // vlastní volba: název už ikonu nemění (5.10)
+  habitEmojiSel(e);
 };
 
 window.setFreqType=(type,btn)=>{
@@ -4076,9 +4193,10 @@ async function saveHabitImpl(){
   const wrap=document.getElementById('add-habit-wrap');
   const btn=document.getElementById('add-habit-toggle');
   wrap.style.display='none';
-  btn.textContent=t('hb.add');
+  btn.textContent=t('hb.add'); btn.hidden=false;
   toast(t('hb.added'));
-  ctaAskShare('h',hRef.id); // nabídka sdílení (4.49)
+  // 5.10: s připomínkou hned dotaz na upozornění (bez připomínky nebo bez dotazu nabídka sdílení jako dřív)
+  if(!(reminderTime&&notifAskNow('habit'))) ctaAskShare('h',hRef.id); // nabídka sdílení (4.49)
   wtLinkOffer({...h,id:hRef.id}); // nabídka propojení s pitným režimem (4.85), počká na sdílení
 }
 
@@ -5326,7 +5444,9 @@ async function saveEventImpl(){
     }
   }
   cm('m-event');
-  if((selEvType_val==='event'&&time)||selEvType_val==='birthday') notifAskSoon('event'); // událost s připomínkou
+  // Událost s časem (připomínka): hned dotaz na upozornění (5.10); narozeniny jako dřív pod limitem nabídek
+  if(selEvType_val==='event'&&time) notifAskNow('event');
+  else if(selEvType_val==='birthday') notifAskSoon('event');
 }
 
 window.delEvent=async(id)=>{
@@ -6919,6 +7039,16 @@ function notifAskSoon(why) {
     if (notifAskOk()) notifAskShow(why);
   });
 }
+// Hned po uložení návyku s připomínkou nebo události s časem (5.10): i v den založení a v jednoduchém režimu,
+// bez limitu nabídek (1 za 3 dny) a bez odložení „Teď ne“ – připomínka bez povolení nepřijde. Ne, když je povoleno
+// nebo trvale zamítnuto (notifAskMode). Během průvodce nebo otevřeného okna počká (whenUiFree). true = karta se ukáže
+function notifAskNow(why) {
+  if (!CU || !prof || !notifAskMode()) return false;
+  if (document.getElementById('notif-ask')) return true;
+  const go = () => { if (notifAskMode() && !document.getElementById('notif-ask')) notifAskShow(why); };
+  if (tourActive() || document.querySelector('.moverlay.open,.di-ov')) whenUiFree(go, 120000); else go();
+  return true;
+}
 function notifAskShow(why) {
   const mode = notifAskMode();
   if (!mode) return;
@@ -7639,8 +7769,16 @@ function ydList(today = toDS()) {
 }
 // Nic jiného dole ani v okně (panel z notifikace, lišta rutiny, dotaz na upozornění, instalace, průvodce, oslava)
 function ydFree() {
-  return !!document.getElementById('app')?.classList.contains('active') && !uiBusy() && !naCovered()
+  return !!document.getElementById('app')?.classList.contains('active') && ydPage() && !uiBusy() && !naCovered()
     && !document.getElementById('notif-ask') && !_pendingOpen && !_openBusy && !ydTyping();
+}
+// Panel jen na Domů a v Návycích (5.10)
+const YD_PAGES = ['dashboard', 'habits'];
+const ydPage = () => YD_PAGES.some(p => document.getElementById('p-' + p)?.classList.contains('active'));
+// Přechod na jinou stránku: otevřený panel se sbalí a v této relaci se sám znovu neotevře (karta na Domů ho otevře)
+function ydPageSync(id) {
+  if (YD_PAGES.includes(id) || !_yd) return;
+  ydClose(); _ydSess = true;
 }
 // Fokus v textovém poli (psaní by panel přerušil)
 function ydTyping() {
@@ -9621,7 +9759,7 @@ function gameRenderUI(){
 // Odezva „+10“ nad tlačítkem návyku (jen vizuální, nic neukládá)
 function xpPop(hid,x){
   if(!gameUiOn()) return;
-  const el=[...document.querySelectorAll('.habit-check,.cnt-btn')].find(b=>b.dataset.a0===hid&&b.offsetParent);
+  const el=[...document.querySelectorAll('.habit-check,.cnt-btn,.dw-hbtn')].find(b=>b.dataset.a0===hid&&b.offsetParent);
   if(!el) return;
   const r=el.getBoundingClientRect(), p=document.createElement('div');
   p.className='xp-pop'; p.setAttribute('aria-hidden','true'); p.textContent='+'+x;
@@ -9681,7 +9819,13 @@ window.gameRing=id=>{
 };
 // Oslava nové úrovně: modal (fokus na „Super!“), když už nějaký modal oslavy běží, jen bublina
 function celebModalOpen(){ return ['m-lvlup','m-gwin'].some(id=>document.getElementById(id)?.classList.contains('open')); }
-function celebrateLevel(from,L){
+function celebrateLevel(from,L,_q=null){
+  // Fronta (5.10): ne přes panel Doplň včerejšek / připomínku, dotaz na upozornění, novinky ani průvodce (nejdéle 10 min)
+  if(tourActive()||document.querySelector('#yd-ask,#habit-snz,#notif-ask,#changelog-modal,#av-reaction.show')){
+    const q=_q||{t0:Date.now(),uid:CU?.uid};
+    if(CU&&CU.uid===q.uid&&Date.now()-q.t0<600000) setTimeout(()=>celebrateLevel(from,L,q),1500);
+    return;
+  }
   const av=curAv();
   if(celebModalOpen()){ showAvReaction(av.emoji,t('game.lvlUp.title',{n:L}),lvlName(L),true); return; }
   const unl=[...GAME_ACC.filter(a=>a.lvl>from&&a.lvl<=L).map(a=>({a,nm:t('game.acc.'+a.id)})),
@@ -10288,8 +10432,17 @@ window.saveGoalVal=async()=>{
 
 // ── AVATAR REAKCE ─────────────────────────────────────
 let avReactionTimer = null;
-
-function showAvReaction(emoji, title, msg, confetti=false) {
+// Reakce počká (5.10): panel Doplň včerejšek / připomínka, dotaz na upozornění, novinky, nápověda, toast z fronty nebo jiná reakce
+const avrBusy = () => tourActive() || Date.now() < _popUntil || !!document.querySelector('#yd-ask,#habit-snz,#notif-ask,#changelog-modal,#module-hint,#coach-tip,#av-reaction.show');
+// q.page = jen na této stránce (jinde se zahodí)
+function showAvReaction(emoji, title, msg, confetti=false, q=null) {
+  if(q?.page && !document.getElementById('p-' + q.page)?.classList.contains('active')) return;
+  if(avrBusy()) {
+    // Fronta nejdéle minutu (pak zastaralá), jen pro stejný účet
+    q = {page: q?.page || '', t0: q?.t0 || Date.now(), uid: q?.uid || CU?.uid};
+    if(CU && CU.uid === q.uid && Date.now() - q.t0 < 60000) setTimeout(() => showAvReaction(emoji, title, msg, confetti, q), 1500);
+    return;
+  }
   const av = curAv();
   const el = document.getElementById('av-reaction');
   const emEl = document.getElementById('av-r-em');
@@ -10407,16 +10560,27 @@ function checkInactivity() {
   const inactKey = ['rex','sage','ash','nora','rio'].includes(av.id) ? av.id : 'rex';
 
   const k = `lp_inactivity_shown_${toDS(today)}`;
-  if(localStorage.getItem(k)) return;
-  localStorage.setItem(k, '1');
+  if(localStorage.getItem(k) || inactSkip()) return;
 
-  // Zobrazit až po chvíli, a jen když není otevřené jiné okno
-  setTimeout(() => whenUiFree(() => {
+  // Zobrazit až po chvíli, jen na Domů a jen když není otevřené jiné okno (fronta whenUiFree, 5.10).
+  // Mimo Domů se čeká (nejdéle 10 min); dnes už splněno nebo panel Doplň včerejšek = nic (zapíše se jen ukázaná hláška)
+  const t0 = Date.now();
+  const go = () => {
+    if(inactSkip()) return;
+    if(!document.getElementById('p-dashboard')?.classList.contains('active')) { if(Date.now() - t0 < 600000) setTimeout(() => whenUiFree(go), 1500); return; }
+    try { if(localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch(e) { return; }
     showAvReaction(av.emoji,
       tN('inact.title', lastActive),
-      `${av.name}: ${tN('inact.' + inactKey, lastActive, {g: prof?.gender})}`
+      `${av.name}: ${tN('inact.' + inactKey, lastActive, {g: prof?.gender})}`, false, {page: 'dashboard'}
     );
-  }), 6000);
+  };
+  setTimeout(() => whenUiFree(go), 6000);
+}
+// Hláška „bez aktivity“ nemá smysl, když je dnes něco splněné nebo je otevřený či čekající panel Doplň včerejšek
+function inactSkip() {
+  const td = toDS();
+  return habitLogs.some(l => l && l.date === td && l.done) || !!_yd || _ydWait || !!document.getElementById('yd-ask') || (ydOn() && ydList().length > 0)
+    || !!document.querySelector('#d-widgets .invite-hint'); // úvodní karta na Domů = už jedna věc (5.10)
 }
 
 
@@ -15413,27 +15577,30 @@ window.pcAdmRemove = async (cid, pid) => {
 // ── VÝZVY K AKCI PRO SDÍLENÍ (4.49) ──
 // Tlačítko „Sdílet“ na kartě návyku a cíle, nabídka po vytvoření, karta výzvy na Domů, tip v Nastavení.
 // Jen když má uživatel skupinu s dalším členem; bez ní jemná pozvánka nad seznamem návyků a cílů.
-// Stav jen v zařízení (LOCAL_PERSONAL_KEYS): lp_cta_off (skrytá tlačítka), lp_cta_inv (skrytá pozvánka), lp_cta_ch (výzva odložená do).
+// Stav jen v zařízení (LOCAL_PERSONAL_KEYS): lp_cta_tip (skrytý tip, 5.10), lp_cta_off (dřív skrytá tlačítka, teď jen tip a nabídka
+// po vytvoření), lp_cta_inv (skrytá pozvánka), lp_cta_ch (výzva odložená do). Sdílet na kartě cíle a v detailu zůstává vždy (5.10).
 const CTA_CH_SNOOZE_MS = 14*86400000;
 const CTA_CH_PRESETS = ['squats', 'walk', 'sweets'];
 // Moje skupiny, kde je kromě mě aspoň jeden další člen
 function ctaGroups() { return myGroupIds().filter(gid => Object.keys(groupDataOf(gid)?.members || {}).length >= 2); }
 // Malé tlačítko na kartě (jen nesdílená položka). stopPropagation: klik na kartu; přetahování tlačítko přeskočí (DRAG_SKIP)
 function ctaShareBtnHTML(type, id) {
-  if(!CU || lsGet('lp_cta_off', false) || !ctaGroups().length || sharedGids(type, id).length) return '';
+  if(!CU || !ctaGroups().length || sharedGids(type, id).length) return '';
   const it = shItemOf(type, id);
   if(!it || it.archived || it.archivedGoal) return '';
   return `<button type="button" class="cta-sh" aria-haspopup="dialog" aria-label="${tH('cta.shareAria', {name: cutName(it.name, 60)})}" data-a0="${esc(id)}" data-a1="${type}" onclick="event.stopPropagation();openShareSheet(this.dataset.a0,this.dataset.a1)"><span aria-hidden="true">👨‍👩‍👧</span> ${tH('cta.share')}</button>`;
 }
-// Tip nad seznamem (kind 'h' | 'g'): vysvětlí tlačítko Sdílet, ✕ skryje tip i tlačítka natrvalo.
+// Tip nad seznamem (kind 'h' | 'g'): vysvětlí, kde je Sdílet; ✕ skryje jen tip (tlačítka zůstanou, 5.10).
 // Bez skupiny s dalším členem pozvánka (jen když seznam něco obsahuje), ✕ ji skryje natrvalo.
+// 5.10: jen na jednom místě – nad Návyky; nad Cíli jen bez modulu Návyky nebo bez aktivních návyků
 function ctaListTipHTML(kind) {
   if(!CU) return '';
   const list = kind === 'h' ? habits.filter(h => !h.archived) : goals.filter(g => !g.archivedGoal);
   if(!list.length) return '';
+  if(kind === 'g' && hasMod('habits') && habits.some(h => !h.archived)) return '';
   const gids = ctaGroups();
   if(gids.length) {
-    if(lsGet('lp_cta_off', false) || list.every(x => sharedGids(kind, x.id).length)) return '';
+    if(lsGet('lp_cta_tip', false) || lsGet('lp_cta_off', false) || list.every(x => sharedGids(kind, x.id).length)) return '';
     return `<div class="cta-tip" role="note"><span class="cta-tip-em" aria-hidden="true">💡</span>
       <span class="cta-tip-t">${tH(kind === 'h' ? 'cta.tipHabits' : 'cta.tipGoals', {g: groupLabel(gids[0])})}</span>
       <button type="button" class="cta-tip-x" aria-label="${tH('cta.tipHide')}" title="${tH('cta.tipHide')}" onclick="ctaHide()">✕</button></div>`;
@@ -15472,7 +15639,7 @@ function ctaFocusNear(slot) {
 }
 // Slot, ze kterého přišel klik (před překreslením)
 const ctaSlot = () => document.activeElement?.closest?.('[data-cta-tip],#ch-dash') || null;
-window.ctaHide = () => { const s = ctaSlot(); lsSave('lp_cta_off', 1); ctaRefresh(); ctaFocusNear(s); toast(t('cta.hidden'), 3500); };
+window.ctaHide = () => { const s = ctaSlot(); lsSave('lp_cta_tip', 1); ctaRefresh(); ctaFocusNear(s); toast(t('cta.hidden'), 3500); };
 window.ctaInvHide = () => { const s = ctaSlot(); lsSave('lp_cta_inv', 1); ctaRefresh(); ctaFocusNear(s); };
 // Pozvat: skupina, kde jsem sám → odkaz na pozvánku; bez jakékoli skupiny → založit „Rodina“ a sdílet (5.10)
 window.ctaInvite = () => {
@@ -19778,16 +19945,20 @@ function simpleModOrder(){
 }
 // ── Přizpůsobení Domů (4.86): prof.dashLayout = {order, hidden} v users/{uid}/profile/main ──
 // Bez úprav pole neexistuje (platí výchozí pořadí). Pevné pásmo (Začínáme, nabídky, souhrn) se neupravuje.
-const DASH_CARDS=[{id:'focus',em:'🎯'},{id:'water',em:'💧'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},{id:'energy',em:'⭐'},{id:'quote',em:'💬'},
-  {id:'habits',em:'🔥'},{id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},
-  {id:'mood',em:'😊'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
+// 5.10: Návyky hned pod bannerem parťáka, citát a energie níž (uložené pořadí uživatele se nemění)
+const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'focus',em:'🎯'},{id:'water',em:'💧'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
+  {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},
+  {id:'mood',em:'😊'},{id:'quote',em:'💬'},{id:'energy',em:'⭐'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
+// Ve výchozím stavu (bez vlastního dashLayout) schované herní karty: energie parťáka a Aktivní série (5.10)
+const DASH_HID_DEF=['energy','streaks'];
 const DASH_IDS=DASH_CARDS.map(c=>c.id);
 const DASH_MODCARDS=['habits','journal','goals','calendar','cooking','shopping','mood'];
 const dashIdsOk=a=>Array.isArray(a)&&a.length<=40&&a.every(x=>typeof x==='string'&&x.length>0&&x.length<=20);
 // Validované {order, hidden}; neplatné pole = prázdné
 function dashLayout(){
   const l=prof?.dashLayout;
-  return {order:dashIdsOk(l?.order)?l.order:[], hidden:dashIdsOk(l?.hidden)?l.hidden:[]};
+  if(!l||typeof l!=='object') return {order:[], hidden:[...DASH_HID_DEF]}; // výchozí stav (i po Obnovit výchozí)
+  return {order:dashIdsOk(l.order)?l.order:[], hidden:dashIdsOk(l.hidden)?l.hidden:[]};
 }
 // Výchozí pořadí; v jednoduchém režimu karty modulů v pořadí lišty (nálada hned za Poznámkami)
 function dashDefault(){
@@ -19907,6 +20078,60 @@ function dashDay0Key(){
   const ok={home:on('shopping')||on('mealplan'),health:on('habits'),study:on('calendar'),growth:on('goals')};
   return ok[k]?k:'basic';
 }
+// Úvodní karta na Domů (5.10): Začínáme / Co teď (nováček, vždy, i během průvodce), jinak první neprázdná z fns.
+// Nabídky a novinky poprvé v relaci až bez vyskakovacího okna a panelu (uiBusy), jinak se Domů překreslí, až bude volno;
+// ukázaná karta pak drží i při dalších oknech (bez blikání)
+let _introOn=false, _introQ=false, _introT0=0;
+// Start appky: nejdřív štíty a Doplň včerejšek (data návyků, nejdéle 15 s), pak úvodní karta
+function introHold(){
+  if(uiBusy()) return true;
+  if(!hasMod('habits')) return false;
+  if((!_hlServerOk||_shieldDay!==toDS())&&Date.now()-_introT0<15000) return true;
+  return _popPend>0||_ydWait||!!_yd||ydWould();
+}
+// Panel Doplň včerejšek se teprve ukáže (stejné podmínky jako ydKick)
+function ydWould(){
+  return !_ydSess&&ydOn()&&ydReady()&&Date.now()-(Number(ydSt().later)||0)>=YD_LATER_MS&&ydList().length>0;
+}
+function dashIntroHTML(fns){
+  const qs=quickStartHTML();
+  if(qs) return qs;
+  if(!_introT0) _introT0=Date.now();
+  const onDash=!!document.getElementById('p-dashboard')?.classList.contains('active');
+  if(!_introOn&&introHold()){
+    if(!_introQ){
+      _introQ=true;
+      const uid=CU?.uid, t0=Date.now();
+      const tick=()=>{
+        if(!CU||CU.uid!==uid||Date.now()-t0>600000){ _introQ=false; return; }
+        if(introHold()){ setTimeout(tick,1500); return; }
+        _introQ=false;
+        if(document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+      };
+      setTimeout(tick,1500);
+    }
+    return '';
+  }
+  for(const f of fns){ const h=f(); if(h){ if(onDash) _introOn=true; return h; } }
+  return '';
+}
+// Kroužek v kartě Návyky dnes (5.10): ano/ne stejnou cestou jako kroužek v Návycích (splněno ↔ prázdné),
+// počítaný rovnou na cíl (jako Co teď a lišta rutiny); splněný počítaný otevře Návyky (hodnotu nemaže)
+window.dwHabitTap=hid=>{
+  const td=toDS(), h=habits.find(x=>x.id===hid);
+  if(!CU||!h||h.archived) return;
+  const l=hLog(hid+'_'+td);
+  if(h.type==='count'){
+    const goal=Number(h.goal)||1, cur=Number(l?.value)||0;
+    if(cur>=goal){ window.sp('habits'); return; }
+    quickOnce('dw-h-'+hid,()=>window.adjustHabit(hid,td,goal-cur,goal));
+  } else quickOnce('dw-h-'+hid,()=>window.toggleHabit(hid,td,l?.done?'done':l?.failed?'failed':'empty'));
+  // Paměť je změněná hned (putHabitLog), zápis se nečeká: překreslit a vrátit fokus na kroužek
+  if(document.getElementById('p-dashboard')?.classList.contains('active')){
+    rDash();
+    [...document.querySelectorAll('#dw-habits .dw-hbtn')].find(b=>b.dataset.a0===hid)?.focus({preventScroll:true});
+  }
+};
 function rDash(){
   const av=curAv();
   const g=prof.gender==='f'||prof.gender==='x'?prof.gender:'m'; // x = neutrální tvary (#x)
@@ -19982,22 +20207,15 @@ function rDash(){
   let html=ydCardHTML(); // Doplň včerejšek (5.09): nahoře, i v jednoduchém režimu (mimo sloty)
   if(!slots){
   // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
-  html+=quickStartHTML();
-  html+=avNameOfferHTML(); // úroveň 10: nabídka pojmenovat parťáka (jednou, 5.07)
   if(unlD('focus')) mw.focus=focusWidgetHTML();
   mw.water=waterWidgetHTML();
-  if(simple) html+=nudgeForDash(); // nabídka z fronty (pitný režim, body, upozornění ze skupin … pod jedním limitem)
-  else {
-  // Novinka Pitný režim (4.62): šablona Zdraví / návyk o pití výš, ostatní níž
-  html+=wtIntroSlot(true);
-  // Jednorázová karta: upozornění ze skupin (novinka 4.38)
-  html+=groupNotifIntroHTML();
-  // Jednorázová karta: body a úrovně (4.40, po dopočtu z historie)
-  html+=gameIntroHTML();
-  }
+  // Úvodní karty (5.10): nejvýš jedna naráz, v pořadí priority; další se ukáže po zavření předchozí.
+  // Začínáme, úroveň 10 (pojmenovat parťáka, 5.07), nabídka z fronty (jednoduchý režim) nebo novinky:
+  // Pitný režim (4.62, šablona Zdraví / návyk o pití výš), upozornění ze skupin (4.38), body a úrovně (4.40)
+  html+=dashIntroHTML([avNameOfferHTML,
+    ...(simple?[nudgeForDash]:[()=>wtIntroSlot(true),groupNotifIntroHTML,gameIntroHTML,()=>wtIntroSlot(false)])]);
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
-  if(!simple) html+=wtIntroSlot(false);
   // Výzva měsíce / týdne pro všechny (4.63), nad výzvami skupin
   if(unlD('pc')||pcJoined()) mw.pc='<div id="pc-dash">'+pcDashHTML()+'</div>';
   // Společné výzvy ve skupinách (4.43)
@@ -20049,7 +20267,9 @@ function rDash(){
     const totalH=dueH.length;
     const pct=totalH?Math.round(doneTodayH/totalH*100):0;
     const pctColor=pct===100?'var(--green)':pct>50?'var(--accent)':'var(--accent2)';
-    const habRows=actH.slice(0,4).map(hb=>{
+    // 5.10: nevyřízené nahoru (stabilně, jinak v původním pořadí)
+    const shownH=actH.map((h,i)=>({h,i,p:isHabitPending(h,today)?0:1})).sort((a,b)=>a.p-b.p||a.i-b.i).map(x=>x.h);
+    const habRows=shownH.slice(0,4).map(hb=>{
       const log=hLogHD(hb.id,today);
       const done=log?.done||false;
       const failed=log?.failed||false;
@@ -20058,8 +20278,9 @@ function rDash(){
       const streak=habitStreak(hb.id,today);
       // Týdenní návyk (4.91): místo ohníčku stav týdne, splněný týden zeleně
       const wk=isWeekly(hb)?habitWeekStat(hb,weekStartDS(today),today):null;
+      // Kroužek (5.10): splní přímo (dotyková plocha 44 px), klik vedle otevře Návyky
       return `<div class="dw-habit-row">
-        <div class="dw-hcheck ${done?'done':failed?'failed':''}">${done?'✓':failed?'✕':''}</div>
+        <button type="button" class="dw-hbtn" data-a0="${esc(hb.id)}" aria-pressed="${!!done}" aria-label="${tH('hb.checkAria',{name:hb.name})}" onclick="event.stopPropagation();dwHabitTap(this.dataset.a0)"><span class="dw-hcheck ${done?'done':failed?'failed':''}" aria-hidden="true">${done?'✓':failed?'✕':''}</span></button>
         <div class="dw-hname">${esc(hb.emoji)} ${esc(hb.name)}</div>
         ${val?`<div class="dw-hval">${val}</div>`:''}
         ${wk?(wk.state==='none'?'':`<div class="dw-hfire"${wk.state==='met'?' style="color:var(--green);font-weight:700"':''}>${wk.state==='met'?'✓':''}${wk.done}/${wk.target}</div>`)
@@ -20069,7 +20290,7 @@ function rDash(){
       </div>`;
     }).join('');
     const more=actH.length>4?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:6px">${tH('dash.h.more',{n:actH.length-4})}</div>`:'';
-    mw.habits=`<div class="dw" onclick="sp('habits')">
+    mw.habits=`<div class="dw" id="dw-habits" onclick="sp('habits')">
       <div class="dw-head">
         <div class="dw-title">${tH('dash.h.title')}</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -24964,6 +25185,8 @@ window.sp = id => {
   _origSp(id);
   window.ctaAskClose?.(); // nabídka sdílení patří ke stránce, kde vznikla
   document.getElementById('notif-ask')?.remove(); // dotaz na upozornění patří ke chvíli, kdy vznikl
+  window.hideAvReaction?.(); // hláška parťáka (bez aktivity …) se netáhne na další obrazovku (5.10)
+  ydPageSync(id); // Doplň včerejšek jen na Domů a v Návycích, jinde se sbalí (karta na Domů zůstane)
   coachSoon(); // jednorázové tipy ke sdílení (4.49)
   if(id !== 'dashboard' && id !== 'settings') {
     setTimeout(() => showModuleHint(id), 500);
