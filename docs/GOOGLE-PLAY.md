@@ -94,7 +94,7 @@ Pravidla plateb Google Play zakazují v aplikaci z obchodu odkazovat na jiné pl
 - **Grafika funkce (feature graphic):** 1024×500 PNG nebo JPG, **zatím není** (máš `Cover canva.png` 1600×400, to je jiný poměr; udělej novou v Canvě 1024×500).
 - **Screenshoty telefonu:** minimálně 2, doporučeno 4–8, na výšku (např. 1080×1920 nebo 1080×2400). Udělej je v telefonu: Domů, Nákupy (sdílený seznam), Návyky, Kalendář, AI společník. Bez skutečných osobních dat jiných lidí.
 - **Kategorie:** Produktivita (případně Životní styl). **Štítky:** produktivita, návyky, rodina.
-- **Kontakt:** e-mail `adam.stencl@gmail.com`, web `https://lifepocket.app`.
+- **Kontakt:** e-mail `stencladam@seznam.cz`, web `https://lifepocket.app`.
 - **Zásady ochrany soukromí:** `https://lifepocket.app/privacy.html`
 
 ## 5. Obsah aplikace (sekce „Obsah aplikace“ / App content)
