@@ -72,11 +72,13 @@ const CHANGELOG = [
   { v:'5.15', items:[
     '💰 Nový modul Finance: rozpočet na měsíc pro tebe nebo celou rodinu. Pravidelné příjmy a platby se přenášejí samy, útraty přidáš jedním klepnutím a hned vidíš, kolik zbývá a kam peníze jdou',
     '🛍️ V seznamu Chceme koupit spočítám, za jak dlouho na věci našetříte; cenu ti na klepnutí odhadne AI',
-    '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Ty a parťák'
+    '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Ty a parťák',
+    '⚡ Příspěvek přes Lightning: tlačítko pro otevření peněženky a zkopírování adresy (na telefonu QR nenaskenuješ)'
   ], en:[
     '💰 New Budget module: a monthly budget for you or the whole family. Regular income and payments carry over by themselves, add spending with one tap and see right away what’s left and where the money goes',
     '🛍️ In the Wishlist I’ll work out how long until you can afford things; AI can estimate a price with one tap',
-    '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → You & your buddy'
+    '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → You & your buddy',
+    '⚡ Lightning contributions: a button to open your wallet and copy the address (you can’t scan a QR on your own phone screen)'
   ]},
   { v:'5.14', items:[
     '🥗 Jídelníček na nový týden: minulé dny vyčistíš jedním klepnutím (se Zpět) a Do nákupu bere jen zbývající dny',
@@ -11980,6 +11982,19 @@ function czAccountFromIban(iban){
 }
 // Kurz BTC/CZK pro ekvivalent v sats (4.71): veřejné API CoinGecko bez klíče a bez osobních dat,
 // cache 10 min v sessionStorage (lp_btc_czk), timeout 5 s, při chybě null = ekvivalent se nezobrazí
+// Lightning adresa pro příspěvky (veřejná, je i v img/ln-qr.jpg); support.json může dát vlastní „lnAddress“
+const LN_ADDRESS='fancifulskirt54@bitcoli.com';
+const LN_ADDR_RE=/^[a-z0-9._-]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+let supLnAddr=LN_ADDRESS;
+function renderSupportLnAddr(){
+  const a=document.getElementById('support-ln-open'), el=document.getElementById('support-ln-addr');
+  if(a) a.href='lightning:'+supLnAddr;
+  if(el) el.textContent=supLnAddr;
+}
+window.copySupportLn=async()=>{
+  try{ await navigator.clipboard.writeText(supLnAddr); toast(t('set.support.lnCopied')); }
+  catch(e){ lpCopy(t('set.support.lnCopyPrompt'), supLnAddr); }
+};
 let btcCzk=null, btcLoading=null;
 const SUP_LN_AMTS=[50,100,200];
 async function loadBtcCzk(){
@@ -12021,9 +12036,13 @@ async function loadSupport(){
   if(!box||IS_TWA||supLoading) return;
   loadBtcCzk().then(()=>{ renderSupportLn(); if(supCfg) renderSupport(); });
   supLoading=true;
+  renderSupportLnAddr();
   try{
     const r=await fetch('/support.json',{cache:'no-store'});
     const c=r.ok?await r.json():null;
+    // Lightning adresa ze support.json má přednost (platí i bez QR platby, tj. bez enabled/IBAN)
+    supLnAddr=typeof c?.lnAddress==='string'&&LN_ADDR_RE.test(c.lnAddress.trim())?c.lnAddress.trim():LN_ADDRESS;
+    renderSupportLnAddr();
     if(!c||c.enabled!==true||!isValidCzIban(c.iban)){ supCfg=null; box.hidden=true; return; }
     let amts=(Array.isArray(c.amounts)?c.amounts:[]).filter(n=>Number.isInteger(n)&&n>=1&&n<=100000).slice(0,6);
     if(!amts.length) amts=[50,100,200];

@@ -2457,6 +2457,11 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .sup-ln-amts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .sup-amt--s{flex:1 1 auto;min-width:56px;min-height:44px;font-size:13px;padding:0 6px}
 .sup-ln-sats{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.4}
+/* Lightning: otevření peněženky a kopírování adresy (5.15) */
+.sup-ln-btns{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.sup-ln-btn{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;padding:6px 10px;font-size:14px;line-height:1.2;text-decoration:none;text-align:center}
+.sup-ln-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.sup-ln-addr{font-size:11px;color:var(--text3);margin-top:6px;word-break:break-all;user-select:text;-webkit-user-select:text}
 
 /* 4.85: iOS nezoomuje při fokusu, když má pole aspoň 16 px */
 @media(max-width:640px){.finp,.setinp,.cta,.j-search,.cf-input,.cf-textarea,select,textarea{font-size:16px}.finp.gv-inp{font-size:24px}}
