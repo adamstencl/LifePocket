@@ -284,9 +284,18 @@ else show();
       <button type="button" class="gender-btn" id="gf" aria-pressed="false" onclick="sg(&#39;f&#39;)"><span class="ge" aria-hidden="true">👩</span><span data-i18n="onb.s1.female">Žena</span></button>
       <button type="button" class="gender-btn" id="gx" aria-pressed="false" onclick="sg(&#39;x&#39;)"><span class="ge" aria-hidden="true">🙂</span><span data-i18n="onb.s1.none">Neuvádět</span></button>
     </div>
+    <!-- Souhlas se zpracováním údajů o zdraví (5.14.1): nepředvyplněný, bez něj krok nepustí dál (gS2) -->
+    <label class="hc-chk" for="u-hc"><input type="checkbox" id="u-hc" aria-describedby="u-hc-err" onchange="hcChk()"><span data-i18n="hc.text">Souhlasím, že údaje, které do aplikace zadám (např. nálady, návyky, pitný režim), mohou vypovídat o mém zdraví, a LifePocket je zpracuje jen kvůli fungování aplikace. Souhlas můžu kdykoli odvolat.</span></label>
+    <a class="hc-link hc-link--chk" href="privacy.html#zdravi" target="_blank" rel="noopener" data-i18n="hc.link" data-i18n-attr="href:hc.url">Více v Zásadách ochrany soukromí.</a>
+    <div class="hc-err" id="u-hc-err" role="alert" hidden data-i18n="hc.need">Pro pokračování zaškrtni souhlas se zpracováním údajů o zdraví. Bez něj aplikace nemůže tvoje údaje ukládat.</div>
     <button class="btn-s" onclick="onbBackToLogin()" style="margin-top:14px;margin-bottom:6px;width:100%;padding:10px;font-size:15px" data-i18n="common.back">← Zpět</button>
     <button class="btn-p" id="btn-s1" onclick="gS2()" disabled="" data-i18n="onb.continue">Pokračovat →</button>
   </div>
+</div>
+
+<!-- Souhlas se zpracováním údajů o zdraví (5.14.1): stávající účet bez prof.healthConsent, obsah skládá hcRender -->
+<div class="screen" id="s-consent">
+  <div class="card hc-card" id="hc-card" role="dialog" aria-modal="true" aria-labelledby="hc-title" aria-describedby="hc-desc"></div>
 </div>
 
 <!-- STEP 2: k čemu appku chceš (šablona určuje moduly) -->
@@ -1291,6 +1300,8 @@ else show();
         <div id="set-uid"></div>
         <!-- Neověřený e-mail (4.76, vykresluje renderVerifyUi) -->
         <div id="set-verify" hidden></div>
+        <!-- Souhlas s údaji o zdraví (5.14.1, vykresluje renderHcSetting) -->
+        <div id="set-hc"></div>
         <button type="button" class="btn-sv acc-export-btn" onclick="exportMyData()" style="margin-top:10px" data-i18n="set.account.export">📥 Stáhnout moje data</button>
         <div class="acc-export-st" role="status" aria-live="polite" style="font-size:13px;color:var(--text3);margin-top:6px"></div>
         <button type="button" class="acc-del-link" onclick="openDeleteAccount()" data-i18n="set.account.delete">🗑️ Smazat účet</button>

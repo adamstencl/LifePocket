@@ -33,7 +33,7 @@
     </div>
 
     <h1>Ochrana osobních údajů</h1>
-    <p class="date">Platnost od: 6. listopadu 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
+    <p class="date">Platnost od: 7. listopadu 2026 &nbsp;·&nbsp; Správce: Adam Štencl</p>
 
     <p>Tato stránka vysvětluje, jaké osobní údaje LifePocket zpracovává, proč, kdo k nim má přístup a jak dlouho je uchováváme. Aplikace je zdarma, bez reklam a bez sledovacích nástrojů. Tvá data neprodáváme.</p>
 
@@ -83,6 +83,7 @@
       <li><strong>Uložení zápisku</strong>: pokud má text zápisku víc než 20 znaků, aplikace ho po uložení automaticky pošle AI, aby našla plánovaná jídla a splněné nebo nové návyky. Když nevybereš náladu, AI ji z textu navrhne.</li>
       <li><strong>Další AI funkce</strong>, které použiješ nebo které se spouštějí v aplikaci: ranní pozdrav a týdenní report (plnění návyků včetně jejich názvů, počty zápisků a nálada, jména oslavenců z narozenin), shrnutí dne (tvůj text, vize, cíle a dnešní návyky), citát dne, odhad kalorií (název jídla), recepty a postup vaření (název a suroviny), návrh jídelníčku a návrh nákupu (názvy receptů a zásoby).</li>
     </ul>
+    <p><strong>Údaje o zdraví a AI</strong>: AI společník při odpovídání může dostat i údaje, které mohou vypovídat o tvém zdraví (zápisky z deníku ve zkrácené podobě, nálady, návyky včetně jejich názvů a plnění, záznamy o zdraví a pitný režim, viz výše). Používá je jen k odpovědi na tvůj dotaz, viz <a href="#zdravi">Údaje o zdraví</a>.</p>
     <p>AI dostává i tvoje jméno nebo přezdívku a jméno, které jsi dal/a společníkovi (<code>avatarName</code>). Neposíláme jí e-mail, heslo, tokeny zařízení, pohlaví ani fotografie. Dobu uchování dat u Anthropicu určují zásady tohoto poskytovatele.</p>
     <p><strong>Nahlášení odpovědi AI</strong>: u každé odpovědi AI společníka můžeš klepnout na „⚑ Nahlásit“. Do tvého účtu (podkolekce <code>aiReports</code>) se pak uloží zvolený důvod (nevhodná, nepravdivá, urážlivá, jiné), tvoje volitelná poznámka (nejvýš 500 znaků), text nahlášené odpovědi (nejvýš 2000 znaků), čas a verze aplikace. Nahlášení slouží jen ke kontrole a zlepšování odpovědí AI a k ochraně před nevhodným obsahem. Nikam dál, ani Anthropicu, se neposílá. Smaže se spolu s účtem.</p>
     <p><strong>Zprávy „Napiš nám“ a obrázky k nim</strong>: když jsi přihlášený, každá zpráva se kromě odeslání přes Formspree uloží i do tvého účtu (podkolekce <code>feedback</code>): text zprávy, čas a verze aplikace, e-mail z formuláře ne. Ke zprávě můžeš přiložit 1 až 3 obrázky (např. snímek obrazovky); aplikace je přímo v zařízení zmenší a uloží do stejného záznamu. Formspree obrázky nedostane, jen počet příloh a odkaz na tento záznam, který obsahuje identifikátor tvého účtu (UID). Zprávy a obrázky slouží jen k vyřešení tvé zprávy, vidí je jen správce aplikace (bod 8) a smažou se spolu s účtem. Na snímku obrazovky mohou být i tvoje data z aplikace, proto přikládej jen to, co nám chceš ukázat.</p>
@@ -155,8 +156,15 @@
       <li><strong>Plnění smlouvy</strong> (čl. 6 odst. 1 písm. b GDPR): účet, uložení a synchronizace tvých dat, AI funkce, skupiny. Bez toho aplikace nemůže fungovat.</li>
       <li><strong>Souhlas</strong> (čl. 6 odst. 1 písm. a GDPR): push notifikace. Souhlas dáváš povolením notifikací a můžeš ho kdykoli odvolat jejich vypnutím.</li>
       <li><strong>Oprávněný zájem</strong> (čl. 6 odst. 1 písm. f GDPR): záznamy chyb, denní limit AI dotazů, provozní logy a ochrana před zneužitím, odpovědi na zprávy z kontaktního formuláře.</li>
+      <li><strong>Výslovný souhlas</strong> (čl. 9 odst. 2 písm. a GDPR): údaje, které mohou vypovídat o tvém zdraví (viz <a href="#zdravi">Údaje o zdraví</a>).</li>
     </ul>
-    <p>Zápisky, nálady a záznamy o zdraví mohou obsahovat citlivé údaje. Zadáváš je dobrovolně a zpracováváme je jen k tomu, abychom ti je zobrazili a aby s nimi mohly pracovat AI funkce, které používáš.</p>
+    <div class="card" id="zdravi">
+      <p><strong>Údaje o zdraví</strong></p>
+      <p>Některé údaje, které do aplikace zadáš, mohou vypovídat o tvém zdraví, a jsou proto zvláštní kategorií osobních údajů podle čl. 9 GDPR. Jde hlavně o nálady a text zápisků v deníku, návyky (např. užívání léků, cvičení, spánek) a jejich plnění, záznamy o zdraví (nálada, spánek, energie, stres, voda, poznámka), záznamy o jídle a pitný režim.</p>
+      <p><strong>Právní základ</strong>: tvůj výslovný souhlas (čl. 9 odst. 2 písm. a GDPR). Souhlas dáváš zaškrtnutím při registraci, u účtu založeného dřív jednorázovým potvrzením po přihlášení. V profilu si ukládáme verzi a čas souhlasu (<code>healthConsent</code>). Tyto údaje zpracováváme jen kvůli fungování aplikace: abychom je uložili, zobrazili ti je, synchronizovali mezi tvými zařízeními, spočítali z nich přehledy a aby s nimi mohly pracovat AI funkce, které používáš (bod 4). Do skupin se dostanou jen ty položky, které výslovně nasdílíš (bod 5).</p>
+      <p><strong>Odvolání souhlasu</strong>: souhlas můžeš kdykoli odvolat v aplikaci (Nastavení → Účet → Odvolat souhlas). Odvolání nemá vliv na zákonnost zpracování před ním.</p>
+      <p><strong>Co se stane bez souhlasu</strong>: bez souhlasu nelze aplikaci používat, protože tyto údaje jsou její podstatou. Po odvolání (nebo když souhlas nedáš) se aplikace zamkne a nabídne ti stažení všech dat (bod 12), smazání účtu se všemi daty (bod 11), odhlášení nebo nový souhlas. Dokud účet nesmažeš, data zůstávají uložená v tvém účtu, ale aplikace je nenačítá ani nezobrazuje.</p>
+    </div>
 
     <h2>11. Jak dlouho data uchováváme</h2>
     <ul>
@@ -176,7 +184,7 @@
       <li><strong>Oprava</strong>: většinu údajů upravíš přímo v aplikaci, ostatní opravíme na požádání.</li>
       <li><strong>Výmaz</strong>: jednotlivé položky můžeš mazat v aplikaci a celý účet smažeš sám v Nastavení → Účet (data se smažou okamžitě, viz <a href="#smazani-uctu">bod 11</a>). Na žádost e-mailem účet smažeme do 30 dní.</li>
       <li><strong>Omezení zpracování a námitka</strong>: proti zpracování na základě oprávněného zájmu můžeš vznést námitku.</li>
-      <li><strong>Odvolání souhlasu</strong>: vypnutím notifikací.</li>
+      <li><strong>Odvolání souhlasu</strong>: souhlas s notifikacemi odvoláš jejich vypnutím, souhlas se zpracováním údajů o zdraví v Nastavení → Účet → Odvolat souhlas (viz <a href="#zdravi">Údaje o zdraví</a>). Odvolání nemá vliv na zpracování před ním.</li>
       <li><strong>Stížnost</strong>: můžeš se obrátit na Úřad pro ochranu osobních údajů (<a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>).</li>
     </ul>
     <p>Pro uplatnění práv piš na <a href="mailto:stencladam@seznam.cz">stencladam@seznam.cz</a>. Odpovíme do 30 dní.</p>

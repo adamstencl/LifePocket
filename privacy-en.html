@@ -34,7 +34,7 @@
     </div>
 
     <h1>Privacy Policy</h1>
-    <p class="date">Effective from: 6 November 2026 &nbsp;·&nbsp; Controller: Adam Štencl</p>
+    <p class="date">Effective from: 7 November 2026 &nbsp;·&nbsp; Controller: Adam Štencl</p>
 
     <p>This page explains what personal data LifePocket processes, why, who has access to it and how long we keep it. The app is free, has no ads and no tracking tools. We do not sell your data.</p>
 
@@ -84,6 +84,7 @@
       <li><strong>Saving a journal entry</strong>: if the entry text is longer than 20 characters, the app automatically sends it to the AI after saving so it can find planned meals and completed or new habits. If you do not choose a mood, the AI suggests one based on the text.</li>
       <li><strong>Other AI features</strong> that you use or that run in the app: morning greeting and weekly report (habit completion including habit names, number of journal entries and mood, names of people celebrating birthdays), daily summary (your text, vision, goals and today’s habits), quote of the day, calorie estimate (name of the food), recipes and cooking instructions (name and ingredients), meal plan suggestion and shopping suggestion (recipe names and pantry).</li>
     </ul>
+    <p><strong>Health data and AI</strong>: when answering, the AI companion may also receive data that can reveal information about your health (shortened journal entries, moods, habits including their names and progress, health records and water intake, see above). It uses them only to answer your question, see <a href="#health">Health data</a>.</p>
     <p>The AI also receives your name or nickname and the name you gave your companion (<code>avatarName</code>). We do not send it your email, password, device tokens, gender or photos. How long Anthropic keeps data is determined by that provider’s policies.</p>
     <p><strong>Reporting an AI response</strong>: on every response from the AI companion you can tap “⚑ Report”. Your account (subcollection <code>aiReports</code>) then stores the reason you chose (inappropriate, untrue, offensive, other), your optional note (up to 500 characters), the text of the reported response (up to 2,000 characters), the time and the app version. Reports are used only to review and improve AI responses and to protect against inappropriate content. They are not sent anywhere else, not even to Anthropic. They are deleted together with your account.</p>
     <p><strong>“Write to us” messages and attached images</strong>: when you are signed in, every message is, in addition to being sent via Formspree, also stored in your account (subcollection <code>feedback</code>): the message text, time and app version, not the email from the form. You can attach 1 to 3 images (e.g. a screenshot) to your message; the app shrinks them on your device and stores them in the same record. Formspree does not receive the images, only the number of attachments and a link to this record, which contains your account identifier (UID). Messages and images are used only to resolve your message, only the app administrator sees them (section 8), and they are deleted together with your account. A screenshot may show your own app data, so only attach what you want to show us.</p>
@@ -156,8 +157,15 @@
       <li><strong>Performance of a contract</strong> (Art. 6(1)(b) GDPR): your account, storing and syncing your data, AI features, groups. The app cannot work without this.</li>
       <li><strong>Consent</strong> (Art. 6(1)(a) GDPR): push notifications. You give consent by allowing notifications and can withdraw it at any time by turning them off.</li>
       <li><strong>Legitimate interest</strong> (Art. 6(1)(f) GDPR): error logs, the daily AI request limit, operation logs and protection against abuse, and replies to messages from the contact form.</li>
+      <li><strong>Explicit consent</strong> (Art. 9(2)(a) GDPR): data that can reveal information about your health (see <a href="#health">Health data</a>).</li>
     </ul>
-    <p>Journal entries, moods and health records may contain sensitive data. You enter them voluntarily, and we process them only to show them to you and so that the AI features you use can work with them.</p>
+    <div class="card" id="health">
+      <p><strong>Health data</strong></p>
+      <p>Some of the data you enter in the app can reveal information about your health and is therefore a special category of personal data under Art. 9 GDPR. This mainly means moods and the text of journal entries, habits (e.g. taking medication, exercise, sleep) and their progress, health records (mood, sleep, energy, stress, water, note), food records and water intake.</p>
+      <p><strong>Legal basis</strong>: your explicit consent (Art. 9(2)(a) GDPR). You give it by ticking a box when you sign up, or, for accounts created earlier, by a one-time confirmation after logging in. We store the version and time of your consent in your profile (<code>healthConsent</code>). We process this data only to make the app work: to store it, show it to you, sync it between your devices, calculate overviews from it and so that the AI features you use can work with it (section 4). Only items you explicitly share get into groups (section 5).</p>
+      <p><strong>Withdrawing consent</strong>: you can withdraw your consent at any time in the app (Settings → Account → Withdraw consent). Withdrawal does not affect the lawfulness of processing before it.</p>
+      <p><strong>What happens without consent</strong>: the app cannot be used without consent, because this data is at its core. After withdrawal (or if you do not give consent) the app locks and offers you a download of all your data (section 12), deletion of your account with all data (section 11), logging out or giving consent again. Until you delete your account, the data stays stored in your account, but the app does not load or show it.</p>
+    </div>
 
     <h2>11. How long we keep data</h2>
     <ul>
@@ -177,7 +185,7 @@
       <li><strong>Rectification</strong>: you can edit most data directly in the app; we will correct anything else on request.</li>
       <li><strong>Erasure (right to erasure)</strong>: you can delete individual items in the app and delete your whole account yourself in Settings → Account (the data is deleted immediately; see <a href="#delete-account">section 11</a>). If you ask by email, we will delete your account within 30 days.</li>
       <li><strong>Restriction of processing and objection</strong>: you can object to processing based on legitimate interest.</li>
-      <li><strong>Withdrawal of consent</strong>: by turning off notifications.</li>
+      <li><strong>Withdrawal of consent</strong>: you withdraw consent to notifications by turning them off, and consent to processing of health data in Settings → Account → Withdraw consent (see <a href="#health">Health data</a>). Withdrawal does not affect processing before it.</li>
       <li><strong>Complaint</strong>: you can contact the supervisory authority, the Czech Office for Personal Data Protection (ÚOOÚ, <a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>). You can also contact the supervisory authority in the EU country where you live or work.</li>
     </ul>
     <p>To exercise your rights, write to <a href="mailto:stencladam@seznam.cz">stencladam@seznam.cz</a>. We will reply within 30 days.</p>

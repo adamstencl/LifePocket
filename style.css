@@ -176,6 +176,28 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .tpl-ds{font-size:13px;color:var(--text2);line-height:1.25}
 .tpl-samples{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--text2);margin:4px 0 12px;min-height:44px;cursor:pointer}
 .tpl-samples input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex-shrink:0}
+/* Souhlas s údaji o zdraví (5.14.1): zaškrtávátko v kroku 1, obrazovka s-consent, řádek v Nastavení → Účet */
+.hc-chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--text2);line-height:1.5;margin:18px 0 2px;cursor:pointer}
+.hc-chk input{width:22px;height:22px;margin-top:1px;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
+.hc-chk input[aria-invalid="true"]{outline:2px solid var(--red);outline-offset:2px}
+.hc-link{color:var(--accent-text);text-underline-offset:3px;overflow-wrap:anywhere}
+.hc-link:focus-visible{outline:2px solid var(--text);outline-offset:2px;border-radius:4px}
+.hc-link--chk{display:inline-block;font-size:14px;margin:0 0 4px 32px;padding:8px 0}
+.hc-err{font-size:14px;color:var(--red);line-height:1.5;margin:4px 0 2px;padding:10px 12px;border:1px solid var(--red);border-radius:12px}
+.hc-err[hidden]{display:none}
+.hc-title{margin:0 0 10px}
+.hc-title:focus,.hc-title:focus-visible{outline:none}
+.hc-p{margin-bottom:14px}
+.hc-text{font-size:15px;color:var(--text);line-height:1.55;margin:0 0 20px;padding:12px 14px;background:var(--card2);border:1px solid var(--border);border-radius:14px}
+.hc-acts{display:flex;flex-direction:column;gap:10px}
+.hc-btn{width:100%;min-height:48px;justify-content:center;text-align:center}
+.hc-acts .acc-export-st{font-size:13px;color:var(--text3);min-height:0}
+.hc-acts .acc-export-st:empty{display:none}
+.hc-acts .acc-del-link{margin:4px auto 0}
+.hc-set{margin-top:12px;padding:12px 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px}
+.hc-set-t{font-size:14px;color:var(--text);font-weight:700;line-height:1.45}
+.hc-set-d{font-size:13px;color:var(--text2);line-height:1.5;margin:4px 0 10px}
+.hc-revoke{min-height:44px}
 @media(max-width:380px){.tpl-ds{display:none}}
 
 /* FAMILY SHARING */

@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.14';
+const APP_VERSION = '5.14.1';
 const CHANGELOG = [
+  { v:'5.14.1', items:[
+    '🔒 Souhlas se zpracováním údajů o zdraví (GDPR) – jednorázové potvrzení, v Nastavení ho můžeš odvolat'
+  ], en:[
+    '🔒 Consent to processing of health data (GDPR) – a one-time confirmation, you can withdraw it in Settings'
+  ]},
   { v:'5.14', items:[
     '🥗 Jídelníček na nový týden: minulé dny vyčistíš jedním klepnutím (se Zpět) a Do nákupu bere jen zbývající dny',
     '🍳 S uloženými recepty je seznam hned nahoře a od 6 receptů ho prohledáš podle názvu',
@@ -1131,7 +1136,8 @@ const unlD = id => unl(id) || (!simpleDash() && nudgeSt()[id] !== 'no');
 let _popUntil = 0, _popPend = 0;
 function uiBusy() {
   // 5.13: nápověda modulu je řádek ve stránce (nic nepřekrývá); iPhone „Přidat na plochu“ drží frontu jen 8 s po zobrazení (lpIosWait)
-  return tourActive() || Date.now() < _popUntil || !!document.querySelector('.moverlay.open,.di-ov,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open');
+  // 5.14.1: obrazovka souhlasu s údaji o zdraví má přednost před vším ostatním
+  return tourActive() || Date.now() < _popUntil || !!document.querySelector('#s-consent.active,.moverlay.open,.di-ov,#coach-tip,#join-invite-modal,#av-reaction.show,.cta-ask,#notif-ask,#bn-more-panel.open');
 }
 // Toast z fronty (štíty …): počká na volno a po dobu zobrazení drží frontu obsazenou
 function popToast(msg, ms = 4000, maxMs = 600000, top = false) {
@@ -1621,7 +1627,8 @@ async function startSession(u){
     if(!s.metadata.fromCache) _nudgeSyncAt=Date.now(); // čerstvý profil: stav nabídek je aktuální (nudgeSync)
     if(await syncProfileLang(u.uid)) return; // jazyk profilu se liší od zařízení → reload
     // Moduly se berou přesně podle uloženého výběru (dřívější migrace vynucovala rex + checklist i po vypnutí – 4.65 zrušeno)
-    selMods=new Set(prof.modules||[]);initApp();
+    selMods=new Set(prof.modules||[]);
+    if(hcOk()) initApp(); else hcShow(); // bez souhlasu s údaji o zdraví (5.14.1) se appka ani data nespustí
     touchLastSeen(u.uid);
     _tzUid=u.uid; syncProfileTz(u.uid);
     // Neověřený e-mail: nejdřív čerstvý stav z Auth (ověřeno jinde), pak upozornění na Domů a v Nastavení
@@ -1629,6 +1636,83 @@ async function startSession(u){
     else if(_verifiedBack){ _verifiedBack=false; toast(t('auth.verifyDone'),4000); } // návrat z odkazu v e-mailu (5.10)
   }else{ onbStep1Init(); ss('s-step1'); }
 }
+// ── Souhlas se zpracováním údajů o zdraví (5.14.1, čl. 9 odst. 2 písm. a GDPR) ──
+// prof.healthConsent = {v, at}; zapisuje se jen přesným polem (merge), celoprofilový zápis ho vynechá (profNoTokens).
+// Bez souhlasu: obrazovka s-consent místo appky (initApp neběží, data se nenačtou), z ní export, smazání účtu, odhlášení.
+const HC_VER=1;
+function hcOk(){ const h=prof&&prof.healthConsent; return !!(h&&typeof h==='object'&&Number(h.v)>=HC_VER&&h.at); }
+let _hcView='ask', _hcBusy=false;
+function hcRender(){
+  const c=document.getElementById('hc-card'); if(!c) return;
+  const no=_hcView==='no';
+  c.innerHTML=no?`<h2 class="stitle hc-title" id="hc-title" tabindex="-1">${tH('hc.noTitle')}</h2>
+    <p class="ssub hc-p" id="hc-desc">${tH('hc.noText')}</p>
+    <div class="hc-acts">
+      <button type="button" class="btn-s hc-btn acc-export-btn" onclick="exportMyData()">${tH('set.account.export')}</button>
+      <div class="acc-export-st" role="status" aria-live="polite"></div>
+      <button type="button" class="btn-s hc-btn" onclick="hcLogout()">${tH('set.logout.btn')}</button>
+      <button type="button" class="btn-p hc-btn" onclick="hcBack()">${tH('hc.back')}</button>
+      <button type="button" class="acc-del-link" onclick="hcDelete()">${tH('set.account.delete')}</button>
+    </div>`
+  :`<h2 class="stitle hc-title" id="hc-title" tabindex="-1">${tH('hc.title')}</h2>
+    <div id="hc-desc"><p class="ssub hc-p">${tH('hc.intro')}</p>
+    <p class="hc-text">${tH('hc.text')} <a class="hc-link" href="${tH('hc.url')}" target="_blank" rel="noopener">${tH('hc.link')}</a></p></div>
+    <div class="hc-acts">
+      <button type="button" class="btn-p hc-btn" id="hc-yes" onclick="hcAgree()">${tH('hc.yes')}</button>
+      <button type="button" class="btn-s hc-btn" id="hc-no" onclick="hcDecline()">${tH('hc.no')}</button>
+    </div>`;
+}
+function hcFocus(){ setTimeout(()=>document.getElementById('hc-title')?.focus({preventScroll:true}),60); }
+function hcShow(){ _hcView='ask'; _hcBusy=false; hcRender(); ss('s-consent'); hcFocus(); }
+window.hcDecline=()=>{ if(_hcBusy) return; _hcView='no'; hcRender(); hcFocus(); };
+window.hcBack=()=>{ _hcView='ask'; hcRender(); hcFocus(); };
+window.hcAgree=async()=>{
+  if(!CU||_hcBusy||_accDeleting) return;
+  const uid=CU.uid, hc={v:HC_VER,at:new Date().toISOString()};
+  const b=document.getElementById('hc-yes'), n=document.getElementById('hc-no');
+  _hcBusy=true; if(b){ b.disabled=true; b.textContent=t('hc.saving'); } if(n) n.disabled=true;
+  // Offline: jako onboarding nejvýš 4 s na server, zápis se dokončí z fronty; chyba do 4 s = zůstat na obrazovce
+  const pw=setDoc(doc(db,'users',uid,'profile','main'),{healthConsent:hc},{merge:true});
+  let r;
+  try{ r=await Promise.race([pw.then(()=>'ok'),new Promise(res=>setTimeout(()=>res('wait'),4000))]); }
+  catch(e){
+    _hcBusy=false; if(CU?.uid!==uid) return;
+    hcRender(); toast(t('common.saveFailed',{err:userErr(e,'profil')}),5000); return;
+  }
+  if(r==='wait') pw.catch(e=>console.warn('[LP] souhlas:',e?.code||e?.name));
+  if(CU?.uid!==uid) return;
+  prof.healthConsent=hc; _hcBusy=false;
+  initApp();
+};
+window.hcLogout=async()=>{ try{ await logoutNow(); }catch(e){ try{ await signOut(auth); }catch(x){} location.reload(); } };
+// Smazání účtu z obrazovky souhlasu: stejné okno jako v Nastavení, fokus rovnou do pole na potvrzovací slovo
+window.hcDelete=()=>{ window.openDeleteAccount(); setTimeout(()=>document.getElementById('delacc-inp')?.focus(),60); };
+// Escape na obrazovce „Bez souhlasu“ = zpět k souhlasu (okno smazání účtu má vlastní ovládání)
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||_hcView!=='no'||!document.getElementById('s-consent')?.classList.contains('active')) return;
+  if(document.querySelector('.moverlay.open,.di-ov')) return;
+  e.preventDefault(); window.hcBack();
+});
+// Nastavení → Účet: datum souhlasu a odvolání (smaže pole a načte appku znovu → obrazovka souhlasu)
+function renderHcSetting(){
+  const el=document.getElementById('set-hc'); if(!el) return;
+  const h=hcOk()?prof.healthConsent:null, d=h?new Date(h.at):null;
+  el.innerHTML=h?`<div class="hc-set"><div class="hc-set-t">${tH('hc.setT',{d:d&&!isNaN(d)?fmtDate(d,'dmy'):''})}</div>
+    <div class="hc-set-d">${tH('hc.setD')} <a class="hc-link" href="${tH('hc.url')}" target="_blank" rel="noopener">${tH('hc.link')}</a></div>
+    <button type="button" class="btn-s hc-revoke" onclick="hcRevoke()">${tH('hc.revoke')}</button></div>`:'';
+}
+window.hcRevoke=async()=>{
+  if(!CU||_hcBusy||_accDeleting) return;
+  if(!(await lpConfirm(t('hc.revokeQ'),{title:t('hc.revokeT'),ok:t('hc.revokeOk'),danger:true}))) return;
+  if(!CU) return;
+  const uid=CU.uid; _hcBusy=true;
+  const pw=setDoc(doc(db,'users',uid,'profile','main'),{healthConsent:deleteField()},{merge:true});
+  try{ const r=await Promise.race([pw.then(()=>'ok'),new Promise(res=>setTimeout(()=>res('wait'),4000))]); if(r==='wait') pw.catch(e=>console.warn('[LP] odvolani souhlasu:',e?.code||e?.name)); }
+  catch(e){ _hcBusy=false; toast(t('common.saveFailed',{err:userErr(e,'profil')}),5000); return; }
+  if(CU?.uid!==uid) return;
+  delete prof.healthConsent;
+  location.reload(); // znovu načíst bez dat v paměti; start bez souhlasu ukáže obrazovku souhlasu
+};
 // ── Ověření e-mailu (4.76): upozornění neblokuje, odeslání znovu nejvýš 1× za 60 s ──
 // Stav se obnovuje přes CU.reload() při návratu do appky, nejvýš 1× za minutu
 let _verifySentAt=0,_verifyReloadAt=0,_verifyHidden=false,_verifyTimer=0;
@@ -2049,7 +2133,7 @@ function fd(iso){if(!iso)return'';const d=new Date(iso+'T12:00:00'),df=Math.roun
 // Celoprofilový zápis bez polí, která spravují jiné cesty: tokeny, skupiny (familyId/extraGroupIds/formerGroups
 // – zastaralá kopie z paměti by vrátila starý kód skupiny a člen by ze skupiny „vypadl“) a čtení feedu;
 // waterDay píše jen zápis vody, waterSent (dedup připomínek) jen server
-function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.removedGroups;delete c.waterDay;delete c.waterSent;delete c.pc;delete c.habitSnz;return c;}
+function profNoTokens(p){const c={...p};delete c.fcmToken;delete c.fcmTokens;delete c.lastSeen;delete c.groupNotifSent;delete c.groupFeedSeen;delete c.familyId;delete c.extraGroupIds;delete c.formerGroups;delete c.removedGroups;delete c.waterDay;delete c.waterSent;delete c.pc;delete c.habitSnz;delete c.healthConsent;return c;}
 function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 // Ořízne a omezí délku jména/názvu při zápisu (render stejně escapuje)
 // Bez high surrogátu na konci (neřezat uprostřed páru)
@@ -6327,6 +6411,15 @@ let selAddr='jmeno';
 // Oslovení je nepovinné: m / f / x (Neuvádět); nevybrané = x → neutrální tvary textů (#x), kde chybí, výchozí
 window.sg=g=>{selG=(g==='m'||g==='f'||g==='x')?g:'';['m','f','x'].forEach(k=>{const b=document.getElementById('g'+k);if(b){b.classList.toggle('sel',selG===k);b.setAttribute('aria-pressed',String(selG===k));}});v1();};
 window.sa=a=>{selAddr=a;document.getElementById('addr-jmeno').classList.toggle('sel',a==='jmeno');document.getElementById('addr-prezdivka').classList.toggle('sel',a==='prezdivka');document.getElementById('prezdivka-wrap').style.display=a==='prezdivka'?'block':'none';v1();};
+// Souhlas v kroku 1 (5.14.1): bez zaškrtnutí nápověda (role=alert) a fokus na zaškrtávátko
+function hcOnbCheck(){
+  const c=document.getElementById('u-hc'), er=document.getElementById('u-hc-err');
+  const ok=!!c?.checked;
+  if(er) er.hidden=ok;
+  if(c){ c.setAttribute('aria-invalid',String(!ok)); if(!ok) c.focus(); }
+  return ok;
+}
+window.hcChk=()=>{ const c=document.getElementById('u-hc'); if(c?.checked){ const er=document.getElementById('u-hc-err'); if(er) er.hidden=true; c.removeAttribute('aria-invalid'); } };
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
 // Krok 1 (5.10): křestní jméno z účtu Google předvyplnit; pozvaný má jen tento krok (tlačítko rovnou dokončí)
 function onbStep1Init(){
@@ -6346,6 +6439,7 @@ window.onbBackToLogin=async()=>{try{await signOut(auth);}catch(e){}location.relo
 let _onbTplInit=false, _selAvTouched=false;
 window.gS2=()=>{
   const nick=cutName(document.getElementById('u-nick').value,40); if(!nick) return;
+  if(!hcOnbCheck()) return; // souhlas s údaji o zdraví (5.14.1)
   prof.nickname=nick;prof.gender=selG||'x';prof.addrMode='jmeno';prof.prezdivka=prof.nickname;
   const inv=!!readPendingJoin();
   // Pozvaný (5.10): bez kroků 2 a 3 – moduly „Domov“ a doporučený parťák, rovnou do appky (pak dotaz na připojení)
@@ -6431,6 +6525,7 @@ let _onbBusy=false;
 window.finishOnboard=async()=>{
   if(_onbBusy) return false; // dvojklik nesmí založit návyky dvakrát
   if(selMods.size===0){toast(t(_onbCustom?'onb.pickOne':'onb.start.pick'));return false;}
+  if(!document.getElementById('u-hc')?.checked){ ss('s-step1'); hcOnbCheck(); return false; } // bez souhlasu (5.14.1) profil nevznikne
   _onbBusy=true;
   const fb=document.getElementById('onb-finish-btn'); if(fb) fb.disabled=true;
   try{
@@ -6449,7 +6544,8 @@ window.finishOnboard=async()=>{
   prof.lang=LANG;
   const tz=deviceTz(); if(tz) prof.tz=tz;
   // Offline (4.75): na potvrzení serveru čekat nejvýš 4 s, zápis se pak dokončí z fronty; chyba do 4 s jde do catch
-  const pw=setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen},{merge:true});
+  prof.healthConsent={v:HC_VER,at:new Date().toISOString()}; // zaškrtnuto v kroku 1 (profNoTokens ho vynechá, proto zvlášť)
+  const pw=setDoc(doc(db,'users',CU.uid,'profile','main'),{...profNoTokens(prof),lastSeen:prof.lastSeen,healthConsent:prof.healthConsent},{merge:true});
   const pr=await Promise.race([pw.then(()=>'ok'),new Promise(r=>setTimeout(()=>r('wait'),4000))]);
   if(pr==='wait'){ pw.catch(e=>console.warn('[LP] profile (onboarding):',e?.code||e?.name)); setTimeout(()=>toast(t('onb.savePending'),5000),1200); }
   clearLangSync();
@@ -21563,6 +21659,7 @@ function initSet(){
   contactPrefill(); // e-mail ve formuláři Napiš nám (4.84)
   renderLangSwitch();
   renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
+  renderHcSetting(); // souhlas s údaji o zdraví (5.14.1)
 }
 // Sbalené skupiny Nastavení: otevřené si pamatuje lp_set_open (jen zařízení)
 function setGrpInit(){
