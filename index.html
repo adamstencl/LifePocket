@@ -12,7 +12,7 @@
 <!-- iOS ikona: plnoplošná varianta, rohy si iOS zaoblí sám -->
 <link rel="apple-touch-icon" href="/icon-maskable-192.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title data-i18n="meta.title">LifePocket – návyky, kalendář a sdílené nákupy pro rodinu</title>
+<title data-i18n="meta.title">LifePocket – celá domácnost v jedné appce</title>
 <meta name="description" content="Sdílený nákupní seznam pro rodinu, návyky, cíle, kalendář s připomínkami a AI společník. Česky, zdarma a bez reklam. Funguje v telefonu jako aplikace.">
 <link rel="canonical" href="https://lifepocket.app/">
 <!-- Náhled při sdílení odkazu (při změně obrázku zvýšit ?v=) -->
@@ -145,51 +145,34 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
 <!-- LOGIN: landing pro nové návštěvníky + přihlášení (ID prvků čte app.js, neměnit) -->
 <div class="screen" id="s-login">
   <div class="card lp-card">
-    <div class="app-icon-wrap">
-      <img class="app-icon" width="96" height="96" src="img/app-icon.jpg" alt="LifePocket">
+    <!-- Hlavička (5.16): ikona vedle jména, nad landingem i přihlášením; .app-icon-wrap a .logo-name kvůli lp-inapp-on -->
+    <div class="lp-brand">
+      <div class="app-icon-wrap"><img class="app-icon" width="96" height="96" src="img/app-icon.jpg" alt=""></div>
+      <div class="logo-name">LifePocket</div>
     </div>
-    <div class="logo-name">LifePocket</div>
 
     <!-- LANDING -->
     <section id="lp-landing" aria-labelledby="lp-hero-t">
-      <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Jedna appka místo deseti.</h1>
-      <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i deník na jednom místě. Plánuj svůj den a s rodinou sdílej jen to, co chcete mít společné – nákupy, kalendář, úkoly.</p>
+      <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Celá domácnost v jedné appce.</h1>
+      <p class="lp-sub" data-i18n="landing.sub">Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš.</p>
       <div class="lp-invite" id="lp-invite" hidden>
         <span aria-hidden="true">🔗</span>
         <span id="lp-invite-t" data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
       </div>
-      <div class="lp-free" data-i18n="landing.free">Zdarma, bez reklam, česky</div>
       <div class="lp-ctas">
         <button type="button" class="btn-p" id="lp-start-btn" onclick="showAuthPanel('register')" data-i18n="landing.start">Začít zdarma</button>
         <button type="button" class="btn-s lp-have" onclick="showAuthPanel('login')" data-i18n="landing.haveAccount">Mám účet</button>
       </div>
-      <h2 class="lp-sec" data-i18n="landing.features">Co v appce najdeš</h2>
+      <p class="lp-trust" data-i18n="landing.trust">Zdarma · bez reklam · česky</p>
+      <!-- Tři odlišnosti (5.16); emoji jsou součástí překládaného textu -->
+      <h2 class="lp-sec" data-i18n="landing.why">Proč LifePocket</h2>
       <ul class="lp-benefits">
-        <li class="lp-benefit">
-          <span class="lp-b-em" aria-hidden="true">🛒</span>
-          <div><div class="lp-b-t" data-i18n="landing.b1t">Nákup pro celou rodinu</div>
-          <div class="lp-b-d" data-i18n="landing.b1d">Jeden seznam, když ho s rodinou sdílíte. Co koupí partner, tobě se hned odškrtne.</div></div>
-        </li>
-        <li class="lp-benefit">
-          <span class="lp-b-em" aria-hidden="true">🔥</span>
-          <div><div class="lp-b-t" data-i18n="landing.b2t">Návyky a cíle</div>
-          <div class="lp-b-d" data-i18n="landing.b2d">Sleduj série, plň malé kroky a koukej, jak se posouváš.</div></div>
-        </li>
-        <li class="lp-benefit">
-          <span class="lp-b-em" aria-hidden="true">✨</span>
-          <div><div class="lp-b-t" data-i18n="landing.b3t">AI společník</div>
-          <div class="lp-b-d" data-i18n="landing.b3d">Rex, Nora nebo jiný parťák ti poradí recept, naplánuje týden a podrží tě, když se nedaří.</div></div>
-        </li>
-        <li class="lp-benefit">
-          <span class="lp-b-em" aria-hidden="true">🗓️</span>
-          <div><div class="lp-b-t" data-i18n="landing.b4t">Kalendář a připomínky</div>
-          <div class="lp-b-d" data-i18n="landing.b4d">Narozeniny, kroužky i schůzky. Upozornění ti přijde do telefonu.</div></div>
-        </li>
-        <li class="lp-benefit">
-          <span class="lp-b-em" aria-hidden="true">🔒</span>
-          <div><div class="lp-b-t" data-i18n="landing.b5t">Soukromé, dokud nesdílíš</div>
-          <div class="lp-b-d" data-i18n="landing.b5d">Co si zapíšeš, vidíš jen ty. Do skupiny jde jen to, co vybereš ty – nic se nesdílí samo.</div></div>
-        </li>
+        <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w1t">🏠 Pro celou domácnost</div>
+          <div class="lp-b-d" data-i18n="landing.w1d">Jeden nákupní seznam, společný kalendář a plán jídel. Co koupí partner, tobě se hned odškrtne.</div></div></li>
+        <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w2t">🔒 Sdílíš jen to, co chceš</div>
+          <div class="lp-b-d" data-i18n="landing.w2d">Nákup se skupinou ano, deník a návyky jen pro tebe. Nic se nesdílí samo.</div></div></li>
+        <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w3t">✨ Parťák, který vidí souvislosti</div>
+          <div class="lp-b-d" data-i18n="landing.w3d">AI parťák zná tvůj kalendář, jídelníček i nákup. Na nabitý čtvrtek ti navrhne rychlou večeři a suroviny přidá do seznamu.</div></div></li>
       </ul>
       <!-- Náhled appky (5.15): snímky s ukázkovými daty, lazy (landing se ukáže hned, obrázky ho nebrzdí); v en jiné src přes data-i18n-attr -->
       <h2 class="lp-sec" data-i18n="landing.preview">Jak appka vypadá</h2>
@@ -198,11 +181,23 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
         <figure class="lp-shot"><img src="img/shot-shop-cs.webp" width="390" height="844" loading="lazy" decoding="async" alt="Sdílený nákupní seznam rodiny s položkami podle kategorií" data-i18n-attr="src:landing.shot2Src;alt:landing.shot2Alt"><figcaption data-i18n="landing.shot2">Sdílený nákup</figcaption></figure>
         <figure class="lp-shot"><img src="img/shot-habits-cs.webp" width="390" height="844" loading="lazy" decoding="async" alt="Seznam návyků se sériemi a splněnými dny" data-i18n-attr="src:landing.shot3Src;alt:landing.shot3Alt"><figcaption data-i18n="landing.shot3">Návyky</figcaption></figure>
       </div>
+      <!-- Ostatní moduly jen jako výčet (5.16), neklikací -->
+      <h2 class="lp-sec" data-i18n="landing.features">A k tomu</h2>
+      <ul class="lp-mods" role="list">
+        <li><span aria-hidden="true">🔥</span> <span data-i18n="mod.habits">Návyky</span></li>
+        <li><span aria-hidden="true">🏆</span> <span data-i18n="mod.goals">Cíle</span></li>
+        <li><span aria-hidden="true">📒</span> <span data-i18n="mod.journal">Deník</span></li>
+        <li><span aria-hidden="true">👨‍🍳</span> <span data-i18n="mod.cooking">Vaření</span></li>
+        <li><span aria-hidden="true">✅</span> <span data-i18n="mod.checklist">Checklist</span></li>
+        <li><span aria-hidden="true">💧</span> <span data-i18n="mod.water">Pitný režim</span></li>
+        <li><span aria-hidden="true">💰</span> <span data-i18n="mod.finance">Finance</span></li>
+        <li><span aria-hidden="true">🐾</span> <span data-i18n="mod.pets">Mazlíček</span></li>
+      </ul>
       <!-- Druhá výzva pod funkcemi (5.15); ve vestavěném prohlížeči ji initInAppBrowser vymění za „Otevřít v Chrome/Safari“ -->
       <div class="lp-ctas lp-ctas2" id="lp-try-wrap">
         <button type="button" class="btn-p" id="lp-try-btn" onclick="showAuthPanel('register')" data-i18n="landing.try">Vyzkoušet LifePocket zdarma →</button>
       </div>
-      <p class="lp-promise" data-i18n="landing.promise">Bez reklam. Bez placeného tarifu. Začni jedním modulem a další přidávej podle potřeby.</p>
+      <p class="lp-promise" data-i18n="landing.promise">Žádné reklamy ani placený tarif. Začni jedním modulem, další přidáš kdykoli.</p>
       <div class="lp-legal">
         <a href="privacy.html" target="_blank" rel="noopener" data-i18n="legal.privacy" data-i18n-attr="href:legal.privacyUrl">Ochrana osobních údajů</a> ·
         <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a>

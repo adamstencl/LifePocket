@@ -3,7 +3,7 @@
 // Plurál: objekt { one, few, many, other } s {n}; rod: klíč s příponou '#f' (ženský) a '#x' (neutrální, oslovení Neuvádět), jen tam, kde je potřeba.
 export default {
   // ── Meta ──
-  'meta.title': 'LifePocket – návyky, kalendář a sdílené nákupy pro rodinu',
+  'meta.title': 'LifePocket – celá domácnost v jedné appce',
   'meta.description': 'Sdílený nákupní seznam pro rodinu, návyky, cíle, kalendář s připomínkami a AI společník. Česky, zdarma a bez reklam. Funguje v telefonu jako aplikace.',
 
   // ── Obecné ──
@@ -37,8 +37,8 @@ export default {
   'deleted.home': 'Na úvod',
 
   // ── Landing ──
-  'landing.hero': 'Jedna appka místo deseti.',
-  'landing.sub': 'Návyky, kalendář, nákupy i deník na jednom místě. Plánuj svůj den a s rodinou sdílej jen to, co chcete mít společné – nákupy, kalendář, úkoly.',
+  'landing.hero': 'Celá domácnost v jedné appce.',
+  'landing.sub': 'Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš.',
   'landing.invite': 'Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.',
   'landing.inAppT': 'Otevři odkaz v prohlížeči',
   'landing.inAppD': 'V Chrome nebo Safari si appku dáš na plochu a budou ti chodit připomínky. Klepni na ⋯ → Otevřít v prohlížeči, nebo zkopíruj odkaz.',
@@ -54,20 +54,17 @@ export default {
   'landing.inviteFrom': '{who} tě zve do skupiny. Založ si účet nebo se přihlas a hned se připojíš.',
   'landing.verified': '✅ Ověřeno. Přihlas se tu a dej si appku na plochu – budou ti chodit připomínky.',
   'landing.continueHere': 'Pokračovat tady',
-  'landing.free': 'Zdarma, bez reklam, česky',
+  'landing.trust': 'Zdarma · bez reklam · česky',
   'landing.start': 'Začít zdarma',
   'landing.haveAccount': 'Mám účet',
-  'landing.features': 'Co v appce najdeš',
-  'landing.b1t': 'Nákup pro celou rodinu',
-  'landing.b1d': 'Jeden seznam, když ho s rodinou sdílíte. Co koupí partner, tobě se hned odškrtne.',
-  'landing.b2t': 'Návyky a cíle',
-  'landing.b2d': 'Sleduj série, plň malé kroky a koukej, jak se posouváš.',
-  'landing.b3t': 'AI společník',
-  'landing.b3d': 'Rex, Nora nebo jiný parťák ti poradí recept, naplánuje týden a podrží tě, když se nedaří.',
-  'landing.b4t': 'Kalendář a připomínky',
-  'landing.b4d': 'Narozeniny, kroužky i schůzky. Upozornění ti přijde do telefonu.',
-  'landing.b5t': 'Soukromé, dokud nesdílíš',
-  'landing.b5d': 'Co si zapíšeš, vidíš jen ty. Do skupiny jde jen to, co vybereš ty – nic se nesdílí samo.',
+  'landing.features': 'A k tomu',
+  'landing.why': 'Proč LifePocket',
+  'landing.w1t': '🏠 Pro celou domácnost',
+  'landing.w1d': 'Jeden nákupní seznam, společný kalendář a plán jídel. Co koupí partner, tobě se hned odškrtne.',
+  'landing.w2t': '🔒 Sdílíš jen to, co chceš',
+  'landing.w2d': 'Nákup se skupinou ano, deník a návyky jen pro tebe. Nic se nesdílí samo.',
+  'landing.w3t': '✨ Parťák, který vidí souvislosti',
+  'landing.w3d': 'AI parťák zná tvůj kalendář, jídelníček i nákup. Na nabitý čtvrtek ti navrhne rychlou večeři a suroviny přidá do seznamu.',
   'landing.preview': 'Jak appka vypadá',
   'landing.shot1': 'Domů',
   'landing.shot1Alt': 'Obrazovka Domů: přehled dne s parťákem a dnešními návyky',
@@ -79,7 +76,7 @@ export default {
   'landing.shot3Alt': 'Seznam návyků se sériemi a splněnými dny',
   'landing.shot3Src': 'img/shot-habits-cs.webp',
   'landing.try': 'Vyzkoušet LifePocket zdarma →',
-  'landing.promise': 'Bez reklam. Bez placeného tarifu. Začni jedním modulem a další přidávej podle potřeby.',
+  'landing.promise': 'Žádné reklamy ani placený tarif. Začni jedním modulem, další přidáš kdykoli.',
 
   // ── Právní dokumenty (URL podle jazyka) ──
   'legal.privacy': 'Ochrana osobních údajů',

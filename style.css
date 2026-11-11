@@ -99,16 +99,22 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 [hidden]{display:none!important}
 
 /* LANDING */
-.lp-hero{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;font-size:28px;line-height:1.2;color:var(--text);text-align:center;margin:14px 0 8px}
+.lp-hero{font-family:'Playfair Display',serif;font-style:italic;font-weight:700;font-size:30px;line-height:1.2;color:var(--text);text-align:center;margin:14px 0 8px;text-wrap:balance}
 .lp-sub{font-size:17px;line-height:1.45;color:var(--text2);text-align:center;margin:0 auto 14px;max-width:34ch}
-.lp-free{display:block;width:max-content;max-width:100%;margin:0 auto 16px;padding:6px 14px;border:1px solid var(--border2);border-radius:50px;font-size:14px;font-weight:600;color:var(--green)}
+/* 5.16: hlavička landingu – ikona 56 px vedle jména (bez animace), důvěra jednou řádkou pod tlačítky, moduly jako čipy */
+.lp-brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
+.lp-brand .app-icon-wrap{margin:0}
+.lp-brand .app-icon{width:56px;height:56px;border-radius:14px;animation:none;box-shadow:0 4px 16px rgba(0,0,0,.25);vertical-align:middle}
+.lp-brand .logo-name{margin-top:0;font-size:28px}
+.lp-trust{text-align:center;font-size:14px;font-weight:600;color:var(--text2);margin:-12px 0 24px}
+.lp-mods{list-style:none;padding:0;margin:0 0 20px;display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.lp-mods li{background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:8px 14px;font-size:15px;color:var(--text)}
 .lp-ctas{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
 .lp-ctas .btn-p{min-height:52px}
 .lp-have{width:100%;min-height:48px;font-size:16px;color:var(--text);font-weight:600}
 .lp-sec{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text2);text-align:center;margin:0 0 10px}
 .lp-benefits{list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
 .lp-benefit{display:flex;gap:12px;align-items:flex-start;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px}
-.lp-b-em{width:40px;height:40px;flex-shrink:0;border-radius:12px;background:var(--card3);display:flex;align-items:center;justify-content:center;font-size:22px}
 .lp-b-t{font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
 .lp-b-d{font-size:14px;color:var(--text2);line-height:1.4;margin-top:2px}
 .lp-invite{display:flex;gap:8px;align-items:flex-start;background:var(--card2);border:1px solid var(--accent);border-radius:12px;padding:10px 12px;font-size:15px;color:var(--text);margin-bottom:14px}
@@ -124,7 +130,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .lp-inapp-on .logo-name{font-size:24px;margin-top:0}
 .lp-inapp-on .lp-hero{font-size:22px;margin:6px 0 4px}
 .lp-inapp-on .lp-sub{font-size:15px;margin-bottom:10px}
-.lp-inapp-on .lp-free{margin-bottom:10px;padding:4px 12px}
+.lp-inapp-on .lp-trust{margin:-14px 0 14px}
 .lp-inapp-on .lp-invite:not(.lp-inapp){padding:8px 10px;margin-bottom:10px;font-size:14px}
 /* Návrat z ověřovacího e-mailu (5.10) */
 .lp-verified{background:var(--card2);border:1px solid var(--green);border-radius:12px;padding:10px 12px;font-size:15px;color:var(--text);margin:10px 0 4px;text-align:center}
@@ -175,10 +181,8 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 #email-inp,#pass-inp{font-size:16px!important}
 @media(max-width:480px){
   .screen>.card{padding:24px 18px;border-radius:24px}
-  #s-login .app-icon{width:64px;height:64px;border-radius:16px}
-  #s-login .logo-name{font-size:30px}
-  .lp-hero{font-size:26px}
 }
+@media(max-width:380px){.lp-hero{font-size:27px}}
 @media(prefers-reduced-motion:reduce){.app-icon{animation:none}.screen.active{animation:none}}
 [data-theme="sunshine"] .err,[data-theme="tangerine"] .err{color:var(--red)}
 

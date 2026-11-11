@@ -2,7 +2,7 @@
 // Tone: informal and short (Czech "ty" = casual English).
 export default {
   // ── Meta ──
-  'meta.title': 'LifePocket – habits, calendar and shared shopping for families',
+  'meta.title': 'LifePocket – your whole household in one app',
   'meta.description': 'A shared family shopping list, habits, goals, a calendar with reminders and an AI companion. Free and ad-free. Works on your phone like an app.',
 
   // ── Common ──
@@ -36,8 +36,8 @@ export default {
   'deleted.home': 'Back to start',
 
   // ── Landing ──
-  'landing.hero': 'One app instead of ten.',
-  'landing.sub': 'Habits, calendar, shopping and a journal in one place. Plan your day and share with your family only what you want to have in common – shopping, calendar, tasks.',
+  'landing.hero': 'Your whole household in one app.',
+  'landing.sub': 'Shopping, calendar, meal plan and habits. You share with your family only what you choose.',
   'landing.invite': 'You’ve been invited to a group. Sign up or log in and you’ll join right away.',
   'landing.inAppT': 'Open the link in your browser',
   'landing.inAppD': 'In Chrome or Safari you can add the app to your home screen and get reminders. Tap ⋯ → Open in browser, or copy the link.',
@@ -53,20 +53,17 @@ export default {
   'landing.inviteFrom': '{who} invited you to a group. Sign up or log in and you’ll join right away.',
   'landing.verified': '✅ Verified. Sign in here and add the app to your home screen – you’ll get reminders.',
   'landing.continueHere': 'Continue here',
-  'landing.free': 'Free, no ads',
+  'landing.trust': 'Free · no ads · made in Czechia',
   'landing.start': 'Get started free',
   'landing.haveAccount': 'I have an account',
-  'landing.features': 'What’s inside',
-  'landing.b1t': 'Shopping for the whole family',
-  'landing.b1d': 'One list once you share it with your family. When your partner buys something, it’s ticked off for you too.',
-  'landing.b2t': 'Habits and goals',
-  'landing.b2d': 'Build streaks, take small steps and watch yourself grow.',
-  'landing.b3t': 'AI companion',
-  'landing.b3d': 'Rex, Nora or another buddy suggests recipes, plans your week and has your back when things get tough.',
-  'landing.b4t': 'Calendar and reminders',
-  'landing.b4d': 'Birthdays, kids’ activities and appointments. Reminders go straight to your phone.',
-  'landing.b5t': 'Private until you share',
-  'landing.b5d': 'What you write down is yours alone. Only what you choose goes to your group – nothing is shared automatically.',
+  'landing.features': 'And there’s more',
+  'landing.why': 'Why LifePocket',
+  'landing.w1t': '🏠 For the whole household',
+  'landing.w1d': 'One shopping list, a shared calendar and a meal plan. When your partner buys something, it’s ticked off for you too.',
+  'landing.w2t': '🔒 Share only what you want',
+  'landing.w2d': 'Shopping with your group, journal and habits just for you. Nothing is shared automatically.',
+  'landing.w3t': '✨ A companion who connects the dots',
+  'landing.w3d': 'Your AI companion knows your calendar, meal plan and shopping list. For a busy Thursday it suggests a quick dinner and adds the ingredients to your list.',
   'landing.preview': 'A look inside',
   'landing.shot1': 'Home',
   'landing.shot1Alt': 'Home screen: your day at a glance with your companion and today’s habits',
@@ -78,7 +75,7 @@ export default {
   'landing.shot3Alt': 'Habit list with streaks and completed days',
   'landing.shot3Src': 'img/shot-habits-en.webp',
   'landing.try': 'Try LifePocket for free →',
-  'landing.promise': 'No ads. No paid plan. Start with one module and add more whenever you need them.',
+  'landing.promise': 'No ads, no paid plan. Start with one module and add more any time.',
 
   // ── Legal documents (URL by language) ──
   'legal.privacy': 'Privacy policy',
