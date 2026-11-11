@@ -71,6 +71,10 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '5.15';
 const CHANGELOG = [
   { v:'5.15', items:[
+    '✅ Nová karta Úkoly na Domů: napiš „koupit žárovky zítra v 18:00“ a termín se pozná sám',
+    '🎯 Hlavní úkol dne je teď úkol s hvězdičkou; dnešní a zítřejší se přesunul do Úkolů',
+    '🗓️ Úkoly v kalendáři a připomínka v daný čas (bez času ráno)',
+    '📋 V checklistu můžeš položce dát termín',
     '💰 Nový modul Finance: rozpočet na měsíc pro tebe nebo celou rodinu. Pravidelné příjmy a platby se přenášejí samy, útraty přidáš jedním klepnutím a hned vidíš, kolik zbývá a kam peníze jdou',
     '🛍️ V seznamu Chceme koupit spočítám, za jak dlouho na věci našetříte; cenu ti na klepnutí odhadne AI',
     '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Ty a parťák',
@@ -84,6 +88,10 @@ const CHANGELOG = [
     '🔒 Automatickou AI analýzu zápisků si teď zapínáš sám/sama: zeptáme se před první analýzou, změníš ji v Nastavení → Ty a parťák',
     '✉️ Ověření e-mailu a obnova hesla mají vlastní stránku přímo v LifePocketu'
   ], en:[
+    '✅ New Tasks card on Home: type “buy bulbs tomorrow at 6pm” and the date is recognised',
+    '🎯 Main task of the day is now a starred task; today’s and tomorrow’s moved to Tasks',
+    '🗓️ Tasks in the calendar and a reminder at the set time (no time = in the morning)',
+    '📋 Checklist items can have a due date',
     '💰 New Budget module: a monthly budget for you or the whole family. Regular income and payments carry over by themselves, add spending with one tap and see right away what’s left and where the money goes',
     '🛍️ In the Wishlist I’ll work out how long until you can afford things; AI can estimate a price with one tap',
     '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → You & your buddy',
@@ -96,6 +104,11 @@ const CHANGELOG = [
     '🤖 The first time you open the chat, your companion explains what data it gets and where it goes',
     '🔒 Automatic AI analysis of journal entries is now up to you: we ask before the first analysis, and you can change it in Settings → You & your buddy',
     '✉️ Email verification and password reset now have their own page right in LifePocket'
+  ]},
+  { v:'5.14.2', items:[
+    '🛠️ Oprava: aplikace se v některých případech nespustila'
+  ], en:[
+    '🛠️ Fix: the app sometimes didn’t start'
   ]},
   { v:'5.14.1', items:[
     '🔒 Souhlas se zpracováním údajů o zdraví (GDPR) – jednorázové potvrzení, v Nastavení ho můžeš odvolat'
@@ -1692,7 +1705,23 @@ function hcRender(){
     </div>`;
 }
 function hcFocus(){ setTimeout(()=>document.getElementById('hc-title')?.focus({preventScroll:true}),60); }
-function hcShow(){ _hcView='ask'; _hcBusy=false; hcRender(); ss('s-consent'); hcFocus(); }
+// 5.14.2: starší index.html z cache prohlížeče (nová app.js) obrazovku souhlasu nemá → doplnit, jinak zůstane prázdná stránka
+function hcEnsureScreen(){
+  if(document.getElementById('hc-card')) return;
+  document.getElementById('s-consent')?.remove();
+  const s=document.createElement('div'); s.className='screen'; s.id='s-consent';
+  s.innerHTML='<div class="card hc-card" id="hc-card" role="dialog" aria-modal="true" aria-labelledby="hc-title" aria-describedby="hc-desc"></div>';
+  document.body.appendChild(s);
+}
+// Totéž pro zaškrtávátko v kroku 1 (bez něj by nový uživatel nešel dál)
+function hcEnsureOnbChk(){
+  const b=document.getElementById('btn-s1'); if(!b||document.getElementById('u-hc')) return;
+  const ref=b.previousElementSibling?.classList.contains('btn-s')?b.previousElementSibling:b;
+  ref.insertAdjacentHTML('beforebegin',`<label class="hc-chk" for="u-hc"><input type="checkbox" id="u-hc" aria-describedby="u-hc-err" onchange="hcChk()"><span>${tH('hc.text')}</span></label>
+    <a class="hc-link hc-link--chk" href="${tH('hc.url')}" target="_blank" rel="noopener">${tH('hc.link')}</a>
+    <div class="hc-err" id="u-hc-err" role="alert" hidden>${tH('hc.need')}</div>`);
+}
+function hcShow(){ _hcView='ask'; _hcBusy=false; hcEnsureScreen(); hcRender(); ss('s-consent'); hcFocus(); }
 window.hcDecline=()=>{ if(_hcBusy) return; _hcView='no'; hcRender(); hcFocus(); };
 window.hcBack=()=>{ _hcView='ask'; hcRender(); hcFocus(); };
 window.hcAgree=async()=>{
@@ -6509,6 +6538,7 @@ window.hcChk=()=>{ const c=document.getElementById('u-hc'); if(c?.checked){ cons
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
 // Krok 1 (5.10): křestní jméno z účtu Google předvyplnit; pozvaný má jen tento krok (tlačítko rovnou dokončí)
 function onbStep1Init(){
+  hcEnsureOnbChk(); // 5.14.2: starší index.html z cache
   const inp=document.getElementById('u-nick');
   if(inp&&!inp.value.trim()&&(CU?.providerData||[]).some(p=>p?.providerId==='google.com')){
     const first=String(CU?.displayName||'').trim().split(/\s+/)[0]||'';
