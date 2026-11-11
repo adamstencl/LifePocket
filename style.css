@@ -137,6 +137,38 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .lp-link{background:none;border:none;color:var(--accent);font-family:'Crimson Pro',serif;font-size:15px;font-weight:600;min-height:44px;padding:0 4px;cursor:pointer}
 .lp-link:disabled{opacity:.5;cursor:default}
 .lp-card :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Náhled appky na úvodu (5.15): vodorovný pás snímků, posun jen uvnitř karty */
+.lp-shots{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:4px 4px 10px;margin:0 -4px 12px;-webkit-overflow-scrolling:touch}
+.lp-shot{flex:0 0 46%;max-width:180px;margin:0;scroll-snap-align:start;text-align:center}
+.lp-shot img{display:block;width:100%;height:auto;aspect-ratio:390/844;border-radius:16px;border:1px solid var(--border);background:var(--card2);box-shadow:0 6px 18px rgba(0,0,0,.14)}
+.lp-shot figcaption{font-size:14px;font-weight:600;color:var(--text2);margin-top:6px}
+.lp-ctas2{margin-bottom:8px}
+.lp-ctas a.btn-p{display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;box-sizing:border-box}
+.lp-promise{font-size:14px;line-height:1.45;color:var(--text2);text-align:center;margin:0 auto 6px;max-width:36ch}
+/* Věková hranice u registrace (5.15) */
+.lp-age{font-size:13px;line-height:1.45;color:var(--text2);text-align:center;margin:10px 0 0}
+.lp-age[hidden]{display:none}
+.lp-age a{color:var(--text2);text-decoration:underline;display:inline-block;padding:8px 2px}
+/* Odkaz z e-mailu (5.15): ověření, nové heslo, vrácení e-mailu */
+.act-card{text-align:center;width:440px}
+.act-t{font-family:'Playfair Display',serif;font-style:italic;font-size:24px;font-weight:700;color:var(--text);line-height:1.3;margin:6px 0 10px}
+.act-t:focus{outline:none}
+.act-d{font-size:16px;line-height:1.5;color:var(--text2);margin:0 0 18px;overflow-wrap:anywhere}
+.act-acts{display:flex;flex-direction:column;gap:10px;text-align:left}
+.act-acts .btn-p,.act-acts .btn-s{width:100%;min-height:48px;justify-content:center;text-align:center}
+.act-inp{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:16px;min-height:44px;outline:none}
+.act-pw{position:relative;display:flex;align-items:center}
+.act-pw .act-inp{padding-right:48px}
+.act-eye{position:absolute;right:0;width:44px;height:44px;background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);padding:0;line-height:1}
+.act-msg{font-size:14px;line-height:1.45;border-radius:10px;padding:10px 12px;color:var(--red);border:1px solid var(--red)}
+.act-msg.ok{color:var(--green);border-color:var(--green)}
+.act-msg:empty{display:none}
+.act-spin{width:36px;height:36px;margin:18px auto;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+/* Úvod k AI v chatu (5.15) */
+.aii-list{margin:6px 0 12px 20px;padding:0;font-size:15px;line-height:1.5;color:var(--text)}
+.aii-p{font-size:15px;line-height:1.5;color:var(--text2);margin:0 0 10px}
+#set-aientry{margin-top:14px}
+.aii-link{display:inline-block;color:var(--accent-text);text-underline-offset:3px;padding:6px 0;margin-bottom:12px;font-size:15px}
 #auth-mode-lbl:focus{outline:none} /* fokus jen pro čtečku po přepnutí panelu */
 #s-login .card{width:440px}
 .screen>.card{max-width:100%} /* do šířky obrazovky po odečtení paddingu (96vw na 360 px přetékalo) */

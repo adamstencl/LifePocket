@@ -1,5 +1,5 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,reauthenticateWithPopup,reauthenticateWithCredential,EmailAuthProvider,applyActionCode,checkActionCode,verifyPasswordResetCode,confirmPasswordReset}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,terminate,clearIndexedDbPersistence,doc,setDoc,getDoc,getDocFromCache,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 // Messaging a Functions se načítají až za běhu (4.74), nebrzdí první vykreslení; verze musí sedět s importy výše
 const FB_SDK='https://www.gstatic.com/firebasejs/10.12.0/';
@@ -1997,7 +1997,27 @@ async function syncGroupsFromProfile(fresh){
   renderFamilySettings();
 }
 
+// ── Odkaz z e-mailu Firebase na lifepocket.app (5.15): ?mode=verifyEmail|resetPassword|recoverEmail&oobCode=… ──
+// Platí jen s Action URL https://lifepocket.app/ v konzoli Firebase; bez ní chodí odkazy na firebaseapp.com jako dřív.
+// Kód z adresy hned pryč (history.replaceState), drží se jen v paměti a nikam se neloguje.
+// Do kliknutí na „Pokračovat“ start appky čeká (_actGate): přihlášení ani landing obrazovku nepřepíšou.
+const ACT_MODES=['verifyEmail','resetPassword','recoverEmail','verifyAndChangeEmail'];
+const _act=(()=>{
+  try{
+    const u=new URL(location.href), sp=u.searchParams;
+    const mode=sp.get('mode'), code=sp.get('oobCode'), key=sp.get('apiKey');
+    if(!ACT_MODES.includes(mode)||!code) return null;
+    ['mode','oobCode','apiKey','continueUrl','lang','tenantId'].forEach(k=>sp.delete(k));
+    history.replaceState(history.state,'',u.pathname+u.search+u.hash);
+    if(key&&key!==FC.apiKey) return null; // odkaz cizího projektu: jen uklidit adresu
+    return {mode:mode==='verifyAndChangeEmail'?'verifyEmail':mode,code:String(code).slice(0,2000)};
+  }catch(e){ return null; }
+})();
+let _actRelease=null, _actAuthSeen=false;
+const _actGate=_act?new Promise(r=>{ _actRelease=r; }):null;
 onAuthStateChanged(auth,async u=>{
+  _actAuthSeen=true;
+  if(_actGate) await _actGate; // obrazovka odkazu z e-mailu (5.15) má přednost
   if(u){CU=u;claimLocalDataOwner(u.uid);await startSession(u);}
   else{
     if(CU) clearLangLocal(); // odhlášení (i z jiného místa): smazat jen údaje účtu, jazyk zařízení zůstává
@@ -2372,7 +2392,9 @@ window.saveEntry=async(opts)=>{
   const id=curEntryId;
   const prev=createdId?null:entries.find(e=>e.id===id);
   const h=textHash(text);
-  const runAI=!auto&&text.length>20&&h!==prev?.aiHash&&h!==_aiHashPending[id];
+  // 5.15: jen se zapnutou automatickou analýzou (prof.aiEntry); bez volby se po uložení zeptá (aiEntryAskAfter)
+  const wantAI=!auto&&text.length>20&&h!==prev?.aiHash&&h!==_aiHashPending[id];
+  const runAI=wantAI&&prof.aiEntry===true;
   const fields={title,text,mood:entryMood,updatedAt:now,photo:curEntryPhoto||null};
   if(runAI){ fields.aiHash=h; _aiHashPending[id]=h; }
   // Zápisek nemusí být v seznamu (listener spadl, první zápis selhal) – zapsat stejně, createdAt zachovat kvůli orderBy
@@ -2395,7 +2417,59 @@ window.saveEntry=async(opts)=>{
   }
   // Jídla, návyky i nálada jedním dotazem na AI (nálada jen když není vybraná)
   if(runAI) analyzeEntry(text, !entryMood, id);
+  else if(wantAI&&prof.aiEntry!==false) aiEntryAskAfter(text, id, h);
 };
+// ── Automatická AI analýza zápisků (5.15): prof.aiEntry true/false, bez volby (nový i stávající účet) se před první analýzou zeptá ──
+// Zavření dotazu bez volby = tentokrát bez analýzy, znovu se zeptá až v další relaci
+let _aiEntryAsked=false;
+async function aiEntryAskAfter(text, id, h){
+  if(_aiEntryAsked||!CU) return;
+  _aiEntryAsked=true;
+  const uid=CU.uid, v=await aiEntryAsk();
+  if(!v||CU?.uid!==uid) return;
+  await setAiEntry(v==='on',true);
+  if(v!=='on'){ toast(t('aie.offToast'),4000); return; }
+  if(curEntryId!==id||h===_aiHashPending[id]) return; // mezitím jiný zápisek
+  _aiHashPending[id]=h;
+  updateDoc(doc(db,'users',uid,'entries',id),{aiHash:h}).catch(e=>console.warn('[LP] aiHash:',e?.code||e?.name)); // smazaný zápisek nevznikne znovu
+  analyzeEntry(text, !entryMood, id);
+}
+// Dotaz Zapnout / Vypnout: Promise<'on'|'off'|null> (Esc, klik vedle a systémové Zpět = null)
+function aiEntryAsk(){
+  return new Promise(res=>{
+    document.getElementById('lp-ask')?._cancel?.();
+    const ov=document.createElement('div');
+    ov.id='lp-ask'; ov.className='di-ov';
+    ov.setAttribute('role','alertdialog'); ov.setAttribute('aria-modal','true');
+    ov.setAttribute('aria-labelledby','aie-ask-t'); ov.setAttribute('aria-describedby','lp-ask-m');
+    ov.innerHTML=`<div class="modal di-card lp-ask">
+      <div class="mtitle di-title" id="aie-ask-t">✨ ${tH('aie.askT')}</div>
+      <div class="lp-ask-m" id="lp-ask-m">${tH('aie.askM')}</div>
+      <div class="macts"><button type="button" class="btn-s" data-v="off">${tH('aie.off')}</button><button type="button" class="btn-p" data-v="on">${tH('aie.on')}</button></div>
+    </div>`;
+    const prev=document.activeElement;
+    const done=v=>{ if(!ov.isConnected) return; ov.remove(); try{ if(prev?.isConnected) prev.focus({preventScroll:true}); }catch(e){} res(v); };
+    ov._cancel=()=>done(null);
+    ov.addEventListener('click',e=>{ const b=e.target.closest('[data-v]'); if(b) done(b.dataset.v); else if(e.target===ov) done(null); });
+    ov.addEventListener('keydown',e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); done(null); } });
+    document.body.appendChild(ov);
+    ov.querySelector('[data-v="off"]')?.focus();
+  });
+}
+// Uložení volby přesným polem (celoprofilový zápis ho nese z paměti stejně)
+async function setAiEntry(on, quiet){
+  if(!CU) return;
+  prof.aiEntry=!!on;
+  renderAiEntrySetting();
+  try{ await setDoc(doc(db,'users',CU.uid,'profile','main'),{aiEntry:!!on},{merge:true}); }
+  catch(e){ if(!quiet) toast(t('common.saveFailed',{err:userErr(e,'profil')}),5000); else console.warn('[LP] aiEntry:',e?.code||e?.name); }
+}
+window.setAiEntry=on=>setAiEntry(on);
+function renderAiEntrySetting(){
+  const el=document.getElementById('set-aientry'); if(!el) return;
+  el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('aie.t')}</div><div class="togds">${tH('aie.d')}</div></div>
+    <label class="togswitch"><input type="checkbox" ${prof?.aiEntry===true?'checked':''} aria-label="${tH('aie.t')}" onchange="setAiEntry(this.checked)"><span class="togsl"></span></label></div>`;
+}
 
 window.deleteEntry=async()=>{
   if(!CU||!curEntryId)return;
@@ -6396,6 +6470,7 @@ window.toggleLoginMode=(mode)=>{
   document.getElementById('login-toggle-reg').style.display=isReg?'none':'block';
   document.getElementById('login-toggle-login').style.display=isReg?'block':'none';
   document.getElementById('login-forgot').style.display=isReg?'none':'block';
+  const ag=document.getElementById('auth-age'); if(ag) ag.hidden=!isReg; // věková hranice (5.15)
   const pi=document.getElementById('pass-inp');
   if(pi){
     pi.autocomplete=isReg?'new-password':'current-password'; // správce hesel nabídne nové heslo
@@ -12268,6 +12343,9 @@ function initInAppBrowser(){
   // 5.13: hlavní (žluté) je jen „Otevřít v Chrome/Safari“, registrace tady jako šedé „Pokračovat tady“
   const st=document.getElementById('lp-start-btn');
   if(st&&inAppOpenUrl(plat)){ st.classList.replace('btn-p','btn-s'); st.classList.add('lp-have'); st.dataset.i18n='landing.continueHere'; st.textContent=t('landing.continueHere'); }
+  // 5.15: druhá výzva pod funkcemi je tu také „Otevřít v Chrome/Safari“ (registrace zůstává jen šedá nahoře)
+  const tr=document.getElementById('lp-try-btn');
+  if(tr&&inAppOpenUrl(plat)) tr.outerHTML=inAppOpenHTML('lp-try-open');
   const g=document.getElementById('login-btn');
   if(g){
     g.parentNode.insertBefore(card(),g);
@@ -12280,6 +12358,113 @@ window.copyInAppLink=()=>{
   Promise.resolve().then(()=>navigator.clipboard.writeText(url)).then(()=>toast(t('landing.inAppCopied'))).catch(()=>prompt(t('landing.inAppCopy'),url));
 };
 initLoginScreen();
+// ── Obrazovka odkazu z e-mailu (5.15, _act výše u onAuthStateChanged) ──
+// Stavy: busy → verified | reset (formulář) | resetOk | recovered | bad | err (síť, Zkusit znovu)
+let _actSt={st:'busy'}, _actBusy=false;
+const ACT_BAD=['auth/expired-action-code','auth/invalid-action-code','auth/user-disabled','auth/user-not-found','auth/argument-error'];
+function actRender(focus=true){
+  const c=document.getElementById('act-card'); if(!c||!_act) return;
+  const st=_actSt.st, m=_act.mode;
+  const head=(ttl,txt)=>`<h1 class="act-t" id="act-title" tabindex="-1">${ttl}</h1>${txt?`<p class="act-d">${txt}</p>`:''}`;
+  const cont=`<button type="button" class="btn-p" onclick="actContinue()">${tH('act.continue')}</button>`;
+  const login=`<button type="button" class="btn-p" onclick="actContinue()">${tH('act.toLogin')}</button>`;
+  const icon='<img src="icon-192.png" width="64" height="64" alt="" style="width:64px;height:64px;border-radius:16px">';
+  let h='';
+  if(st==='busy') h=icon+`<h1 class="act-t" id="act-title" tabindex="-1">${tH('act.busy')}</h1><div class="act-spin" aria-hidden="true"></div>`;
+  else if(st==='verified') h=icon+head(tH('act.verifyT'),tH('act.verifyD'))+`<div class="act-acts">${cont}</div>`;
+  else if(st==='reset') h=head(tH('act.resetT'),tH('act.resetFor',{email:_actSt.email||''}))
+    +`<form class="act-acts" onsubmit="event.preventDefault();actResetSave()" novalidate>
+      <input type="email" autocomplete="username" value="${esc(_actSt.email||'')}" hidden readonly>
+      <div class="act-pw"><input class="act-inp" id="act-pass" type="password" autocomplete="new-password" minlength="6" placeholder="${tH('act.resetPh')}" aria-label="${tH('act.resetPh')}" aria-describedby="act-msg">
+      <button type="button" class="act-eye" id="act-eye" onclick="actPassVis()" aria-label="${tH('auth.showPass')}">👁️</button></div>
+      <div class="act-msg" id="act-msg" role="alert"></div>
+      <button type="submit" class="btn-p" id="act-save">${tH('act.resetSave')}</button></form>`;
+  else if(st==='resetOk') h=head(tH('act.resetOkT'),tH('act.resetOkD'))+`<div class="act-acts">${login}</div>`;
+  else if(st==='recovered') h=head(tH('act.recoverT'),tH('act.recoverD',{email:_actSt.email||''}))
+    +`<div class="act-acts"><button type="button" class="btn-s" id="act-send" onclick="actSendReset()">${tH('act.recoverReset')}</button>
+      <div class="act-msg" id="act-msg" role="status"></div>${cont}</div>`;
+  else if(st==='bad'&&m==='resetPassword') h=head(tH('act.badT'),tH('act.resetBad'))
+    +`<form class="act-acts" onsubmit="event.preventDefault();actSendReset()" novalidate>
+      <input class="act-inp" id="act-email" type="email" autocomplete="email" inputmode="email" placeholder="${tH('auth.email')}" aria-label="${tH('auth.email')}" value="${esc(CU?.email||auth.currentUser?.email||'')}">
+      <div class="act-msg" id="act-msg" role="alert"></div>
+      <button type="submit" class="btn-p" id="act-send">${tH('act.resetSend')}</button>
+      <button type="button" class="btn-s" onclick="actContinue()">${tH('act.continue')}</button></form>`;
+  else if(st==='bad') h=head(tH('act.badT'),tH(m==='recoverEmail'?'act.recoverBad':'act.verifyBad'))+`<div class="act-acts">${cont}</div>`;
+  else h=head(tH('act.badT'),esc(_actSt.msg||''))
+    +`<div class="act-acts"><button type="button" class="btn-p" onclick="actRun()">${tH('act.retry')}</button>
+      <button type="button" class="btn-s" onclick="actContinue()">${tH('act.continue')}</button></div>`;
+  c.innerHTML=h;
+  if(focus) setTimeout(()=>document.getElementById(st==='reset'?'act-pass':'act-title')?.focus({preventScroll:true}),60);
+}
+// Zpracování kódu: ověření a vrácení e-mailu se provedou hned, nové heslo nejdřív ověří kód a ukáže formulář
+window.actRun=async()=>{
+  if(!_act||_actBusy) return;
+  _actBusy=true; _actSt={st:'busy'}; ss('s-action'); actRender(false);
+  try{
+    if(_act.mode==='resetPassword') _actSt={st:'reset',email:await verifyPasswordResetCode(auth,_act.code)};
+    else if(_act.mode==='recoverEmail'){
+      const info=await checkActionCode(auth,_act.code);
+      await applyActionCode(auth,_act.code);
+      _actSt={st:'recovered',email:String(info?.data?.email||'')};
+    }else{ await applyActionCode(auth,_act.code); _actSt={st:'verified'}; _verifiedBack=true; }
+  }catch(e){
+    _actSt=ACT_BAD.includes(e?.code)?{st:'bad'}:{st:'err',msg:userErr(e,'login')};
+  }
+  _actBusy=false; actRender();
+};
+window.actPassVis=()=>{
+  const i=document.getElementById('act-pass'), b=document.getElementById('act-eye'); if(!i) return;
+  i.type=i.type==='password'?'text':'password';
+  if(b){ b.textContent=i.type==='password'?'👁️':'🙈'; b.setAttribute('aria-label',t(i.type==='password'?'auth.showPass':'auth.hidePass')); }
+};
+const actMsg=(txt,ok)=>{ const m=document.getElementById('act-msg'); if(m){ m.textContent=txt; m.classList.toggle('ok',!!ok); } };
+window.actResetSave=async()=>{
+  const i=document.getElementById('act-pass'), b=document.getElementById('act-save');
+  if(!_act||!i||_actBusy) return;
+  const pw=i.value;
+  if(pw.length<6){ actMsg(t('auth.passShort')); i.setAttribute('aria-invalid','true'); i.focus(); return; }
+  i.removeAttribute('aria-invalid'); actMsg('');
+  _actBusy=true; if(b){ b.disabled=true; b.textContent=t('act.resetSaving'); }
+  try{
+    await confirmPasswordReset(auth,_act.code,pw);
+    _actSt={st:'resetOk',email:_actSt.email}; _actBusy=false; actRender(); return;
+  }catch(e){
+    _actBusy=false;
+    if(ACT_BAD.includes(e?.code)){ _actSt={st:'bad'}; actRender(); return; }
+    actMsg(e?.code==='auth/weak-password'?t('auth.err.weakPassword'):userErr(e,'login'));
+    if(b){ b.disabled=false; b.textContent=t('act.resetSave'); }
+  }
+};
+// Nový odkaz na heslo (vypršelý odkaz, vrácený e-mail): stejná neutrální hláška jako v přihlášení
+let _actSentAt=0;
+window.actSendReset=async()=>{
+  const b=document.getElementById('act-send'), inp=document.getElementById('act-email');
+  const email=(inp?inp.value:_actSt.email||'').trim();
+  if(!email){ actMsg(t('auth.resetNeedEmail')); inp?.focus(); return; }
+  if(Date.now()-_actSentAt<VERIFY_GAP){ actMsg(t('auth.resetSent'),true); return; }
+  if(b) b.disabled=true;
+  try{ await sendResetMail(email); _actSentAt=Date.now(); actMsg(t('auth.resetSent'),true); }
+  catch(e){
+    if(e?.code==='auth/user-not-found'){ _actSentAt=Date.now(); actMsg(t('auth.resetSent'),true); }
+    else actMsg(e?.code==='auth/invalid-email'?t('auth.err.invalidEmail'):userErr(e,'login'));
+  }
+  finally{ if(b) b.disabled=false; }
+};
+// Pokračovat: přihlášený → appka (po ověření čerstvý token kvůli AI), jinak přihlášení (po ověření s hláškou, po novém hesle s e-mailem)
+window.actContinue=async()=>{
+  if(!_actRelease) return;
+  for(let i=0;i<50&&!_actAuthSeen;i++) await new Promise(r=>setTimeout(r,100)); // stav přihlášení nejvýš 5 s
+  const u=auth.currentUser, rel=_actRelease; _actRelease=null;
+  if(u&&_verifiedBack){ try{ await u.reload(); await u.getIdToken(true); }catch(e){ console.warn('[LP] obnova tokenu:',e?.code||e?.name); } }
+  if(!u){
+    showAuthPanel('login',false);
+    if(_actSt.email&&(_actSt.st==='resetOk'||_actSt.st==='recovered')){ const ei=document.getElementById('email-inp'); if(ei) ei.value=_actSt.email; }
+    initVerifiedNote();
+  }
+  ss(u?'s-loading':'s-login');
+  rel();
+};
+if(_act) actRun();
 function clearPendingJoin() { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e) {} stripJoinParam(); }
 // Vrátí platnou nevypršelou pozvánku {code, ts}, jinak ji smaže a vrátí null
 function readPendingJoin() {
@@ -20156,7 +20341,7 @@ window.sp=id=>{
   markBn(id);
   document.getElementById('abody').style.overflowY=id==='avatar'?'hidden':'auto';
   if(id==='settings'){initSet();rSetMods();loadNotifSettings();setTimeout(checkNotifStatus,100);renderCustomRemindersList();loadSupport();}
-  if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();}
+  if(id==='avatar'){rAvPage();if(!chatH.length)loadChatHistory();aiIntroMaybe();}
   if(id==='mealplan'){
     const tab=getMealTab();
     switchMealTab(tab);renderMealPlan();
@@ -21660,6 +21845,7 @@ function initSet(){
   renderLangSwitch();
   renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
   renderHcSetting(); // souhlas s údaji o zdraví (5.14.1)
+  renderAiEntrySetting(); // automatická AI analýza zápisků (5.15)
 }
 // Sbalené skupiny Nastavení: otevřené si pamatuje lp_set_open (jen zařízení)
 function setGrpInit(){
@@ -22573,6 +22759,43 @@ async function chatSend(){
   }
   document.getElementById('send-btn').disabled=false;document.getElementById('typing').classList.remove('active');scrollChat();
 }
+// ── Úvod k AI v chatu (5.15): jednou na účet vysvětlení, co parťák dostává (chatSend: chatFitHist 10 zpráv, souhrn, buildChatContext) ──
+// Pamatuje se v profilu (aiIntroAt, přesné pole) i v zařízení (lp_ai_intro = uid), ať se offline neukáže znovu
+function aiIntroDone(){
+  if(prof?.aiIntroAt) return true;
+  try{ return !!CU&&localStorage.getItem('lp_ai_intro')===CU.uid; }catch(e){ return false; }
+}
+let _aiIntroQ=false;
+function aiIntroMaybe(){
+  if(!CU||aiIntroDone()||_aiIntroQ) return;
+  _aiIntroQ=true;
+  whenUiFree(()=>{
+    _aiIntroQ=false;
+    if(aiIntroDone()||!document.getElementById('p-avatar')?.classList.contains('active')) return; // chat mezitím zavřený: příště
+    aiIntroShow();
+  },120000,()=>{ _aiIntroQ=false; });
+}
+function aiIntroShow(){
+  document.getElementById('aii-modal')?.remove();
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    `<div class="moverlay open" id="aii-modal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="aii-t" style="max-width:420px">
+      <div class="mtitle" id="aii-t" tabindex="-1">🔒 ${tH('aii.title')}</div>
+      <p class="aii-p">${tH('aii.lead')}</p>
+      <ul class="aii-list"><li>${tH('aii.l1')}</li><li>${tH('aii.l2')}</li><li>${tH('aii.l3')}</li></ul>
+      <p class="aii-p">${tH('aii.how')}</p>
+      <a class="aii-link" href="${tH('aii.url')}" target="_blank" rel="noopener">${tH('aii.link')}</a>
+      <button type="button" class="btn-p" id="aii-ok" onclick="aiIntroOk()">${tH('aii.ok')}</button>
+    </div></div>`);
+  setTimeout(()=>document.getElementById('aii-ok')?.focus({preventScroll:true}),60);
+}
+window.aiIntroOk=()=>{
+  document.getElementById('aii-modal')?.remove();
+  if(!CU) return;
+  const uid=CU.uid, at=new Date().toISOString();
+  prof.aiIntroAt=at;
+  try{ localStorage.setItem('lp_ai_intro',uid); }catch(e){}
+  setDoc(doc(db,'users',uid,'profile','main'),{aiIntroAt:at},{merge:true}).catch(e=>console.warn('[LP] aiIntro:',e?.code||e?.name));
+};
 // Karta v chatu: AI chce ověřený e-mail (err.aiVerify) → tlačítko „Poslat ověřovací e-mail znovu“ (resendVerify, limit 60 s)
 function chatVerifyCard(){
   const c=document.getElementById('chatmsgs'); if(!c) return;
