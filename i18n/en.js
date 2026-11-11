@@ -349,7 +349,7 @@ export default {
   // ── Consent to processing of health data (5.14.1, Art. 9(2)(a) GDPR) ──
   'hc.title': '🔒 Health data',
   'hc.intro': 'Moods in your journal, habits (such as medication, exercise or sleep) and water intake can say something about your health. Under the GDPR we need your explicit consent for them.',
-  'hc.text': 'I agree that the data I enter in the app (e.g. moods, habits, water intake) may reveal information about my health, and that LifePocket will process it only to make the app work. I can withdraw my consent at any time.',
+  'hc.text': 'I agree that the data I enter in the app (e.g. moods, habits, water intake) may reveal information about my health, and that LifePocket will process it only to make the app work, including the AI companion (Anthropic). I can withdraw my consent at any time.',
   'hc.link': 'More in the Privacy Policy.',
   'hc.url': 'privacy-en.html#health',
   'hc.yes': 'I agree',

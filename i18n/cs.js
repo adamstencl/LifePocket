@@ -350,7 +350,7 @@ export default {
   // ── Souhlas se zpracováním údajů o zdraví (5.14.1, čl. 9 odst. 2 písm. a GDPR) ──
   'hc.title': '🔒 Údaje o zdraví',
   'hc.intro': 'Nálady v deníku, návyky (třeba léky, cvičení nebo spánek) a pitný režim můžou vypovídat o tvém zdraví. Podle GDPR k nim potřebujeme tvůj výslovný souhlas.',
-  'hc.text': 'Souhlasím, že údaje, které do aplikace zadám (např. nálady, návyky, pitný režim), mohou vypovídat o mém zdraví, a LifePocket je zpracuje jen kvůli fungování aplikace. Souhlas můžu kdykoli odvolat.',
+  'hc.text': 'Souhlasím, že údaje, které do aplikace zadám (např. nálady, návyky, pitný režim), mohou vypovídat o mém zdraví, a LifePocket je zpracuje jen kvůli fungování aplikace, včetně AI parťáka (Anthropic). Souhlas můžu kdykoli odvolat.',
   'hc.link': 'Více v Zásadách ochrany soukromí.',
   'hc.url': 'privacy.html#zdravi',
   'hc.yes': 'Souhlasím',

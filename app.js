@@ -1940,6 +1940,8 @@ async function refreshProfileFromServer(uid){
     prof=s.data();
     if(await syncProfileLang(uid)) return; // jazyk z jiného zařízení → reload
     if(CU?.uid!==uid) return; // během čekání odhlášení / jiný účet (4.78)
+    // 5.14.1: offline start na obrazovce souhlasu – souhlas ze serveru appku spustí, bez souhlasu se nic nenačítá
+    if(!_appStarted){ if(hcOk()){ selMods=new Set(prof.modules||[]); initApp(); } return; }
     selMods=new Set(prof.modules||[]);
     subModules(); buildNav(); rDash();
     syncGroupsFromProfile(!s.metadata.hasPendingWrites).catch(e=>console.warn('[LP] skupiny z profilu:',e?.code||e?.name));
@@ -2030,7 +2032,7 @@ onAuthStateChanged(auth,async u=>{
     entries=[]; habits=[]; habitLogs=[]; events=[]; shopItems=[]; shopItemsLoaded=false; goals=[]; subs={}; editGId=null; editSGId=null; editSGGoalId=null;
     // Profil a výběry patří odhlášenému účtu (4.75): další přihlášení nesmí vidět jeho moduly, parťáka ani zámky
     prof={}; selMods=new Set(); selG=''; selAv=''; tmpAv=''; mood=''; customReminders=[];
-    _onbBusy=false; _tzUid=''; _profLoading=null; _profCacheUid=''; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
+    _onbBusy=false; _appStarted=false; _tzUid=''; _profLoading=null; _profCacheUid=''; _modSubUid=''; _pmLoadedUid=''; _habitSaving=false; _recSaving=false;
     clearUserSessionState();
     if(!_accDeleted&&!_accDeleting&&!_fsClearP&&retryFsClear(!wasIn)) return; // nedokončené mazání cache z dřívějška (4.75)
     ss(_accDeleted?'s-deleted':'s-login');
@@ -19895,7 +19897,9 @@ function petsWidgetHTML() {
 }
 
 let _weeklyReportIv=null;
+let _appStarted=false; // initApp proběhl (5.14.1: obrazovka souhlasu appku nespouští, viz refreshProfileFromServer)
 async function initApp(){
+  _appStarted=true;
   // Init history state pro Android back button
   history.replaceState({type:'root'}, ''); backGuard();
   _modSubUid=''; // initApp znovu (onboarding): moduly přihlásit podle nového výběru
