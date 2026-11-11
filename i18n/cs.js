@@ -2220,6 +2220,7 @@ export default {
   'grp.inv.sendHint': 'WhatsApp, Messenger, SMS…',
   'grp.inv.qr': '📷 Ukázat QR kód',
   'grp.inv.qrHint': 'Ať si to naskenuje foťákem v telefonu.',
+  'grp.inv.qrFail': 'QR kód se nepodařilo vytvořit. Pošli pozvánku odkazem.',
   'grp.inv.dictate': 'Nebo nadiktuj kód:',
   'grp.inv.seats': '{n} z {max} míst obsazeno',
   'grp.inv.fullOwn': 'Skupina je plná. Někoho odeber, ať se uvolní místo.',

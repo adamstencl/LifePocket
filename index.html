@@ -279,13 +279,16 @@ window.landLang=function(l){if(l===window.__lpLang)return false;
   try{var u=new URL(location.href);u.searchParams.set('lang',l);location.replace(u.href);return false;}catch(e){return true;}};
 // Pozvánka do skupiny (5.16): landing hned v režimu pozvánky, ať normální neproblikne. app.js (lpInviteMode) texty přepíše přes t().
 // od/co z odkazu jsou jen kosmetika (podvržitelné): čištění jako cleanInviter/cleanInviteCo v app.js, do stránky jen textContent.
+// Kopie INVITER_BAN_RE a FAMILY_WORDS z app.js (shodu hlídá ci-check)
+var INVITER_BAN_RE = /lifepocket|admin|podpora|support|helpdesk|official|oficialn|moderator|spravce|\b(?:tym|team|staff|info|system|servis)\b/;
+var FAMILY_WORDS='ADAM|ANNA|BARA|DOMA|ELAN|FARA|HANA|JANA|KARA|LARA|MARA|NORA|PATA|RANA|SARA|TARA';
 function invWho(r){
   var s=String(r||'').slice(0,200),k;
   try{s=s.normalize('NFC');}catch(e){}
   s=s.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g,'').replace(/\s+/g,' ').trim();
   if(s.length>30)s=s.slice(0,31).replace(/\s+\S*$/,'');
   s=s.slice(0,30).trim();
-  try{k=s.toLowerCase().normalize('NFD').replace(/[^a-z]+/g,'');if(/lifepocket|admin|podpora|support/.test(k)||!new RegExp("^[\\p{L}][\\p{L}\\p{M} .'\u2019-]*$",'u').test(s))return '';}catch(e){return '';}
+  try{k=s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]+/g,' ').trim();if(INVITER_BAN_RE.test(k+' '+k.replace(/ /g,''))||!new RegExp("^[\\p{L}][\\p{L}\\p{M} .'\u2019-]*$",'u').test(s))return '';}catch(e){return '';}
   return s;
 }
 function invRead(){
@@ -295,7 +298,7 @@ function invRead(){
     try{p=JSON.parse(localStorage.getItem('lp_pending_join')||'null');}catch(e){}
     if(!p||typeof p.code!=='string'||!(Date.now()-Number(p.ts)<6048e5))return null;
     o=p.od;w=p.co;
-  }else if(!/^[A-Za-z]{4}\W?[A-Za-z0-9]{4}([A-Za-z0-9]{2})?$/.test(String(c).trim()))return null;
+  }else if(!new RegExp('^('+FAMILY_WORDS+')\\W?[A-Z0-9]{4}([A-Z0-9]{2})?$').test(String(c).trim().toUpperCase()))return null;
   w=String(w||'');if(w.length>4||!/^[scml]*$/.test(w))w='';
   return {who:invWho(o),co:w};
 }

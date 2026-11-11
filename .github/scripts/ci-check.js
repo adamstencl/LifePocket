@@ -202,6 +202,22 @@ try {
   else ok('FAMILY_CODE_ALPHABET ve functions shodná s app.js');
 } catch (e) { fail('functions FAMILY_WORDS: ' + e.message); }
 
+console.log('Pozvánka: index.html vs. app.js (zakázaná jména, slova kódu)');
+try {
+  const html = read('index.html');
+  const reA = appSrc.match(/const\s+INVITER_BAN_RE\s*=\s*(\/.+\/[a-z]*);/);
+  const reH = html.match(/var\s+INVITER_BAN_RE\s*=\s*(\/.+\/[a-z]*);/);
+  if (!reA || !reH) fail('INVITER_BAN_RE v app.js nebo index.html nenalezeno');
+  else if (reA[1] !== reH[1]) fail('INVITER_BAN_RE se liší; app.js: ' + reA[1] + ', index.html: ' + reH[1]);
+  else ok('zakázaná slova ve jméně zvoucího shodná (app.js = index.html)');
+  if (!/function cleanInviter[\s\S]{0,800}INVITER_BAN_RE\.test/.test(appSrc) || !/function invWho[\s\S]{0,800}INVITER_BAN_RE\.test/.test(html)) fail('cleanInviter / invWho nepoužívá INVITER_BAN_RE');
+  const aw = appSrc.match(/const\s+FAMILY_WORDS\s*=\s*\[([\s\S]*?)\]/);
+  const hw = html.match(/var\s+FAMILY_WORDS\s*=\s*'([^']*)'/);
+  if (!aw || !hw) fail('FAMILY_WORDS v app.js nebo index.html nenalezeno');
+  else if (stringLiterals(aw[1]).join('|') !== hw[1]) fail('FAMILY_WORDS v index.html se liší od app.js');
+  else ok('FAMILY_WORDS v index.html shodné s app.js');
+} catch (e) { fail('pozvánka index.html: ' + e.message); }
+
 console.log('CACHE v sw.js vs. změněné soubory');
 (function checkCacheBump() {
   const WATCHED = ['app.js', 'index.html', 'style.css', 'pwa.js', 'sw.js', 'i18n.js', 'i18n/cs.js', 'i18n/en.js', 'i18n/ai-cs.js', 'i18n/ai-en.js'];
