@@ -1126,6 +1126,10 @@ else show();
                 <span data-i18n="set.notif.habits">🎯 Připomínka nesplněných návyků</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-tasks" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.tasks">✅ Připomínky úkolů</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-morning" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
                 <span data-i18n="set.notif.morningOpt">🌅 Ranní přehled dne (události, návyky)</span>
               </label>
@@ -1634,6 +1638,7 @@ else show();
     <div class="fg">
       <label class="flbl" for="ev-name-inp" data-i18n="cal.f.name">Název</label>
       <input class="finp" type="text" id="ev-name-inp" placeholder="Narozeniny maminky…" data-i18n-attr="placeholder:cal.f.namePh">
+      <button type="button" class="tk-evhint" id="ev-tk-hint" onclick="tkFromEvent()" data-i18n="tk.calHint">Je to spíš úkol? ✅ Přidat jako úkol</button>
     </div>
     <!-- 5.10: viditelné jen název, datum a čas; zbytek pod „Další možnosti“ (souhrn plní evMoreSync) -->
     <div class="frow">
@@ -1679,6 +1684,11 @@ else show();
       <button class="btn-p" onclick="saveEvent()" data-i18n="cal.f.save">Uložit událost</button>
     </div>
   </div>
+</div>
+
+<!-- 5.15: úprava úkolu (obsah plní tkEdRender v app.js) -->
+<div class="moverlay" id="m-task" onclick="if(event.target===this)cm(&#39;m-task&#39;)">
+  <div class="modal tk-ed" id="m-task-box" role="dialog" aria-modal="true" aria-labelledby="m-task-t"></div>
 </div>
 
 <div class="toast" id="toast"></div>

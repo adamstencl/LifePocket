@@ -42,6 +42,11 @@ const cs = {
   // Jídelníček (5.00): připomínka plánování v den a čas z prof.mealRemind
   'meal.rem.t': '🍽️ Čas naplánovat jídelníček',
   'meal.rem.b': '{name}, naplánuj si jídla na příští týden – pak víš, co nakoupit.',
+  // Připomínka úkolu (5.15): s časem / ráno v čase ranního přehledu (bez času)
+  'task.t': '✅ {task}',
+  'task.b': 'Úkol na dnes v {time}',
+  'task.am.t': '✅ Dnes tě čeká: {task}',
+  'task.am.b': 'Klepni a odškrtni, až bude hotovo.',
   'ev.b': '{name}, za hodinu tě čeká: {ev} v {time}',
   // Mazlíček (4.94): ranní upozornění na péči a granule (ev = název události, např. „Odčervení – Bára“)
   'pet.tmrw.t': '🩺 Zítra: {ev}',
@@ -231,6 +236,10 @@ const en = {
   // Meal plan (5.00): planning reminder on the day and time from prof.mealRemind
   'meal.rem.t': '🍽️ Time to plan your meals',
   'meal.rem.b': '{name}, plan your meals for next week – then you know what to buy.',
+  'task.t': '✅ {task}',
+  'task.b': 'Task for today at {time}',
+  'task.am.t': '✅ Today: {task}',
+  'task.am.b': 'Tap and tick it off when done.',
   'ev.b': '{name}, coming up in an hour: {ev} at {time}',
   'pet.tmrw.t': '🩺 Tomorrow: {ev}',
   'pet.tmrw.b': '{name}, tomorrow is the day for {ev}.',
