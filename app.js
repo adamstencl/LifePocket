@@ -11749,8 +11749,8 @@ function groupInviteText(gid) {
   const who = cleanInviter(prof?.prezdivka || prof?.nickname || String(CU?.displayName || '').split(' ')[0]);
   return who ? t('grp.inv.textN', {name: who, what: t('grp.inv.w.' + w)}) : t('grp.inv.textA', {what: t('grp.inv.w.' + w)});
 }
-function groupInviteUrl(gid) {
-  const who = cleanInviter(prof?.prezdivka || prof?.nickname || String(CU?.displayName || '').split(' ')[0]);
+function groupInviteUrl(gid, noOd) {
+  const who = noOd ? '' : cleanInviter(prof?.prezdivka || prof?.nickname || String(CU?.displayName || '').split(' ')[0]);
   const d = groupInviteData(gid);
   const co = INVITE_CO.filter(([, k]) => groupModVal(d, k)).map(([c]) => c).join('');
   return 'https://lifepocket.app/?join=' + encodeURIComponent(gid) + (who ? '&od=' + encodeURIComponent(who) : '') + (co ? '&co=' + co : '');
@@ -11771,8 +11771,9 @@ window.shareGroupInvite = async (gid, afterCreate) => {
 // QR kód pozvánky (5.16) pro pozvání „u stolu“; bílé pozadí i v tmavém tématu (čtečky jinak selhávají)
 window.openGroupQr = (gid) => {
   if(!okFamilyCode(gid) || FAMILY_CODE_LEGACY_RE.test(gid)) return;
-  const svg = qrSvg(groupInviteUrl(gid), 240);
-  if(!svg) return;
+  // Dlouhé jméno se do QR nemusí vejít → bez jména; když ani tak, hláška
+  const svg = qrSvg(groupInviteUrl(gid), 240) || qrSvg(groupInviteUrl(gid, true), 240);
+  if(!svg) { toast(t('grp.inv.qrFail'), 5000); return; }
   document.getElementById('m-grpqr')?.remove();
   const opener = document.activeElement;
   const m = document.createElement('div');
@@ -12114,6 +12115,9 @@ function stripJoinParam() {
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
   } catch(e) {}
 }
+// Zakázaná slova ve jméně zvoucího; testuje se „slova + slepená slova“ (bez diakritiky, malá písmena).
+// Krátká slova jen celá (Tymotej projde). Kopie v index.html (invWho) musí být shodná – hlídá ci-check.
+const INVITER_BAN_RE = /lifepocket|admin|podpora|support|helpdesk|official|oficialn|moderator|spravce|\b(?:tym|team|staff|info|system|servis)\b/;
 // Jméno zvoucího z odkazu (?od=, 5.10): jen písmena, mezery, tečka, apostrof a pomlčka, max. 30 znaků; jinak ''
 // Do HTML vždy přes esc() / textContent
 function cleanInviter(raw) {
@@ -12121,9 +12125,9 @@ function cleanInviter(raw) {
     .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   let s = full.length > 30 ? full.slice(0, 31).replace(/\s+\S*$/, '') : full; // dlouhé jméno: celá slova do 30 znaků
   s = cutName(s, 30);
-  // Jméno, které se vydává za aplikaci nebo podporu (i s mezerami, tečkami a diakritikou): pryč
-  const k = s.toLowerCase().normalize('NFD').replace(/[^a-z]+/g, '');
-  if (/lifepocket|admin|podpora|support/.test(k)) return '';
+  // Jméno, které se vydává za aplikaci, tým nebo podporu (i s mezerami, tečkami a diakritikou): pryč
+  const w = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]+/g, ' ').trim();
+  if (INVITER_BAN_RE.test(w + ' ' + w.replace(/ /g, ''))) return '';
   return /^[\p{L}][\p{L}\p{M} .'’-]*$/u.test(s) ? s : '';
 }
 function capturePendingJoin() {
@@ -12419,7 +12423,7 @@ function showJoinInviteModal(o) {
   let body;
   if(o.st === 'gone') body = P+tH('grp.inv.gone')+'</p>'+btnP('common.close', 'cancelPendingJoin()');
   else if(o.st === 'full') body = who + P + tH('grp.inv.fullTA', {name: o.name, max: GROUP_MEMBERS_MAX})+'</p>'
-    + btnP('grp.inv.ok', 'laterPendingJoin()');
+    + btnP('grp.inv.ok', 'cancelPendingJoin()'); // plná skupina: pozvánku zrušit, ne nabízet při každém spuštění
   else if(o.st === 'limit') body = P+tH('grp.inv.limitT', {n: GROUP_MAX})+'</p>'
     + '<div class="jinv-acts">'+btnP('grp.inv.openGroups', 'joinInviteGroups()')+btnS('common.close', 'laterPendingJoin()')+'</div>';
   else {
@@ -12485,13 +12489,14 @@ async function checkPendingJoin() {
     if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal({st: 'gone'}); shown = true; return; }
     const d = snap.data() || {};
     const who = (typeof d.createdBy === 'string' && d.createdBy !== CU.uid) ? cutName(lookupOr(d.members||{}, d.createdBy, null)?.name, 40) : '';
+    const isIn = joinIsMember(d); // přerušené připojení: v dokumentu už jsem, v profilu ne
     const n = Object.keys(d.members || {}).length;
     const flags = {}; GROUP_MOD_KEYS.forEach(k => { flags[k] = groupModVal(d, k); });
     _pendingJoinFlags = {code: p.code, flags};
     const e = d.emoji;
     showJoinInviteModal({
-      st: !joinIsMember(d) && n >= GROUP_MEMBERS_MAX ? 'full' : groupCount() >= GROUP_MAX ? 'limit' : 'ok',
-      name: cutName(d.groupName,40) || t('grp.defName'), who, n, flags,
+      st: isIn ? 'ok' : n >= GROUP_MEMBERS_MAX ? 'full' : groupCount() >= GROUP_MAX ? 'limit' : 'ok',
+      name: cutName(d.groupName,40) || t('grp.defName'), who, n: isIn ? n - 1 : n, flags, // sebe do „X z 8“ nepočítat
       emoji: (typeof e === 'string' && e.trim() && e.length <= 8) ? e.trim() : '👥'});
     shown = true;
   } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště

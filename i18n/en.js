@@ -2185,6 +2185,7 @@ export default {
   'grp.inv.sendHint': 'WhatsApp, Messenger, text…',
   'grp.inv.qr': '📷 Show QR code',
   'grp.inv.qrHint': 'Let them scan it with their phone camera.',
+  'grp.inv.qrFail': 'Couldn’t create the QR code. Send the invite as a link instead.',
   'grp.inv.dictate': 'Or read out the code:',
   'grp.inv.seats': '{n} of {max} spots taken',
   'grp.inv.fullOwn': 'The group is full. Remove someone to free up a spot.',
