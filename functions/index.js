@@ -1572,6 +1572,8 @@ function wkBody(L, s) {
 // Plán prof.mealPlan je týdenní šablona d0–d6 bez dat → „naplánovaný příští týden“ = aspoň 5 dní s jídlem
 // a plán upravený za poslední 3 dny před připomínkou (prof.mealPlanAt, ms; 7 dní = perioda → chodila by jen ob týden). Plán skupiny se nečte (stálo by to čtení navíc).
 const TTL_MEAL = 3 * 3600;
+// Připomínky úkolů (5.15): index users/{uid}/profile/main.taskRem {itemId: {l, g, d, t, at}} bez textu úkolu
+const TASK_STALE = 30 * 60000, TASK_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const MEAL_SKIP_DAYS = 5;
 const MEAL_FRESH_MS = 3 * 86400000;
 function mealPlanDays(plan) {
@@ -2025,6 +2027,49 @@ exports.sendScheduledNotifications = onSchedule(
         if (mr) {
           try { await push(tS(L, 'meal.rem.t'), tS(L, 'meal.rem.b', {name: nickname}), `meal-${mr.day}`, {data: {open: 'mealplan'}, ttl: TTL_MEAL}); }
           catch(e) { console.error(`[LP] jídelníček push uid=${uid}:`, e.message); }
+        }
+
+        // ── Úkoly (5.15): index v profilu, 0 čtení navíc; seznam se čte jen u splatné připomínky ──
+        const tr = prof.taskRem && typeof prof.taskRem === 'object' && !Array.isArray(prof.taskRem) ? prof.taskRem : null;
+        if (tr && ns.tasks !== false) {
+          const nowMs = runDate.getTime(), del = [], due = [];
+          for (const [id, r] of Object.entries(tr).slice(0, 60)) {
+            if (!TASK_ID_RE.test(id) || !r || typeof r !== 'object' || typeof r.at !== 'number') { del.push(id); continue; }
+            if (r.at > nowMs) continue;                         // ještě ne
+            del.push(id);                                       // splatné i propadlé se vždy odeberou
+            if (nowMs - r.at <= TASK_STALE) due.push([id, r]);
+          }
+          const send = [];
+          for (const [id, r] of due.slice(0, 5)) {
+            try {
+              let path;
+              const l = typeof r.l === 'string' && TASK_ID_RE.test(r.l) ? r.l : '';
+              if (!l) continue;
+              if (r.g) {                                        // skupina: jen člen a se sdíleným checklistem
+                if (typeof r.g !== 'string' || !/^[A-Z]{3,8}-[A-Z0-9]{4,8}$/.test(r.g)) continue;
+                const fs = await famEntry(r.g).doc, f = fs.exists ? fs.data() : null;
+                if (!f || !f.members?.[uid] || f.shareChecklist === false) continue;
+                path = `families/${r.g}/checklists/${l}`;
+              } else path = `users/${uid}/checklists/${l}`;
+              const ls = await db.doc(path).get();              // 1 čtení, jen teď
+              const items = ls.exists && Array.isArray(ls.data().items) ? ls.data().items : [];
+              const it = items.find(i => i && i.id === id);
+              if (!it || it.done || it.due !== r.d || (it.dueT || '') !== (r.t || '')) continue;
+              send.push([id, String(it.text || '').slice(0, 80), r]);
+            } catch(e) { console.error(`[LP] úkol uid=${uid}:`, e.code || e.message); }
+          }
+          if (del.length) {
+            // Klíče dřív než push (jako waterSent): když zápis selže, nic se neposílá → nikdy dvakrát
+            try { await db.doc(`users/${uid}/profile/main`).update(...del.flatMap(id => [new FieldPath('taskRem', id), FieldValue.delete()])); }
+            catch(e) { console.error(`[LP] taskRem uid=${uid}:`, e.message); send.length = 0; }
+          }
+          for (const [id, text, r] of send) {
+            try {
+              await push(r.t ? tS(L, 'task.t', {task: text}) : tS(L, 'task.am.t', {task: text}),
+                r.t ? tS(L, 'task.b', {time: r.t}) : tS(L, 'task.am.b'),
+                `task-${id}`, {data: {open: 'tasks', id}, ttl: TTL_EVENT});
+            } catch(e) { console.error(`[LP] úkol push uid=${uid}:`, e.message); }
+          }
         }
 
         // ── Narozeniny + Události — osobní i rodinné ──

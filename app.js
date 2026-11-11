@@ -2090,7 +2090,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2139,7 +2139,8 @@ function clearUserSessionState(){
     _wtLinkScanned=false; _wtLinkQ=false; window.wtLinkClose?.(); // nabídka propojení pití (4.85)
     window.chainBarClose?.(); // lišta „Další krok“ rutiny (4.89)
     window.hspClose?.(); // panel připomínky návyku (5.02)
-    checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[]; focusHistory=[];
+    checklists=[]; recurringShopItems=[]; savedRecipes=[]; foodLogs=[]; healthLogs={}; plannedMeals=[];
+    dailyFocus=null; dailyFocusDone=false; tomorrowFocus=null; tkReset(); // úkoly (5.15)
   }catch(e){}
   try{ shopFreqMine={}; _qsList=[]; _qsPruned.clear(); }catch(e){} // často nakupované (4.45)
   // Lišty zásob a opakování pravidelných nákupů patří odhlášenému účtu (4.78)
@@ -4817,6 +4818,9 @@ function renderCal(){
   let start=(d.getDay()+6)%7; // Monday=0
   const prev=new Date(calYear,calMonth,0).getDate();
   let html='';
+  // Úkoly (5.15): z paměti checklistů, 0 čtení; jen se zapnutou kartou Úkoly nebo modulem Checklist
+  if(tkDataOn()) tkEnsureSubs();
+  const todayDS=toDS(today);
   // Prev month days
   for(let i=start-1;i>=0;i--) html+=`<div class="cal-cell other-month">${prev-i}</div>`;
   // Current month
@@ -4825,9 +4829,11 @@ function renderCal(){
     const isToday=today.getFullYear()===calYear&&today.getMonth()===calMonth&&today.getDate()===day;
     const dayEvs=getEventsForDate(ds);
     const hasEv=dayEvs.length>0;
-    html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}" onclick="calDayClick('${ds}','${day}')">
+    // Otevřený úkol = ✅; minulý den s nesplněným úkolem = ✅ s červenou tečkou (jen hotové značku nemají)
+    const hasTk=getTasksForDate(ds).some(e=>!e.it.done), tkOver=hasTk&&ds<todayDS;
+    html+=`<div class="cal-cell ${isToday?'today':''} ${hasEv?'has-event':''}${hasTk?' has-task':''}${tkOver?' task-over':''}" onclick="calDayClick('${ds}','${day}')">
       ${day}
-      ${hasEv?`<span class="cal-cell-dot">${dayEvs[0]?esc(getEvIcon(dayEvs[0].type,dayEvs[0])):''}</span>`:''}
+      ${hasEv||hasTk?`<span class="cal-cell-dot">${hasEv&&dayEvs[0]?esc(getEvIcon(dayEvs[0].type,dayEvs[0])):''}${hasTk?'<span class="cal-cell-tk" aria-hidden="true">✅</span>':''}</span>`:''}
     </div>`;
   }
   // Next month
@@ -5448,12 +5454,13 @@ async function migrateCalEventsTo(fid) {
   toast(t('cal.migrated',{n:ok, to:grpLabel(fid)}));
 }
 window.calDayClick=(ds)=>{
-  // Najdi události pro tento den
-  const dayEvs = getEventsForDate(ds);
-  if(dayEvs.length > 0) {
-    // Zobraz modal s přehledem událostí dne
-    showDayEventsModal(ds, dayEvs);
+  // Den s událostmi nebo úkoly (5.15) → přehled dne; prázdný den → rovnou formulář události
+  if(!isDS(ds)) return;
+  _tkDayAdd = '';
+  if(getEventsForDate(ds).length || getTasksForDate(ds).length) {
+    showDaySheet(ds);
   } else {
+    evTkHint(true);
     // Prázdný den - otevři formulář pro novou událost
     editingEventId = null;
     const edi=document.getElementById('ev-date-inp'); if(edi) edi.value=ds;
@@ -5472,41 +5479,10 @@ window.calDayClick=(ds)=>{
   }
 };
 
-function showDayEventsModal(ds, dayEvs) {
-  // Odstraň starý modal pokud existuje
-  document.getElementById('m-day-events')?.remove();
-  const date = new Date(ds + 'T12:00:00');
-  const dateLabel = fmtDate(date,'wdmy');
-  const evHtml = dayEvs.map(ev=>{
-    const author=getEventAuthorName(ev);
-    return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
-      +'<div style="font-size:22px">'+esc(getEvIcon(ev.type,ev))+'</div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-weight:600;color:var(--text1);overflow-wrap:anywhere">'+evGrpPrefix(ev)+esc(ev.name)+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">'+esc(getEvLabel(ev.type,ev))+(okEvTime(ev.time)?' · ⏰ '+esc(ev.time):'')+(ev.repeat==='yes'?' · '+tH('cal.yearly'):'')+(author?' · '+tH('cal.by',{name:author}):'')+'</div>'
-      +'</div>'
-      +'<button type="button" class="ev-act" data-a0="'+esc(JSON.stringify(ev))+'" aria-label="'+tH('a11y.editName',{name:ev.name})+'" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();">✏️</button>'
-      +'<button type="button" class="ev-act ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();">🗑️</button>'
-      +'</div>';
-  }).join('');
-  const modal = document.createElement('div');
-  modal.className='moverlay open';
-  modal.id='m-day-events';
-  modal.innerHTML=`<div class="modal">
-    <div class="mtitle">📅 ${dateLabel}</div>
-    <div style="margin-bottom:16px">${evHtml}</div>
-    <div class="macts">
-      <button class="btn-s" onclick="document.getElementById('m-day-events').remove()">${tH('common.close')}</button>
-      <button class="btn-p" data-a0="${esc(ds)}" onclick="addEventForDay(this.dataset.a0)">${tH('cal.addDay')}</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
-}
-
 window.addEventForDay = (ds) => {
   document.getElementById('m-day-events')?.remove();
   editingEventId = null;
+  evTkHint(true);
   const edi = document.getElementById('ev-date-inp'); if(edi) edi.value = ds;
   const eni = document.getElementById('ev-name-inp'); if(eni) eni.value = '';
   const ti = document.getElementById('ev-time-inp'); if(ti) ti.value = '';
@@ -5526,6 +5502,7 @@ window.openEditEvent = function(ev) {
   // Péče o mazlíčka (4.94): zdroj pravdy je mazlíček, úprava v kalendáři by se rozešla s plánem
   if(ev?.type === 'vet' && ev.petId) { openPetFromEvent(ev); return; }
   editingEventId = ev.id;
+  evTkHint(false);
   editingEventGid = ev.shared ? (ev.groupId || familyId || null) : null;
   document.getElementById('ev-name-inp').value = ev.name || '';
   document.getElementById('ev-date-inp').value = ev.date || '';
@@ -5552,6 +5529,7 @@ window.openEditEvent = function(ev) {
 
 window.openEvModal=()=>{
   editingEventId = null;
+  evTkHint(true);
   const eni=document.getElementById('ev-name-inp'); if(eni) eni.value='';
   const edi2=document.getElementById('ev-date-inp'); if(edi2) edi2.value=toDS();
   const ti=document.getElementById('ev-time-inp'); if(ti) ti.value='';
@@ -7002,7 +6980,8 @@ const NOTIF_DEFAULTS = {
   eveningDigest: true,
   weekly: true,     // týdenní souhrn ze serveru: neděle v čase večerního souhrnu, místo něj
   birthday: true,
-  pc: true          // výzva měsíce / týdne (4.63): ohlášení a večerní připomínka ze serveru
+  pc: true,         // výzva měsíce / týdne (4.63): ohlášení a večerní připomínka ze serveru
+  tasks: true       // připomínky úkolů (5.15): server z prof.taskRem, bez push tokenu appka
 };
 let notifSettings = {...NOTIF_DEFAULTS};
 let notifTimers = []; // ID časovačů nebo funkce, která zruší své časovače (scheduleDaily drží handle v closure, 4.98)
@@ -7203,8 +7182,8 @@ function loadNotifSettings() {
   // jen platné HH:MM, jinak výchozí čas
   if (m) m.value = TP_RE.test(notifSettings.morning || '') ? notifSettings.morning : NOTIF_DEFAULTS.morning;
   if (ev) ev.value = TP_RE.test(notifSettings.evening || '') ? notifSettings.evening : NOTIF_DEFAULTS.evening;
-  const ids = ['nt-habits','nt-morning','nt-yday','nt-evening','nt-weekly','nt-pc'];
-  const keys = ['habits','morningDigest','yday','eveningDigest','weekly','pc'];
+  const ids = ['nt-habits','nt-tasks','nt-morning','nt-yday','nt-evening','nt-weekly','nt-pc'];
+  const keys = ['habits','tasks','morningDigest','yday','eveningDigest','weekly','pc'];
   ids.forEach((id,i) => {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
@@ -7240,6 +7219,7 @@ window.saveNotifSettings = () => {
   if (m) notifSettings.morning = m.value || '08:00';
   if (ev) notifSettings.evening = ev.value || '21:00';
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
+  notifSettings.tasks = document.getElementById('nt-tasks')?.checked ?? true;
   notifSettings.morningDigest = document.getElementById('nt-morning')?.checked ?? true;
   notifSettings.yday = document.getElementById('nt-yday')?.checked ?? true;
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
@@ -7399,7 +7379,7 @@ function notifAskShow(why) {
   el.className = 'invite-hint na-card';
   el.setAttribute('role', 'region');
   el.setAttribute('aria-label', t('na.aria'));
-  const title = tH(why === 'group' ? 'na.t.group' : why === 'event' ? 'na.t.event' : 'na.t.habit');
+  const title = tH(why === 'group' ? 'na.t.group' : why === 'event' ? 'na.t.event' : why === 'task' ? 'na.t.task' : 'na.t.habit');
   el.innerHTML = `<span class="invite-hint-em" aria-hidden="true">🔔</span>
     <div class="invite-hint-body">
       <div class="invite-hint-t">${title}</div>
@@ -7677,6 +7657,11 @@ function scheduleAllNotifications() {
   // Návykové připomínky — každou hodinu kontroluj
   if (notifSettings.habits) {
     scheduleHabitReminders();
+  }
+  // Připomínky úkolů (5.15): bez push tokenu lokálně, každou minutu
+  if (notifSettings.tasks !== false) {
+    notifTimers.push(setInterval(checkTaskReminders, 60 * 1000));
+    notifTimers.push(setTimeout(checkTaskReminders, 4000));
   }
 
   // Narozeniny — zkontroluj jednou za den
@@ -9155,281 +9140,19 @@ async function wtOpenFromNotif(p){
 // ════════════════════════════════════════════════════════════
 // 🎯  DAILY FOCUS (MIT)
 // ════════════════════════════════════════════════════════════
-let dailyFocus = null;
-let dailyFocusDone = false;
-let tomorrowFocus = null;
-let focusHistory = []; // merged cross-device history
-
-// Uloží historii fokusu do localStorage + Firestore
-function saveFocusHistory(hist) {
-  focusHistory = hist.slice(0, 30);
-  lsSave('lp_focus_history', focusHistory);
-  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusHistory: focusHistory}).catch(()=>{});
-}
-
+// 5.15: Hlavní úkol dne je hvězda 🎯 u úkolu (docs/NAVRH-UKOLY.md kap. 5). Starý fokus se jen čte pro jednorázový
+// převod (tkMigrateFocus); focusToday / focusNext / focusHistory ani lp_focus* se nemažou.
+let dailyFocus = null, dailyFocusDone = false, tomorrowFocus = null;
 function initFocus() {
-  const today = new Date().toDateString();
-  const tmrw  = new Date(Date.now() + 86400000).toDateString();
-
-  // ── Merge historie z localStorage + Firestore (deduplikace podle date) ──
-  const lsHist = lsGet('lp_focus_history', []);
-  const fsHist = prof.focusHistory || [];
-  const histMap = {};
-  [...lsHist, ...fsHist].forEach(h => { if(h.text && h.date) histMap[h.date] = h; }); // fsHist přepíše ls (zdroj pravdy)
-  focusHistory = Object.values(histMap).sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0, 30);
-  lsSave('lp_focus_history', focusHistory);
-
-  // ── Dnešní focus ──
-  // Firestore (prof.focusToday) = zdroj pravdy pro cross-device sync
-  const stored  = lsGet('lp_focus', {date: '', text: '', done: false});
-  const fsToday = prof.focusToday || {date: '', text: '', done: false};
-
-  if (fsToday.date === today && fsToday.text) {
-    // Firestore má dnešní focus (nastaven i z jiného zařízení)
-    dailyFocus     = fsToday.text;
-    dailyFocusDone = fsToday.done || false;
-    lsSave('lp_focus', {date: today, text: dailyFocus, done: dailyFocusDone});
-  } else if (stored.date === today) {
-    // Jen localStorage má dnešní focus (offline nebo starší verze)
-    dailyFocus     = stored.text || null;
-    dailyFocusDone = stored.done || false;
-  } else {
-    // Žádné zařízení nemá dnešní focus — archivuj starý lokální do historie
-    if (stored.text && !histMap[stored.date]) {
-      focusHistory.unshift({date: stored.date, text: stored.text, done: stored.done || false});
-      saveFocusHistory(focusHistory);
-    }
-    // Zítřejší focus jako dnešní?
-    const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
-    const fsNext     = prof.focusNext || {date: '', text: ''};
-    const nextText   = (nextStored.date === today && nextStored.text) ? nextStored.text
-                     : (fsNext.date === today && fsNext.text)          ? fsNext.text : null;
-    if (nextText) {
-      dailyFocus     = nextText;
-      dailyFocusDone = false;
-      lsSave('lp_focus', {date: today, text: dailyFocus, done: false});
-      lsSave('lp_focus_next', {date: '', text: ''});
-    } else {
-      dailyFocus     = null;
-      dailyFocusDone = false;
-    }
-  }
-
-  // ── Zítřejší focus ──
-  const nextStored = lsGet('lp_focus_next', {date: '', text: ''});
-  const fsNext     = prof.focusNext || {date: '', text: ''};
-  tomorrowFocus = (nextStored.date === tmrw && nextStored.text) ? nextStored.text
-                : (fsNext.date === tmrw && fsNext.text)          ? fsNext.text : null;
-}
-
-window.saveFocus = function(text) {
-  const today = new Date().toDateString();
-  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
-  // Archivuj starý fokus do cross-device historie
-  if (stored.text && stored.date !== today) {
-    const updated = [
-      {date: stored.date, text: stored.text, done: stored.done || false},
-      ...focusHistory.filter(h => h.date !== stored.date)
-    ];
-    saveFocusHistory(updated);
-  }
-  dailyFocus     = text.trim();
-  dailyFocusDone = false;
-  const focusData = {date: today, text: dailyFocus, done: false};
-  lsSave('lp_focus', focusData);
-  // Sync do Firestore — viditelné na všech zařízeních
-  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusToday: focusData}).catch(()=>{});
-  renderFocusInDash();
-  document.getElementById('focus-modal')?.remove();
-};
-
-window.saveTomorrowFocus = function(text) {
-  const tmrw = new Date(Date.now() + 86400000).toDateString();
-  tomorrowFocus = text.trim();
-  const focusNextData = {date: tmrw, text: tomorrowFocus};
-  lsSave('lp_focus_next', focusNextData);
-  // Sync do Firestore
-  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusNext: focusNextData}).catch(()=>{});
-  renderFocusInDash();
-  document.getElementById('focus-modal')?.remove();
-};
-
-window.markFocusDone = function() {
-  const today = new Date().toDateString();
-  dailyFocusDone = !dailyFocusDone;
-  const focusData = {date: today, text: dailyFocus || '', done: dailyFocusDone};
-  lsSave('lp_focus', focusData);
-  // Sync do Firestore
-  if(CU) updateDoc(doc(db,'users',CU.uid,'profile','main'), {focusToday: focusData}).catch(()=>{});
-  renderFocusInDash();
-};
-
-// Spočítá počet dní v řadě (od dnes zpátky) kdy byl focus nastaven
-function calcFocusStreak() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const stored = lsGet('lp_focus', {date: '', text: ''});
-
-  const setDays = new Set();
-  if (stored.text) setDays.add(new Date(stored.date).toDateString());
-  focusHistory.forEach(h => { if (h.text) setDays.add(h.date); });
-
-  let streak = 0;
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today); d.setDate(d.getDate() - i);
-    if (setDays.has(d.toDateString())) streak++;
-    else break;
-  }
-  return streak;
-}
-
-// Vrátí data pro aktuální týden (Po–Ne)
-function getFocusWeek() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const stored = lsGet('lp_focus', {date: '', text: '', done: false});
-
-  const focusMap = {};
-  if (stored.text) focusMap[new Date(stored.date).toDateString()] = {text: stored.text, done: stored.done || false};
-  focusHistory.forEach(h => { if (h.text) focusMap[h.date] = {text: h.text, done: h.done || false}; });
-
-  // Pondělí aktuálního týdne
-  const dow = (today.getDay() + 6) % 7; // 0=Po, 6=Ne
-  const monday = new Date(today); monday.setDate(today.getDate() - dow);
-
-  return t('date.daysShort').split(',').map((day, i) => {
-    const d = new Date(monday); d.setDate(monday.getDate() + i);
-    const key = d.toDateString();
-    const data = focusMap[key];
-    return {
-      day,
-      set: !!data?.text,
-      done: data?.done || false,
-      isToday: key === today.toDateString(),
-      isFuture: d > today
-    };
-  });
-}
-
-window.openFocusModal = function(mode) {
-  const isTmrw = mode === 'tomorrow';
-  const existing = isTmrw ? (tomorrowFocus || '') : (dailyFocus || '');
-  const history = (!isTmrw) ? focusHistory : [];
-  const histHtml = history.length ? `
-    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${tH('focus.history')}</div>
-      ${history.map(h => {
-        const d = fmtDate(h.date, 'dm'); // 'YYYY-MM-DD' jako místní poledne
-        const doneIcon = h.done ? '<span style="color:var(--green);font-size:11px">✓</span>' : '';
-        return `<div style="font-size:13px;padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;color:var(--text2);display:flex;gap:8px;align-items:center"><span style="color:var(--text3);font-size:11px;white-space:nowrap">${d}</span><span style="flex:1">${esc(h.text)}</span>${doneIcon}</div>`;
-      }).join('')}
-    </div>` : '';
-  const title    = tH(isTmrw ? 'focus.titleTomorrow' : 'focus.titleToday');
-  const subtitle = tH(isTmrw ? 'focus.subTomorrow' : 'focus.subToday');
-  const placeholder = tH(isTmrw ? 'focus.phTomorrow' : 'focus.phToday');
-  const saveFn  = isTmrw ? 'saveTomorrowFocus' : 'saveFocus';
-  const m = document.createElement('div');
-  m.id = 'focus-modal';
-  m.className = 'moverlay open';
-  m.innerHTML = `<div class="modal" style="max-width:420px">
-    <h3 style="margin:0 0 12px;font-family:'Playfair Display',serif">${title}</h3>
-    <p style="font-size:13px;color:var(--text3);margin:0 0 14px">${subtitle}</p>
-    <input id="focus-inp" type="text" class="finp" placeholder="${placeholder}" value="${esc(existing)}" style="margin-bottom:14px">
-    <div style="display:flex;gap:8px">
-      <button class="btn-sv" onclick="${saveFn}(document.getElementById('focus-inp').value)" style="flex:1">${tH('focus.save')}</button>
-      <button class="btn-s" onclick="document.getElementById('focus-modal').remove()">${tH('common.cancel')}</button>
-    </div>
-    ${histHtml}
-  </div>`;
-  document.body.appendChild(m);
-  document.getElementById('focus-inp').focus();
-};
-
-function focusTodayRowHTML() {
-  if (!dailyFocus) {
-    return `<div class="focus-row focus-row-empty" onclick="openFocusModal('today')">
-      <span class="focus-label" style="color:var(--text3)">${tH('focus.today')}</span>
-      <span style="font-size:13px;color:var(--text3);flex:1">${tH('focus.todayEmpty')}</span>
-      <span style="font-size:18px;color:var(--text3)">＋</span>
-    </div>`;
-  }
-  return `<div class="focus-row ${dailyFocusDone ? 'focus-row-done' : ''}">
-    <span class="focus-label">${tH('focus.today')}</span>
-    <div class="focus-text" style="${dailyFocusDone ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(dailyFocus)}</div>
-    <button class="focus-done-btn ${dailyFocusDone ? 'active' : ''}" onclick="markFocusDone()" title="${tH(dailyFocusDone ? 'focus.unmarkDone' : 'focus.markDone')}">
-      ${dailyFocusDone ? '✅' : '☐'}
-    </button>
-    <button class="focus-edit-btn" onclick="openFocusModal('today')">✏️</button>
-  </div>`;
-}
-
-function focusTmrwRowHTML() {
-  if (!tomorrowFocus) {
-    return `<div class="focus-row focus-row-empty" onclick="openFocusModal('tomorrow')">
-      <span class="focus-label" style="color:var(--text3)">${tH('focus.tomorrow')}</span>
-      <span style="font-size:13px;color:var(--text3);flex:1">${tH('focus.tomorrowEmpty')}</span>
-      <span style="font-size:18px;color:var(--text3)">＋</span>
-    </div>`;
-  }
-  return `<div class="focus-row">
-    <span class="focus-label">${tH('focus.tomorrow')}</span>
-    <div class="focus-text">${esc(tomorrowFocus)}</div>
-    <button class="focus-edit-btn" onclick="openFocusModal('tomorrow')">✏️</button>
-  </div>`;
-}
-
-function focusStatsHTML() {
-  const streak = calcFocusStreak();
-  const week = getFocusWeek();
-  const setCount = week.filter(d => !d.isFuture && d.set).length;
-  const doneCount = week.filter(d => !d.isFuture && d.done).length;
-
-  const streakHtml = streak > 0
-    ? `<span class="focus-streak">${streak >= 7 ? '🔥' : streak >= 3 ? '⚡' : '✨'} ${tH('focus.streak',{n:streak})}</span>`
-    : '';
-
-  const dotsHtml = week.map(d => {
-    let cls = 'focus-dot';
-    if (d.isFuture) cls += ' future';
-    else if (d.done) cls += ' done';
-    else if (d.set) cls += ' set';
-    if (d.isToday) cls += ' today';
-    const title = `${d.day}${d.set ? (d.done ? ' ✓' : ' ·') : ''}`;
-    return `<div class="focus-dot-wrap" title="${esc(title)}"><div class="${cls}"></div><div class="focus-dot-lbl">${d.day}</div></div>`;
-  }).join('');
-
-  return `<div class="focus-stats">
-    <div class="focus-week-row">
-      ${dotsHtml}
-      <span style="flex:1"></span>
-      <span style="font-size:11px;color:var(--text3)">${tH('focus.weekStats',{set:setCount,done:doneCount})}</span>
-    </div>
-    ${streakHtml}
-  </div>`;
-}
-
-function focusInnerHTML() {
-  // Jednoduchý režim (4.69): řádek „zítra“ až po prvním splněném dni, tečky a statistika od 3. dne s úkolem
-  let tmrw = true, stats = true;
-  if (isSimple()) {
-    tmrw = dailyFocusDone || !!tomorrowFocus || focusHistory.some(h => h && h.done);
-    const days = new Set(focusHistory.filter(h => h && h.text).map(h => h.date));
-    if (dailyFocus) days.add(new Date().toDateString());
-    stats = days.size >= 3;
-  }
-  return `<div class="focus-dual">
-    ${focusTodayRowHTML()}
-    ${tmrw ? focusTmrwRowHTML() : ''}
-  </div>
-  ${stats ? focusStatsHTML() : ''}`;
-}
-
-function renderFocusInDash() {
-  const el = document.getElementById('focus-widget');
-  if (!el) return;
-  el.innerHTML = focusInnerHTML();
-}
-
-function focusWidgetHTML() {
-  return `<div id="focus-widget" class="focus-card">${focusInnerHTML()}</div>`;
+  const today = new Date().toDateString(), tmrw = new Date(Date.now() + 86400000).toDateString();
+  const ok = x => x && typeof x === 'object' && typeof x.text === 'string' && x.text.trim();
+  const fsToday = prof?.focusToday, lsToday = lsGet('lp_focus', null), fsNext = prof?.focusNext, lsNext = lsGet('lp_focus_next', null);
+  // Dnes: Firestore (zdroj pravdy), jinak localStorage, jinak včera nastavený „zítřek“
+  const td = [fsToday, lsToday].find(x => ok(x) && x.date === today) || [lsNext, fsNext].find(x => ok(x) && x.date === today);
+  dailyFocus = td ? td.text.trim() : null;
+  dailyFocusDone = !!(td && td.done);
+  const nx = [lsNext, fsNext].find(x => ok(x) && x.date === tmrw);
+  tomorrowFocus = nx ? nx.text.trim() : null;
 }
 
 
@@ -9771,7 +9494,7 @@ function quickStartHTML() {
   // Definice úkolů podle aktivních modulů
   const allTasks = [
     { id:'habit',    emoji:'🎯', text:t('qs.habit'),  page:'habits',   done: habits.length > 0 },
-    { id:'focus',    emoji:'🎯', text:t('qs.focus'),  action:"openFocusModal('today')", done: !!dailyFocus },
+    { id:'focus',    emoji:'✅', text:t('qs.focus'),  action:"tkFocusInput()", done: tkAll().list.length > 0 }, // 5.15: první úkol
     { id:'water',    emoji:'💧', text:t('qs.water'),  page:'water',    done: wtMl(toDS()) > 0 },
     { id:'recipe',   emoji:'🍳', text:t('qs.recipe'), page:'cooking',  done: savedRecipes.length > 0 },
     { id:'shop',     emoji:'🛒', text:t('qs.shop'),   page:'shopping', done: shopItems.length > 0 },
@@ -13216,7 +12939,7 @@ function subscribeGroupChecklist(gid) {
     e.lists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true, _gid: gid}));
     e.ready = true; e.err = 0;
     clMigrate53();
-    renderChecklist();
+    clChanged();
   }, err => {
     familyListenErr(err);
     if(clGrp[gid] !== e) return;
@@ -17329,7 +17052,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets', 'mealplan'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets', 'mealplan', 'tasks'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -17358,6 +17081,8 @@ async function consumePendingOpen() {
     // Kalendář z notifikace i při vypnutém modulu: osobní události dotáhnout, ať obrazovka neukazuje prázdný kalendář
     if(p.open === 'cal') { if(!_fireSubs['events']) subEvents(); window.sp('calendar'); return; }
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
+    // Připomínka úkolu (5.15) → Domů s rozbalenou kartou Úkoly a krátce zvýrazněným řádkem
+    if(p.open === 'tasks') { tkOpenFromNotif(p.id); return; }
     // Připomínka plánování jídelníčku (5.00) → Jídelníček, záložka Plán týdne
     if(p.open === 'mealplan') { try { localStorage.setItem('lp_meal_tab', 'plan'); } catch(e) {} window.sp('mealplan'); return; }
     // Mazlíček (4.94): péče / granule z ranního upozornění (i při vypnutém modulu – data se dotáhnou)
@@ -18893,6 +18618,7 @@ function subChecklist() {
     query(collection(db,'users',CU.uid,'checklists'), orderBy('createdAt','asc')),
     snap => {
       checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
+      if (!snap.metadata.fromCache) _clServer = true; // úkoly (5.15): seznam Úkoly a převod fokusu jen podle serveru
       if (familyId && familyData) fillChecklistSharedGid(familyId); // starší sdílené bez sharedGid
       clMigrate53(); // 4.53: jednorázové doplnění kopie ve skupině
       if (!checklists.length) {
@@ -18900,13 +18626,14 @@ function subChecklist() {
         if (!snap.metadata.fromCache && _defChecklistUid !== CU.uid) {
           _defChecklistUid = CU.uid;
           const def = {id: genId(), name: t('cl.defName'), items: [], shared: false, createdAt: Date.now()};
+          tkSetTaskList(def.id); // výchozí seznam je zároveň seznam Úkoly (5.15)
           setDoc(doc(db,'users',CU.uid,'checklists',def.id), def).catch(e => console.warn('[LP] výchozí checklist:', e?.code || e?.name));
-        } else renderChecklist(); // bez založení výchozího zobraz aspoň aktuální stav (např. sdílené seznamy)
+        } else clChanged(); // bez založení výchozího zobraz aspoň aktuální stav (např. sdílené seznamy)
         return;
       }
       const allCl = allChecklists();
       if (!activeChecklist || !allCl.find(c => c.id === activeChecklist)) activeChecklist = allCl[0]?.id;
-      renderChecklist();
+      clChanged();
     }
   );
 }
@@ -19002,10 +18729,13 @@ function clSaveErr(e) {
   toast(e?.code === 'cl-big' ? t('cl.tooBig') : e?.code === 'not-found' ? t('cl.gone') : '⚠️ ' + userErr(e, 'seznam'));
   renderChecklist();
 }
+// Změna položky; undefined v patchi klíč smaže (Firestore undefined v poli neuloží), 5.15
+function clPatch(it, patch) { for (const [k, v] of Object.entries(patch)) { if (v === undefined) delete it[k]; else it[k] = v; } }
 // Operace nad položkami (čisté funkce nad polem, použijí se lokálně i v transakci)
 const clOps = {
   add: item => items => [item, ...items.filter(i => i.id !== item.id)],
-  set: (id, patch) => items => { const it = items.find(i => i.id === id); if (it) Object.assign(it, patch); return items; },
+  set: (id, patch) => items => { const it = items.find(i => i.id === id); if (it) clPatch(it, patch); return items; },
+  setMany: pm => items => { items.forEach(it => { if (it && Object.prototype.hasOwnProperty.call(pm, it.id)) clPatch(it, pm[it.id]); }); return items; },
   del: id => items => items.filter(i => i.id !== id),
   clearDone: () => items => items.filter(i => !i.done),
   // Zpět po smazání (5.10): položky [{item, idx}] zpět na původní místa (co mezitím vzniklo jinde, zůstane)
@@ -19048,7 +18778,15 @@ const clOps = {
 };
 
 
+// Data checklistů se změnila ze snapshotu (5.15): všechna místa s úkoly, převod fokusu a oprava indexu připomínek
+function clChanged() {
+  renderChecklist();
+  tkMigrateFocus();
+  taskRemSyncSoon();
+}
 function renderChecklist() {
+  _tkVer++; // úkoly (5.15): data checklistů se mohla změnit → Domů a kalendář překreslit
+  tkViewsRefresh();
   ctSync(); // karta „Co teď“ na Domů (4.72)
   updateGroupFeedBells();
   const el = document.getElementById('checklist-content');
@@ -19069,6 +18807,7 @@ function renderChecklist() {
   const total = list.items.length;
   // Splněné položky vždy na konec
   const sortedItems = [...list.items.filter(i => !i.done), ...list.items.filter(i => i.done)];
+  const today = toDS();
 
   const anchor = scrollAnchorSave(el, '.cl-item', 'data-cid', {moves: true}); // 4.88: splněné jdou na konec
   // Rozepsané pole (nová položka, úprava položky) přežije překreslení: text, kurzor i fokus
@@ -19088,15 +18827,16 @@ function renderChecklist() {
         ${canShare ? `<button type="button" class="cl-share-btn" data-a0="${esc(list.id)}" onclick="toggleChecklistShare(this.dataset.a0)" style="background:${shGid?'rgba(76,217,100,.15)':'none'};border:1px solid ${shGid?'var(--green)':'var(--border)'};border-radius:8px;padding:3px 9px;font-size:12px;color:${shGid?'var(--green)':'var(--text3)'};cursor:pointer;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${shGid?tH('cl.unshare'):tH('cl.shareFam')}" aria-label="${shGid?tH('cl.unshareAria', {name: grpName(shGid)}):tH('cl.shareFam')}">${shGid?'✓ '+esc(grpLabel(shGid)):tH('cl.private')}</button>` : ''}
         ${(isFamilyList ? clCanDelGroup(base) : checklists.length > 1) ? `<button data-a0="${esc(base.id)}" onclick="deleteChecklist(this.dataset.a0)" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px;line-height:1" title="${tH('cl.delList')}">🗑️</button>` : ''}
       </div>
-      ${done > 0 ? `<button class="cl-clear-done" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}</button>` : ''}
+      ${done > 0 ? `<button class="cl-clear-done${done > 30 ? ' cl-clear-many' : ''}" onclick="clearDoneChecklistItems()">${tH('cl.clearDone')}${done > 30 ? ` (${done})` : ''}</button>` : ''}
     </div>
     <div class="cl-add-row">
       <div class="cl-inp-wrap">
-        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="${tH('cl.itemPh')}" onkeydown="if(event.key==='Enter')addCheckItem()">
+        <input id="cl-new-inp" class="cl-new-inp" type="text" placeholder="${tH('cl.itemPh')}" aria-describedby="cl-new-prev" oninput="tkInput(this)" onkeydown="if(event.key==='Enter'&&!event.isComposing)addCheckItem()">
         <label class="cl-inp-photo-label" title="${tH('cl.addPhoto')}">📷<input type="file" accept="image/*" style="display:none" onchange="handleClNewPhotoInput(this)"></label>
       </div>
       <button class="cl-add-btn" onclick="addCheckItem()">${tH('kc.add')}</button>
     </div>
+    <div class="tk-prev" id="cl-new-prev" aria-live="polite"></div>
     <div id="cl-new-photo-preview" style="display:none;margin-top:8px;position:relative"></div>
     <div class="cl-items">
       ${sortedItems.length ? sortedItems.map(item => {
@@ -19115,12 +18855,14 @@ function renderChecklist() {
                 <button class="cl-edit-del" data-a0="${esc(item.id)}" onclick="deleteCheckItem(this.dataset.a0)">🗑 ${tH('hd.delete')}</button>
               </div>
               <div class="cl-item-tools">
+                <button type="button" class="cl-tool" data-a0="${esc(list.id)}" data-a1="${esc(item.id)}" onclick="tkOpen(this.dataset.a0,this.dataset.a1)"><span aria-hidden="true">📅</span> ${tH('tk.dueBtn')}</button>
                 <button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="triggerClItemPhoto(this.dataset.a0)"><span aria-hidden="true">📷</span> ${tH('cl.photoBtn')}</button>
                 ${!item.done ? `<button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,-1)" aria-label="${tH('cl.up')}">↑</button><button type="button" class="cl-tool" data-a0="${esc(item.id)}" onclick="moveCheckItem(this.dataset.a0,1)" aria-label="${tH('cl.down')}">↓</button>` : ''}
               </div>
             ` : `
-              <span class="cl-item-text">${esc(item.text)}</span>
+              <span class="cl-item-text">${item.star && isDS(item.due) ? '<span aria-hidden="true">🎯 </span>' : ''}${esc(item.text)}</span>
             `}
+            ${isDS(item.due) ? clDueHTML(item, today) : ''}
             ${getItemPhotos(item).length?`<div class="cl-photos-row">${getItemPhotos(item).map((p,i)=>`<div class="cl-item-photo-wrap"><img src="${esc(safeImgSrc(p))}" class="cl-item-photo" data-a0="${esc(item.id)}" onclick="showClItemPhoto(this.dataset.a0,${i})"><button class="cl-item-photo-del" data-a0="${esc(item.id)}" aria-label="${tH('a11y.photoDel')}" onclick="removeClItemPhoto(this.dataset.a0,${i})">×</button></div>`).join('')}</div>`:''}
           </div>
           ${!isExpanded ? `<button type="button" class="cl-item-edit" data-a0="${esc(item.id)}" onclick="expandCheckItem(this.dataset.a0)" aria-label="${tH('a11y.editName',{name:item.text || '📷'})}"><span aria-hidden="true">✏️</span></button>` : ''}
@@ -19137,6 +18879,13 @@ function renderChecklist() {
     f.value = typing.v;
     try { f.focus({ preventScroll: true }); f.setSelectionRange(typing.s, typing.e); } catch (e) {}
   }
+  tkPrevRender('cl-new-inp');
+}
+// Čip termínu pod textem položky (5.15): 📅 zítra · ⏰ 18:00 · 🔔, po termínu červeně
+function clDueHTML(item, today) {
+  const over = !item.done && item.due < today, tm = TP_RE.test(item.dueT || '') ? item.dueT : '';
+  const rem = !item.done && !!tkRemMap()[item.id];
+  return `<span class="cl-due${over ? ' over' : ''}">📅 ${esc(tkDueLabel(item.due, null, today))}${tm ? ' · ⏰ ' + esc(tm) : ''}${rem ? ` · <span aria-label="${tH('tk.remind')}">🔔</span>` : ''}${over ? ' ' + tH('tk.overTag') : ''}</span>`;
 }
 
 // Seznam skupiny smí smazat autor (createdBy, u starších vlastník owner) a správce skupiny; bez autora nebo když
@@ -19191,7 +18940,10 @@ window.addCheckItem = function() {
   if (!inp || (!inp.value.trim() && !clNewPhoto)) return;
   const list = clEditFind(activeChecklist);
   if (!list) return;
-  const item = {id: genId(), text: inp.value.trim(), done: false};
+  // 5.15: termín z textu („zítra v 18:00“) podle náhledu pod polem (✕ v náhledu = doslovný text)
+  const raw = inp.value.trim();
+  const item = raw ? tkItemFrom('cl-new-inp', raw) : {id: genId(), text: '', done: false};
+  delete _tkIgn['cl-new-inp'];
   if (clNewPhoto) {
     // Fotka by přeplnila dokument seznamu → odmítnout (text zůstane v poli)
     if (clTooBig({...list, items: [{...item, photos: [clNewPhoto]}, ...(list.items || [])]})) { toast(t('cl.tooBig')); return; }
@@ -19215,17 +18967,8 @@ window.moveCheckItem = function(itemId, dir) {
   renderChecklist();
 };
 
-window.toggleCheckItem = function(itemId) {
-  const list = clEditFind(activeChecklist);
-  if (!list) return;
-  const item = list.items.find(i => i.id === itemId);
-  if (!item) return;
-  clSave(list, clOps.set(itemId, {done: !item.done})).catch(clSaveErr);
-  // Odškrtnutí → „hotovo“; vrácení zpět vyjme položku z čekajícího záznamu
-  if (item?.done) gaCheck(list, 'done', item.text);
-  else if (item && list._family && list._gid) unlogGroupActivity(list._gid, 'check', 'done', gaTitle(item.text, list.name || ''));
-  renderChecklist();
-};
+// 5.15: jedno odškrtnutí pro checklist, Domů i kalendář (tkToggle, doneAt pro úkoly)
+window.toggleCheckItem = itemId => window.tkToggle(activeChecklist, itemId);
 
 // Klepnutí na řádek položky = odškrtnutí (5.10); úprava, fotka a pořadí přes ✏️, tah řádkem dál řadí
 window.clRowTap = function(e, row) {
@@ -19388,6 +19131,809 @@ window.deleteChecklist = async function(id) {
   });
   activeChecklist = allChecklists().find(c => c.id !== id)?.id || null;
 };
+
+
+// ✅  ÚKOLY (5.15, docs/NAVRH-UKOLY.md)
+
+// Úkol = položka checklistu s nepovinnými poli due (YYYY-MM-DD), dueT (HH:MM), star (hlavní úkol dne) a doneAt (ms).
+// Data jen v checklistech (osobní i skupinové); Domů, kalendář i checklist je čtou z paměti a odškrtávají přes tkToggle.
+// ── Rozpoznání termínu v textu úkolu (5.15, docs/NAVRH-UKOLY.md kap. 4): čistá funkce bez DOM a bez AI ──
+// cs i en vždy; vzory nad textem bez diakritiky (malá písmena, stejná délka jako vstup → indexy platí i pro původní text).
+// Hranice slova přes skupinu před vzorem (lookbehind starší Safari neumí). skip.date / skip.time = rozpoznaný úsek,
+// který uživatel zrušil (✕ v náhledu) – dokud se nezmění, nepoužije se.
+const TK_B = '(^|[\\s,(])', TK_E = '(?=$|[\\s,.!?;:)])';
+const TK_DOW = {pondeli: 1, utery: 2, stred: 3, ctvrt: 4, pat: 5, sobot: 6, nedel: 0,
+  monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0};
+const TK_MON_CS = ['ledna', 'unora', 'brezna', 'dubna', 'kvetna', 'cervna', 'cervence', 'srpna', 'zari', 'rijna', 'listopadu', 'prosince'];
+const TK_MON_EN = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec';
+const tkMonEn = w => 'janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(w.slice(0, 3)) / 3;
+const TK_RE = {
+  rel: new RegExp(TK_B + '((?:(?:v|ve|na|do|on|by|for)\\s+)?(day after tomorrow|pozitri|dneska|dnes|today|zitra|zejtra|tomorrow|tmrw))' + TK_E, 'g'),
+  inN: new RegExp(TK_B + '((?:za\\s+(\\d{1,2})\\s+(?:den|dny|dni|dnu))|za\\s+tyden|(?:in\\s+(\\d{1,2})\\s+days?)|in\\s+a\\s+week)' + TK_E, 'g'),
+  dow: new RegExp(TK_B + '((?:(?:v|ve|na|do|on|by)\\s+)?(?:(tento|tuto|this|pristi|next)\\s+)?(pondeli|utery|stred[auy]|ctvrt(?:ek|ka)|pat(?:ek|ku)|sobot[auy]|nedel[ie]|monday|tuesday|wednesday|thursday|friday|saturday|sunday))' + TK_E, 'g'),
+  num: new RegExp(TK_B + '((?:(?:v|ve|na|do|od|on|by|dne)\\s+)?(\\d{1,2})\\.\\s?(\\d{1,2})\\.(?:\\s?(\\d{4}))?)' + TK_E, 'g'),
+  wcs: new RegExp(TK_B + '((?:(?:v|ve|na|do|od|dne)\\s+)?(\\d{1,2})\\.?\\s(' + TK_MON_CS.join('|') + ')(?:\\s(\\d{4}))?)' + TK_E, 'g'),
+  wen: new RegExp(TK_B + '((?:(?:on|by|until)\\s+)?(?:(\\d{1,2})(?:st|nd|rd|th)?\\s(?:of\\s)?(' + TK_MON_EN + ')\\.?|(' + TK_MON_EN + ')\\.?\\s(\\d{1,2})(?:st|nd|rd|th)?)(?:,?\\s(\\d{4}))?)' + TK_E, 'g'),
+  t1: new RegExp(TK_B + '((?:(?:v|ve|od|do|kolem|at|by|around)\\s+)?(\\d{1,2}):(\\d{2})(?:\\s?(am|pm))?)' + TK_E, 'g'),
+  t2: new RegExp(TK_B + '((?:v|ve|od|do|kolem)\\s+(\\d{1,2})\\.(\\d{2}))' + TK_E, 'g'),
+  t3: new RegExp(TK_B + '((?:v|ve|od|do|kolem)\\s+(\\d{1,2})\\s?(?:h|hod|hodin|hodiny)\\.?)' + TK_E, 'g'),
+  t4: new RegExp(TK_B + '((?:(?:at|by|around)\\s+)?(\\d{1,2})\\s?(am|pm))' + TK_E, 'g'),
+  t5: new RegExp(TK_B + '(at\\s+(\\d{1,2}))' + TK_E, 'g'),
+};
+// Datum d.m.(y): bez roku letos, a když už minul, příští rok; neplatné (31. 2.) = null
+function tkYmd(today, d, m, y) {
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+  const ty = +today.slice(0, 4), mk = yy => { const x = new Date(yy, m - 1, d, 12); return x.getMonth() === m - 1 && x.getDate() === d ? toDS(x) : null; };
+  if (y) return y >= ty - 1 && y <= ty + 10 ? mk(y) : null;
+  const a = mk(ty);
+  if (a && a >= today) return a;
+  return mk(ty + 1); // 29. 2. v nepřestupném roce → null
+}
+function tkHm(h, m, ap) {
+  h = +h; m = m == null ? 0 : +m;
+  if (ap) { if (h < 1 || h > 12) return null; h = h % 12 + (ap === 'pm' ? 12 : 0); }
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59 ? String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') : null;
+}
+function parseTaskText(raw, now = new Date(), skip = {}) {
+  const s = String(raw ?? '').normalize('NFC');
+  // Po znacích (kódových bodech): znak, který by změnil délku, zůstane beze změny → indexy n a s se kryjí
+  const n = Array.from(s, ch => { const x = ch.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); return x.length === ch.length ? x : ch; }).join('');
+  const today = toDS(now), dow = now.getDay();
+  const plus = k => addDays(today, k);
+  const hits = [];
+  const find = (kind, keys, fn) => {
+    for (const k of keys) {
+      const re = TK_RE[k];
+      re.lastIndex = 0;
+      for (let m; (m = re.exec(n));) {
+        const from = m.index + m[1].length, to = from + m[2].length, src = n.slice(from, to);
+        if (src === skip[kind] || hits.some(h => from < h.to && to > h.from)) continue;
+        const v = fn(k, m);
+        if (v) { hits.push({kind, from, to, src, v}); return v; }
+      }
+    }
+    return null;
+  };
+  let due = find('date', ['rel', 'inN', 'dow', 'num', 'wcs', 'wen'], (k, m) => {
+    if (k === 'rel') {
+      const w = m[3];
+      return plus(w === 'dnes' || w === 'dneska' || w === 'today' ? 0 : w === 'pozitri' || w === 'day after tomorrow' ? 2 : 1);
+    }
+    if (k === 'inN') {
+      const x = m[3] ?? m[4];
+      if (x == null) return plus(7);
+      return +x >= 1 && +x <= 60 ? plus(+x) : null;
+    }
+    if (k === 'dow') {
+      const w = m[3], target = TK_DOW[Object.keys(TK_DOW).find(p => m[4].startsWith(p))];
+      if (target == null) return null;
+      if (w === 'pristi' || w === 'next') { // den v příštím kalendářním týdnu (pondělní týden)
+        const iso = (dow + 6) % 7, ti = (target + 6) % 7;
+        return plus(7 - iso + ti);
+      }
+      return plus(((target - dow + 7) % 7) || 7); // nejbližší budoucí; v pátek „v pátek“ = za týden
+    }
+    if (k === 'num') return tkYmd(today, +m[3], +m[4], m[5] ? +m[5] : 0);
+    if (k === 'wcs') return tkYmd(today, +m[3], TK_MON_CS.indexOf(m[4]) + 1, m[5] ? +m[5] : 0);
+    if (k === 'wen') {
+      const d = m[3] ?? m[6], mon = m[4] ?? m[5];
+      return tkYmd(today, +d, tkMonEn(mon) + 1, m[7] ? +m[7] : 0);
+    }
+    return null;
+  });
+  const dueT = find('time', ['t1', 't2', 't3', 't4', 't5'], (k, m) =>
+    k === 't1' ? tkHm(m[3], m[4], m[5]) : k === 't2' ? tkHm(m[3], m[4]) : k === 't3' ? tkHm(m[3], 0)
+      : k === 't4' ? tkHm(m[3], 0, m[4]) : tkHm(m[3], 0));
+  // Čas bez data: dnes, pokud ještě nenastal, jinak zítra
+  if (dueT && !due) {
+    const cur = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    due = dueT > cur ? today : plus(1);
+  }
+  if (!hits.length) return {text: s.trim(), due: null, dueT: null, hits: []};
+  let out = s;
+  [...hits].sort((a, b) => b.from - a.from).forEach(h => { out = out.slice(0, h.from) + ' ' + out.slice(h.to); });
+  out = out.replace(/\(\s*\)/g, ' ').replace(/\s+/g, ' ').replace(/\s+([,.!?;)])/g, '$1').replace(/^[\s,;:–—-]+|[\s,;:–—-]+$/g, '').trim();
+  if (!out) return {text: s.trim(), due: null, dueT: null, hits: []}; // zbyl by prázdný text („zítra“)
+  return {text: out, due, dueT: dueT || null, hits: hits.map(({kind, from, to, src}) => ({kind, from, to, src}))};
+}
+// ── konec parseTaskText ──
+const TK_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const TK_REM_MAX = 50, TK_STALE = 30 * 60000;
+let _tkVer = 0, _tkMemo = null, _clServer = false; // _clServer: osobní checklisty už přišly ze serveru
+let _tkOrd = {day: '', uid: '', m: new Map(), top: 0, touched: false}; // pořadí a sekce řádků karty (fixní pro den a relaci)
+let _tkAllOpen = false, _tkLock = {k: '', until: 0}, _tkFlash = '', _tkEd = null, _tkDayAdd = '';
+const _tkIgn = {}; // id pole → {date, time}: rozpoznaný úsek zrušený ✕ v náhledu
+const _tkPrevT = {};
+function tkReset() {
+  _tkVer++; _tkMemo = null; _clServer = false; _tkOrd = {day: '', uid: '', m: new Map(), top: 0, touched: false};
+  _tkAllOpen = false; _tkFlash = ''; _tkEd = null; _tkDayAdd = ''; _tkMigBusy = false;
+  Object.keys(_tkIgn).forEach(k => delete _tkIgn[k]);
+}
+// Karta Úkoly na Domů: všem (5.15, Q3); v jednoduchém režimu po odkrytí hlavního úkolu nebo se zapnutým Checklistem
+const tkCardOn = () => unlD('focus') || hasMod('checklist');
+// Data úkolů pro kalendář: s modulem Checklist, nebo když karta Úkoly není schovaná
+const tkDataOn = () => hasMod('checklist') || (tkCardOn() && !dashLayout().hidden.includes('tasks'));
+// Data karty: osobní checklisty i seznamy všech skupin se sdíleným checklistem (Q4), jen když je karta vidět
+function tkEnsureSubs() {
+  if (!CU) return;
+  if (!_fireSubs['checklist']) subChecklist();
+  ensureCheckSubs();
+}
+
+// Název seznamu „Úkoly“ (cs i en)
+function tkIsTaskName(name) {
+  const n = ctxNorm(name).trim();
+  return n === 'ukoly' || n === 'tasks' || n === ctxNorm(t('cl.defName')).trim();
+}
+function tkSetTaskList(id) {
+  if (!CU || !prof || prof.taskList === id) return;
+  prof.taskList = id;
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), {taskList: id}).catch(e => console.warn('[LP] taskList:', e?.code || e?.name));
+}
+// Id seznamu Úkoly (cíl rychlého přidání): prof.taskList, jinak první vlastní seznam se jménem Úkoly / Tasks
+function tkListId() {
+  if (!CU) return '';
+  if (prof?.taskList && checklists.some(c => c && c.id === prof.taskList)) return prof.taskList;
+  if (prof?.taskList && !_clServer) return ''; // seznam z jiného zařízení ještě nedorazil (cache)
+  const c = checklists.find(x => x && x.id && tkIsTaskName(x.name));
+  if (c) { tkSetTaskList(c.id); return c.id; }
+  return '';
+}
+// Cíl rychlého přidání na Domů: volba z čipu (lp_tk_list, když seznam pořád existuje), jinak seznam Úkoly
+function tkTargetId() {
+  const v = lsGet('lp_tk_list', '');
+  if (typeof v === 'string' && v && allChecklists().some(c => c && c.id === v)) return v;
+  return tkListId();
+}
+// Seznam Úkoly chybí: založit rovnou s položkami (jen podle odpovědi serveru, offline i z cache)
+function tkCanCreate() { return !!CU && (_clServer || (navigator.onLine === false && _subReady.has('checklist'))); }
+function tkCreateList(items) {
+  const def = {id: genId(), name: t('cl.defName'), items: clCopyItems(items), shared: false, createdAt: Date.now()};
+  tkSetTaskList(def.id);
+  return {id: def.id, w: setDoc(doc(db, 'users', CU.uid, 'checklists', def.id), def)};
+}
+// Přidá položky (první nahoru) do seznamu listId, jinak do cíle rychlého přidání. null = teď nejde (toast už byl)
+function tkAddItems(items, listId, quiet) {
+  if (!CU || !items.length) return null;
+  const id = listId || tkTargetId();
+  if (!id) {
+    if (!tkCanCreate()) { if (!_fireSubs['checklist']) subChecklist(); toast(t('tk.loading')); return null; }
+    const c = tkCreateList(items);
+    renderChecklist();
+    return {w: c.w, l: c.id};
+  }
+  const list = clEditFind(id);
+  if (!list) return null;
+  if (clTooBig({...list, items: [...items, ...(list.items || [])]})) { toast(t('cl.tooBig')); return null; }
+  const w = clSave(list, its => items.reduceRight((a, it) => clOps.add({...it})(a), its), items.length === 1 ? items[0] : null);
+  if (!quiet) items.forEach(it => gaCheck(list, 'add', it.text));
+  renderChecklist();
+  return {w, l: list.id};
+}
+
+// Všechny úkoly: položky s termínem ze všech seznamů + nesplněné bez termínu ze seznamu Úkoly.
+// [{k, l, it, gid, due, dueT, task}], index podle dne; memo podle _tkVer (zvyšuje renderChecklist)
+function tkAll() {
+  if (_tkMemo && _tkMemo.v === _tkVer && _tkMemo.uid === (CU?.uid || '')) return _tkMemo;
+  const list = [], byDay = new Map(), tl = tkListId(), seen = new Set();
+  const push = (c, gid) => {
+    if (!c || !c.id || seen.has(c.id) || !Array.isArray(c.items)) return;
+    seen.add(c.id);
+    const task = c.id === tl;
+    for (const it of c.items) {
+      if (!it || typeof it !== 'object' || !it.id || !it.text) continue;
+      const due = isDS(it.due) ? it.due : null;
+      if (!due && !task) continue;
+      const e = {k: c.id + '/' + it.id, l: c.id, it, gid: gid || null, due, dueT: due && TP_RE.test(it.dueT || '') ? it.dueT : null, task, ln: c.name || ''};
+      list.push(e);
+      if (due) { if (!byDay.has(due)) byDay.set(due, []); byDay.get(due).push(e); }
+    }
+  };
+  if (CU) {
+    checklists.forEach(c => { if (!c?.id) return; const d = clFind(c.id) || c; push(d, d._family ? d._gid : null); });
+    groupChecklists().forEach(c => push(c, c._gid));
+  }
+  _tkMemo = {v: _tkVer, uid: CU?.uid || '', list, byDay};
+  return _tkMemo;
+}
+function getTasksForDate(ds) { return tkAll().byDay.get(ds) || []; }
+const tkDoneDay = it => it.done && Number(it.doneAt) > 0 ? toDS(new Date(Number(it.doneAt))) : '';
+// Popisek termínu: „dnes“, „zítra“, „pá 13. 11.“ (+ „ · 18:00“); full = „zítra · čt 12. 11.“
+function tkDueLabel(due, dueT, today = toDS(), full = false) {
+  if (!isDS(due)) return dueT || '';
+  const rel = due === today ? t('tk.d.today') : due === addDays(today, 1) ? t('tk.d.tmrw') : due === addDays(today, -1) ? t('tk.d.yday') : '';
+  const d = due.slice(0, 4) === today.slice(0, 4) ? fmtDate(due, 'wShortDm') : fmtDate(due, 'dmy');
+  return (rel ? (full ? rel + ' · ' + d : rel) : d) + (dueT ? ' · ' + dueT : '');
+}
+// Sekce karty Domů (návrh 1.1). Řádek drží sekci i pořadí do konce dne a relace (druhé klepnutí netrefí jiný řádek);
+// nové úkoly jdou nahoru své sekce, změna termínu řádek přesune.
+function tkSections(today) {
+  const tmrw = addDays(today, 1), lim = addDays(today, 14), S = {over: [], today: [], tmrw: [], later: [], far: []};
+  if (_tkOrd.day !== today || _tkOrd.uid !== (CU?.uid || '')) _tkOrd = {day: today, uid: CU?.uid || '', m: new Map(), top: 0, touched: false};
+  // Dokud uživatel v kartě nic neodškrtl ani nepřidal, řadí se pokaždé znovu (data při startu přicházejí postupně);
+  // potom pořadí drží a nové úkoly jdou nahoru
+  if (!_tkOrd.touched) _tkOrd.m.clear();
+  const first = !_tkOrd.m.size;
+  const calc = e => {
+    const {it, due} = e;
+    if (it.done) return (due === today || tkDoneDay(it) === today) ? 'today' : '';
+    if (!due) return 'later';
+    return due < today ? 'over' : due === today ? 'today' : due === tmrw ? 'tmrw' : due <= lim ? 'later' : 'far';
+  };
+  const fresh = [];
+  for (const e of tkAll().list) {
+    const st = _tkOrd.m.get(e.k);
+    let sec;
+    if (st && st.due === e.due && st.dueT === e.dueT) sec = st.sec;
+    else { sec = calc(e); if (st) _tkOrd.m.delete(e.k); }
+    if (!sec) continue;
+    S[sec].push(e);
+    if (!_tkOrd.m.has(e.k)) fresh.push([e, sec]);
+  }
+  // Výchozí řazení: po termínu nejstarší, dnes/zítra hvězda → s časem → bez času, později podle data, bez termínu na konec
+  const cmp = (a, b) => (b.it.star ? 1 : 0) - (a.it.star ? 1 : 0) || (a.dueT ? 0 : 1) - (b.dueT ? 0 : 1) || String(a.dueT || '').localeCompare(String(b.dueT || ''));
+  const cmpD = (a, b) => (a.due ? 0 : 1) - (b.due ? 0 : 1) || String(a.due || '').localeCompare(String(b.due || '')) || cmp(a, b);
+  const ord = {over: cmpD, today: cmp, tmrw: cmp, later: cmpD, far: cmpD};
+  if (fresh.length) {
+    const bySec = {};
+    fresh.forEach(([e, sec]) => (bySec[sec] = bySec[sec] || []).push(e));
+    for (const [sec, arr] of Object.entries(bySec)) {
+      arr.sort(ord[sec]);
+      // první vykreslení dne: pořadí podle řazení; později přidané nahoru
+      if (first) arr.forEach((e, i) => _tkOrd.m.set(e.k, {sec, due: e.due, dueT: e.dueT, r: i}));
+      else [...arr].reverse().forEach(e => _tkOrd.m.set(e.k, {sec, due: e.due, dueT: e.dueT, r: --_tkOrd.top}));
+    }
+  }
+  for (const sec of Object.keys(S)) S[sec].sort((a, b) => _tkOrd.m.get(a.k).r - _tkOrd.m.get(b.k).r);
+  return S;
+}
+// Řádek úkolu (karta Domů i den v kalendáři): čtvereček = hotovo, text = úprava
+function tkRowHTML(e, today, ctx) {
+  const {it, l, gid} = e, done = !!it.done, over = !done && e.due && e.due < today;
+  const rem = !done && e.due && prof?.taskRem && typeof prof.taskRem === 'object' && prof.taskRem[it.id];
+  let meta = '';
+  if (ctx === 'day') meta = e.dueT ? '⏰ ' + e.dueT : '';
+  else if (over) meta = '📅 ' + tkDueLabel(e.due, null, today);
+  else if (e.due && (e.due === today || e.due === addDays(today, 1))) meta = e.dueT ? '⏰ ' + e.dueT : '';
+  else if (e.due) meta = tkDueLabel(e.due, e.dueT, today);
+  const nm = it.text || '';
+  return `<div class="tk-row${done ? ' done' : ''}${it.star ? ' star' : ''}${_tkFlash === e.k ? ' flash' : ''}" data-tk="${esc(e.k)}">
+    <button type="button" class="tk-chk" data-a0="${esc(l)}" data-a1="${esc(it.id)}" aria-pressed="${done}" aria-label="${tH('cl.checkAria', {name: nm})}" onclick="tkToggle(this.dataset.a0,this.dataset.a1)"><span class="tk-box" aria-hidden="true">${done ? '✓' : ''}</span></button>
+    <button type="button" class="tk-txt" data-a0="${esc(l)}" data-a1="${esc(it.id)}" aria-label="${tH('tk.editAria', {name: nm})}" onclick="tkOpen(this.dataset.a0,this.dataset.a1)">${it.star ? '<span class="tk-star" aria-hidden="true">🎯</span>' : ''}${esc(nm)}</button>
+    ${meta || rem ? `<span class="tk-meta${over ? ' over' : ''}">${esc(meta)}${rem ? `<span aria-label="${tH('tk.remind')}"> 🔔</span>` : ''}</span>` : ''}
+    ${gid ? `<span class="tk-grp" role="img" aria-label="${esc(grpName(gid))}">${esc(grpEmoji(gid))}</span>` : ''}
+  </div>`;
+}
+const TK_LIM = {over: 3, today: 5, tmrw: 3, later: 3};
+function tkDashInner() {
+  const today = toDS(), ready = _subReady.has('checklist');
+  const S = ready ? tkSections(today) : null;
+  const tDone = S ? S.today.filter(e => e.it.done).length : 0, tN0 = S ? S.today.length : 0;
+  const overN = S ? S.over.filter(e => !e.it.done).length : 0;
+  let h = `<div class="dw-head"><div class="dw-title" id="tk-h"><span aria-hidden="true">✅</span> ${tH('dash.card.tasks')}</div>
+    <div style="display:flex;align-items:center;gap:4px">${tN0 ? `<span class="tk-cnt">${tH('tk.cntToday', {done: tDone, n: tN0})}</span>` : ''}
+    <button type="button" class="tk-go" onclick="tkGoList()" aria-label="${tH('tk.openList')}">→</button></div></div>
+    <div class="tk-add"><input id="tk-inp" class="finp tk-inp" type="text" maxlength="500" enterkeyhint="done" autocomplete="off" placeholder="${tH('tk.ph')}" aria-label="${tH('tk.addAria')}" aria-describedby="tk-prev" oninput="tkInput(this)" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();tkAdd()}"><button type="button" class="tk-addbtn" onclick="tkAdd()" aria-label="${tH('tk.addAria')}">＋</button></div>
+    <div class="tk-prev" id="tk-prev" aria-live="polite"></div>`;
+  if (!S) return h + `<div class="tk-empty">${tH('tk.loading')}</div>`;
+  const loadingGrp = checkGroups().some(g => !clGrp[g]?.ready && !clGrp[g]?.err);
+  const total = S.over.length + S.today.length + S.tmrw.length + S.later.length + S.far.length;
+  if (!total) {
+    if (loadingGrp) return h + `<div class="tk-empty">${tH('tk.grpLoading')}</div>`;
+    return h + `<div class="tk-es">${tH('tk.es.t')}</div><div class="tk-exs">${['tk.es.ex1', 'tk.es.ex2', 'tk.es.ex3'].map(k =>
+      `<button type="button" class="tk-chip tk-ex" data-a0="${tH(k)}" onclick="tkExample(this.dataset.a0)">${tH(k)}</button>`).join('')}</div>`;
+  }
+  let hidden = 0;
+  const rows = (sec) => {
+    const arr = S[sec], n = _tkAllOpen ? arr.length : TK_LIM[sec];
+    hidden += Math.max(0, arr.length - n);
+    return arr.slice(0, n).map(e => tkRowHTML(e, today)).join('');
+  };
+  if (S.over.length) h += `<div class="tk-sec over"><span>${tH('tk.sec.over', {n: overN})}</span>${overN ? `<button type="button" class="tk-secbtn" onclick="tkAllToToday()">${tH('tk.allToday')}</button>` : ''}</div>` + rows('over');
+  h += `<div class="tk-sec"><span>${tH('tk.sec.today')}</span></div>`;
+  if (!S.today.length) {
+    const nx = [...S.tmrw, ...S.later, ...S.far].find(e => e.due && !e.it.done);
+    h += `<div class="tk-empty">${nx ? tH('tk.nothingToday', {when: tkDueLabel(nx.due, null, today)}) : tH('tk.nothingTodayPlain')}</div>`;
+  } else {
+    if (tDone === tN0 && !overN) h +=`<div class="tk-empty">${tH('tk.doneToday')}</div>`;
+    h += rows('today');
+  }
+  if (S.tmrw.length) h += `<div class="tk-sec"><span>${tH('tk.sec.tmrw')}</span></div>` + rows('tmrw');
+  const farN = S.far.length;
+  if (S.later.length || farN) {
+    h += `<div class="tk-sec"><span>${tH('tk.sec.later')}</span></div>`;
+    // do 14 dní s datem, dál jen počet (rozbalená karta ukáže i je)
+    const lat = _tkAllOpen ? [...S.later, ...S.far].sort((a, b) => (a.due ? 0 : 1) - (b.due ? 0 : 1) || String(a.due || '').localeCompare(String(b.due || ''))) : S.later;
+    const n = _tkAllOpen ? lat.length : TK_LIM.later;
+    hidden += Math.max(0, lat.length - n) + (_tkAllOpen ? 0 : farN);
+    h += lat.slice(0, n).map(e => tkRowHTML(e, today)).join('');
+  }
+  if (loadingGrp) h += `<div class="tk-empty">${tH('tk.grpLoading')}</div>`;
+  if (hidden || _tkAllOpen) h += `<button type="button" id="tk-more" class="dw-hmore" aria-expanded="${_tkAllOpen}" onclick="tkMore(${!_tkAllOpen})">${_tkAllOpen ? tH('dash.h.less') : tH('dash.h.more', {n: hidden})}</button>`;
+  return h;
+}
+// Karta nemá onclick na celé ploše (obsahuje pole); navigace jen přes → v hlavičce
+// Od první akce v kartě drží řádky pořadí (do té doby se při každém překreslení řadí znovu)
+function tkTouch() {
+  if (_tkOrd.touched) return;
+  if (_tkOrd.day === toDS() && _tkOrd.uid === (CU?.uid || '')) { _tkOrd.touched = true; if (document.getElementById('dw-tasks')) tkSections(toDS()); }
+}
+function tkDashHTML() {
+  return `<div class="dw tk-card" id="dw-tasks" role="region" aria-labelledby="tk-h">${tkDashInner()}</div>`;
+}
+// Překreslí jen kartu (ne celé Domů); rozepsaný text, kurzor a fokus v poli zůstanou
+function tkDashRefresh() {
+  const el = document.getElementById('dw-tasks');
+  if (!el) return;
+  const ae = document.activeElement, inp = document.getElementById('tk-inp');
+  const st = inp ? {v: inp.value, f: ae === inp, s: inp.selectionStart, e: inp.selectionEnd} : null;
+  const fk = ae && el.contains(ae) && ae.dataset?.a1 ? {c: ae.className, a0: ae.dataset.a0, a1: ae.dataset.a1} : null;
+  el.innerHTML = tkDashInner();
+  const ni = document.getElementById('tk-inp');
+  if (ni && st) {
+    ni.value = st.v;
+    if (st.f) { try { ni.focus({preventScroll: true}); ni.setSelectionRange(st.s, st.e); } catch (e) {} }
+  }
+  if (ni) tkPrevRender('tk-inp');
+  if (fk) [...el.querySelectorAll('button[data-a1]')].find(b => b.className === fk.c && b.dataset.a0 === fk.a0 && b.dataset.a1 === fk.a1)?.focus({preventScroll: true});
+  tkFlashDone(el);
+}
+function tkFlashDone(root) {
+  const f = root?.querySelector('.tk-row.flash');
+  if (!f) return;
+  const k = _tkFlash;
+  setTimeout(() => { f.classList.remove('flash'); if (_tkFlash === k) _tkFlash = ''; }, 1200);
+}
+// Kalendář a otevřený den: překreslit, jen když jsou vidět (data úkolů se změnila)
+function tkCalRefresh() {
+  if (document.getElementById('p-calendar')?.classList.contains('active')) renderCal();
+  const ds = document.getElementById('m-day-events')?.dataset.ds;
+  if (ds) showDaySheet(ds);
+}
+function tkViewsRefresh() { tkDashRefresh(); tkCalRefresh(); }
+window.tkMore = v => { _tkAllOpen = !!v; tkDashRefresh(); document.getElementById('tk-more')?.focus({preventScroll: true}); };
+window.tkGoList = () => { const id = tkListId(); if (id) activeChecklist = id; window.sp('checklist'); };
+window.tkExample = txt => {
+  const i = document.getElementById('tk-inp');
+  if (!i) return;
+  i.value = String(txt || '');
+  i.focus();
+  tkPrevRender('tk-inp');
+};
+window.tkFocusInput = () => {
+  if (!document.getElementById('p-dashboard')?.classList.contains('active')) window.sp('dashboard');
+  setTimeout(() => { const i = document.getElementById('tk-inp'); if (i) { i.scrollIntoView({block: 'center'}); i.focus(); } }, 120);
+};
+
+// ── Náhled rozpoznaného termínu pod polem (Domů, Checklist, den v kalendáři) ──
+function tkParse(id, v) { return parseTaskText(v, new Date(), _tkIgn[id] || {}); }
+window.tkInput = el => {
+  const id = el?.id;
+  if (!id) return;
+  clearTimeout(_tkPrevT[id]);
+  _tkPrevT[id] = setTimeout(() => tkPrevRender(id), 120);
+};
+function tkPrevRender(id) {
+  const inp = document.getElementById(id), box = document.getElementById(id.replace(/-inp$/, '-prev'));
+  if (!inp || !box) return;
+  const v = inp.value.trim(), p = v ? tkParse(id, v) : null, today = toDS();
+  let h = '';
+  const dh = p && p.hits.find(x => x.kind === 'date'), th = p && p.hits.find(x => x.kind === 'time');
+  if (p && p.due && (dh || th)) {
+    const lbl = tkDueLabel(p.due, null, today, true);
+    h += dh ? `<span class="tk-chip">📅 ${esc(lbl)}<button type="button" data-a0="${esc(id)}" data-a1="date" aria-label="${tH('tk.ignoreAria', {what: lbl})}" onclick="tkIgnore(this.dataset.a0,this.dataset.a1)">✕</button></span>`
+      : `<span class="tk-chip">📅 ${esc(lbl)}</span>`;
+    if (th && p.dueT) h += `<span class="tk-chip">⏰ ${esc(p.dueT)}<button type="button" data-a0="${esc(id)}" data-a1="time" aria-label="${tH('tk.ignoreAria', {what: p.dueT})}" onclick="tkIgnore(this.dataset.a0,this.dataset.a1)">✕</button></span>`;
+  }
+  // Cíl na Domů: jen když má uživatel víc seznamů (osobní i skupinové)
+  if (id === 'tk-inp' && v && allChecklists().length > 1) {
+    const tl = allChecklists().find(c => c.id === tkTargetId());
+    if (tl) h += `<button type="button" class="tk-chip tk-chip-l" onclick="tkPickList()" aria-label="${tH('tk.listPick', {name: tl.name || ''})}">📋 ${tl._family ? esc(grpEmoji(tl._gid)) + ' ' : ''}${esc(cutName(tl.name || '', 24))} ▾</button>`;
+  }
+  box.innerHTML = h;
+}
+window.tkIgnore = (id, kind) => {
+  const inp = document.getElementById(id);
+  if (!inp || (kind !== 'date' && kind !== 'time')) return;
+  const hit = tkParse(id, inp.value.trim()).hits.find(x => x.kind === kind);
+  if (hit) _tkIgn[id] = {...(_tkIgn[id] || {}), [kind]: hit.src};
+  tkPrevRender(id);
+  inp.focus();
+};
+window.tkPickList = () => {
+  const ids = allChecklists().map(c => c.id).filter((x, i, a) => x && a.indexOf(x) === i);
+  const lbl = id => { const c = allChecklists().find(x => x.id === id); return (c?._family ? grpEmoji(c._gid) + ' ' : '') + cutName(c?.name || '', 40); };
+  openGrpChoiceSheet({opts: ids, cur: tkTargetId(), label: lbl, aria: t('tk.listChoose'), focusSel: '#tk-inp',
+    onPick: id => { lsSave('lp_tk_list', id === tkListId() ? '' : id); tkPrevRender('tk-inp'); }});
+};
+// Položka z textu pole: termín z náhledu; den v kalendáři (day) má přednost, pokud text neobsahuje vlastní datum
+function tkItemFrom(id, raw, day) {
+  const p = tkParse(id, raw);
+  const item = {id: genId(), text: cutName(p.text, 500), done: false};
+  let due = p.due, dueT = p.dueT;
+  if (day && !p.hits.some(x => x.kind === 'date')) due = day;
+  if (due) item.due = due;
+  if (due && dueT) item.dueT = dueT;
+  return item;
+}
+function tkAddFrom(id, day) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  const raw = inp.value.trim();
+  if (!raw) { inp.focus(); return; }
+  const item = tkItemFrom(id, raw, day);
+  tkTouch();
+  const r = tkAddItems([item], day ? tkListId() : ''); // den v kalendáři → seznam Úkoly
+  if (!r) return;
+  r.w.catch(clSaveErr);
+  delete _tkIgn[id];
+  _tkFlash = r.l + '/' + item.id;
+  // Pole se mezitím mohlo překreslit (karta, den v kalendáři): vyprázdnit až aktuální prvek
+  const cur = () => document.getElementById(id);
+  if (cur()) cur().value = '';
+  tkViewsRefresh();
+  if (cur()) { cur().value = ''; tkPrevRender(id); cur().focus(); }
+  // Úkol padl do sbalené části karty → krátké potvrzení s termínem
+  if (id === 'tk-inp' && !document.querySelector(`#dw-tasks .tk-row.flash`)) toast(item.due ? t('tk.added', {when: tkDueLabel(item.due, item.dueT)}) : t('tk.addedPlain'));
+}
+window.tkAdd = () => tkAddFrom('tk-inp');
+window.tkDayAdd = ds => { if (isDS(ds)) tkAddFrom('tk-day-inp', ds); };
+
+// ── Odškrtnutí: jedno místo pravdy pro Domů, kalendář i checklist ──
+window.tkToggle = (listId, itemId) => {
+  const lk = listId + '/' + itemId;
+  if (_tkLock.k === lk && Date.now() < _tkLock.until) return; // dvojí klepnutí na tentýž řádek
+  _tkLock = {k: lk, until: Date.now() + 350};
+  tkTouch();
+  const list = clEditFind(listId);
+  if (!list) return;
+  const item = (list.items || []).find(i => i.id === itemId);
+  if (!item) return;
+  const was = !!item.done;
+  clSave(list, clOps.set(itemId, was ? {done: false, doneAt: undefined} : {done: true, doneAt: Date.now()})).catch(clSaveErr);
+  // Odškrtnutí → „hotovo“; vrácení zpět vyjme položku z čekajícího záznamu skupiny
+  if (!was) gaCheck(list, 'done', item.text);
+  else if (list._family && list._gid) unlogGroupActivity(list._gid, 'check', 'done', gaTitle(item.text, list.name || ''));
+  renderChecklist();
+};
+// „Vše na dnes“: jedna transakce na seznam, lišta Zpět vrátí původní termíny
+window.tkAllToToday = () => {
+  const today = toDS(), S = tkSections(today), by = new Map();
+  S.over.filter(e => !e.it.done).forEach(e => { if (!by.has(e.l)) by.set(e.l, {}); by.get(e.l)[e.it.id] = e.due; });
+  if (!by.size) return;
+  const back = [];
+  for (const [l, m] of by) {
+    const list = clEditFind(l);
+    if (!list) continue;
+    const pm = {};
+    Object.keys(m).forEach(id => { pm[id] = {due: today}; });
+    clSave(list, clOps.setMany(pm)).catch(clSaveErr);
+    back.push([l, m]);
+  }
+  renderChecklist();
+  const n = back.reduce((s, [, m]) => s + Object.keys(m).length, 0);
+  if (n) undoNote(tN('tk.movedN', n), () => {
+    const w = [];
+    for (const [l, m] of back) {
+      const list = clEditFind(l);
+      if (!list) continue;
+      const pm = {};
+      Object.entries(m).forEach(([id, d]) => { pm[id] = {due: d}; });
+      w.push(clSave(list, clOps.setMany(pm)).catch(clSaveErr));
+    }
+    renderChecklist();
+    return Promise.all(w);
+  });
+};
+
+// ── List úpravy úkolu (#m-task): text, termín, čas, připomínka, hlavní úkol dne ──
+window.tkOpen = (listId, itemId) => {
+  const list = clFind(listId), it = list?.items?.find(i => i.id === itemId);
+  if (!list || !it) return;
+  const due = isDS(it.due) ? it.due : null;
+  _tkEd = {l: list.id, id: it.id, text: it.text || '', due, dueT: due && TP_RE.test(it.dueT || '') ? it.dueT : null, star: !!(due && it.star),
+    rem: !!(prof?.taskRem && typeof prof.taskRem === 'object' && prof.taskRem[it.id]), gid: list._family ? list._gid : null, ln: list.name || ''};
+  tkEdRender();
+  const ov = document.getElementById('m-task');
+  if (ov && !ov.classList.contains('open')) { om('m-task'); setTimeout(() => document.getElementById('tk-text')?.focus(), 60); }
+};
+function tkEdRead() {
+  const e = _tkEd, ta = document.getElementById('tk-text');
+  if (e && ta) e.text = ta.value;
+}
+function tkEdRender(focusSel) {
+  const e = _tkEd, box = document.getElementById('m-task-box');
+  if (!e || !box) return;
+  const today = toDS(), dow = new Date().getDay();
+  const sat = dow === 6 || dow === 0 ? today : addDays(today, 6 - dow), mon = addDays(today, ((8 - dow) % 7) || 7);
+  const chip = (v, lbl) => `<button type="button" class="tk-chip tk-pick${e.due === v ? ' sel' : ''}" aria-pressed="${e.due === v}" data-a0="${esc(v || '')}" onclick="tkEdDue(this.dataset.a0)">${lbl}</button>`;
+  const morning = TP_RE.test(notifSettings?.morning || '') ? notifSettings.morning : '08:00';
+  box.innerHTML = `<div class="tk-ed-head"><div class="mtitle" id="m-task-t" style="margin:0">${tH('tk.ed.title')}</div>
+      <button type="button" class="tk-x" onclick="cm('m-task')" aria-label="${tH('common.close')}">✕</button></div>
+    <textarea id="tk-text" class="finp" rows="2" maxlength="500" aria-label="${tH('tk.ed.title')}"></textarea>
+    <div class="tk-lbl" id="tk-when-l">${tH('tk.when')}</div>
+    <div class="tk-chips" role="group" aria-labelledby="tk-when-l">
+      ${chip(today, tH('tk.d.todayC'))}${chip(addDays(today, 1), tH('tk.d.tmrwC'))}${sat !== today ? chip(sat, tH('tk.weekend')) : ''}${chip(mon, esc(fmtDate(mon, 'wShortDm')))}${chip('', tH('tk.noDate'))}
+    </div>
+    <div class="tk-ed-row"><label for="tk-date">📅 ${tH('tk.otherDate')}</label><input type="date" class="finp tk-ed-inp" id="tk-date" value="${esc(e.due || '')}" onchange="tkEdDue(this.value)"></div>
+    <div class="tk-ed-row"><label for="tk-time">⏰ ${tH('tk.time')}</label><input class="finp time-picker-inp tk-ed-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="tk-time" value="${esc(e.dueT || '')}" onchange="tkEdTime(this.value)"${e.due ? '' : ' disabled'}></div>
+    <label class="tk-ed-row tk-ed-tg"><span>🔔 ${tH('tk.remind')}</span><input type="checkbox" id="tk-rem"${e.rem && e.due ? ' checked' : ''}${e.due ? '' : ' disabled'} onchange="tkEdSet('rem',this.checked)"></label>
+    <div class="tk-sub">${e.due ? (e.dueT ? tH('tk.remAt', {time: e.dueT}) : tH('tk.remAm', {time: morning})) : tH('tk.remNoDate')}</div>
+    <label class="tk-ed-row tk-ed-tg"><span>🎯 ${tH('tk.star')}</span><input type="checkbox" id="tk-star"${e.star && e.due ? ' checked' : ''}${e.due ? '' : ' disabled'} onchange="tkEdSet('star',this.checked)"></label>
+    <div class="tk-sub">📋 ${tH('tk.list', {name: (e.gid ? grpEmoji(e.gid) + ' ' : '') + cutName(e.ln, 40)})}</div>
+    <div class="macts"><button type="button" class="btn-s tk-del" onclick="tkDel()">🗑 ${tH('hd.delete')}</button><button type="button" class="btn-p" onclick="tkSave()">${tH('common.save')}</button></div>`;
+  const ta = document.getElementById('tk-text');
+  if (ta) ta.value = e.text;
+  if (focusSel) (box.querySelector(focusSel) || (focusSel.startsWith('.tk-pick') ? box.querySelector('#tk-date') : null))?.focus();
+}
+window.tkEdDue = v => {
+  const e = _tkEd;
+  if (!e) return;
+  tkEdRead();
+  e.due = isDS(v) ? v : null;
+  if (!e.due) { e.dueT = null; e.star = false; e.rem = false; }
+  tkEdRender(e.due ? `.tk-pick[data-a0="${e.due}"]` : '.tk-pick[data-a0=""]');
+};
+window.tkEdTime = v => { const e = _tkEd; if (!e) return; tkEdRead(); e.dueT = TP_RE.test(v || '') ? v : null; tkEdRender('#tk-time'); };
+window.tkEdSet = (k, v) => {
+  const e = _tkEd;
+  if (!e || (k !== 'rem' && k !== 'star')) return;
+  tkEdRead();
+  e[k] = !!v && !!e.due;
+  tkEdRender('#tk-' + k);
+};
+// Hlavní úkol dne je jen jeden: hvězdu jiných úkolů téhož dne vypnout
+function tkUnstar(due, l0, id0) {
+  const by = new Map();
+  tkAll().list.forEach(e => { if (e.it.star && e.due === due && !(e.l === l0 && e.it.id === id0)) { if (!by.has(e.l)) by.set(e.l, {}); by.get(e.l)[e.it.id] = {star: undefined}; } });
+  for (const [l, pm] of by) { const list = clEditFind(l); if (list) clSave(list, clOps.setMany(pm)).catch(clSaveErr); }
+}
+window.tkSave = () => {
+  const e = _tkEd;
+  if (!e) return;
+  tkEdRead();
+  const text = cutName(String(e.text || '').trim(), 500);
+  if (!text) { document.getElementById('tk-text')?.focus(); return; }
+  const list = clEditFind(e.l);
+  if (!list) return;
+  const it = (list.items || []).find(i => i.id === e.id);
+  if (!it) { toast(t('cl.gone')); cm('m-task'); return; }
+  const due = isDS(e.due) ? e.due : null, dueT = due && TP_RE.test(e.dueT || '') ? e.dueT : null, star = !!(due && e.star);
+  const changed = it.text !== text || (it.due || null) !== due || (it.dueT || null) !== dueT || !!it.star !== star;
+  if (star && !(it.star && it.due === due)) tkUnstar(due, e.l, e.id);
+  if (changed) {
+    clSave(list, clOps.set(e.id, {text, due: due || undefined, dueT: dueT || undefined, star: star || undefined})).catch(clSaveErr);
+    gaCheck(list, 'edit', text);
+  }
+  taskRemSet(list, e.id, due, dueT, e.rem && !!due);
+  _tkEd = null;
+  cm('m-task');
+  renderChecklist();
+};
+window.tkDel = () => {
+  const e = _tkEd;
+  if (!e) return;
+  const list = clEditFind(e.l);
+  if (!list) return;
+  const idx = (list.items || []).findIndex(i => i.id === e.id), gone = list.items[idx];
+  _tkEd = null;
+  cm('m-task');
+  if (!gone) return;
+  if (expandedCheckItemId === gone.id) expandedCheckItemId = null;
+  clSave(list, clOps.del(gone.id)).catch(clSaveErr);
+  gaCheck(list, 'del', gone.text);
+  clUndoNote(list.id, [{item: clCopyItems([gone])[0], idx}], t('undo.item', {name: cutName(gone.text || '', 40) || '📷'}));
+  taskRemSet(list, gone.id, null, null, false);
+  renderChecklist();
+};
+// Z formuláře nové události (5.15): rozepsaný název a datum → úkol
+window.tkFromEvent = () => {
+  const name = String(document.getElementById('ev-name-inp')?.value || '').trim();
+  if (!name) { document.getElementById('ev-name-inp')?.focus(); toast(t('tk.needName')); return; }
+  const ds = document.getElementById('ev-date-inp')?.value, tm = document.getElementById('ev-time-inp')?.value;
+  const item = {id: genId(), text: cutName(name, 500), done: false};
+  if (isDS(ds)) { item.due = ds; if (TP_RE.test(tm || '')) item.dueT = tm; }
+  const r = tkAddItems([item]);
+  if (!r) return;
+  r.w.catch(clSaveErr);
+  window.resetAndCloseEventModal();
+  toast(item.due ? t('tk.added', {when: tkDueLabel(item.due, item.dueT)}) : t('tk.addedPlain'));
+};
+function evTkHint(show) { const b = document.getElementById('ev-tk-hint'); if (b) b.hidden = !show; }
+
+// ── Připomínky (návrh 3.2): index users/{uid}/profile/main.taskRem, bez textu úkolu ──
+// Server (cron) ho čte s profilem (0 čtení navíc); bez push tokenu připomíná appka (checkTaskReminders).
+function tkRemMap() { return prof?.taskRem && typeof prof.taskRem === 'object' && !Array.isArray(prof.taskRem) ? prof.taskRem : {}; }
+function tkRemAt(due, dueT) {
+  const [y, m, d] = due.split('-').map(Number), tm = dueT || (TP_RE.test(notifSettings?.morning || '') ? notifSettings.morning : '08:00');
+  const [hh, mm] = tm.split(':').map(Number);
+  return new Date(y, m - 1, d, hh, mm).getTime();
+}
+// Kde leží zdroj pravdy položky: můj sdílený seznam → kopie ve skupině, jinak osobní nebo seznam skupiny
+function tkLocate(listId) {
+  const own = checklists.find(c => c && c.id === listId);
+  if (own) {
+    const g = clSharedGid(own);
+    if (g) { const cp = clGrp[g]?.ready ? clGrp[g].lists.find(f => f.id === listId && f.owner === CU?.uid) : null; return cp ? {g, list: cp} : null; }
+    return {g: '', list: own};
+  }
+  for (const g of checkGroups()) { const c = clGrp[g]?.lists?.find(f => f.id === listId); if (c) return {g, list: c}; }
+  return null;
+}
+function tkRemWrite(patch) {
+  if (!CU || !Object.keys(patch).length) return;
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), patch).catch(e => console.warn('[LP] taskRem:', e?.code || e?.name));
+}
+function taskRemSet(list, id, due, dueT, on) {
+  if (!CU || !prof || !TK_ID_RE.test(id || '')) return;
+  const map = tkRemMap(), had = !!map[id];
+  if (!on) {
+    if (!had) return;
+    prof.taskRem = {...map}; delete prof.taskRem[id];
+    tkRemWrite({['taskRem.' + id]: deleteField()});
+    return;
+  }
+  const at = tkRemAt(due, dueT);
+  if (at <= Date.now()) {
+    toast(t('tk.pastTime'));
+    if (had) { prof.taskRem = {...map}; delete prof.taskRem[id]; tkRemWrite({['taskRem.' + id]: deleteField()}); }
+    return;
+  }
+  if (!had && Object.keys(map).length >= TK_REM_MAX) { toast(t('tk.remFull', {n: TK_REM_MAX})); return; }
+  const r = {l: list.id, g: list._family && list._gid ? list._gid : '', d: due, t: dueT || '', at};
+  const o = map[id];
+  if (o && o.l === r.l && o.g === r.g && o.d === r.d && o.t === r.t && o.at === r.at) return;
+  prof.taskRem = {...map, [id]: r};
+  tkRemWrite({['taskRem.' + id]: r});
+  if (!notifGranted()) notifAskNow('task'); // stávající fronta, okno až po zavření listu
+}
+// Oprava indexu po změně dat (úkol smazán, přesunut členem skupiny, seznam sdílen / zrušen). Jen se serverovými daty
+// osobních seznamů a načtenými skupinami; opravy jedním zápisem. Hotové úkoly klíč drží (zpět = připomínka platí).
+let _tkRemT = 0;
+function taskRemSyncSoon() { clearTimeout(_tkRemT); _tkRemT = setTimeout(taskRemSync, 1500); }
+function taskRemSync() {
+  if (!CU || !prof || !_clServer) return;
+  const map = tkRemMap(), ids = Object.keys(map);
+  if (!ids.length || checkGroups().some(g => !clGrp[g]?.ready)) return;
+  const patch = {}, next = {...map}, now = Date.now();
+  for (const id of ids) {
+    const r = map[id], loc = r && typeof r === 'object' && TK_ID_RE.test(id) ? tkLocate(r.l) : null;
+    const it = loc?.list?.items?.find?.(i => i && i.id === id);
+    if (!it || !isDS(it.due) || (typeof r.at === 'number' && r.at < now - TK_STALE)) {
+      if (TK_ID_RE.test(id)) patch['taskRem.' + id] = deleteField();
+      delete next[id];
+      continue;
+    }
+    const dueT = TP_RE.test(it.dueT || '') ? it.dueT : '';
+    if (it.due === r.d && dueT === (r.t || '') && loc.g === (r.g || '')) continue;
+    const at = tkRemAt(it.due, dueT);
+    if (at <= now) { patch['taskRem.' + id] = deleteField(); delete next[id]; continue; }
+    next[id] = {l: r.l, g: loc.g, d: it.due, t: dueT, at};
+    patch['taskRem.' + id] = next[id];
+  }
+  if (!Object.keys(patch).length) return;
+  prof.taskRem = next;
+  tkRemWrite(patch);
+}
+// Lokální záloha bez push tokenu (jako připomínky návyků): splatné nejvýš 30 min zpět, jednou na zařízení
+function checkTaskReminders() {
+  if (!CU || !prof || !notifGranted() || hasPushToken() || notifSettings.tasks === false) return;
+  if (!_clServer || checkGroups().some(g => !clGrp[g]?.ready)) return;
+  const map = tkRemMap(), now = Date.now(), del = {};
+  for (const [id, r] of Object.entries(map)) {
+    if (!r || typeof r.at !== 'number' || r.at > now || !TK_ID_RE.test(id)) continue;
+    del['taskRem.' + id] = deleteField();
+    if (now - r.at > TK_STALE) continue;
+    const sentKey = `lp_tknotif_${id}_${r.d}`;
+    if (localStorage.getItem(sentKey)) continue;
+    const it = tkLocate(r.l)?.list?.items?.find?.(i => i && i.id === id);
+    if (!it || it.done || it.due !== r.d) continue;
+    try { localStorage.setItem(sentKey, '1'); } catch (e) {}
+    const txt = cutName(it.text || '', 80);
+    sendNotif(t(r.t ? 'tk.n.t' : 'tk.n.amT', {task: txt}), r.t ? t('tk.n.b', {time: r.t}) : t('tk.n.amB'), '✅', {open: 'tasks', id}, [], 'task-' + id);
+  }
+  if (!Object.keys(del).length) return;
+  const next = {...map};
+  Object.keys(del).forEach(k => delete next[k.slice(8)]);
+  prof.taskRem = next;
+  tkRemWrite(del);
+}
+
+// Klepnutí na připomínku: Domů, karta rozbalená, řádek krátce zvýrazněný (data počkají nejvýš 8 s)
+function tkOpenFromNotif(id) {
+  window.sp('dashboard');
+  if (!tkCardOn()) return;
+  _tkAllOpen = true;
+  const t0 = Date.now(), uid = CU?.uid, go = () => {
+    if (!CU || CU.uid !== uid) return;
+    const e = id ? tkAll().list.find(x => x.it.id === id) : null;
+    if (!e && id && Date.now() - t0 < 8000 && (!_clServer || checkGroups().some(g => !clGrp[g]?.ready))) { setTimeout(go, 500); return; }
+    if (e) _tkFlash = e.k;
+    tkDashRefresh();
+    document.querySelector('#dw-tasks .tk-row.flash')?.scrollIntoView({block: 'center'});
+  };
+  go();
+}
+
+// ── Převod Hlavního úkolu dne do Úkolů (5.15, jednou na účet): dnešní a zítřejší fokus → úkol s 🎯 ──
+// Deterministické id fz+YYYYMMDD: dvě zařízení najednou nevytvoří duplicitu (clOps.add filtruje stejné id). Nic se nemaže.
+let _tkMigBusy = false;
+function tkMigrateFocus() {
+  if (!CU || !prof || prof.focusMig === 1 || _tkMigBusy || !_clServer) return;
+  const today = toDS(), tmrw = addDays(today, 1), ymd = ds => 'fz' + ds.replace(/-/g, '');
+  const items = [];
+  if (dailyFocus) items.push({id: ymd(today), text: cutName(String(dailyFocus), 500), done: !!dailyFocusDone, due: today, star: true, ...(dailyFocusDone ? {doneAt: Date.now()} : {})});
+  if (tomorrowFocus) items.push({id: ymd(tmrw), text: cutName(String(tomorrowFocus), 500), done: false, due: tmrw, star: true});
+  const uid = CU.uid, fin = () => {
+    if (CU?.uid !== uid) return;
+    prof.focusMig = 1;
+    updateDoc(doc(db, 'users', uid, 'profile', 'main'), {focusMig: 1}).catch(e => console.warn('[LP] focusMig:', e?.code || e?.name));
+  };
+  if (!items.length) { fin(); return; }
+  const lid = tkListId();
+  // Položky se stejným id už v seznamu jsou (jiné zařízení převedlo dřív) → jen značka
+  const list = lid ? clFind(lid) : null;
+  const fresh = items.filter(i => !(list?.items || []).some(x => x && x.id === i.id));
+  if (!fresh.length) { fin(); return; }
+  _tkMigBusy = true;
+  const r = tkAddItems(fresh, lid || undefined, true);
+  if (!r) { _tkMigBusy = false; return; }
+  r.w.then(() => { fin(); popToast(t('tk.focusMoved')); })
+    .catch(e => console.warn('[LP] focusMig add:', e?.code || e?.name))
+    .finally(() => { _tkMigBusy = false; });
+}
+
+// ── Den v kalendáři: události + úkoly (náhrada showDayEventsModal) ──
+function showDaySheet(ds) {
+  if (!isDS(ds)) return;
+  const dayEvs = getEventsForDate(ds), tks = getTasksForDate(ds), today = toDS();
+  let modal = document.getElementById('m-day-events');
+  if (modal && modal.dataset.ds !== ds) { modal.remove(); modal = null; }
+  const fresh = !modal;
+  const inp = document.getElementById('tk-day-inp'), st = inp ? {v: inp.value, f: document.activeElement === inp} : null;
+  const ae = document.activeElement, fk = modal && ae && modal.contains(ae) && ae.dataset?.a1 ? {c: ae.className, a0: ae.dataset.a0, a1: ae.dataset.a1} : null;
+  const evHtml = dayEvs.map(ev => {
+    const author = getEventAuthorName(ev);
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--card2);border-radius:10px;margin-bottom:8px">'
+      + '<div style="font-size:22px">' + esc(getEvIcon(ev.type, ev)) + '</div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-weight:600;color:var(--text1);overflow-wrap:anywhere">' + evGrpPrefix(ev) + esc(ev.name) + '</div>'
+      + '<div style="font-size:12px;color:var(--text3)">' + esc(getEvLabel(ev.type, ev)) + (okEvTime(ev.time) ? ' · ⏰ ' + esc(ev.time) : '') + (ev.repeat === 'yes' ? ' · ' + tH('cal.yearly') : '') + (author ? ' · ' + tH('cal.by', {name: author}) : '') + '</div>'
+      + '</div>'
+      + '<button type="button" class="ev-act" data-a0="' + esc(JSON.stringify(ev)) + '" aria-label="' + tH('a11y.editName', {name: ev.name}) + '" onclick="openEditEvent(JSON.parse(this.dataset.a0));document.getElementById(\'m-day-events\')?.remove();">✏️</button>'
+      + '<button type="button" class="ev-act ev-del" data-a0="' + esc(ev.id) + '" aria-label="' + tH('a11y.delName', {name: ev.name}) + '" onclick="delEvent(this.dataset.a0);document.getElementById(\'m-day-events\')?.remove();">🗑️</button>'
+      + '</div>';
+  }).join('');
+  const add = _tkDayAdd === ds;
+  const html = `<div class="modal">
+    <div class="mtitle">📅 ${esc(fmtDate(new Date(ds + 'T12:00:00'), 'wdmy'))}</div>
+    ${dayEvs.length ? `<div class="tk-sec">${tH('tk.day.events')}</div><div style="margin-bottom:8px">${evHtml}</div>` : ''}
+    ${tks.length || add ? `<div class="tk-sec">${tH('tk.day.tasks')}</div>` : ''}
+    ${tks.map(e => tkRowHTML(e, today, 'day')).join('')}
+    ${add ? `<div class="tk-add" style="margin-top:8px"><input id="tk-day-inp" class="finp tk-inp" type="text" maxlength="500" enterkeyhint="done" autocomplete="off" placeholder="${tH('tk.dayPh')}" aria-label="${tH('tk.addAria')}" oninput="tkInput(this)" data-a0="${esc(ds)}" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();tkDayAdd(this.dataset.a0)}"><button type="button" class="tk-addbtn" data-a0="${esc(ds)}" onclick="tkDayAdd(this.dataset.a0)" aria-label="${tH('tk.addAria')}">＋</button></div><div class="tk-prev" id="tk-day-prev" aria-live="polite"></div>` : ''}
+    <div class="macts">
+      <button class="btn-s" onclick="document.getElementById('m-day-events').remove()">${tH('common.close')}</button>
+      ${add ? '' : `<button class="btn-s" data-a0="${esc(ds)}" onclick="tkDayAddOpen(this.dataset.a0)">${tH('tk.day.add')}</button>`}
+      <button class="btn-p" data-a0="${esc(ds)}" onclick="addEventForDay(this.dataset.a0)">${tH('cal.addDay')}</button>
+    </div>
+  </div>`;
+  if (fresh) {
+    modal = document.createElement('div');
+    modal.className = 'moverlay open';
+    modal.id = 'm-day-events';
+    modal.dataset.ds = ds;
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  } else modal.innerHTML = html;
+  const ni = document.getElementById('tk-day-inp');
+  if (ni && st) { ni.value = st.v; if (st.f) ni.focus({preventScroll: true}); }
+  if (ni) tkPrevRender('tk-day-inp');
+  if (fk) [...modal.querySelectorAll('button[data-a1]')].find(b => b.className === fk.c && b.dataset.a0 === fk.a0 && b.dataset.a1 === fk.a1)?.focus({preventScroll: true});
+  tkFlashDone(modal);
+}
+window.tkDayAddOpen = ds => { _tkDayAdd = ds; showDaySheet(ds); document.getElementById('tk-day-inp')?.focus(); };
+
 
 
 // ════════════════════════════════════════════════════════════
@@ -21864,9 +22410,10 @@ const NUDGES = [
     txt:av => { let n = 0; const td = toDS(); for (const l of habitLogs) if (l && l.done && l.date >= _hlCutoff && l.date <= td) n++;
       return {em:av.emoji, t:tH('game.intro.title', {av:av.name}), d:(n ? tH('game.intro.text', {n, lvl:gameLevel()}) + ' ' : '') + tH('game.intro.how'), btn:tH('game.intro.show')}; },
     yes:() => window.openGame() },
-  { id:'focus', when:() => accDay() >= 1 && !unlD('focus'), // po 14 dnech už Domů hlavní úkol ukazuje
-    txt:() => ({em:'🎯', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}),
-    yes:() => { unlock('focus'); window.openFocusModal('today'); } },
+  // 5.15: nabídka karty Úkoly (id 'focus' zůstává kvůli uloženým odpovědím a prof.unl)
+  { id:'focus', when:() => accDay() >= 1 && !tkCardOn(), // po 14 dnech už Domů úkoly ukazuje
+    txt:() => ({em:'✅', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}),
+    yes:() => { unlock('focus'); rDash(); window.tkFocusInput(); } },
   { id:'water', when:() => hasMod('habits') && !waterOn() && accDay() >= 7 && actN('habits') >= 5,
     txt:() => ({em:'💧', t:tH('nd.water.t'), d:tH('nd.water.d'), btn:tH('nd.on')}),
     yes:() => { lsSave('lp_wt_intro', 1); wtEnableModule(); window.sp('water'); } },
@@ -22011,7 +22558,8 @@ function simpleModOrder(){
 // Bez úprav pole neexistuje (platí výchozí pořadí). Pevné pásmo (Začínáme, nabídky, souhrn) se neupravuje.
 // 5.10: Návyky hned pod bannerem parťáka, citát a energie níž (uložené pořadí uživatele se nemění)
 // 5.13: Pití hned pod Návyky (jen výchozí pořadí, uložené dashLayout zůstává)
-const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'focus',em:'🎯'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
+// 5.15: karta Hlavní úkol (focus) nahrazena kartou Úkoly (tasks) na stejném místě
+const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'tasks',em:'✅'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
   {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},{id:'finance',em:'💰'},
   {id:'mood',em:'😊'},{id:'quote',em:'💬'},{id:'energy',em:'⭐'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
 // Ve výchozím stavu (bez vlastního dashLayout) schované herní karty: energie parťáka a Aktivní série (5.10)
@@ -22023,7 +22571,9 @@ const dashIdsOk=a=>Array.isArray(a)&&a.length<=40&&a.every(x=>typeof x==='string
 function dashLayout(){
   const l=prof?.dashLayout;
   if(!l||typeof l!=='object') return {order:[], hidden:[...DASH_HID_DEF]}; // výchozí stav (i po Obnovit výchozí)
-  return {order:dashIdsOk(l.order)?l.order:[], hidden:dashIdsOk(l.hidden)?l.hidden:[]};
+  // 5.15: uložené focus → tasks na stejné pozici (jen v paměti); schovaný focus se nepřebírá (nová karta se ukáže, Q3)
+  const o=dashIdsOk(l.order)?l.order:[], hd=dashIdsOk(l.hidden)?l.hidden:[];
+  return {order:o.includes('tasks')?o.filter(id=>id!=='focus'):o.map(id=>id==='focus'?'tasks':id), hidden:hd.filter(id=>id!=='focus')};
 }
 // Výchozí pořadí; v jednoduchém režimu karty modulů v pořadí lišty (nálada hned za Poznámkami)
 function dashDefault(){
@@ -22055,7 +22605,7 @@ function dashEditAvail(){
   const mods=prof?.modules||[];
   return DASH_IDS.filter(id=>{
     switch(id){
-      case 'focus': return unlD('focus');
+      case 'tasks': return tkCardOn();
       case 'water': return waterOn();
       case 'pc': return unlD('pc')||pcJoined();
       case 'ch': case 'quote': case 'report': return true;
@@ -22305,7 +22855,7 @@ function rDash(){
   let html=ydCardHTML(); // Doplň včerejšek (5.09): nahoře, i v jednoduchém režimu (mimo sloty)
   if(!slots){
   // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
-  if(unlD('focus')) mw.focus=focusWidgetHTML();
+  if(tkCardOn()&&!dHid.has('tasks')){ tkEnsureSubs(); mw.tasks=tkDashHTML(); } // Úkoly (5.15) místo Hlavního úkolu
   mw.water=waterWidgetHTML();
   // Úvodní karty (5.10): nejvýš jedna naráz, v pořadí priority; další se ukáže po zavření předchozí.
   // Začínáme, úroveň 10 (pojmenovat parťáka, 5.07), nabídka z fronty (jednoduchý režim) nebo novinky:
@@ -22570,7 +23120,7 @@ function rDash(){
     // 5.13: pozvaný člen v den připojení má nákup skupiny nad „Co teď“; nabídky z fronty až po kartě „Co teď“
     const qs=quickStartHTML(), gShop=dashJoinedDay0()&&shopGid()===familyId?mw.shopping||'':'';
     const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(c=>c&&c!==gShop);
-    const cards=[gShop,qs,modCards[0],qs?'':nudgeForDash(),qs?'':avNameOfferHTML(),unl('focus')?focusWidgetHTML():'',weekCardHTML(),...modCards.slice(1)].filter(Boolean)
+    const cards=[gShop,qs,modCards[0],qs?'':nudgeForDash(),qs?'':avNameOfferHTML(),unl('focus')||hasMod('checklist')?(tkEnsureSubs(),tkDashHTML()):'',weekCardHTML(),...modCards.slice(1)].filter(Boolean)
       .slice(0,gShop?4:3);
     // Karta vestavěného prohlížeče (5.13) hned pod „Co teď“, slot nezabírá
     const ia=inAppDashHTML();
@@ -22644,6 +23194,7 @@ function rDash(){
   if(dw){
     // Rozepsaný text v kartě „Co teď“ přežije překreslení (snapshot během psaní)
     const ci=document.getElementById('ct-inp'), cv=ci?{m:ci.dataset.a0,v:ci.value,f:document.activeElement===ci}:null;
+    const ti=document.getElementById('tk-inp'), tv=ti?{v:ti.value,f:document.activeElement===ti,s:ti.selectionStart,e:ti.selectionEnd}:null; // pole karty Úkoly (5.15)
     // Upozornění na ověření (5.13) leží pod kartou „Co teď“ uvnitř d-widgets: před přepsáním zpět, ať nezmizí
     const vn=document.getElementById('verify-note');
     if(vn&&vn.parentNode===dw) dw.before(vn);
@@ -22652,6 +23203,8 @@ function rDash(){
     if(vn&&intro) intro.after(vn);
     const ni=cv&&(cv.v||cv.f)?document.getElementById('ct-inp'):null;
     if(ni&&ni.dataset.a0===cv.m){ ni.value=cv.v; if(cv.f){ ni.focus({preventScroll:true}); try{ ni.setSelectionRange(cv.v.length,cv.v.length); }catch(e){} } }
+    const nt=tv&&document.getElementById('tk-inp');
+    if(nt){ nt.value=tv.v; if(tv.f){ nt.focus({preventScroll:true}); try{ nt.setSelectionRange(tv.s,tv.e); }catch(e){} } tkPrevRender('tk-inp'); }
   }
   dashBannerDay0(); // den 0 (5.13): „Začni tady 👇“ / „Jsi ve skupině …“ v bublině parťáka
   dashShieldNote(); // ohlídaná série (5.14)
@@ -23772,11 +24325,12 @@ function buildChatContext(question=''){
   // Řádek checklistu: nesplněné položky (nejvýš max), tag = popisek za názvem
   const clLine=(c,prefix,tag,max)=>{
     const items=Array.isArray(c.items)?c.items.filter(i=>i&&i.text):[];
-    const open=items.filter(i=>!i.done);
+    // Nesplněné úkoly s termínem vypisuje sekce ÚKOLY (5.15), tady jen jejich počet
+    const open=items.filter(i=>!i.done&&!isDS(i.due)), tk=items.filter(i=>!i.done&&isDS(i.due)).length, tks=tk?tA('aip.ctx.cl.tasks',{n:tk}):'';
     const head=prefix+ctxT(c.name||tA('aip.ctx.cl.list'),40)+tag;
     if(!items.length) return head+tA('aip.ctx.cl.empty');
-    if(!open.length) return head+tA('aip.ctx.cl.allDone',{n:items.length});
-    return head+tA('aip.ctx.cl.open',{open:open.length,n:items.length})+open.slice(0,max).map(i=>ctxT(i.text,60)).join('; ')+(open.length>max?'; … +'+(open.length-max):'');
+    if(!open.length) return head+(tk?tks:tA('aip.ctx.cl.allDone',{n:items.length}));
+    return head+tA('aip.ctx.cl.open',{open:open.length+tk,n:items.length})+open.slice(0,max).map(i=>ctxT(i.text,60)).join('; ')+(open.length>max?'; … +'+(open.length-max):'')+tks;
   };
   // Jídelníček: řádky dnů (days = indexy dnů od pondělí), sn./ob./ve.
   const fmtPlan=(plan,label,days)=>{
@@ -24060,16 +24614,21 @@ function buildChatContext(question=''){
     return lines;
   });
 
-  add(tA('aip.ctx.s.focus'),1,()=>{
-    const lines=[tA('aip.ctx.f.today')+(dailyFocus?ctxT(dailyFocus,100)+tA(dailyFocusDone?'aip.ctx.f.done':'aip.ctx.f.notDone'):tA('aip.ctx.f.unset'))];
-    if(tomorrowFocus) lines.push(tA('aip.ctx.f.tomorrow')+ctxT(tomorrowFocus,100));
-    const wk=getFocusWeek().map(d=>d.day+' '+(d.set?(d.done?'✅':'❌'):(d.isFuture?'–':'·')));
-    lines.push(tA('aip.ctx.f.week')+wk.join(', '));
-    lines.push(tA('aip.ctx.f.streak')+ctxNum(calcFocusStreak()));
-    const hist=(Array.isArray(focusHistory)?focusHistory:[]).filter(h=>h&&h.text&&!isNaN(new Date(h.date))).slice(0,5)
-      .map(h=>ctxDay(toDS(new Date(h.date)))+' '+ctxT(h.text,60)+(h.done?' ✅':' ❌'));
-    if(hist.length) lines.push(...ctxList(tA('aip.ctx.f.prev'),hist,3));
-    return lines;
+  // Úkoly (5.15, místo Fokusu): po termínu, dnes, zítra a dalších 7 dní; skupinové jen ze skupin, které už v kontextu jsou
+  add(tA('aip.ctx.s.tasks'),1,()=>{
+    const okG=g=>!g||(g===familyId&&famOk)||(extraIds.includes(g)&&groupModShared(g,'check'));
+    const all=tkAll().list.filter(e=>e.due&&!e.it.done&&okG(e.gid));
+    const fmt=e=>(e.it.star?'🎯 ':'')+ctxT(e.it.text,60)+' ('+ctxDay(e.due)+(e.dueT?' '+e.dueT:'')+')'+(e.gid?tA('aip.ctx.cl.shared',{group:ctxGrp(e.gid)}):'');
+    const by=(a,b)=>a.due.localeCompare(b.due)||String(a.dueT||'').localeCompare(String(b.dueT||''));
+    const tm=addDays(today,1), wk=addDays(today,8);
+    const over=all.filter(e=>e.due<today).sort(by), td=all.filter(e=>e.due===today).sort(by),
+      tw=all.filter(e=>e.due===tm).sort(by), nx=all.filter(e=>e.due>tm&&e.due<=wk).sort(by);
+    const lines=[];
+    if(over.length) lines.push(...ctxList(tA('aip.ctx.tk.over',{n:over.length}),over.slice(0,5).map(fmt),5),...ctxMore(over.length,5));
+    lines.push(td.length?tA('aip.ctx.tk.today')+td.slice(0,6).map(fmt).join('; '):tA('aip.ctx.tk.today')+tA('aip.ctx.tk.none'));
+    if(tw.length) lines.push(tA('aip.ctx.tk.tmrw')+tw.slice(0,5).map(fmt).join('; '));
+    if(nx.length) lines.push(...ctxList(tA('aip.ctx.tk.week'),nx.slice(0,6).map(fmt),3),...ctxMore(nx.length,6));
+    return all.length?lines:[];
   });
 
   add(tA('aip.ctx.s.report'),1,()=>{
