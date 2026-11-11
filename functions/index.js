@@ -2192,6 +2192,22 @@ exports.sendScheduledNotifications = onSchedule(
 // v rateLimits nový den, takže jeho včerejší volání chybí (malé podhodnocení, přijatelné).
 // Nikam se nezapisují ani nelogují uid, e-maily, jména ani texty. config/** je pro klienty zavřené.
 const STATS_BATCH = 20;
+// Dotazník po 7 dnech (5.16): allowlist odpovědí „co pomáhá“ (stejný jako SVY_IDS v app.js); cizí klíče se zahodí
+const SVY_HELP_IDS = ['shopping', 'calendar', 'habits', 'mealplan', 'goals', 'cooking', 'journal', 'checklist', 'water', 'finance', 'pets', 'share', 'ai', 'other'];
+// Souhrn odpovědí dotazníku: jen počty, součet hodnocení a mapa „co pomáhá“ (nikdy texty ani uid)
+function svyAggregate(docs) {
+  const a = {svyN: 0, svyRatingN: 0, svyRatingSum: 0, svyTextN: 0, svyHelps: {}};
+  for (const x of docs) {
+    if (!x || x.kind !== 'survey7') continue;
+    a.svyN++;
+    const r = x.rating;
+    if (Number.isInteger(r) && r >= 1 && r <= 5) { a.svyRatingN++; a.svyRatingSum += r; }
+    if (typeof x.missing === 'string' && x.missing.trim()) a.svyTextN++;
+    const hs = Array.isArray(x.helps) ? [...new Set(x.helps)].filter(k => SVY_HELP_IDS.includes(k)).slice(0, 2) : [];
+    for (const k of hs) a.svyHelps[k] = (a.svyHelps[k] || 0) + 1;
+  }
+  return a;
+}
 
 // Čas v ms z ISO řetězce, Firestore Timestamp, Date nebo čísla; jinak null
 function toMillis(v) {
@@ -2215,6 +2231,7 @@ exports.dailyStats = onSchedule(
       familiesTotal: 0, familyMembersAvg: 0, aiCallsToday: 0,
       errorLogs24h: null, errorLogsTotal: null, profileErrors: 0,
       pcParticipants: 0, pcCheckedYesterday: 0,
+      svyN: 0, svyRatingN: 0, svyRatingSum: 0, svyTextN: 0, svyHelps: {},
     };
 
     // 1) Uživatelé a profily (paralelně po dávkách; chyba u jednoho neshodí běh)
@@ -2303,13 +2320,20 @@ exports.dailyStats = onSchedule(
       }
     } catch(e) { console.error('[LP] dailyStats výzvy:', e.code || e.message); }
 
+    // 7) Dotazník po 7 dnech (5.16): odpovědi za 24 h (index feedback.createdAt už existuje), jen počty
+    try {
+      const fb = await db.collectionGroup('feedback').where('createdAt', '>=', Timestamp.fromMillis(now - DAY))
+        .select('kind', 'rating', 'helps', 'missing').get();
+      Object.assign(s, svyAggregate(fb.docs.map(d => d.data())));
+    } catch(e) { console.error('[LP] dailyStats dotazník:', e.code || e.message); }
+
     await db.doc(`config/stats_daily/days/${statDay}`).set({
       ...s, date: statDay, generatedAt: new Date().toISOString(), version: 1,
     });
     console.log(`[LP] dailyStats ${statDay}: users=${s.usersTotal} a1=${s.active1d} a7=${s.active7d} a30=${s.active30d} `
       + `new1=${s.newUsers1d} new7=${s.newUsers7d} push=${s.withPushToken} fam=${s.familiesTotal} famAvg=${s.familyMembersAvg} `
       + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors} `
-      + `pc=${s.pcParticipants} pcY=${s.pcCheckedYesterday}`);
+      + `pc=${s.pcParticipants} pcY=${s.pcCheckedYesterday} svy=${s.svyN}`);
   }
 );
 
@@ -2989,9 +3013,10 @@ exports.habitSnooze = onRequest({region: 'europe-west1', cors: WQ_ORIGINS, invok
 // ── Přehled pro správce aplikace (4.73) ──
 // Jen uid z config/admins.uids. Vrací souhrnná čísla, technické chyby a zprávy „Napiš nám“
 // se zkráceným uid (6 znaků); obrázky zpráv až v adminFeedback. Obsah se nikdy neloguje.
-const ADM_STATS_DAYS = 14, ADM_ERR_LIMIT = 50, ADM_FB_LIMIT = 30;
+const ADM_STATS_DAYS = 14, ADM_ERR_LIMIT = 50, ADM_FB_LIMIT = 50; // 5.16: 30 → 50, mezi zprávami jsou i odpovědi dotazníku
 const ADM_STAT_KEYS = ['usersTotal', 'active1d', 'active7d', 'active30d', 'newUsers1d', 'newUsers7d', 'withPushToken',
-  'familiesTotal', 'familyMembersAvg', 'aiCallsToday', 'errorLogs24h', 'pcParticipants', 'pcCheckedYesterday'];
+  'familiesTotal', 'familyMembersAvg', 'aiCallsToday', 'errorLogs24h', 'pcParticipants', 'pcCheckedYesterday',
+  'svyN', 'svyRatingN', 'svyRatingSum'];
 const ADM_FB_PATH_RE = /^users\/[A-Za-z0-9_-]{1,128}\/feedback\/[A-Za-z0-9_-]{1,64}$/;
 const admStr = (v, max) => typeof v === 'string' ? v.slice(0, max) : '';
 const admUid = ref => { const u = ref && ref.parent && ref.parent.parent; return u ? String(u.id).slice(0, 6) : ''; };
@@ -3013,18 +3038,25 @@ async function assertAppAdmin(request) {
 
 exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances: 2, timeoutSeconds: 60}, async (request) => {
   await assertAppAdmin(request);
-  const out = {stats: [], errors: [], errorsIndex: true, feedback: [], feedbackIndex: true, summary: {}, at: Date.now()};
+  const out = {stats: [], errors: [], errorsIndex: true, feedback: [], feedbackIndex: true, summary: {}, survey: null, at: Date.now()};
   const part = async (name, fn) => { try { await fn(); } catch (e) { console.error(`[LP] adminOverview ${name}:`, e.code || e.message); } };
 
   await Promise.all([
     // Statistiky: posledních 14 dní z dailyStats (jen čísla ze známých polí)
     part('stats', async () => {
       const s = await db.collection('config/stats_daily/days').orderBy('date', 'desc').limit(ADM_STATS_DAYS).get();
+      // Dotazník (5.16): součet za 14 dní; „co pomáhá“ jen z allowlistu
+      const svy = {n: 0, rn: 0, rs: 0, textN: 0, helps: {}};
       out.stats = s.docs.map(d => {
         const x = d.data() || {}, r = {date: admStr(x.date, 10) || d.id.slice(0, 10)};
         for (const k of ADM_STAT_KEYS) { const n = Number(x[k]); r[k] = x[k] === null || x[k] === undefined || !Number.isFinite(n) ? null : n; }
+        svy.n += r.svyN || 0; svy.rn += r.svyRatingN || 0; svy.rs += r.svyRatingSum || 0;
+        const tn = Number(x.svyTextN); if (Number.isFinite(tn)) svy.textN += tn;
+        const h = x.svyHelps && typeof x.svyHelps === 'object' ? x.svyHelps : {};
+        for (const k of SVY_HELP_IDS) { const v = Number(h[k]); if (Number.isFinite(v) && v > 0) svy.helps[k] = (svy.helps[k] || 0) + v; }
         return r;
       }).reverse();
+      out.survey = {n: svy.n, avg: svy.rn ? Math.round(svy.rs / svy.rn * 10) / 10 : null, textN: svy.textN, helps: svy.helps};
     }),
     // Chyby napříč uživateli (errorLogs.ts = ISO řetězec); bez indexu prázdný seznam s příznakem
     part('errors', async () => {
@@ -3039,10 +3071,12 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
     // Zprávy s obrázky (users/*/feedback): bez pole images, to jde jen přes adminFeedback
     part('feedback', async () => {
       try {
-        const s = await db.collectionGroup('feedback').where('createdAt', '<=', Timestamp.now()).orderBy('createdAt', 'desc').limit(ADM_FB_LIMIT).select('createdAt', 'v', 'msg').get();
+        const s = await db.collectionGroup('feedback').where('createdAt', '<=', Timestamp.now()).orderBy('createdAt', 'desc').limit(ADM_FB_LIMIT).select('createdAt', 'v', 'msg', 'kind', 'rating', 'missing').get();
         out.feedback = s.docs.map(d => {
-          const x = d.data() || {};
-          return {id: d.ref.path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(d.ref)};
+          const x = d.data() || {}, r = {id: d.ref.path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(d.ref)};
+          // Dotazník (5.16): druh, hodnocení 1–5 a text „Co chybí“ (max 500), ať ho klient umí oddělit od zpráv
+          if (x.kind === 'survey7') Object.assign(r, {kind: 'survey7', rating: Number.isInteger(x.rating) && x.rating >= 1 && x.rating <= 5 ? x.rating : null, missing: admStr(x.missing, 500)});
+          return r;
         });
       } catch (e) { if (admNoIndex(e)) out.feedbackIndex = false; else throw e; }
     }),

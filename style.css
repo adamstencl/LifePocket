@@ -249,6 +249,31 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 .nudge-btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .nudge-btns button{min-height:44px;padding:0 16px;width:auto}
 .nudge-btns .invite-hint-btn{margin-top:0}
+/* Dotazník po 7 dnech (5.16): karta = .invite-hint.nudge, okno #svy-modal */
+.svy-modal{max-width:440px}
+.svy-q{display:block;font-weight:700;color:var(--text);margin:16px 0 8px;font-size:16px;line-height:1.35}
+.svy-opt{font-weight:400;color:var(--text2);font-size:14px}
+.svy-h{font-size:14px;color:var(--text2);margin:-4px 0 8px}
+.svy-chips{display:flex;flex-wrap:wrap;gap:8px}
+.svy-chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border2);background:var(--card2);color:var(--text);font-size:15px;font-family:inherit;cursor:pointer;max-width:100%;overflow-wrap:anywhere}
+.svy-chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.svy-max{font-size:14px;color:var(--text2);min-height:0;margin-top:6px}
+.svy-max:empty{margin-top:0}
+.svy-rate{display:flex;justify-content:space-between;gap:6px;max-width:320px}
+.svy-rate button{width:48px;height:48px;flex-shrink:0;border-radius:50%;border:1px solid var(--border2);background:var(--card2);color:var(--text);font-size:24px;line-height:1;padding:0;cursor:pointer}
+.svy-rate button[aria-checked="true"]{border:2px solid var(--accent);transform:scale(1.08)}
+.svy-ends{display:flex;justify-content:space-between;max-width:320px;font-size:13px;color:var(--text2);margin-top:4px}
+.svy-send{margin-top:20px}
+.svy-off{font-size:14px;color:var(--text2);text-align:center;margin-top:6px}
+.svy-off:empty{display:none}
+.svy-note{font-size:14px;color:var(--text2);text-align:center;margin:10px 0 0;line-height:1.4}
+#svy-txt{width:100%;min-height:84px;font-size:16px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);padding:10px 12px;box-sizing:border-box;font-family:inherit;resize:vertical}
+.svy-done{display:flex;flex-direction:column;gap:12px;text-align:center;padding-top:8px}
+.svy-thx{font-size:18px;font-weight:700;color:var(--text);margin:0}
+.svy-more{font-size:15px;color:var(--text2);margin:0;line-height:1.45}
+.svy-done .btn-s{min-height:48px}
+.svy-chip:focus-visible,.svy-rate button:focus-visible,#svy-txt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.svy-rate button[aria-checked="true"]{transform:none}}
 .invite-hint-x{flex-shrink:0;width:44px;height:44px;margin-top:-10px;background:none;border:none;border-radius:10px;color:var(--text2);font-size:22px;cursor:pointer}
 .invite-hint-btn:focus-visible,.invite-hint-x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Měkký dotaz na upozornění (4.61): plovoucí karta nad spodní lištou, pod okny (.moverlay 500) */
@@ -2520,6 +2545,13 @@ html.lp-boot #auth-mode-lbl{visibility:hidden}
 .admov-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .admov-meta{font-size:12px;color:var(--text3);overflow-wrap:anywhere}
 .admov-msg{font-size:14px;color:var(--text);overflow-wrap:anywhere;margin-top:2px}
+.admov-svy-sum{font-size:15px;font-weight:700;color:var(--text);margin:10px 0 4px;overflow-wrap:anywhere}
+.admov-hb{list-style:none;margin:6px 0 10px;padding:0;display:flex;flex-direction:column;gap:6px}
+.admov-hb li{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:14px;color:var(--text)}
+.admov-hb-l{overflow-wrap:anywhere}
+.admov-hb-t{height:10px;border-radius:5px;background:var(--card2);border:1px solid var(--border);overflow:hidden}
+.admov-hb-t span{display:block;height:100%;background:var(--accent)}
+.admov-hb-n{font-weight:700;min-width:2ch;text-align:right}
 .admov-full{white-space:pre-wrap}
 .admov-prev{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .admov-imgs{display:flex;flex-direction:column;gap:8px}

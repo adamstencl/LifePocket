@@ -3,7 +3,7 @@ import{getAuth,signInWithPopup,GoogleAuthProvider,signOut,onAuthStateChanged,cre
 import{getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,terminate,clearIndexedDbPersistence,doc,setDoc,getDoc,getDocFromCache,collection,addDoc,updateDoc,deleteDoc,deleteField,arrayUnion,arrayRemove,runTransaction,writeBatch,onSnapshot,query,orderBy,where,getDocs,limit,serverTimestamp,Timestamp,increment,FieldPath,getCountFromServer,documentId,startAfter}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 // Messaging a Functions se načítají až za běhu (4.74), nebrzdí první vykreslení; verze musí sedět s importy výše
 const FB_SDK='https://www.gstatic.com/firebasejs/10.12.0/';
-import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
+import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,tCs,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
 import{SHOP_DICT}from'./shopdict.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
@@ -72,10 +72,12 @@ const APP_VERSION = '5.16';
 const CHANGELOG = [
   { v:'5.16', items:[
     '📤 Pozvání do skupiny je jednodušší: velké tlačítko Poslat pozvánku a nově i QR kód k naskenování',
-    '👋 Pozvánka ukáže, co se ve skupině sdílí a co zůstane jen tvoje. Po připojení se zapnou sdílené moduly a appka tě do nich rovnou vezme'
+    '👋 Pozvánka ukáže, co se ve skupině sdílí a co zůstane jen tvoje. Po připojení se zapnou sdílené moduly a appka tě do nich rovnou vezme',
+    '💬 Po prvním týdnu se na Domů objeví krátký dotazník: tři rychlé otázky, co ti pomáhá a co chybí. Odpověď čte autor appky'
   ], en:[
     '📤 Inviting to a group is easier: a big Send invite button and a new QR code to scan',
-    '👋 An invite shows what the group shares and what stays yours. After joining, the shared modules turn on and the app takes you straight there'
+    '👋 An invite shows what the group shares and what stays yours. After joining, the shared modules turn on and the app takes you straight there',
+    '💬 After your first week, a short survey appears on Home: three quick questions about what helps you and what’s missing. The app’s author reads every answer'
   ]},
   { v:'5.15', items:[
     '✅ Nová karta Úkoly na Domů: napiš „koupit žárovky zítra v 18:00“ a termín se pozná sám',
@@ -1046,6 +1048,7 @@ function checkChangelog() {
   // Jiný jazyk než čeština: jen záznamy s překladem (entry.en); bez něj se modal neukáže, ale verze se označí jako viděná
   const items = LANG === 'cs' ? entry.items : entry[LANG];
   if (!items) { lsSave('lp_seen_version', APP_VERSION); return; }
+  lsSave('lp_cl_day', toDS()); // v den novinek žádný dotazník (5.16)
   document.getElementById('app').insertAdjacentHTML('beforeend', `
     <div class="moverlay open" id="changelog-modal" onclick="if(event.target===this)closeChangelog()">
       <div class="modal" style="max-width:380px;gap:0">
@@ -1153,7 +1156,7 @@ function nudgeOpen(id) {
   if (typeof v === 'string' && v.startsWith('later:')) { const d = v.slice(6); if (!(isDS(d) && dsDiff(d, td) >= NUDGE_LATER)) return false; }
   return !(isDS(sh) && dsDiff(sh, td) < NUDGE_LATER);
 }
-// Stav nabídek z jiného zařízení: před výběrem nové nabídky obnoví prof.nudge a prof.unl ze serveru
+// Stav nabídek z jiného zařízení: před výběrem nové nabídky obnoví prof.nudge, prof.unl a prof.svy (dotazník) ze serveru
 // (nejvýš 1× za 10 min, i po návratu do appky). Ostatní pole profilu se nepřepisují.
 const NUDGE_SYNC_MS = 600000;
 let _nudgeSyncAt = 0, _nudgeSyncP = null, _nudgeSyncWant = false;
@@ -1164,10 +1167,11 @@ function nudgeSync() {
   _nudgeSyncAt = Date.now();
   const p = _nudgeSyncP = getDoc(doc(db, 'users', uid, 'profile', 'main')).then(s => {
     if (CU?.uid !== uid || !s.exists()) return;
-    const d = s.data(), before = JSON.stringify([prof.nudge, prof.unl]);
+    const d = s.data(), before = JSON.stringify([prof.nudge, prof.unl, prof.svy]);
     if (ok(d.nudge)) prof.nudge = d.nudge;
     if (ok(d.unl)) prof.unl = d.unl;
-    if (JSON.stringify([prof.nudge, prof.unl]) !== before) _nudgeSyncWant = true;
+    if (ok(d.svy)) prof.svy = d.svy; // stav dotazníku (5.16)
+    if (JSON.stringify([prof.nudge, prof.unl, prof.svy]) !== before) _nudgeSyncWant = true;
   }).catch(e => console.warn('[LP] nudge sync:', e?.code || e?.name)).finally(() => {
     if (_nudgeSyncP === p) _nudgeSyncP = null;
     if (CU?.uid !== uid) return;
@@ -1216,6 +1220,7 @@ function installUnlock(kind) {
   try { if (!localStorage.getItem('lp_inst_ok')) localStorage.setItem('lp_inst_ok', '1'); } catch (e) {}
   installGate();
   actDay(kind);
+  svyArm(); // první akce v relaci odemkne kartu dotazníku (5.16)
 }
 // Další návštěva = nové spuštění appky aspoň 30 min po prvním (lp_first_open, jen zařízení)
 function installVisitCheck() {
@@ -15704,7 +15709,7 @@ window.admOvLoad = async () => {
   if(_admOv === A) { A.busy = false; admOvRender(); }
 };
 window.admOvTab = tab => {
-  if(!_admOv || !['stats','err','fb'].includes(tab)) return;
+  if(!_admOv || !['stats','err','fb','svy'].includes(tab)) return;
   _admOv.tab = tab; _admOv.fb = null; admOvRender();
 };
 window.admOvFb = async i => {
@@ -15767,20 +15772,47 @@ function admOvFbHTML(D) {
       ${A.fb.busy ? `<p class="ch-note">${tH('pc.loading')}</p>` : imgs.length ? `<div class="admov-imgs">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(t('adm.ov.imgAlt', {n: i + 1}))}" loading="lazy">`).join('')}</div>` : `<p class="ch-note">${tH('adm.ov.noImg')}</p>`}`;
   }
   if(D.feedbackIndex === false) return `<p class="ch-note">${tH('adm.ov.noIndex')}</p>`;
-  const list = Array.isArray(D.feedback) ? D.feedback : [];
+  // Dotazník (5.16) má vlastní záložku; index i zůstává podle D.feedback (admOvFb)
+  const list = (Array.isArray(D.feedback) ? D.feedback : []).map((f, i) => ({...f, i})).filter(f => !admIsSvy(f));
   if(!list.length) return `<p class="ch-note">${tH('adm.ov.noFb')}</p>`;
-  return list.map((f, i) => `<button type="button" class="pcadm-row admov-row" data-a0="${i}" onclick="admOvFb(this.dataset.a0)"><span class="pcadm-nm"><span class="admov-prev">${f.msg ? esc(f.msg) : tH('adm.ov.noText')}</span>
+  return list.map(f => `<button type="button" class="pcadm-row admov-row" data-a0="${f.i}" onclick="admOvFb(this.dataset.a0)"><span class="pcadm-nm"><span class="admov-prev">${f.msg ? esc(f.msg) : tH('adm.ov.noText')}</span>
     <span class="pc-sub">${esc([admOvTs(f.ts), f.v, t('adm.ov.acc', {u: f.u || '?'})].filter(Boolean).join(' · '))}</span></span><span aria-hidden="true">📎</span></button>`).join('');
+}
+// Dotazník po 7 dnech (5.16): souhrn za 14 dní ze serveru (D.survey, jen počty) a poslední odpovědi ze seznamu feedback
+const admIsSvy = f => f?.kind === 'survey7' || /\/feedback\/survey7$/.test(String(f?.id || ''));
+const admSvyLbl = k => SVY_MODS.includes(k) ? (MODS.find(m => m.id === k)?.emoji || '') + ' ' + t('mod.' + k) : t('survey.k.' + k);
+function admOvSvyHTML(D) {
+  const S = D.survey && typeof D.survey === 'object' ? D.survey : null;
+  let h = '';
+  if(S && Number(S.n) > 0) {
+    const n = Number(S.n) || 0, avg = Number(S.avg);
+    h += `<p class="admov-svy-sum">${esc([t('adm.ov.svyN', {n}), Number.isFinite(avg) && avg > 0 ? t('adm.ov.svyAvg', {avg: fmtNum(Math.round(avg * 10) / 10)}) : '', t('adm.ov.svyTextN', {n: Number(S.textN) || 0})].filter(Boolean).join(' · '))}</p>`;
+    const helps = Object.entries(S.helps && typeof S.helps === 'object' ? S.helps : {}).filter(([k, v]) => SVY_IDS.includes(k) && Number(v) > 0).sort((a, b) => b[1] - a[1]);
+    if(helps.length) {
+      const max = Math.max(...helps.map(x => Number(x[1])));
+      h += `<div class="ch-h">${tH('adm.ov.svyHelps')}</div><ul class="admov-hb">${helps.map(([k, v]) =>
+        `<li><span class="admov-hb-l">${esc(admSvyLbl(k))}</span><span class="admov-hb-t" aria-hidden="true"><span style="width:${Math.round(Number(v) / max * 100)}%"></span></span><span class="admov-hb-n">${esc(fmtNum(Number(v)))}</span></li>`).join('')}</ul>`;
+    }
+  } else h += `<p class="ch-note">${tH('adm.ov.svyNoAgg')}</p>`;
+  if(D.feedbackIndex === false) return h + `<p class="ch-note">${tH('adm.ov.noIndex')}</p>`;
+  const list = (Array.isArray(D.feedback) ? D.feedback : []).filter(admIsSvy);
+  h += `<div class="ch-h">${tH('adm.ov.svyMiss')}</div>`;
+  if(!list.length) return h + `<p class="ch-note">${tH('adm.ov.svyNone')}</p>`;
+  return h + list.map(f => {
+    const r = Number(f.rating), txt = typeof f.missing === 'string' ? f.missing : (f.missing === undefined ? f.msg || '' : '');
+    return `<div class="admov-item"><div class="admov-meta">${esc([r >= 1 && r <= 5 ? '⭐ ' + r + '/5' : '', admOvTs(f.ts), f.v, t('adm.ov.acc', {u: f.u || '?'})].filter(Boolean).join(' · '))}</div>
+      <div class="admov-msg">${txt ? esc(txt) : tH('adm.ov.noText')}</div></div>`;
+  }).join('');
 }
 function admOvRender() {
   const el = document.getElementById('admov-body'), tEl = document.getElementById('admov-title'), A = _admOv;
   if(!el || !A) return;
   if(tEl) tEl.textContent = '📊 ' + t('adm.ov.title');
-  const tabs = `<div class="seg seg--block" role="group" aria-label="${tH('adm.ov.tabs')}">${[['stats','adm.ov.tStats'],['err','adm.ov.tErr'],['fb','adm.ov.tFb']].map(([v, k]) =>
+  const tabs = `<div class="seg seg--block" role="group" aria-label="${tH('adm.ov.tabs')}">${[['stats','adm.ov.tStats'],['err','adm.ov.tErr'],['fb','adm.ov.tFb'],['svy','adm.ov.tSvy']].map(([v, k]) =>
     `<button type="button" class="seg-btn${A.tab === v ? ' active' : ''}" aria-pressed="${A.tab === v}" data-a0="${v}" onclick="admOvTab(this.dataset.a0)">${tH(k)}</button>`).join('')}</div>`;
   const D = A.data;
   const body = !D ? `<p class="ch-note">${tH(A.busy ? 'pc.loading' : 'adm.ov.err')}</p>`
-    : A.tab === 'err' ? admOvErrHTML(D) : A.tab === 'fb' ? admOvFbHTML(D) : admOvStatsHTML(D);
+    : A.tab === 'err' ? admOvErrHTML(D) : A.tab === 'fb' ? admOvFbHTML(D) : A.tab === 'svy' ? admOvSvyHTML(D) : admOvStatsHTML(D);
   const foot = D?.at ? `<span class="admov-meta">${esc(admOvTs(D.at))}</span>` : '';
   el.innerHTML = tabs + body + `<div class="admov-foot">${foot}<button type="button" class="btn-s" onclick="admOvLoad()"${A.busy ? ' disabled' : ''}>🔄 ${tH(A.busy ? 'pc.loading' : 'pc.refresh')}</button></div>`;
 }
@@ -22265,6 +22297,7 @@ async function initApp(){
   wtInitLegacy();initFocus();buildNav();rDash();rAvPage();subGoals();subHabits();subModules();initSet();ss('app');sp('dashboard');
   installVisitCheck(); installGate(); renderIosGoogle();
   setTimeout(checkChangelog,1500);
+  svyStart(); // dotazník po 7 dnech: karta nejdřív za 30 s nebo po první akci (5.16)
   setTimeout(initNotifications,2000);setTimeout(checkInactivity,8000);
   {const uid=CU?.uid;setTimeout(()=>{if(CU&&CU.uid===uid){pcLoad(true);pcCheckAdmin();}},2500);} // výzva měsíce (4.63), admin podle config/admins
   // Ranní pozdrav až po prvním snapshotu návyků (nejdéle 15 s), jinak by Rex hlásil 0 návyků
@@ -22738,6 +22771,236 @@ window.nudgeYes = id => { const n = nudgeAnswer(id, 'yes'); if (n) Promise.resol
 window.nudgeLater = id => { nudgeAnswer(id, 'later:' + toDS()); };
 window.nudgeNo = id => { nudgeAnswer(id, 'no'); };
 
+// ── Dotazník po 7 dnech (5.16, docs/NAVRH-RUST.md kap. 3): karta na Domů, okno se třemi otázkami ──
+// Stav v prof.svy (profil, stejný na všech zařízeních): s7 = 'done' | 'no' | 'later:YYYY-MM-DD', n = počet „Teď ne“ (po 2. konec),
+// sh = den ukázání karty (ten den drží do odpovědi). Odpovědi v users/{uid}/feedback/survey7 (pevné ID, pravidla beze změny).
+const SVY_LATER = 7, SVY_MAX_LATER = 2, SVY_TXT_MAX = 500, SVY_DELAY = 30000;
+const SVY_MODS = ['shopping', 'calendar', 'habits', 'mealplan', 'goals', 'cooking', 'journal', 'checklist', 'water', 'finance', 'pets'];
+const SVY_IDS = [...SVY_MODS, 'share', 'ai', 'other']; // allowlist pro helps (stejný v functions/index.js SVY_HELP_IDS)
+const SVY_FACES = ['😣', '😕', '😐', '🙂', '😍'];
+const svySt = () => (prof?.svy && typeof prof.svy === 'object') ? prof.svy : {};
+let _svyArmed = false, _svyArmT = 0, _svyQ = false;
+let _svyJump = false; // „Napsat nám“: fokus po zavření okna nevracet na Domů
+let _svy = null; // rozepsané odpovědi do konce relace: {uid, helps, txt, rate, busy, sent}
+// Karta se smí poprvé ukázat až 30 s po startu nebo po první akci v relaci (installUnlock)
+function svyArm() {
+  if (_svyArmed || !CU) return;
+  _svyArmed = true;
+  if (svyDue() && document.getElementById('p-dashboard')?.classList.contains('active')) svyQueue();
+}
+function svyStart() {
+  clearTimeout(_svyArmT); _svyArmed = false;
+  const uid = CU?.uid;
+  _svyArmT = setTimeout(() => { if (CU && CU.uid === uid) svyArm(); }, SVY_DELAY);
+}
+function svyQueue() {
+  if (_svyQ) return;
+  _svyQ = true;
+  whenUiFree(() => { _svyQ = false; if (document.getElementById('p-dashboard')?.classList.contains('active')) rDash(); }, undefined, () => { _svyQ = false; });
+}
+// Čeká dotazník? Účet aspoň 7 dní (v jednoduchém režimu i 4 aktivní dny), bez odpovědi, „Teď ne“ nejvýš jednou a před 7+ dny
+function svyDue() {
+  if (!CU || !prof || navigator.onLine === false) return false;
+  if (accDay() < 7 || (isSimple() && actN('all') < 4)) return false;
+  const st = svySt(), v = st.s7;
+  if (v === 'done' || v === 'no' || (Number(st.n) || 0) >= SVY_MAX_LATER) return false;
+  if (typeof v === 'string' && v.startsWith('later:')) { const d = v.slice(6); if (!(isDS(d) && dsDiff(d, toDS()) >= SVY_LATER)) return false; }
+  return true;
+}
+// Den je volný: ne v den připojení do skupiny, novinek ani jiné nabídky z fronty (jednoduchý režim: limit 1 za 3 dny)
+function svyDayFree() {
+  const td = toDS();
+  if (lsGet('lp_inv_welcome') === td || lsGet('lp_cl_day') === td || lsGet('lp_seen_version', '') !== APP_VERSION) return false;
+  return !isSimple() || nudgeFree();
+}
+// Karta pro Domů (úvodní karty / sloty); poprvé za den až bez jiného okna, pak se zapíše do limitu nabídek
+function svyDashHTML() {
+  if (!svyDue()) return '';
+  const td = toDS();
+  if (svySt().sh !== td) {
+    if (!_svyArmed || !svyDayFree()) return '';
+    // Jednoduchý režim: čerstvý stav z jiného zařízení (stejně jako nová nabídka z fronty)
+    if (isSimple() && (_nudgeSyncP || nudgeSyncDue())) { _nudgeSyncWant = true; nudgeSync(); return ''; }
+    if (!document.getElementById('p-dashboard')?.classList.contains('active') || uiBusy()) { svyQueue(); return ''; }
+    prof.svy = {...svySt(), sh: td};
+    nudgeWrite({'svy.sh': td});
+    nudgeMark(); // bez id: počítá se do limitu 1 nabídky za 3 dny
+  }
+  return `<div class="invite-hint nudge" id="svy-card" role="region" aria-label="${tH('survey.aria')}">
+    <span class="invite-hint-em" aria-hidden="true">💬</span>
+    <div class="invite-hint-body">
+      <div class="invite-hint-t">${tH('survey.card.t')}</div>
+      <div class="invite-hint-d">${tH('survey.card.d')}</div>
+      <div class="nudge-btns">
+        <button type="button" class="invite-hint-btn" onclick="svyOpen()">${tH('survey.card.btn')}</button>
+        <button type="button" class="btn-s nudge-no" onclick="svyLater()">${tH('survey.later')}</button>
+      </div>
+    </div>
+    <button type="button" class="invite-hint-x" aria-label="${tH('survey.never')}" onclick="svyNo()">×</button>
+  </div>`;
+}
+// Odpověď na kartu: 'later:<dnes>' (+1 k počtu) nebo 'no'; karta zmizí, fokus na nadpis Domů
+function svyAnswer(v) {
+  if (!CU) return;
+  const st = svySt(), later = v.startsWith('later:');
+  prof.svy = {...st, s7: v, ...(later ? {n: (Number(st.n) || 0) + 1} : {})};
+  nudgeWrite(later ? {'svy.s7': v, 'svy.n': increment(1)} : {'svy.s7': v});
+  svyCardGone();
+}
+function svyCardGone() {
+  const card = document.getElementById('svy-card'), ae = document.activeElement;
+  const lost = !!card && (!ae || ae === document.body || card.contains(ae));
+  card?.remove();
+  if (lost) svyGreet()?.focus({preventScroll: true});
+}
+function svyGreet() { const h = document.getElementById('d-greet'); h?.setAttribute('tabindex', '-1'); return h; }
+window.svyLater = () => svyAnswer('later:' + toDS());
+window.svyNo = () => svyAnswer('no');
+// Čipy otázky 1: zapnuté moduly, sdílení (ve skupině) a parťák hned za prvními třemi, vždy „Něco jiného“
+function svyOpts() {
+  const mods = SVY_MODS.filter(hasMod).map(id => ({id, l: (MODS.find(m => m.id === id)?.emoji || '') + ' ' + t('mod.' + id)}));
+  const ours = [];
+  if (myGroupIds().length) ours.push({id: 'share', l: t('survey.o.share')});
+  if (hasMod('rex')) ours.push({id: 'ai', l: t('survey.o.ai', {av: avName()})});
+  return [...mods.slice(0, 3), ...ours, ...mods.slice(3), {id: 'other', l: t('survey.o.other')}];
+}
+const svyFilled = S => S.helps.length > 0 || S.txt.trim() !== '' || S.rate > 0;
+window.svyOpen = () => {
+  if (!CU) return;
+  if (!_svy || _svy.uid !== CU.uid) _svy = {uid: CU.uid, helps: [], txt: '', rate: 0, busy: false, sent: false};
+  const S = _svy;
+  S.sent = false; S.busy = false;
+  const opts = svyOpts();
+  S.helps = S.helps.filter(id => opts.some(o => o.id === id));
+  document.getElementById('svy-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'svy-modal'; m.className = 'moverlay open';
+  m.innerHTML = `<div class="modal svy-modal" role="dialog" aria-modal="true" aria-labelledby="svy-h">
+    <div class="gf-head"><div class="mtitle" id="svy-h">💬 ${tH('survey.title')}</div>
+      <button type="button" class="gf-x" onclick="svyClose()" aria-label="${tH('common.close')}">✕</button></div>
+    <div id="svy-body">
+      <div class="svy-q" id="svy-q1">1. ${tH('survey.q1')}</div>
+      <div class="svy-h">${tH('survey.q1h')}</div>
+      <div class="svy-chips" role="group" aria-labelledby="svy-q1">${opts.map(o => `<button type="button" class="svy-chip" data-a0="${esc(o.id)}" aria-pressed="${S.helps.includes(o.id)}" onclick="svyChip(this.dataset.a0)">${esc(o.l)}</button>`).join('')}</div>
+      <div class="svy-max" id="svy-max" aria-live="polite"></div>
+      <label class="svy-q" for="svy-txt">2. ${tH('survey.q2')}</label>
+      <textarea id="svy-txt" rows="3" maxlength="${SVY_TXT_MAX}" placeholder="${tH('survey.q2ph')}" oninput="svyTxt(this.value)"></textarea>
+      <div class="svy-q" id="svy-q3">3. ${tH('survey.q3')} <span class="svy-opt">${tH('survey.opt')}</span></div>
+      <div class="svy-rate" role="radiogroup" aria-labelledby="svy-q3" onkeydown="svyRateKey(event)">${SVY_FACES.map((f, i) => `<button type="button" role="radio" data-a0="${i + 1}" aria-checked="${S.rate === i + 1}" aria-label="${tH('survey.r.' + (i + 1))}" onclick="svyRate(this.dataset.a0)">${f}</button>`).join('')}</div>
+      <div class="svy-ends" aria-hidden="true"><span>${tH('survey.lo')}</span><span>${tH('survey.hi')}</span></div>
+      <button type="button" class="btn-p svy-send" id="svy-send" onclick="svySend()">${tH('survey.send')}</button>
+      <div class="svy-off" id="svy-off" role="status"></div>
+      <p class="svy-note">${tH('survey.note')}</p>
+    </div></div>`;
+  m.querySelector('#svy-txt').value = S.txt; // rozepsaný text z relace (value, ne HTML)
+  mountGroupSheet(m, () => document.querySelector('#svy-card .invite-hint-btn') || (_svyJump ? null : svyGreet()));
+  // Zavření bez odeslání (✕, Zpět, Esc, klepnutí vedle) = jako „Teď ne“
+  const rm = m.remove;
+  m.remove = () => { if (!m.isConnected) return; rm(); svyClosed(S); };
+  svyUpd(); svyRateSync();
+  m.querySelector('.svy-chip')?.focus();
+};
+function svyClosed(S) {
+  if (S.sent) return;
+  if (CU && CU.uid === S.uid && svyDue()) svyAnswer('later:' + toDS());
+}
+window.svyClose = () => document.getElementById('svy-modal')?.remove();
+// Tlačítko Odeslat: aktivní, jakmile je cokoli vyplněné; offline zakázané s vysvětlením
+function svyUpd() {
+  const S = _svy, b = document.getElementById('svy-send'), off = document.getElementById('svy-off');
+  if (!S || !b) return;
+  const offline = navigator.onLine === false;
+  b.disabled = S.busy || offline || !svyFilled(S);
+  b.textContent = t(S.busy ? 'survey.sending' : 'survey.send');
+  if (off) off.textContent = offline ? t('err.offline') : '';
+}
+window.addEventListener('online', svyUpd);
+window.addEventListener('offline', svyUpd);
+// Nejvýš dvě: třetí klepnutí nic nevybere, jen ukáže nápovědu (aria-live)
+window.svyChip = id => {
+  const S = _svy; if (!S || S.busy || !SVY_IDS.includes(id)) return;
+  const max = document.getElementById('svy-max');
+  if (S.helps.includes(id)) S.helps = S.helps.filter(x => x !== id);
+  else if (S.helps.length >= 2) { if (max) max.textContent = t('survey.q1max'); return; }
+  else S.helps.push(id);
+  if (max) max.textContent = '';
+  document.querySelectorAll('#svy-modal .svy-chip').forEach(b => b.setAttribute('aria-pressed', String(S.helps.includes(b.dataset.a0))));
+  svyUpd();
+};
+window.svyTxt = v => { if (_svy) { _svy.txt = String(v || '').slice(0, SVY_TXT_MAX); svyUpd(); } };
+// Hodnocení 1–5: druhé klepnutí na vybrané zruší; v radiogroup tabulátorem jen jedno tlačítko (vybrané nebo první)
+window.svyRate = v => {
+  const S = _svy, n = Number(v); if (!S || S.busy || !(n >= 1 && n <= 5)) return;
+  S.rate = S.rate === n ? 0 : n;
+  svyRateSync();
+  svyUpd();
+};
+function svyRateSync() {
+  const S = _svy, bs = [...document.querySelectorAll('#svy-modal .svy-rate button')];
+  bs.forEach(b => { const on = Number(b.dataset.a0) === S?.rate; b.setAttribute('aria-checked', String(on)); b.tabIndex = on || (!S?.rate && b.dataset.a0 === '1') ? 0 : -1; });
+}
+window.svyRateKey = e => {
+  const d = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[e.key];
+  const b = e.target.closest?.('.svy-rate button');
+  if (!d || !b || !_svy) return;
+  e.preventDefault();
+  const n = Math.min(5, Math.max(1, Number(b.dataset.a0) + d));
+  _svy.rate = n; svyRateSync(); svyUpd();
+  document.querySelector(`#svy-modal .svy-rate button[data-a0="${n}"]`)?.focus();
+};
+// Shrnutí pro přehled správce: vždy česky (čte ho autor), max 2000 znaků
+function svyMsg(helps, txt, rating) {
+  const lbl = id => SVY_MODS.includes(id) ? tCs('mod.' + id) : tCs('survey.k.' + id);
+  return [tCs('survey.msg.title'), rating ? tCs('survey.msg.rate', {n: rating}) : '', helps.length ? tCs('survey.msg.helps', {list: helps.map(lbl).join(', ')}) : '',
+    txt ? tCs('survey.msg.miss', {txt}) : ''].filter(Boolean).join(' · ').slice(0, 2000);
+}
+window.svySend = async () => {
+  const S = _svy;
+  if (!S || S.busy || S.sent || !CU || CU.uid !== S.uid || !svyFilled(S)) return;
+  if (navigator.onLine === false) { svyUpd(); return; } // offline: nic nezapisovat
+  const helps = S.helps.filter(x => SVY_IDS.includes(x)).slice(0, 2), txt = S.txt.trim().slice(0, SVY_TXT_MAX);
+  const rating = S.rate >= 1 && S.rate <= 5 ? S.rate : null, uid = CU.uid;
+  S.busy = true; svyUpd();
+  try {
+    // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu (pevné ID, opakování nic nezdvojí)
+    await Promise.race([
+      setDoc(doc(db, 'users', uid, 'feedback', 'survey7'), {createdAt: serverTimestamp(), kind: 'survey7', v: APP_VERSION, lang: LANG,
+        accDay: Math.min(accDay(), 9999), helps, missing: txt, rating, grp: myGroupIds().length > 0, msg: svyMsg(helps, txt, rating)}),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+    ]);
+  } catch (e) {
+    console.warn('[LP] dotaznik:', e?.code || e?.message);
+    S.busy = false; svyUpd();
+    if (document.getElementById('svy-modal')) toast(t('survey.fail'));
+    return;
+  }
+  S.busy = false; S.sent = true;
+  if (CU?.uid !== uid) return;
+  prof.svy = {...svySt(), s7: 'done'};
+  nudgeWrite({'svy.s7': 'done'});
+  document.getElementById('svy-card')?.remove();
+  const body = document.getElementById('svy-body');
+  if (!body) return;
+  // Poděkování (okno se nezavírá samo): 4–5 → doporučit appku, 1–2 → napsat nám
+  body.innerHTML = `<div class="svy-done" role="status"><p class="svy-thx">${tH('survey.thanks')}</p>
+    ${rating >= 4 ? `<p class="svy-more">${tH('survey.shareQ')}</p><button type="button" class="btn-p" onclick="shareApp()">${tH('survey.shareBtn')}</button>`
+    : rating && rating <= 2 ? `<p class="svy-more">${tH('survey.sorry')}</p><button type="button" class="btn-p" onclick="svyWrite()">${tH('survey.writeBtn')}</button>` : ''}
+    <button type="button" class="btn-s svy-x" onclick="svyClose()">${tH('common.close')}</button></div>`;
+  body.querySelector('button')?.focus();
+};
+// „Napsat nám“: formulář v Nastavení s předvyplněným textem otázky 2 (jen když je pole prázdné)
+window.svyWrite = () => {
+  const txt = _svy?.txt.trim() || '';
+  _svyJump = true;
+  window.svyClose();
+  setTimeout(() => { _svyJump = false; }, 0);
+  window.setJump('set-sec-contact');
+  contactPrefill();
+  const ta = document.querySelector('.contact-form textarea[name=message]');
+  if (ta && !ta.value && txt) ta.value = txt;
+  setTimeout(() => ta?.focus({preventScroll: true}), 50);
+};
+
 // Pořadí modulů pro lištu a sloty Domů v jednoduchém režimu: moduly odpovědi z onboardingu (ONB_START, 4.69),
 // jinak hlavní moduly šablony (NAV_TPL), pak ostatní zapnuté v pořadí MODS
 function simpleModOrder(){
@@ -23053,8 +23316,9 @@ function rDash(){
   // Úvodní karty (5.10): nejvýš jedna naráz, v pořadí priority; další se ukáže po zavření předchozí.
   // Začínáme, úroveň 10 (pojmenovat parťáka, 5.07), nabídka z fronty (jednoduchý režim) nebo novinky:
   // Pitný režim (4.62, šablona Zdraví / návyk o pití výš), upozornění ze skupin (4.38), body a úrovně (4.40)
-  html+=dashIntroHTML([avNameOfferHTML,
-    ...(simple?[nudgeForDash]:[()=>wtIntroSlot(true),groupNotifIntroHTML,gameIntroHTML,()=>wtIntroSlot(false)])]);
+  // Dotazník po 7 dnech (5.16): poprvé až za ostatními úvodními kartami (žádná výměna karty během relace), ukázaný dnes drží místo
+  html+=dashIntroHTML([avNameOfferHTML,()=>svySt().sh===toDS()?svyDashHTML():'',
+    ...(simple?[nudgeForDash]:[()=>wtIntroSlot(true),groupNotifIntroHTML,gameIntroHTML,()=>wtIntroSlot(false)]),svyDashHTML]);
   html+=inAppDashHTML(); // vestavěný prohlížeč Messengeru (5.13)
   // Týdenní souhrn od společníka (pondělí a úterý, 4.41)
   html+=weekCardHTML();
@@ -23313,7 +23577,7 @@ function rDash(){
     // 5.13: pozvaný člen v den připojení má nákup skupiny nad „Co teď“; nabídky z fronty až po kartě „Co teď“
     const qs=quickStartHTML(), gShop=dashJoinedDay0()&&shopGid()===familyId?mw.shopping||'':'';
     const modCards=simpleModOrder().flatMap(id=>id==='journal'?[mw.journal,mw.mood]:[mw[id]]).filter(c=>c&&c!==gShop);
-    const cards=[gShop,qs,modCards[0],qs?'':nudgeForDash(),qs?'':avNameOfferHTML(),unl('focus')||hasMod('checklist')?(tkEnsureSubs(),tkDashHTML()):'',weekCardHTML(),...modCards.slice(1)].filter(Boolean)
+    const cards=[gShop,qs,modCards[0],qs?'':nudgeForDash()||svyDashHTML(),qs?'':avNameOfferHTML(),unl('focus')||hasMod('checklist')?(tkEnsureSubs(),tkDashHTML()):'',weekCardHTML(),...modCards.slice(1)].filter(Boolean)
       .slice(0,gShop?4:3);
     // Karta vestavěného prohlížeče (5.13) hned pod „Co teď“, slot nezabírá
     const ia=inAppDashHTML();

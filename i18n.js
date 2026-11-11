@@ -126,6 +126,12 @@ export function t(key, vars) {
   }
   return String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? numStr(vars[k]) : ''));
 }
+// tCs(): vždy česky, bez ohledu na jazyk appky (texty pro správce, např. shrnutí dotazníku 5.16). Do HTML ne.
+export function tCs(key, vars) {
+  vars = vars || {};
+  const v = pick(CS, PR_CS || plural('cs'), key, vars);
+  return v == null ? key : String(v).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : ''));
+}
 // tA(): text promptu pro AI (i18n/ai-*.js). Proměnné beze změny (String, žádné formátování čísel ani escapování),
 // výsledek nikdy nejde do HTML. Plurál jako u t() (objekt, vars.n). Chybějící → čeština → klíč.
 export function tA(key, vars) {
