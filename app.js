@@ -67,8 +67,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.14.1';
+const APP_VERSION = '5.14.2';
 const CHANGELOG = [
+  { v:'5.14.2', items:[
+    '🛠️ Oprava: aplikace se v některých případech nespustila'
+  ], en:[
+    '🛠️ Fix: the app sometimes didn’t start'
+  ]},
   { v:'5.14.1', items:[
     '🔒 Souhlas se zpracováním údajů o zdraví (GDPR) – jednorázové potvrzení, v Nastavení ho můžeš odvolat'
   ], en:[
@@ -1663,7 +1668,23 @@ function hcRender(){
     </div>`;
 }
 function hcFocus(){ setTimeout(()=>document.getElementById('hc-title')?.focus({preventScroll:true}),60); }
-function hcShow(){ _hcView='ask'; _hcBusy=false; hcRender(); ss('s-consent'); hcFocus(); }
+// 5.14.2: starší index.html z cache prohlížeče (nová app.js) obrazovku souhlasu nemá → doplnit, jinak zůstane prázdná stránka
+function hcEnsureScreen(){
+  if(document.getElementById('hc-card')) return;
+  document.getElementById('s-consent')?.remove();
+  const s=document.createElement('div'); s.className='screen'; s.id='s-consent';
+  s.innerHTML='<div class="card hc-card" id="hc-card" role="dialog" aria-modal="true" aria-labelledby="hc-title" aria-describedby="hc-desc"></div>';
+  document.body.appendChild(s);
+}
+// Totéž pro zaškrtávátko v kroku 1 (bez něj by nový uživatel nešel dál)
+function hcEnsureOnbChk(){
+  const b=document.getElementById('btn-s1'); if(!b||document.getElementById('u-hc')) return;
+  const ref=b.previousElementSibling?.classList.contains('btn-s')?b.previousElementSibling:b;
+  ref.insertAdjacentHTML('beforebegin',`<label class="hc-chk" for="u-hc"><input type="checkbox" id="u-hc" aria-describedby="u-hc-err" onchange="hcChk()"><span>${tH('hc.text')}</span></label>
+    <a class="hc-link hc-link--chk" href="${tH('hc.url')}" target="_blank" rel="noopener">${tH('hc.link')}</a>
+    <div class="hc-err" id="u-hc-err" role="alert" hidden>${tH('hc.need')}</div>`);
+}
+function hcShow(){ _hcView='ask'; _hcBusy=false; hcEnsureScreen(); hcRender(); ss('s-consent'); hcFocus(); }
 window.hcDecline=()=>{ if(_hcBusy) return; _hcView='no'; hcRender(); hcFocus(); };
 window.hcBack=()=>{ _hcView='ask'; hcRender(); hcFocus(); };
 window.hcAgree=async()=>{
@@ -6425,6 +6446,7 @@ window.hcChk=()=>{ const c=document.getElementById('u-hc'); if(c?.checked){ cons
 window.v1=()=>{const nick=document.getElementById('u-nick').value.trim();document.getElementById('btn-s1').disabled=!nick;};
 // Krok 1 (5.10): křestní jméno z účtu Google předvyplnit; pozvaný má jen tento krok (tlačítko rovnou dokončí)
 function onbStep1Init(){
+  hcEnsureOnbChk(); // 5.14.2: starší index.html z cache
   const inp=document.getElementById('u-nick');
   if(inp&&!inp.value.trim()&&(CU?.providerData||[]).some(p=>p?.providerId==='google.com')){
     const first=String(CU?.displayName||'').trim().split(/\s+/)[0]||'';
