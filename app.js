@@ -2121,7 +2121,7 @@ onAuthStateChanged(auth,async u=>{
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
 const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
-const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
+const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_','lp_tknotif_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
 function cleanDatedLocalKeys(olderThanDays=2){
   try{
@@ -7246,6 +7246,7 @@ window.addEventListener('appinstalled', () => setTimeout(updateInstallBtn, 0));
 window.saveNotifSettings = () => {
   const m = document.getElementById('notif-morning');
   const ev = document.getElementById('notif-evening');
+  const oldMorning = notifSettings.morning;
   if (m) notifSettings.morning = m.value || '08:00';
   if (ev) notifSettings.evening = ev.value || '21:00';
   notifSettings.habits = document.getElementById('nt-habits')?.checked ?? true;
@@ -7262,6 +7263,7 @@ window.saveNotifSettings = () => {
   if (CU && prof) {
     prof.notifSettings = notifSettings;
     setDoc(doc(db,'users',CU.uid,'profile','main'), {notifSettings}, {merge:true}).catch(()=>{});
+    if (notifSettings.morning !== oldMorning) taskRemMorningSync();
   }
   if (notifSettings.yday === false) ydClose();
   ydCardSync();
@@ -19663,10 +19665,21 @@ window.tkOpen = (listId, itemId) => {
   const due = isDS(it.due) ? it.due : null;
   _tkEd = {l: list.id, id: it.id, text: it.text || '', due, dueT: due && TP_RE.test(it.dueT || '') ? it.dueT : null, star: !!(due && it.star),
     rem: !!(prof?.taskRem && typeof prof.taskRem === 'object' && prof.taskRem[it.id]), gid: list._family ? list._gid : null, ln: list.name || ''};
+  tkEnsureModal();
   tkEdRender();
   const ov = document.getElementById('m-task');
   if (ov && !ov.classList.contains('open')) { om('m-task'); setTimeout(() => document.getElementById('tk-text')?.focus(), 60); }
 };
+// Starší index.html z cache (nová app.js) modal úkolu nemá → doplnit se stejným markupem (jako hcEnsureScreen)
+function tkEnsureModal() {
+  if (document.getElementById('m-task-box')) return;
+  document.getElementById('m-task')?.remove();
+  const ov = document.createElement('div'); ov.className = 'moverlay'; ov.id = 'm-task';
+  ov.setAttribute('onclick', "if(event.target===this)cm('m-task')");
+  ov.innerHTML = '<div class="modal tk-ed" id="m-task-box" role="dialog" aria-modal="true" aria-labelledby="m-task-t"></div>';
+  const ts = document.getElementById('toast');
+  ts ? ts.before(ov) : document.body.appendChild(ov);
+}
 function tkEdRead() {
   const e = _tkEd, ta = document.getElementById('tk-text');
   if (e && ta) e.text = ta.value;
@@ -19839,6 +19852,22 @@ function taskRemSync() {
     const at = tkRemAt(it.due, dueT);
     if (at <= now) { patch['taskRem.' + id] = deleteField(); delete next[id]; continue; }
     next[id] = {l: r.l, g: loc.g, d: it.due, t: dueT, at};
+    patch['taskRem.' + id] = next[id];
+  }
+  if (!Object.keys(patch).length) return;
+  prof.taskRem = next;
+  tkRemWrite(patch);
+}
+// Po změně ranního času: přepočítat čas připomínek bez času (ostatní hlídá taskRemSync)
+function taskRemMorningSync() {
+  if (!CU || !prof) return;
+  const map = tkRemMap(), patch = {}, next = {...map}, now = Date.now();
+  for (const [id, r] of Object.entries(map)) {
+    if (!TK_ID_RE.test(id) || !r || typeof r !== 'object' || r.t || !isDS(r.d) || typeof r.at !== 'number') continue;
+    const at = tkRemAt(r.d, '');
+    if (at === r.at) continue;
+    if (at <= now) { patch['taskRem.' + id] = deleteField(); delete next[id]; continue; } // ráno už bylo
+    next[id] = {...r, at};
     patch['taskRem.' + id] = next[id];
   }
   if (!Object.keys(patch).length) return;

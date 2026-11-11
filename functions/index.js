@@ -2032,15 +2032,19 @@ exports.sendScheduledNotifications = onSchedule(
         // ── Úkoly (5.15): index v profilu, 0 čtení navíc; seznam se čte jen u splatné připomínky ──
         const tr = prof.taskRem && typeof prof.taskRem === 'object' && !Array.isArray(prof.taskRem) ? prof.taskRem : null;
         if (tr && ns.tasks !== false) {
-          const nowMs = runDate.getTime(), del = [], due = [];
+          const nowMs = runDate.getTime(), del = [], due = [], bad = [];
           for (const [id, r] of Object.entries(tr).slice(0, 60)) {
-            if (!TASK_ID_RE.test(id) || !r || typeof r !== 'object' || typeof r.at !== 'number') { del.push(id); continue; }
+            if (!id) continue;                                  // prázdný klíč nejde přes FieldPath smazat → jen přeskočit
+            if (!TASK_ID_RE.test(id) || !r || typeof r !== 'object' || typeof r.at !== 'number') { bad.push(id); continue; }
             if (r.at > nowMs) continue;                         // ještě ne
-            del.push(id);                                       // splatné i propadlé se vždy odeberou
             if (nowMs - r.at <= TASK_STALE) due.push([id, r]);
+            else del.push(id);                                  // propadlé se odeberou bez pushe
           }
-          const send = [];
-          for (const [id, r] of due.slice(0, 5)) {
+          // Max. 5 za běh (nejstarší první); zbylé splatné zůstávají v indexu na další běh
+          due.sort((x, y) => x[1].at - y[1].at);
+          const proc = due.slice(0, 5), send = [];
+          for (const [id] of proc) del.push(id);
+          for (const [id, r] of proc) {
             try {
               let path;
               const l = typeof r.l === 'string' && TASK_ID_RE.test(r.l) ? r.l : '';
@@ -2062,6 +2066,11 @@ exports.sendScheduledNotifications = onSchedule(
             // Klíče dřív než push (jako waterSent): když zápis selže, nic se neposílá → nikdy dvakrát
             try { await db.doc(`users/${uid}/profile/main`).update(...del.flatMap(id => [new FieldPath('taskRem', id), FieldValue.delete()])); }
             catch(e) { console.error(`[LP] taskRem uid=${uid}:`, e.message); send.length = 0; }
+          }
+          if (bad.length) {
+            // Neplatné záznamy zvlášť: jejich chyba nesmí zablokovat platné připomínky
+            try { await db.doc(`users/${uid}/profile/main`).update(...bad.flatMap(id => [new FieldPath('taskRem', id), FieldValue.delete()])); }
+            catch(e) { console.error(`[LP] taskRem neplatné uid=${uid}:`, e.message); }
           }
           for (const [id, text, r] of send) {
             try {
