@@ -83,7 +83,7 @@ const CHANGELOG = [
     '⚡ Podpora projektu: částka u Lightning už nemění QR platbu převodem',
     '✨ Začátek je jednodušší: karta Co teď ti představí všechny tři vybrané moduly',
     '♿ Lepší ovládání klávesnicí a čtečkou obrazovky při výběru parťáka a modulů',
-    '🏠 Nová úvodní stránka: náhled aplikace, jasně řečeno, že se sdílí jen to, co sami vyberete, a tlačítko Vyzkoušet zdarma',
+    '🏠 Nová úvodní stránka: hned vidíš, že je LifePocket pro celou domácnost, že sdílíš jen to, co chceš, a že AI parťák vidí souvislosti',
     '🤖 Parťák při prvním otevření chatu vysvětlí, jaká data dostává a kam jdou',
     '🔒 Automatickou AI analýzu zápisků si teď zapínáš sám/sama: zeptáme se před první analýzou, změníš ji v Nastavení → Ty a parťák',
     '✉️ Ověření e-mailu a obnova hesla mají vlastní stránku přímo v LifePocketu'
@@ -100,7 +100,7 @@ const CHANGELOG = [
     '⚡ Support: the Lightning amount no longer changes the bank transfer QR code',
     '✨ Easier start: the What now card introduces all three modules you picked',
     '♿ Better keyboard and screen reader support when choosing your companion and modules',
-    '🏠 New welcome page: a preview of the app, a clear note that only what you choose is shared, and a Try it free button',
+    '🏠 New welcome page: see right away that LifePocket is for your whole household, that you share only what you want, and that your AI companion connects the dots',
     '🤖 The first time you open the chat, your companion explains what data it gets and where it goes',
     '🔒 Automatic AI analysis of journal entries is now up to you: we ask before the first analysis, and you can change it in Settings → You & your buddy',
     '✉️ Email verification and password reset now have their own page right in LifePocket'
