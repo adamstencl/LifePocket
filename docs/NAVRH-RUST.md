@@ -1,6 +1,578 @@
-# Návrh UI pro růst (k bodům ze STRATEGIE.md)
+# Návrh UI pro růst
 
-Autor: ux-designer · 2026-10-07 · stav: návrh, nic není implementováno.
+Autor: ux-designer · 2026-11-11 · výchozí verze 5.15 (větev `claude/awesome-hypatia-72pnwx`) · stav: **návrh, nic není implementováno**.
+
+Kolo 2 (tento dokument nahoře): 1. landing kolem jedné věty, 2. pozvání do skupiny odkazem, 3. krátký dotazník po 7 dnech.
+Kolo 1 (4.27, implementováno) je níže v části **Archiv**.
+
+Cílovka: české rodiny a domácnosti. Odlišnost, kterou musí landing i pozvánka říct během 3 sekund:
+1. **Celá domácnost na jednom místě** (česky, zdarma, bez reklam),
+2. **sdílí se jen to, co si vyberete** (nákup ano, deník ne),
+3. **AI parťák vidí souvislosti** napříč moduly (kalendář + jídelníček + nákup).
+
+**Pravidla Firestore:** žádný ze tří bodů nevyžaduje změnu `firestore.rules` ani `firestore.indexes.json`. Volitelný bod 2.6 (push „X se připojil/a“) potřebuje jen novou Cloud Function.
+
+Společné pro kodéra:
+- Uživatelský text do HTML přes `esc()` / `textContent`, do handlerů přes `data-aN`.
+- Dotykové plochy min. 44×44 px, vstupy `font-size:16px`.
+- Barvy jen přes `var(--…)` (sunshine, dark-gold, tangerine). Text na `var(--accent)` přes `--on-accent` (zavedeno v kole 1).
+- Klíče `cs.js` a `en.js` musí sedět 1:1 (hlídá `.github/scripts/ci-check.js`).
+- Verze: `APP_VERSION` 5.15 → 5.16, záznam v `CHANGELOG`, bump `CACHE` v sw.js. Kódovat body 1, 2 a 3 jako tři oddělené úkoly (všechny sahají do app.js, jen jeden koder naráz).
+
+---
+
+## 1. Úvodní stránka (landing)
+
+### 1.1 Co je dnes špatně (5.15)
+Stávající pořadí v `#lp-landing`: ikona 96 px → `LifePocket` → H1 „Jedna appka místo deseti.“ → podtitulek o 2 větách (≈ 150 znaků, na 360 px 5 řádků) → štítek „Zdarma, bez reklam, česky“ → 2 tlačítka → „Co v appce najdeš“ (5 karet) → snímky → druhé CTA → slib → právní odkazy → jazyk.
+
+- **H1 neříká, pro koho appka je.** „Jedna appka místo deseti“ je chytlavé, ale nezazní v ní domácnost/rodina, tedy hlavní odlišnost. Ta je až v podtitulku a v 1. kartě.
+- **Podtitulek dělá práci H1 i seznamu funkcí** (vyjmenovává moduly a ještě vysvětluje sdílení). Na mobilu odsune tlačítko „Začít zdarma“ pod ohyb (ikona 96 + logo 34 px + H1 2 řádky + 5 řádků podtitulku + štítek ≈ 520 px při výšce okna 560 px).
+- **AI parťák s „vidí souvislosti“ chybí úplně.** Karta 3 říká jen „poradí recept“, to umí každý chatbot.
+- 5 karet funkcí míchá odlišnosti (sdílený nákup, soukromí) s běžnými věcmi (návyky, kalendář). Odlišnosti zaniknou.
+
+### 1.2 Varianty H1
+
+| | CS | EN | Pro | Proti |
+|---|---|---|---|---|
+| A | **Celá domácnost v jedné appce.** | **Your whole household in one app.** | Říká *pro koho* i *co* (jedno místo); krátká (29 znaků, na 360 px 2 řádky) | „domácnost“ zní trochu úředně |
+| B | Jedna appka místo deseti. Pro celou rodinu. | One app instead of ten. For the whole family. | Navazuje na dosavadní značku, OG obrázek a meta | Dvě věty, 3 řádky na mobilu; „deset appek“ je slib bez obsahu |
+| C | Nákup, kalendář i večeře. Konečně společně. | Shopping, calendar and dinner. Finally together. | Konkrétní, emoční | Vyjmenovává jen 3 moduly (návyky, cíle, AI vypadnou); „konečně“ je klišé |
+
+**Doporučuji A.** Je nejkratší, říká hlavní odlišnost hned a podtitulek pak může nést zbylé dvě (výběrové sdílení + AI). „Jedna appka místo deseti“ nezahazujeme: zůstává v OG obrázku a v `og:title` (sdílené odkazy ji už nesou, změna obrázku = nový obrázek a cache WhatsAppu, nestojí to za to).
+
+### 1.3 Finální texty
+
+| Klíč | CS | EN |
+|---|---|---|
+| `landing.hero` (změna) | Celá domácnost v jedné appce. | Your whole household in one app. |
+| `landing.sub` (změna) | Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš. | Shopping, calendar, meal plan and habits. You share with your family only what you choose. |
+| `landing.trust` (nový, nahrazuje `landing.free`) | Zdarma · bez reklam · česky | Free · no ads · made in Czechia |
+| `landing.start` | Začít zdarma | Get started free |
+| `landing.haveAccount` | Mám účet | I have an account |
+| `landing.why` (nový H2) | Proč LifePocket | Why LifePocket |
+| `landing.w1t` | 🏠 Pro celou domácnost | 🏠 For the whole household |
+| `landing.w1d` | Jeden nákupní seznam, společný kalendář a plán jídel. Co koupí partner, tobě se hned odškrtne. | One shopping list, a shared calendar and a meal plan. When your partner buys something, it’s ticked off for you too. |
+| `landing.w2t` | 🔒 Sdílíš jen to, co chceš | 🔒 Share only what you want |
+| `landing.w2d` | Nákup se skupinou ano, deník a návyky jen pro tebe. Nic se nesdílí samo. | Shopping with your group, journal and habits just for you. Nothing is shared automatically. |
+| `landing.w3t` | ✨ Parťák, který vidí souvislosti | ✨ A companion who connects the dots |
+| `landing.w3d` | AI parťák zná tvůj kalendář, jídelníček i nákup. Na nabitý čtvrtek ti navrhne rychlou večeři a suroviny přidá do seznamu. | Your AI companion knows your calendar, meal plan and shopping list. For a busy Thursday it suggests a quick dinner and adds the ingredients to your list. |
+| `landing.preview` | Jak appka vypadá | A look inside |
+| `landing.features` (změna) | A k tomu | And there’s more |
+| (čipy modulů) | stávající klíče `mod.habits`, `mod.goals`, `mod.journal`, `mod.cooking`, `mod.water`, `mod.pets`, `mod.finance`, `mod.checklist` | (stejné klíče) |
+| `landing.try` | Vyzkoušet LifePocket zdarma → | Try LifePocket for free → |
+| `landing.promise` (zkrácení) | Žádné reklamy ani placený tarif. Začni jedním modulem, další přidáš kdykoli. | No ads, no paid plan. Start with one module and add more any time. |
+
+Poznámky k textům:
+- `w3d` slibuje jen to, co appka umí (ověřeno): kontext AI obsahuje kalendář, jídelníček i nákup (`buildChatContext`) a z chatu jde vložit suroviny do nákupu (`chat.ingAdded`, app.js ř. ~24337).
+- EN „made in Czechia“ místo „česky“ (pro anglického čtenáře je čeština jako jazyk UI nezajímavá, původ ano).
+- Klíče `landing.b1t`–`b5d` a `landing.free` smazat z obou slovníků (ci-check hlídá jen shodu, ne nepoužité klíče; mrtvé klíče nenechávat).
+
+### 1.4 Pořadí sekcí (před / po, telefon 360×560 viditelné plochy)
+
+```
+PŘED (5.15)                          PO (5.16)
+┌────────────────────────────┐      ┌────────────────────────────┐
+│        [ikona 96]          │      │   [ikona 56] LifePocket    │  ← ikona a logo v jednom řádku
+│        LifePocket          │      │                            │
+│ Jedna appka místo deseti.  │      │  Celá domácnost            │  H1
+│ Návyky, kalendář, nákupy   │      │  v jedné appce.            │
+│ i deník na jednom místě.   │      │  Nákupy, kalendář, jídel-  │  sub (2–3 řádky)
+│ Plánuj svůj den a s rodi-  │      │  níček i návyky. S rodinou │
+│ nou sdílej jen to, co…     │      │  sdílíš jen to, co si vy-  │
+│ …kalendář, úkoly.          │      │  bereš.                    │
+│ (Zdarma, bez reklam, česky)│      │  [     Začít zdarma     ]  │  ← nad ohybem, palcem
+│ [     Začít zdarma     ]   │ ohyb │  [       Mám účet       ]  │
+├────────────────────────────┤──────│  Zdarma · bez reklam · česky│
+│ [       Mám účet       ]   │      ├────────────────────────────┤
+│ Co v appce najdeš          │      │ Proč LifePocket            │  3 karty odlišností
+│ 🛒 Nákup pro celou rodinu  │      │ 🏠 Pro celou domácnost     │
+│ 🔥 Návyky a cíle           │      │ 🔒 Sdílíš jen to, co chceš │
+│ ✨ AI společník            │      │ ✨ Parťák, který vidí sou… │
+│ 🗓️ Kalendář a připomínky   │      │ Jak appka vypadá           │
+│ 🔒 Soukromé, dokud…        │      │ [snímek][snímek][snímek]   │  beze změny
+│ Jak appka vypadá [snímky]  │      │ A k tomu                   │  čipy modulů (2–3 řádky)
+│ [Vyzkoušet zdarma →]       │      │ 🔥Návyky 🏆Cíle 📒Deník …  │
+│ Bez reklam. Bez placeného… │      │ [Vyzkoušet LifePocket →]   │
+│ Ochrana · Podmínky         │      │ Žádné reklamy ani placený… │
+│ Čeština · English          │      │ Ochrana · Podmínky         │
+└────────────────────────────┘      │ Čeština · English          │
+                                    └────────────────────────────┘
+```
+
+Co **vyhodit / zkrátit**:
+- Karty „Návyky a cíle“ a „Kalendář a připomínky“ jako samostatné karty pryč → do čipů „A k tomu“ (kalendář je v kartě 🏠).
+- Štítek `.lp-free` jako samostatný „pill“ nad tlačítky pryč → jedna řádka `.lp-trust` **pod** tlačítky (tlačítko je pak o ~44 px výš).
+- Ikona 96 px → 56 px vedle loga (ušetří ~80 px). Animace `float` u malé ikony vypnout (`prefers-reduced-motion` už respektuje, ale u 56 px vedle textu působí neklidně).
+- Promise o polovinu kratší.
+
+Co **zůstává beze změny**: všechna ID (`lp-landing`, `lp-hero-t`, `lp-start-btn`, `lp-try-btn`, `lp-try-wrap`, `lp-invite`, `lp-invite-t`, `auth-panel` …), rychlý start v inline skriptu, výměna `lp-try-wrap` ve vestavěném prohlížeči (`initInAppBrowser`), třída `lp-inapp-on`, snímky, právní odkazy, volba jazyka.
+
+### 1.5 HTML (index.html, náhrada části `#lp-landing` od ikony po `lp-legal`)
+
+```html
+<!-- Hlavička: ikona + jméno v řádku (5.16). .app-icon-wrap a .logo-name zůstávají kvůli lp-inapp-on a auth panelu -->
+<div class="lp-brand">
+  <div class="app-icon-wrap"><img class="app-icon" width="96" height="96" src="img/app-icon.jpg" alt=""></div>
+  <div class="logo-name">LifePocket</div>
+</div>
+
+<section id="lp-landing" aria-labelledby="lp-hero-t">
+  <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Celá domácnost v jedné appce.</h1>
+  <p class="lp-sub" data-i18n="landing.sub">Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš.</p>
+  <div class="lp-invite" id="lp-invite" hidden>…beze změny…</div>
+  <div class="lp-ctas">
+    <button type="button" class="btn-p" id="lp-start-btn" onclick="showAuthPanel('register')" data-i18n="landing.start">Začít zdarma</button>
+    <button type="button" class="btn-s lp-have" onclick="showAuthPanel('login')" data-i18n="landing.haveAccount">Mám účet</button>
+  </div>
+  <p class="lp-trust" data-i18n="landing.trust">Zdarma · bez reklam · česky</p>
+
+  <h2 class="lp-sec" data-i18n="landing.why">Proč LifePocket</h2>
+  <ul class="lp-benefits">
+    <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w1t">🏠 Pro celou domácnost</div>
+      <div class="lp-b-d" data-i18n="landing.w1d">Jeden nákupní seznam, společný kalendář a plán jídel. Co koupí partner, tobě se hned odškrtne.</div></div></li>
+    <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w2t">🔒 Sdílíš jen to, co chceš</div>
+      <div class="lp-b-d" data-i18n="landing.w2d">Nákup se skupinou ano, deník a návyky jen pro tebe. Nic se nesdílí samo.</div></div></li>
+    <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w3t">✨ Parťák, který vidí souvislosti</div>
+      <div class="lp-b-d" data-i18n="landing.w3d">AI parťák zná tvůj kalendář, jídelníček i nákup. Na nabitý čtvrtek ti navrhne rychlou večeři a suroviny přidá do seznamu.</div></div></li>
+  </ul>
+
+  <h2 class="lp-sec" data-i18n="landing.preview">Jak appka vypadá</h2>
+  <div class="lp-shots">…beze změny…</div>
+
+  <h2 class="lp-sec" data-i18n="landing.features">A k tomu</h2>
+  <ul class="lp-mods" role="list">
+    <li><span aria-hidden="true">🔥</span> <span data-i18n="mod.habits">Návyky</span></li>
+    <li><span aria-hidden="true">🏆</span> <span data-i18n="mod.goals">Cíle</span></li>
+    <li><span aria-hidden="true">📒</span> <span data-i18n="mod.journal">Deník</span></li>
+    <li><span aria-hidden="true">👨‍🍳</span> <span data-i18n="mod.cooking">Vaření</span></li>
+    <li><span aria-hidden="true">✅</span> <span data-i18n="mod.checklist">Checklist</span></li>
+    <li><span aria-hidden="true">💧</span> <span data-i18n="mod.water">Pitný režim</span></li>
+    <li><span aria-hidden="true">💰</span> <span data-i18n="mod.finance">Finance</span></li>
+    <li><span aria-hidden="true">🐾</span> <span data-i18n="mod.pets">Mazlíček</span></li>
+  </ul>
+
+  <div class="lp-ctas lp-ctas2" id="lp-try-wrap">…beze změny…</div>
+  <p class="lp-promise" data-i18n="landing.promise">Žádné reklamy ani placený tarif. Začni jedním modulem, další přidáš kdykoli.</p>
+  …lp-legal, lp-lang beze změny…
+</section>
+```
+
+Pozor: `.lp-brand` obaluje ikonu a jméno **i pro `#auth-panel`** (jsou nad oběma sekcemi). V auth panelu to tak chceme taky (formulář je výš). Emoji ve `w1t`–`w3t` jsou součástí textu (překládá se celé), proto starý `<span class="lp-b-em">` odpadá. Pokud vedoucí chce emoji mimo text kvůli čtečkám: vrátit `lp-b-em` s `aria-hidden` a emoji z textů vyjmout.
+
+`mod.finance` existuje v obou slovnících (cs „Finance“, en „Budget“).
+
+### 1.6 CSS (style.css, blok LOGIN)
+
+```css
+/* 5.16 hlavička landingu: ikona 56 px vedle jména */
+.lp-brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
+.lp-brand .app-icon-wrap{margin:0}
+.lp-brand .app-icon{width:56px;height:56px;border-radius:14px;animation:none;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.lp-brand .logo-name{margin-top:0;font-size:28px}
+.lp-trust{text-align:center;font-size:14px;font-weight:600;color:var(--text2);margin:-12px 0 24px}
+.lp-mods{list-style:none;padding:0;margin:0 0 20px;display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.lp-mods li{background:var(--card2);border:1px solid var(--border);border-radius:50px;padding:8px 14px;font-size:15px;color:var(--text)}
+.lp-hero{font-size:30px}   /* kratší věta unese o 2 px víc */
+@media (max-width:380px){ .lp-hero{font-size:27px} }
+```
+- `.lp-mods li` nejsou klikací (jen výčet), proto 44 px výšku nepotřebují.
+- `.lp-sub` nechat 17 px / `--text2`; v sunshine má `--text2` na `--card` kontrast ≥ 4,5 : 1 (ověřeno v kole 1).
+- `lp-inapp-on`: stávající pravidla dál skrývají ikonu (`.lp-inapp-on .app-icon-wrap{display:none}`) a zmenší logo; s `.lp-brand` to funguje beze změny.
+
+### 1.7 Meta (volitelné, stejná změna)
+`<title>` a `meta.title`: „LifePocket – celá domácnost v jedné appce“ / „LifePocket – your whole household in one app“. `og:*` a OG obrázek nechat.
+
+### 1.8 Edge cases
+- **Pozvánka (`?join=`)**: na landingu se H1 a podtitulek mění, viz 2.3. Normální landing nesmí probliknout: přepnutí dělá už inline rychlý start (čte `lp_pending_join` / URL), ne až app.js.
+- **Anglický landing** se překládá až po `import('/i18n.js')`; delší EN H1 („Your whole household in one app.“, 32 znaků) se na 360 px vejde na 2 řádky při 27 px.
+- **Nainstalovaná PWA a známý uživatel** landing nevidí (beze změny).
+
+### 1.9 Rozsah
+**S**: index.html, style.css, cs.js, en.js, bez app.js (kromě případně `CHANGELOG`/`APP_VERSION`). Zhruba 2–3 h vč. kontroly obou jazyků a tří témat.
+
+---
+
+## 2. Pozvání do skupiny odkazem
+
+### 2.1 Co už funguje (5.15, ověřeno v kódu)
+Většina toku je hotová, návrh ho **dotahuje**, nestaví znovu:
+- `groupInviteUrl(gid)` → `https://lifepocket.app/?join=KÓD&od=Jméno`; `shareGroupInvite` → Web Share API, jinak schránka. Text „Jana tě zve do společného nákupu a kalendáře v LifePocket (zdarma)“ podle sdílených modulů.
+- `capturePendingJoin()` při startu (i bez přihlášení) uloží `{code, ts, od}` do `localStorage.lp_pending_join` (platnost 7 dní) a smaže parametry z adresy; jméno z `od` čistí `cleanInviter()` (žádné „LifePocket“, „podpora“, max. 30 znaků).
+- Landing i auth panel ukážou pruh `#lp-invite` „Jana tě zve do skupiny…“ (bez názvu skupiny, bez kódu).
+- Onboarding s pozvánkou: předvybraná šablona Rodina, tlačítko „Hotovo, ke skupině →“, po dokončení hned `checkPendingJoin()`.
+- Po přihlášení `checkPendingJoin()` → `getDoc(families/KÓD)` (pravidla: `get` povolen přihlášenému u nového formátu kódu) → okno „Chceš se připojit do skupiny **Rodina**?“ → `joinFamily` / `joinExtraGroup` (limit 8 členů, 5 skupin, změněný kód = „Pozvánka už neplatí“).
+- Vestavěný prohlížeč Messengeru/Instagramu: odkaz se zachová pro „Otevřít v Chrome/Safari“.
+
+**Soukromí je v pořádku a zůstává:** bez přihlášení se nic z Firestore nečte (pravidla `get` vyžadují `request.auth`), název skupiny ani jména členů se před přihlášením neukážou. Jediné, co nepřihlášený vidí, je jméno z odkazu `od`, které tam dal sám odesílatel.
+
+### 2.2 Mezery, které návrh řeší
+
+| # | Problém | Dopad |
+|---|---|---|
+| a | Landing s pozvánkou je stejný jako bez ní, pozvánka je jen malý pruh nad tlačítky. Příjemce z WhatsAppu neví, *k čemu* se připojuje. | velký (konverze pozvaných) |
+| b | Okno před připojením neříká, co se sdílí a co zůstane soukromé. Přesně tady se rozhoduje „dám tam svoje data?“. | velký |
+| c | Plná skupina (8/8) a limit 5 skupin se ukážou až chybovým toastem **po** klepnutí na „Připojit se“. | střední |
+| d | Po připojení člověk zůstane, kde byl. Společný nákup nenajde, a když nemá zapnutý modul Nákupy, sdílený seznam vůbec nevidí. | velký |
+| e | V Nastavení skupiny je hlavní tlačítko „📤 Sdílet“ až vedle kódu; kód (který většina lidí nepotřebuje) je největší prvek. Chybí QR pro pozvání „u stolu“. | střední |
+| f | „Zrušit“ v okně pozvánku smaže; kdo si jen chce nejdřív appku prohlédnout, o ni přijde. | malý |
+| g | Zvoucí se nedozví, že se někdo připojil. | střední (volitelné, 2.6) |
+
+### 2.3 Příjemce bez účtu (landing v režimu pozvánky)
+
+Odkaz rozšířit o **co se sdílí**: `&co=` z písmen `s` (nákup, `shareShop`), `c` (kalendář, `shareCal`), `m` (jídelníček, `shareMeal`), `l` (úkoly, `shareChecklist`). Příklad: `https://lifepocket.app/?join=DOMA-K7PX4Q&od=Jana&co=sc`.
+- Je to jen nápověda z odkazu, nic tajného (příznaky sdílení nejsou citlivé, název skupiny ani členové v odkazu nejsou). Neznámá písmena a víc než 4 znaky se zahodí.
+- `capturePendingJoin` uloží `co` do `lp_pending_join` (`{code, ts, od, co}`), `stripJoinParam` maže i `co`, `inAppLink` ho přenáší.
+
+Landing s pozvánkou (přepíná inline rychlý start podle `lp_pending_join`, app.js pak `initLoginScreen` stejně):
+
+```
+┌────────────────────────────┐
+│   [ikona 56] LifePocket    │
+│                            │
+│  Jana tě zve do LifePocket │  H1 (landing.invH1 / invH1A)
+│                            │
+│  Do společného nákupu      │  sub (landing.invSub.{co})
+│  a kalendáře. Tvoje další  │
+│  věci zůstanou jen tvoje.  │
+│  [  Přijmout pozvánku   ]  │  → showAuthPanel('register')
+│  [     Už mám účet      ]  │  → showAuthPanel('login')
+│  Zdarma · bez reklam · česky│
+├────────────────────────────┤
+│ Co je LifePocket?          │  landing.invWhat (místo „Proč LifePocket“)
+│ 🏠 … 🔒 … ✨ …             │  dál normální landing
+```
+- Pruh `#lp-invite` se v režimu pozvánky **neukazuje** (informace je v H1), v auth panelu `#auth-invite` zůstává.
+- Bez `od` (staré odkazy, jméno neprošlo čištěním): „Máš pozvánku do LifePocket“.
+- Bez `co`: obecný podtitulek „Do společné skupiny. Tvoje další věci zůstanou jen tvoje.“
+
+Texty:
+
+| Klíč | CS | EN |
+|---|---|---|
+| `landing.invH1` | {who} tě zve do LifePocket | {who} invited you to LifePocket |
+| `landing.invH1A` | Máš pozvánku do LifePocket | You’ve got an invite to LifePocket |
+| `landing.invSub` | Do {what}. Tvoje další věci zůstanou jen tvoje. | To {what}. Everything else stays yours alone. |
+| `landing.invAccept` | Přijmout pozvánku | Accept invite |
+| `landing.invHave` | Už mám účet | I already have an account |
+| `landing.invWhat` | Co je LifePocket? | What is LifePocket? |
+| `{what}` | stávající `grp.inv.w.shop` / `cal` / `shopCal` / `meal` / `group` („společného nákupu“ …) | (stávající EN) |
+
+`{what}` vybírat stejně jako `groupInviteText` (shop+cal → `shopCal`, jinak první z shop, cal, meal, jinak `group`). Rychlý start v index.html slovník nemá: CS texty pro 5 variant `{what}` dát do inline skriptu jako malou mapu (EN přeloží `applyI18n` po importu i18n.js; pro `{who}` je potřeba předat proměnné, proto v EN nastaví H1 až `initLoginScreen` přes `textContent`, jako dnes `landing.inviteFrom`).
+
+Jméno `{who}` jde vždy přes `textContent`, nikdy `innerHTML`.
+
+### 2.4 Po přihlášení / registraci
+
+**Okno „Pozvánka do skupiny“** (rozšíření `showJoinInviteModal`; data z `getDoc(families/KÓD)`, které už dnes proběhne):
+
+```
+┌──────────────────────────────┐
+│             🔗               │
+│     Pozvánka do skupiny      │
+│      👋 Zve tě Jana.         │  (createdBy → jméno, jako dnes)
+│                              │
+│   🏠 Rodina Novákových       │  název skupiny (esc), až po přihlášení
+│   Je vás tam 3 z 8           │  jen počet, žádná jména členů
+│                              │
+│   Ve skupině se sdílí:       │
+│   [🧺 Nákup] [🗓️ Kalendář]   │  podle shareShop/Cal/Meal/Checklist z dokumentu
+│   🔒 Návyky, deník a ostatní │
+│   moduly zůstanou jen tvoje. │
+│                              │
+│  [       Připojit se       ] │  btn-p, plná šířka, 48 px
+│  [         Teď ne          ] │  btn-s → laterPendingJoin (pozvánka zůstane 7 dní)
+│        Odmítnout pozvánku    │  textový odkaz (44 px vysoký) → cancelPendingJoin
+└──────────────────────────────┘
+```
+
+Stavy okna:
+
+| Stav (zjištěný z dokumentu před klepnutím) | Obsah | Tlačítka |
+|---|---|---|
+| normální | viz výše | Připojit se · Teď ne · Odmítnout |
+| plná: `members` ≥ 8 a já v ní nejsem | „Skupina **{name}** je plná (8 z 8). Napiš {who}, ať tě přidá, až se uvolní místo.“ (bez `{who}`: „…Napiš tomu, kdo tě zval…“) | Rozumím (pozvánka zůstane, při dalším spuštění se zkusí znovu; po 7 dnech vyprší) |
+| limit: `groupCount() ≥ 5` | „Už jsi v 5 skupinách, víc nejde. Odejdi z některé a pozvánka tu na tebe počká.“ | Otevřít skupiny · Zavřít (pozvánka zůstane) |
+| už jsem členem | stávající toast `grp.already`, okno se neotevře | – |
+| kód neexistuje (rotace, smazání) | stávající `grp.inv.gone` | Zavřít |
+| stará skupina WORD-NNNN (pravidla nepustí) | stávající toast `grp.codeOld` | – |
+
+Texty:
+
+| Klíč | CS | EN |
+|---|---|---|
+| `grp.inv.count` | Je vás tam {n} z 8 | {n} of 8 members |
+| `grp.inv.sharedH` | Ve skupině se sdílí: | Shared in this group: |
+| `grp.inv.private` | 🔒 Návyky, deník a ostatní moduly zůstanou jen tvoje. | 🔒 Your habits, journal and other modules stay private. |
+| `grp.inv.later` | Teď ne | Not now |
+| `grp.inv.decline` | Odmítnout pozvánku | Decline invite |
+| `grp.inv.fullT` | Skupina {name} je plná (8 z 8). Napiš {who}, ať tě přidá, až se uvolní místo. | {name} is full (8 of 8). Ask {who} to add you once there’s room. |
+| `grp.inv.fullTA` | Skupina {name} je plná (8 z 8). Napiš tomu, kdo tě zval, ať tě přidá, až se uvolní místo. | {name} is full (8 of 8). Ask whoever invited you to add you once there’s room. |
+| `grp.inv.limitT` | Už jsi v 5 skupinách, víc nejde. Odejdi z některé a pozvánka tu na tebe počká. | You’re already in 5 groups, that’s the maximum. Leave one and this invite will wait for you. |
+| `grp.inv.openGroups` | Otevřít skupiny | Open groups |
+| `grp.inv.ok` | Rozumím | Got it |
+| `grp.inv.welcome` | 🧺 Tohle je váš společný nákup. Co přidáš, uvidí hned všichni ve skupině. | 🧺 This is your shared shopping list. Anything you add shows up for everyone in the group. |
+| `grp.inv.welcomeCal` | 🗓️ Tohle je váš společný kalendář. Události skupiny tu vidíš u svých. | 🗓️ This is your shared calendar. Group events show up next to yours. |
+| `grp.inv.modsOn` | Zapnuto: {mods}, ať vidíš, co skupina sdílí. | Turned on: {mods}, so you can see what the group shares. |
+
+- `{name}` = `cutName(groupName,40)` přes `esc()`; `{who}` stejně jako dnes.
+- Ve větě „Napiš {who}“ by jméno muselo být ve 3. pádě, z dokumentu ale máme 1. pád („Napiš Jana“ je špatně). Proto **v CS „Napiš tomu, kdo tě zval“ vždy** (varianta `fullTA`) a `fullT` použít jen v EN. Kodér: v cs.js nechat `grp.inv.fullT` se stejným textem jako `fullTA` (klíče musí sedět).
+
+**Po úspěšném připojení** (`confirmPendingJoin` po `res === true`):
+1. Moduly, které skupina sdílí a uživatel je nemá (`shareShop` → `shopping`, `shareCal` → `calendar`, `shareMeal` → `mealplan`, `shareChecklist` → `checklist`), **zapnout** přes `togModSet(id, true)` a toastem `grp.inv.modsOn` oznámit. Uživatel pozvánku přijal právě kvůli nim. (Otázka 3 pro vedoucího.)
+2. Přejít do prvního sdíleného modulu (nákup → kalendář → jídelníček → checklist) a v něm jednou ukázat řádek `grp.inv.welcome` / `welcomeCal` ve stylu nápovědy modulu (řádek ve stránce, nic nepřekrývá; `lsSave('lp_inv_welcome', 1)`).
+3. Stávající toast `grp.joined` a `notifAskSoon('group')` zůstávají. Průvodce (`tourAfterJoin`) pokračuje jako dnes, ale **až po** přechodu do modulu.
+
+### 2.5 Strana zvoucího (Nastavení → Skupiny → detail skupiny)
+
+```
+PŘED                                   PO
+Pozvat do skupiny                      Pozvat do skupiny
+┌─────────────────────────────┐        ┌──────────────────────────────┐
+│        DOMA-K7PX4Q          │        │ [ 📤 Poslat pozvánku       ] │ btn-p, plná šířka, 48 px
+│ Pošli tento kód nebo odkaz… │        │   WhatsApp, Messenger, SMS…  │ podpis 14 px --text2
+│ [Kopírovat][📤 Sdílet][🔄]  │        │ [ 📷 Ukázat QR kód ]         │ btn-s, plná šířka
+└─────────────────────────────┘        │ Nebo nadiktuj kód:           │
+                                       │ DOMA-K7PX4Q   [Kopírovat]    │ kód 20 px, ne 28
+                                       │ 3 z 8 míst obsazeno          │
+                                       │ 🔄 Nový kód (jen správce)    │ textové tlačítko 44 px
+                                       └──────────────────────────────┘
+```
+- **QR** (`grp.inv.qr`): okno s `qrSvg(groupInviteUrl(gid), 240)` (generátor už je v app.js u příspěvku), pod ním „Ať si to Jana naskenuje foťákem.“ Bílé pozadí QR i v tmavém tématu (čtečky jinak selhávají): `background:#fff;padding:12px;border-radius:12px`.
+- U plné skupiny (8/8) tlačítka Poslat a QR **zakázat** s textem „Skupina je plná. Někoho odeber, ať se uvolní místo.“
+- U staré skupiny WORD-NNNN (odkaz nefunguje, pravidla nepustí self-join): místo Poslat jen výzva „Pro pozvání odkazem potřebuje skupina nový kód“ + tlačítko Nový kód (správce), ostatním „Požádej správce o nový kód“. Dnes `shareGroupInvite` pošle odkaz i pro starý kód a příjemce dostane jen „kód už neplatí“.
+- Dialog „Nový kód“ (rotateGroupCode) doplnit větou: „Dřív poslané odkazy a QR kódy přestanou fungovat.“
+
+Texty:
+
+| Klíč | CS | EN |
+|---|---|---|
+| `grp.inv.send` | 📤 Poslat pozvánku | 📤 Send invite |
+| `grp.inv.sendHint` | WhatsApp, Messenger, SMS… | WhatsApp, Messenger, text… |
+| `grp.inv.qr` | 📷 Ukázat QR kód | 📷 Show QR code |
+| `grp.inv.qrHint` | Ať si to naskenuje foťákem v telefonu. | Let them scan it with their phone camera. |
+| `grp.inv.dictate` | Nebo nadiktuj kód: | Or read out the code: |
+| `grp.inv.seats` | {n} z 8 míst obsazeno | {n} of 8 spots taken |
+| `grp.inv.fullOwn` | Skupina je plná. Někoho odeber, ať se uvolní místo. | The group is full. Remove someone to free up a spot. |
+| `grp.inv.legacy` | Pro pozvání odkazem potřebuje skupina nový kód. | This group needs a new code before you can invite by link. |
+| `grp.inv.legacyAsk` | Požádej správce skupiny o nový kód. | Ask the group admin for a new code. |
+| `grp.rot.linksDie` | Dřív poslané odkazy a QR kódy přestanou fungovat. | Links and QR codes you sent before will stop working. |
+
+`grp.share` / `grp.copy` / `grp.codeLbl` po přestavbě ověřit grepem a nepoužité smazat.
+
+### 2.6 Volitelně: „Petr se připojil“ (push zvoucímu)
+Nová Cloud Function `onDocumentUpdated('families/{fid}')`: když `members` přibyl klíč s `role:'member'`, poslat push správcům skupiny (stejná infrastruktura tokenů jako `sendScheduledNotifications`, `data.tag` = `webpush.notification.tag` = `join-{fid}`), text „👋 Petr se připojil/a do skupiny Rodina“ / „👋 Petr joined Rodina“. Respektovat nastavení upozornění skupin (nová kategorie „Nový člen“, výchozí zapnuto). Bez změny pravidel, nasazení funkcí jde samo přes Actions. Rozsah **S–M**, doporučuji jako samostatný úkol až po 2.3–2.5.
+
+### 2.7 Edge cases
+- **Odkaz otevřený přihlášeným** (appka v prohlížeči): landing se neukáže, okno 2.4 hned po startu (dnes stejně).
+- **Odkaz otevřený na iPhonu, appka je na ploše**: iOS otevře Safari, ne PWA (jiné úložiště). Pozvánka se uloží v Safari; po přihlášení v Safari projde. V PWA ne. Do auth panelu pro iOS v režimu pozvánky přidat poznámku: „Máš LifePocket na ploše? Přihlas se tady v Safari, připojíš se a pak už můžeš pokračovat v appce.“ (`auth.invIosPwa` / EN „Have LifePocket on your home screen? Sign in here in Safari to join, then carry on in the app.“). Android Chrome s nainstalovanou PWA odkaz otevře v PWA (rozsah manifestu `/`), tam to funguje.
+- **Podvržené `od`** (kdokoli může do odkazu napsat jakékoli jméno): proto „{who} tě zve“ před přihlášením, ale po přihlášení okno ukazuje **jméno zakladatele z dokumentu** (dnešní chování) a skutečný název skupiny. Kdo by se vydával za někoho jiného, prozradí ho okno ještě před připojením.
+- **Podvržené `co`**: nejhůř landing slíbí „společný nákup“ a skupina sdílí jen kalendář; okno 2.4 ukáže pravdu z dokumentu. Přijatelné.
+- **Kód rotovaný mezi odesláním a otevřením**: `getDoc` vrátí neexistující dokument → `grp.inv.gone`.
+- **Registrace přes Google v jiném okně / tabu**: `lp_pending_join` je v localStorage stejného původu, přežije.
+- **Pozvánka a dotazník (bod 3) ve stejný den**: dotazník se v den připojení neukáže (viz 3.2).
+- **Odkaz přeposlaný dál** (Jana → Petr → Petrova kamarádka): chování správné, limit 8 a rotace kódu jsou pojistka. Žádná nová.
+
+### 2.8 Rozsah
+- 2.3 landing v režimu pozvánky + parametr `co`: **S** (index.html inline skript, app.js `capturePendingJoin`/`stripJoinParam`/`inAppLink`/`initLoginScreen`/`groupInviteUrl`, i18n).
+- 2.4 okno + po připojení: **M** (≈ 0,5–1 den, hlavně stavy a zapnutí modulů).
+- 2.5 strana zvoucího + QR: **S**.
+- 2.6 push: **S–M**, funkce.
+- Celkem bez 2.6 ≈ 1–1,5 dne kodéra. **Bez změny `firestore.rules` a indexů.**
+
+---
+
+## 3. Krátký dotazník po 7 dnech
+
+### 3.1 Kde a jak se ukáže
+**Karta na Domů ve stylu nabídek** (`.invite-hint.nudge`, stejná komponenta jako `nudgeCardHTML`), ne vyskakovací okno při startu. Klepnutím na „Odpovědět“ se otevře okno s otázkami. Kdo nechce, kartu přejde nebo ji zavře.
+
+```
+Domů
+┌──────────────────────────────────────┐
+│ 💬  Jak se ti zatím daří?         ×  │  × = Neukazovat (aria-label)
+│     Máš za sebou týden s LifePocket. │
+│     Pomůžeš nám třemi rychlými       │
+│     otázkami? Zabere to minutu.      │
+│     [ Odpovědět ]  [ Teď ne ]        │
+└──────────────────────────────────────┘
+```
+
+### 3.2 Kdy (podmínky, vše musí platit)
+1. Přihlášený, `prof` načtený, online (`navigator.onLine !== false`), Domů je aktivní stránka.
+2. `accDay() >= 7` (týden od založení účtu) **a** aspoň 4 aktivní dny: v jednoduchém režimu `actN('all') >= 4`; mimo něj (starší účty, kde se aktivní dny nepočítají) stačí `accDay() >= 7`. Tím dotazník jednou dostanou i stávající uživatelé, což je pro první vlnu žádoucí.
+3. Stav `prof.svy.s7`: chybí, nebo `later:YYYY-MM-DD` starší než 7 dní. Ne `done`, ne `no`.
+4. Ne ve stejný den jako: připojení do skupiny (`lp_inv_welcome` dnes), changelog, jiná nabídka z fronty (`nudgeSt().last === toDS()`); v jednoduchém režimu musí projít `nudgeFree()` a ukázání se zapíše `nudgeMark()` (bez id, počítá se do limitu 1 za 3 dny).
+5. Ne při startu: karta se zařadí nejdřív **30 s po `initApp`**, nebo po první akci v relaci (`actDay`/`installUnlock` volání), podle toho, co nastane dřív, a pak přes `whenUiFree()` (nic jiného otevřené, žádný průvodce, souhlas se zdravím, toast z fronty).
+6. Pokud je ten den na Domů už nabídka z fronty (`nudgeForDash()` vrátila kartu), dotazník počká na jiný den.
+
+### 3.3 Odmítnutí
+- **„Teď ne“** → `prof.svy.s7 = 'later:<dnes>'`, `prof.svy.n += 1`. Znovu nejdřív za 7 dní. Po **2.** „Teď ne“ se karta už neukáže (jako `no`). Nikdo nemá být otravován třikrát.
+- **×** (aria-label „Neukazovat“) → `prof.svy.s7 = 'no'`, konec.
+- **Zavření okna s otázkami bez odeslání** (×, Zpět, klepnutí vedle) = jako „Teď ne“; rozepsaný text se drží v paměti do konce relace.
+- Stav je v profilu (`users/{uid}/profile/main.svy`), tedy stejný na všech zařízeních. Zápis `updateDoc(... {'svy.s7': v, 'svy.n': increment(1)})`.
+- Kartu zobrazit jen v den prvního ukázání a dál, dokud neodpoví (jako `nudge.cur`), aby nezmizela při každém překreslení.
+
+### 3.4 Okno s otázkami
+
+```
+┌──────────────────────────────────────┐
+│ 💬 Tři rychlé otázky             ×   │
+│                                      │
+│ 1. Co ti v LifePocket nejvíc pomáhá? │
+│    Vyber nejvýš dvě.                 │
+│  [🧺 Nákupy] [🗓️ Kalendář] [🔥 Návyky]│  čipy 44 px, aria-pressed
+│  [🥗 Jídelníček] [🤝 Sdílení s rodinou]│
+│  [🤖 AI parťák] [✏️ Něco jiného]     │
+│                                      │
+│ 2. Co ti chybí nebo co tě štve?      │
+│  ┌────────────────────────────────┐  │
+│  │ Třeba: chybí mi sdílené        │  │  textarea 16 px, 3 řádky, max 500
+│  │ poznámky…                      │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│ 3. Jak se ti LifePocket zatím líbí?  │  bez rodu (ne „spokojený/á“)
+│    (nepovinné)                       │
+│   [😣] [😕] [😐] [🙂] [😍]           │  5 × 48 px, role=radiogroup
+│   vůbec              moc             │
+│                                      │
+│  [            Odeslat             ]  │  aktivní, jakmile je cokoli vyplněné
+│  Odpovědi čte autor appky. Jméno ani │  14 px --text2
+│  e-mail se k nim neukazují.          │
+└──────────────────────────────────────┘
+```
+
+Čipy otázky 1: jen **zapnuté moduly** (`hasMod`) z `shopping`, `calendar`, `habits`, `mealplan`, `goals`, `cooking`, `journal`, `checklist`, `water`, `finance`, `pets`, dále „🤝 Sdílení s rodinou“ jen když `myGroupIds().length > 0`, „🤖 {jméno parťáka}“ když je zapnutý `rex`, a vždy „✏️ Něco jiného“. Pořadí: sdílení a parťák (naše odlišnosti) hned za prvními třemi moduly, ať nezapadnou. Třetí čip: automatické odznačení prvního by mátlo, proto **třetí klepnutí nic nevybere a pod čipy se ukáže „Vyber nejvýš dvě“** (`aria-live="polite"`).
+
+Hodnocení: tlačítka `role="radio"`, `aria-label` „1 z 5, vůbec“ … „5 z 5, moc“, vybrané má `border:2px solid var(--accent)` a `aria-checked="true"`; druhé klepnutí na vybrané hodnocení zruší.
+
+CSS:
+```css
+.svy-q{font-weight:700;color:var(--text);margin:16px 0 8px;font-size:16px}
+.svy-chips{display:flex;flex-wrap:wrap;gap:8px}
+.svy-chip{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border2);background:var(--card2);color:var(--text);font-size:15px}
+.svy-chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.svy-rate{display:flex;justify-content:space-between;gap:6px;max-width:320px}
+.svy-rate button{width:48px;height:48px;border-radius:50%;border:1px solid var(--border2);background:var(--card2);font-size:24px}
+.svy-rate button[aria-checked="true"]{border:2px solid var(--accent);transform:scale(1.08)}
+.svy-ends{display:flex;justify-content:space-between;max-width:320px;font-size:13px;color:var(--text2)}
+.svy-note{font-size:14px;color:var(--text2);text-align:center;margin-top:10px}
+#svy-txt{width:100%;min-height:84px;font-size:16px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);padding:10px 12px;box-sizing:border-box}
+```
+Okno: stávající `.moverlay` + `.modal` (id `svy-modal`); `uiBusy()` ho chytí přes `.moverlay.open`.
+
+**Po odeslání** (obsah okna se vymění, nezavírá se samo):
+- vždy „Díky moc! 💛 Každou odpověď čteme.“
+- hodnocení 4–5: navíc „Pomůže nám, když LifePocket pošleš někomu, komu by se hodil.“ + tlačítko „📤 Doporučit LifePocket“ (`shareApp()`) a „Zavřít“. Tady je přirozená chvíle na doporučení.
+- hodnocení 1–2: „Mrzí nás to. Chceš nám napsat víc? Odpovíme ti.“ + tlačítko „✉️ Napsat nám“ (otevře stávající formulář „Napiš nám“ v Nastavení, text otázky 2 předvyplní) a „Zavřít“.
+- jinak jen „Zavřít“.
+
+### 3.5 Texty
+
+| Klíč | CS | EN |
+|---|---|---|
+| `svy.card.t` | Jak se ti zatím daří? | How’s it going so far? |
+| `svy.card.d` | Máš za sebou týden s LifePocket. Pomůžeš nám třemi rychlými otázkami? Zabere to minutu. | You’ve had LifePocket for a week. Could you help us with three quick questions? It takes a minute. |
+| `svy.card.btn` | Odpovědět | Answer |
+| `svy.later` | Teď ne | Not now |
+| `svy.never` | Neukazovat | Don’t show again |
+| `svy.title` | Tři rychlé otázky | Three quick questions |
+| `svy.q1` | Co ti v LifePocket nejvíc pomáhá? | What helps you most in LifePocket? |
+| `svy.q1h` | Vyber nejvýš dvě. | Pick up to two. |
+| `svy.q1max` | Vyber nejvýš dvě. | Pick up to two. |
+| `svy.o.share` | 🤝 Sdílení s rodinou | 🤝 Sharing with family |
+| `svy.o.ai` | 🤖 {av} | 🤖 {av} |
+| `svy.o.other` | ✏️ Něco jiného | ✏️ Something else |
+| `svy.q2` | Co ti chybí nebo co tě štve? | What’s missing or bugging you? |
+| `svy.q2ph` | Třeba: chybí mi sdílené poznámky… | E.g. I’d love shared notes… |
+| `svy.q3` | Jak se ti LifePocket zatím líbí? | How do you like LifePocket so far? |
+| `svy.opt` | (nepovinné) | (optional) |
+| `svy.r1`…`svy.r5` | 1 z 5, vůbec · 2 z 5 · 3 z 5 · 4 z 5 · 5 z 5, moc | 1 of 5, not at all · 2 of 5 · 3 of 5 · 4 of 5 · 5 of 5, a lot |
+| `svy.lo` / `svy.hi` | vůbec / moc | not at all / a lot |
+| `svy.send` | Odeslat | Send |
+| `svy.sending` | Odesílám… | Sending… |
+| `svy.note` | Odpovědi čte autor appky. Jméno ani e-mail se k nim neukazují. | Answers are read by the app’s author. Your name and email aren’t shown with them. |
+| `svy.thanks` | Díky moc! 💛 Každou odpověď čteme. | Thanks a lot! 💛 We read every answer. |
+| `svy.shareQ` | Pomůže nám, když LifePocket pošleš někomu, komu by se hodil. | It really helps if you send LifePocket to someone who’d find it useful. |
+| `svy.shareBtn` | 📤 Doporučit LifePocket | 📤 Recommend LifePocket |
+| `svy.sorry` | Mrzí nás to. Chceš nám napsat víc? Odpovíme ti. | Sorry to hear that. Want to tell us more? We’ll get back to you. |
+| `svy.writeBtn` | ✉️ Napsat nám | ✉️ Write to us |
+| `svy.fail` | Odeslání se nepovedlo. Zkus to prosím za chvíli. | Couldn’t send. Please try again in a moment. |
+| `svy.aria` | Krátký dotazník | Short survey |
+
+Moduly v čipech: stávající `mod.*` s emoji z `MODS`. (`svy.q1max` = stejný text jako nápověda, ale samostatný klíč pro `aria-live`.)
+
+### 3.6 Kam se ukládá (bez změny pravidel i indexů)
+
+**Doporučení: `users/{uid}/feedback/survey7`** (pevné ID dokumentu).
+- Pravidlo `users/{userId}/{document=**}` (jen vlastník) zápis pustí, **pravidla se nemění**.
+- Kolekce `feedback` už existuje pro „Napiš nám“: je v exportu dat, maže se s účtem (`recursiveDelete`), **collection-group index na `createdAt` už je nasazený** (`firestore.indexes.json`), `adminOverview` ji čte a `ADM_FB_PATH_RE` ID `survey7` projde. Dotazník tak Adam uvidí v appce **hned bez nasazení funkcí** (záložka Zprávy), agregace je jen bonus.
+- Pevné ID: druhé zařízení nebo opakované odeslání dokument přepíše, žádné duplicity.
+- Top-level `feedback/{id}` by potřeboval nové pravidlo (`config/**` i ostatní kořeny jsou zavřené) → **nedoporučuji**.
+
+Dokument:
+```js
+{
+  createdAt: serverTimestamp(),  // kvůli indexu a řazení v adminOverview
+  kind: 'survey7',
+  v: APP_VERSION, lang: LANG,
+  accDay: accDay(),              // kolikátý den účtu
+  helps: ['shopping','share'],   // max 2, jen ID z allowlistu: moduly z MODS + 'share' + 'ai' + 'other'
+  missing: '…',                  // max 500 znaků, trim
+  rating: 4,                     // 1–5 nebo null
+  grp: true,                     // je ve skupině (bez ID skupiny)
+  msg: '⭐ 4/5 · Pomáhá: Nákupy, Sdílení · Chybí: …'  // lidsky čitelné shrnutí (max 2000) pro stávající seznam Zpráv
+}
+```
+`msg` skládat **v češtině vždy** (čte ho Adam), ne v jazyce uživatele. Zápis s timeoutem 10 s jako u „Napiš nám“; při chybě `svy.fail`, stav `svy.s7` se nemění (karta zůstane). Po úspěchu `svy.s7 = 'done'`.
+
+Soukromí: `privacy.html` bod o `feedback` doplnit větou: „Stejně se uloží i odpovědi z krátkého dotazníku po prvním týdnu (co ti pomáhá, co chybí, hodnocení 1–5); slouží ke zlepšování aplikace a vidí je jen správce aplikace.“ (+ stejná věta anglicky v `privacy-en.html`).
+
+### 3.7 Jak to Adam uvidí
+
+**Hned (bez změny funkcí):** Nastavení → 📊 Přehled (adminOverview) → záložka Zprávy: řádky „⭐ 4/5 · Pomáhá: …“ mezi zprávami „Napiš nám“.
+
+**Po úpravě funkcí (doporučeno, nasadí se samo po pushi):**
+1. `dailyStats` krok 7: `db.collectionGroup('feedback').where('createdAt','>=', Timestamp.fromMillis(now - DAY)).get()` (existující index), v paměti filtr `kind === 'survey7'`, zapsat do `config/stats_daily/days/{den}`:
+   - `svyN` (počet odpovědí), `svyRatingN`, `svyRatingSum` (průměr si spočítá přehled), `svyTextN` (kolik vyplnilo otázku 2),
+   - `svyHelps`: mapa `{shopping: 3, share: 2, ai: 1, …}` jen s klíči z allowlistu (cizí klíče zahodit).
+   - Nikdy texty, uid ani jména (v souladu s komentářem u dailyStats).
+2. `adminOverview`: `ADM_STAT_KEYS` + `svyN`, `svyRatingN`, `svyRatingSum`; `svyHelps` sečíst za 14 dní na serveru do `out.survey = {n, avg, helps:{…}, textN}`; do `select()` u feedback přidat `kind` a `rating`, ať klient umí filtrovat.
+3. Klient (admin přehled): čtvrtá záložka **„Dotazník“**: nahoře souhrn za 14 dní („23 odpovědí · průměr 4,2 · nejvíc pomáhá: Nákupy 14, Sdílení 9, Parťák 6“ jako vodorovné pruhy, ne graf), pod tím posledních 30 textů „Co chybí“ (z existujícího seznamu feedback s `kind === 'survey7'`), u každého hodnocení, verze a zkrácené uid. V záložce Zprávy pak `survey7` nezobrazovat.
+
+### 3.8 Edge cases
+- **Offline při odeslání**: tlačítko Odeslat zakázat s „Jsi offline“ (stávající `err.offline`), nic nezapisovat.
+- **Dvě zařízení**: stav v profilu; karta se před ukázáním opírá o čerstvý `prof` (v jednoduchém režimu `nudgeSync()`), `survey7` s pevným ID.
+- **Účet smazaný**: dokument zmizí s `recursiveDelete`, v `stats_daily` zůstanou jen počty.
+- **Jazyk EN**: čipy a otázky přeložené; `msg` pro Adama česky.
+- **Admin sám**: vidí dotazník jako ostatní (otestuje ho).
+- **Ukázkový / testovací účet** (Google Play recenze apod.): neřešit, počty jsou malé.
+- **Nová verze dotazníku** později: nové ID (`survey30` po 30 dnech), stav `svy.s30`; tento návrh nic nepředjímá.
+
+### 3.9 Rozsah
+- Klient (karta, okno, stav, zápis, admin záložka): **M**, ≈ 1 den.
+- Funkce (`dailyStats` krok 7, `adminOverview`): **S**, ≈ 2–3 h; nasadí GitHub Actions.
+- `privacy.html`: drobnost.
+- **Bez změny `firestore.rules` a `firestore.indexes.json`.**
+
+---
+
+## Shrnutí pro kodéra
+
+| Bod | Soubory | Rozsah | Pravidla |
+|---|---|---|---|
+| 1 Landing | index.html (blok `#lp-landing`), style.css (LOGIN), i18n/cs.js, i18n/en.js | S | beze změny |
+| 2 Pozvánka | index.html (inline rychlý start), app.js (`capturePendingJoin`, `stripJoinParam`, `inAppLink`, `initLoginScreen`, `groupInviteUrl`, `showJoinInviteModal`, `confirmPendingJoin`, detail skupiny ř. ~13537, dialog rotace), style.css, i18n | M (+ S–M volitelný push) | beze změny |
+| 3 Dotazník | app.js (karta na Domů vedle `nudgeForDash`, okno, `prof.svy`, admin záložka), functions/index.js (`dailyStats`, `adminOverview`), style.css, i18n, privacy.html | M + S | beze změny |
+
+Pořadí: **1 → 2 → 3** (landing nejlevnější a ovlivní každého nového návštěvníka; pozvánka zvedá růst přes rodiny; dotazník dává smysl, až bude kam lidi přivádět).
+
+Testy (statické, tester): obě slovníky stejné klíče; landing bez/s `?join=`, s/bez `od`, s neplatným `co`; okno pozvánky ve všech 6 stavech (simulace v node nad `showJoinInviteModal`); dotazník: podmínky 3.2 v node (`accDay`, `actN`, `svy.s7` stavy, 2× Teď ne → konec), allowlist `helps`, délka `missing`, `msg` česky.
+
+---
+
+# Archiv: kolo 1 (4.27, 2026-10-07, implementováno)
+
 
 Výchozí stav, ze kterého návrh vychází (ověřeno v kódu):
 - Nový návštěvník má téma **sunshine** (světlé), viz `loadTheme()` v app.js (`lp_theme || 'sunshine'`). Landing proto uvidí většina lidí **světlý**. Všechno níže používá jen tokeny `var(--…)`, takže funguje ve všech třech tématech (dark-gold, sunshine, tangerine).
