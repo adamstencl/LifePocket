@@ -154,18 +154,15 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
     <!-- LANDING -->
     <section id="lp-landing" aria-labelledby="lp-hero-t">
       <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Celá domácnost v jedné appce.</h1>
-      <p class="lp-sub" data-i18n="landing.sub">Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš.</p>
-      <div class="lp-invite" id="lp-invite" hidden>
-        <span aria-hidden="true">🔗</span>
-        <span id="lp-invite-t" data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
-      </div>
+      <!-- Pozvánka do skupiny (5.16): H1, podtitulek, tlačítka a nadpis „Proč“ přepíná rychlý start níže a app.js (lpInviteMode) -->
+      <p class="lp-sub" id="lp-sub-t" data-i18n="landing.sub">Nákupy, kalendář, jídelníček i návyky. S rodinou sdílíš jen to, co si vybereš.</p>
       <div class="lp-ctas">
         <button type="button" class="btn-p" id="lp-start-btn" onclick="showAuthPanel('register')" data-i18n="landing.start">Začít zdarma</button>
-        <button type="button" class="btn-s lp-have" onclick="showAuthPanel('login')" data-i18n="landing.haveAccount">Mám účet</button>
+        <button type="button" class="btn-s lp-have" id="lp-have-btn" onclick="showAuthPanel('login')" data-i18n="landing.haveAccount">Mám účet</button>
       </div>
       <p class="lp-trust" data-i18n="landing.trust">Zdarma · bez reklam · česky</p>
       <!-- Tři odlišnosti (5.16); emoji jsou součástí překládaného textu -->
-      <h2 class="lp-sec" data-i18n="landing.why">Proč LifePocket</h2>
+      <h2 class="lp-sec" id="lp-why-t" data-i18n="landing.why">Proč LifePocket</h2>
       <ul class="lp-benefits">
         <li class="lp-benefit"><div><div class="lp-b-t" data-i18n="landing.w1t">🏠 Pro celou domácnost</div>
           <div class="lp-b-d" data-i18n="landing.w1d">Jeden nákupní seznam, společný kalendář a plán jídel. Co koupí partner, tobě se hned odškrtne.</div></div></li>
@@ -216,6 +213,8 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
         <span aria-hidden="true">🔗</span>
         <span id="auth-invite-t" data-i18n="auth.invite">Máš pozvánku do skupiny. Po přihlášení se tě zeptáme, jestli se chceš připojit.</span>
       </div>
+      <!-- iPhone s pozvánkou (5.16): odkaz se otevře v Safari, ne v appce z plochy (jiné úložiště) -->
+      <p class="lp-age lp-inv-ios" id="auth-inv-ios" hidden data-i18n="auth.invIosPwa">Máš LifePocket na ploše? Přihlas se tady v Safari, připojíš se a pak už můžeš pokračovat v appce.</p>
       <div id="auth-mode-lbl" tabindex="-1" style="text-align:center;font-size:18px;font-weight:700;color:var(--text);margin:0 0 14px;letter-spacing:-.01em" data-i18n="auth.modeLogin">🔑 Přihlásit se</div>
       <button class="google-btn" id="login-btn" onclick="window.doLogin()" style="margin-bottom:14px">
       <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.7 0 6.7 5.5 2.9 13.6l7.8 6C12.4 13.2 17.8 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.5-4.1 7.2-10.2 7.2-17.1z"></path><path fill="#34A853" d="M10.7 28.4A14.5 14.5 0 0 1 9.5 24c0-1.5.3-3 .7-4.4l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.9 10.6l7.8-6.2z"></path><path fill="#FBBC05" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.7 2.2-7.6 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.8 6C6.7 42.5 14.7 48 24 48z"></path></svg>
@@ -278,6 +277,42 @@ window.showLanding=function(){window.__lpAuthMode=null;try{sessionStorage.remove
 window.landLang=function(l){if(l===window.__lpLang)return false;
   try{if(window.__lpAuthMode)sessionStorage.setItem('lp_auth_panel',window.__lpAuthMode);}catch(e){}
   try{var u=new URL(location.href);u.searchParams.set('lang',l);location.replace(u.href);return false;}catch(e){return true;}};
+// Pozvánka do skupiny (5.16): landing hned v režimu pozvánky, ať normální neproblikne. app.js (lpInviteMode) texty přepíše přes t().
+// od/co z odkazu jsou jen kosmetika (podvržitelné): čištění jako cleanInviter/cleanInviteCo v app.js, do stránky jen textContent.
+function invWho(r){
+  var s=String(r||'').slice(0,200),k;
+  try{s=s.normalize('NFC');}catch(e){}
+  s=s.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g,'').replace(/\s+/g,' ').trim();
+  if(s.length>30)s=s.slice(0,31).replace(/\s+\S*$/,'');
+  s=s.slice(0,30).trim();
+  try{k=s.toLowerCase().normalize('NFD').replace(/[^a-z]+/g,'');if(/lifepocket|admin|podpora|support/.test(k)||!new RegExp("^[\\p{L}][\\p{L}\\p{M} .'\u2019-]*$",'u').test(s))return '';}catch(e){return '';}
+  return s;
+}
+function invRead(){
+  var q,c,o,w,p=null;
+  try{q=new URLSearchParams(location.search);c=q.get('join');o=q.get('od');w=q.get('co');}catch(e){return null;}
+  if(c===null){
+    try{p=JSON.parse(localStorage.getItem('lp_pending_join')||'null');}catch(e){}
+    if(!p||typeof p.code!=='string'||!(Date.now()-Number(p.ts)<6048e5))return null;
+    o=p.od;w=p.co;
+  }else if(!/^[A-Za-z]{4}\W?[A-Za-z0-9]{4}([A-Za-z0-9]{2})?$/.test(String(c).trim()))return null;
+  w=String(w||'');if(w.length>4||!/^[scml]*$/.test(w))w='';
+  return {who:invWho(o),co:w};
+}
+function inv(T){
+  var i=invRead();if(!i)return;
+  var s=i.co.indexOf('s')>=0,c=i.co.indexOf('c')>=0,m=i.co.indexOf('m')>=0;
+  var k=s&&c?'shopCal':s?'shop':c?'cal':m?'meal':'group';
+  var W={shopCal:'společného nákupu a kalendáře',shop:'společného nákupu',cal:'společného kalendáře',meal:'společného jídelníčku',group:'společné skupiny'};
+  var what=T?T('grp.inv.w.'+k):W[k];
+  function set(id,txt,key){var el=d.getElementById(id);if(!el)return;if(key){el.setAttribute('data-i18n',key);}else el.removeAttribute('data-i18n');el.textContent=txt;}
+  set('lp-hero-t',T?(i.who?T('landing.invH1',{who:i.who}):T('landing.invH1A')):(i.who?i.who+' tě zve do LifePocket':'Máš pozvánku do LifePocket'));
+  set('lp-sub-t',T?T('landing.invSub',{what:what}):'Do '+what+'. Tvoje další věci zůstanou jen tvoje.');
+  set('lp-start-btn','Přijmout pozvánku','landing.invAccept');
+  set('lp-have-btn','Už mám účet','landing.invHave');
+  set('lp-why-t','Co je LifePocket?','landing.invWhat');
+  var l=d.getElementById('lp-landing');if(l)l.classList.add('lp-inv');
+}
 function show(){
   var ld=d.getElementById('s-loading'),lg=d.getElementById('s-login');
   if(!h.classList.contains('lp-boot')||!ld||!lg||!ld.classList.contains('active'))return; // app.js už rozhodla
@@ -288,8 +323,8 @@ function show(){
   ld.classList.remove('active');lg.classList.add('active');
 }
 // Čeština je přímo v HTML; jiný jazyk nejdřív přeloží landing (stejný modul i18n.js jako app.js)
-if(window.__lpLang==='en'){import('/i18n.js').then(function(m){return m.initI18n().then(function(){m.applyI18n(d.getElementById('s-login'));show();});}).catch(function(){});}
-else show();
+if(window.__lpLang==='en'){import('/i18n.js').then(function(m){return m.initI18n().then(function(){try{inv(m.t);}catch(e){}m.applyI18n(d.getElementById('s-login'));show();});}).catch(function(){});}
+else{try{inv(null);}catch(e){}show();}
 })();</script>
 
 <!-- STEP 1 -->

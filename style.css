@@ -154,6 +154,7 @@ body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,se
 /* Věková hranice u registrace (5.15) */
 .lp-age{font-size:13px;line-height:1.45;color:var(--text2);text-align:center;margin:10px 0 0}
 .lp-age[hidden]{display:none}
+.lp-inv-ios{margin:0 0 12px}
 .lp-age a{color:var(--text2);text-decoration:underline;display:inline-block;padding:8px 2px}
 /* Odkaz z e-mailu (5.15): ověření, nové heslo, vrácení e-mailu */
 .act-card{text-align:center;width:440px}
@@ -1348,12 +1349,41 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .grp-mod-note{font-size:13px;color:var(--text2)}
 .grp-you{color:var(--text2);font-size:12px}
 .grp-rm{flex-shrink:0;width:44px;height:44px;background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;border-radius:10px}
-.grp-code-box{margin:0 0 12px}
-.grp-code-acts{display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap}
-.grp-code-acts button{min-height:44px;padding:0 14px;font-size:14px}
-.grp-share-btn{width:auto;flex:0 0 auto}
-.grp-rot-warn{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
-.grp-legacy{font-size:13px;color:var(--red);margin-top:8px;line-height:1.4}
+/* Pozvat do skupiny (5.16): Poslat pozvánku, QR, kód k nadiktování */
+.grp-inv{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.grp-inv-btn{width:100%;min-height:48px;font-size:16px}
+.btn-s.grp-inv-btn{color:var(--text);font-weight:600}
+.grp-inv-btn:disabled{opacity:.5;cursor:not-allowed}
+.grp-inv-hint{font-size:14px;color:var(--text2);text-align:center;margin:-2px 0 4px}
+.grp-inv-note{font-size:14px;color:var(--text);line-height:1.45;margin:0;padding:10px 12px;background:var(--card2);border:1px solid var(--border2);border-left:3px solid var(--accent);border-radius:12px}
+.grp-inv-dict{font-size:14px;color:var(--text2);margin-top:6px}
+.grp-inv-code{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grp-inv-code .family-code{font-size:20px;flex:1;min-width:0}
+.grp-inv-code .btn-s{min-height:44px;padding:0 14px;font-size:14px;flex:none}
+.grp-inv-rot{align-self:center;min-height:44px;padding:0 12px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;text-decoration:underline;cursor:pointer}
+.grp-inv-rot:disabled{opacity:.5;cursor:not-allowed}
+.grp-qr{max-width:340px;text-align:center}
+.grp-qr-box{display:inline-block;background:#fff;padding:12px;border-radius:12px;line-height:0;max-width:100%}
+.grp-qr-box svg{max-width:100%;height:auto}
+.grp-qr-d{font-size:15px;color:var(--text2);line-height:1.45;margin:12px 0 0}
+/* Okno pozvánky po přihlášení (5.16) */
+.jinv{max-width:380px;text-align:center}
+.jinv-ic{font-size:36px;margin-bottom:8px}
+.jinv-t{font-family:'Playfair Display',serif;font-style:italic;font-size:20px;font-weight:700;color:var(--accent);margin:0 0 12px}
+.jinv-who{font-size:14px;color:var(--text2);margin:0 0 8px}
+.jinv-p{font-size:15px;color:var(--text);line-height:1.5;margin:0 0 18px}
+.jinv-grp{font-size:18px;color:var(--text);overflow-wrap:anywhere;margin:4px 0 2px}
+.jinv-count{font-size:14px;color:var(--text2);margin:0 0 14px}
+.jinv-sh{font-size:14px;color:var(--text2);margin:0 0 6px}
+.jinv-mods{list-style:none;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 10px;padding:0}
+.jinv-mods li{background:var(--card2);border:1px solid var(--border2);border-radius:999px;padding:5px 12px;font-size:14px;color:var(--text)}
+.jinv-priv{font-size:14px;color:var(--text2);line-height:1.45;margin:0 0 18px}
+.jinv-acts{display:flex;flex-direction:column;gap:8px}
+.jinv-btn{width:100%;min-height:48px}
+.btn-s.jinv-btn{font-size:16px;color:var(--text)}
+.jinv-decline{display:block;width:100%;min-height:44px;margin-top:4px;background:none;border:none;color:var(--text2);font-family:'Crimson Pro',serif;font-size:15px;text-decoration:underline;cursor:pointer}
+.jinv-decline:focus-visible,.grp-inv-rot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.inv-wel-t{font-size:14px;color:var(--text);line-height:1.45;padding:4px 0}
 .grp-bottom{display:flex;flex-direction:column;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
 .grp-setmain{width:100%;min-height:44px}
 .grp-leave{width:100%;min-height:44px;background:none;border:1px solid var(--red);border-radius:10px;color:var(--red);font-family:'Crimson Pro',serif;font-size:15px;cursor:pointer}

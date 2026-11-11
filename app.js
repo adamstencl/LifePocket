@@ -68,8 +68,15 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.15';
+const APP_VERSION = '5.16';
 const CHANGELOG = [
+  { v:'5.16', items:[
+    '📤 Pozvání do skupiny je jednodušší: velké tlačítko Poslat pozvánku a nově i QR kód k naskenování',
+    '👋 Pozvánka ukáže, co se ve skupině sdílí a co zůstane jen tvoje. Po připojení se zapnou sdílené moduly a appka tě do nich rovnou vezme'
+  ], en:[
+    '📤 Inviting to a group is easier: a big Send invite button and a new QR code to scan',
+    '👋 An invite shows what the group shares and what stays yours. After joining, the shared modules turn on and the app takes you straight there'
+  ]},
   { v:'5.15', items:[
     '✅ Nová karta Úkoly na Domů: napiš „koupit žárovky zítra v 18:00“ a termín se pozná sám',
     '🎯 Hlavní úkol dne je teď úkol s hvězdičkou; dnešní a zítřejší se přesunul do Úkolů',
@@ -11721,19 +11728,32 @@ window.copyFamilyCode = (gid) => {
 
 // Pozvánka do skupiny: odkaz ?join=KÓD&od=JMÉNO (po přihlášení se appka zeptá, zda se připojit)
 // Text (5.10): „Jana tě zve do společného nákupu … (zdarma)“ podle sdílených modulů skupiny, bez kódu
+function groupInviteData(gid) { return groupDataOf(gid) || (gid === familyId ? groupTemplateFlags('home') : {}); } // právě založená skupina se ještě načítá
+// Co skupina sdílí → klíč textu grp.inv.w.* (shop+cal, jinak první z shop, cal, meal)
+function inviteWhatKey(d) { return d.shareShop && d.shareCal ? 'shopCal' : d.shareShop ? 'shop' : d.shareCal ? 'cal' : d.shareMeal ? 'meal' : 'group'; }
+// Parametr odkazu ?co= (5.16): s nákup, c kalendář, m jídelníček, l úkoly. Jen nápověda pro landing, nic se podle něj nerozhoduje.
+const INVITE_CO = [['s','shareShop'],['c','shareCal'],['m','shareMeal'],['l','shareChecklist']];
+function cleanInviteCo(raw) {
+  const s = String(raw ?? '');
+  if(!s || s.length > 4 || !/^[scml]+$/.test(s)) return ''; // neznámé znaky nebo dlouhé → celé pryč
+  return INVITE_CO.map(([c]) => c).filter(c => s.includes(c)).join('');
+}
+function inviteCoFlags(co) { const f = {}; INVITE_CO.forEach(([c, k]) => { f[k] = String(co || '').includes(c); }); return f; }
 function groupInviteText(gid) {
-  const d = groupDataOf(gid) || (gid === familyId ? groupTemplateFlags('home') : {}); // právě založená skupina se ještě načítá
-  const w = d.shareShop && d.shareCal ? 'shopCal' : d.shareShop ? 'shop' : d.shareCal ? 'cal' : d.shareMeal ? 'meal' : 'group';
+  const w = inviteWhatKey(groupInviteData(gid));
   const who = cleanInviter(prof?.prezdivka || prof?.nickname || String(CU?.displayName || '').split(' ')[0]);
   return who ? t('grp.inv.textN', {name: who, what: t('grp.inv.w.' + w)}) : t('grp.inv.textA', {what: t('grp.inv.w.' + w)});
 }
 function groupInviteUrl(gid) {
   const who = cleanInviter(prof?.prezdivka || prof?.nickname || String(CU?.displayName || '').split(' ')[0]);
-  return 'https://lifepocket.app/?join=' + encodeURIComponent(gid) + (who ? '&od=' + encodeURIComponent(who) : '');
+  const d = groupInviteData(gid);
+  const co = INVITE_CO.filter(([, k]) => groupModVal(d, k)).map(([c]) => c).join('');
+  return 'https://lifepocket.app/?join=' + encodeURIComponent(gid) + (who ? '&od=' + encodeURIComponent(who) : '') + (co ? '&co=' + co : '');
 }
 // afterCreate: skupina právě vznikla (po čekání na server už sdílení nemusí projít jako klepnutí) → bez kopírování jen rada
 window.shareGroupInvite = async (gid, afterCreate) => {
   if(!okFamilyCode(gid)) return;
+  if(FAMILY_CODE_LEGACY_RE.test(gid)) { toast(t('grp.inv.legacy'), 5000); return; } // starý kód: odkaz by nefungoval (5.16)
   const url = groupInviteUrl(gid);
   const text = groupInviteText(gid);
   if(navigator.share) {
@@ -11742,6 +11762,27 @@ window.shareGroupInvite = async (gid, afterCreate) => {
   }
   try { await navigator.clipboard.writeText(text + '\n' + url); toast(t('grp.inv.copied')); }
   catch(e) { toast(t(afterCreate === true ? 'grp.inv.tapAgain' : 'grp.inv.copyFail'), 5000); }
+};
+// QR kód pozvánky (5.16) pro pozvání „u stolu“; bílé pozadí i v tmavém tématu (čtečky jinak selhávají)
+window.openGroupQr = (gid) => {
+  if(!okFamilyCode(gid) || FAMILY_CODE_LEGACY_RE.test(gid)) return;
+  const svg = qrSvg(groupInviteUrl(gid), 240);
+  if(!svg) return;
+  document.getElementById('m-grpqr')?.remove();
+  const opener = document.activeElement;
+  const m = document.createElement('div');
+  m.id = 'm-grpqr'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal grp-qr" role="dialog" aria-modal="true" aria-labelledby="grpqr-t" aria-describedby="grpqr-d">'
+    + '<div class="mtitle" id="grpqr-t">'+tH('grp.inv.modalTitle')+'</div>'
+    + '<div class="grp-qr-box">'+svg+'</div>'
+    + '<p class="grp-qr-d" id="grpqr-d">'+tH('grp.inv.qrHint')+'</p>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="this.closest(\'.moverlay\').remove()">'+tH('common.close')+'</button></div></div>';
+  m.querySelector('svg')?.setAttribute('aria-label', 'QR');
+  const rm = Element.prototype.remove;
+  m.remove = () => { if(!m.isConnected) return; rm.call(m); if(opener?.isConnected) opener.focus?.({preventScroll: true}); };
+  m.addEventListener('click', e => { if(e.target === m) m.remove(); });
+  document.body.appendChild(m);
+  m.querySelector('.macts .btn-s')?.focus();
 };
 // „Pozvi rodinu“ bez skupiny (5.10): jedním klepnutím založí skupinu „Rodina“ a hned nabídne sdílení
 let _invOneTap = false;
@@ -12059,12 +12100,12 @@ function inAppName(){
   const ua=navigator.userAgent||'';
   return t(/Instagram/.test(ua)?'inapp.nmIg':/Orca|Messenger|MESSENGER/.test(ua)?'inapp.nmMsg':/FBAN|FBAV|FB_IAB/.test(ua)?'inapp.nmFb':'inapp.nmApp');
 }
-// Odstranit ?join= (a jméno zvoucího ?od=) z adresy (po převzetí nebo vyřízení pozvánky)
+// Odstranit ?join= (a jméno zvoucího ?od=, sdílené moduly ?co=) z adresy (po převzetí nebo vyřízení pozvánky)
 function stripJoinParam() {
   try {
     const u = new URL(location.href);
-    if(!u.searchParams.has('join') && !u.searchParams.has('od')) return;
-    u.searchParams.delete('join'); u.searchParams.delete('od');
+    if(!['join','od','co'].some(k => u.searchParams.has(k))) return;
+    u.searchParams.delete('join'); u.searchParams.delete('od'); u.searchParams.delete('co');
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
   } catch(e) {}
 }
@@ -12083,13 +12124,13 @@ function cleanInviter(raw) {
 function capturePendingJoin() {
   try {
     const u = new URL(location.href);
-    if(!u.searchParams.has('join')) { if(u.searchParams.has('od')) stripJoinParam(); return; }
+    if(!u.searchParams.has('join')) { if(u.searchParams.has('od') || u.searchParams.has('co')) stripJoinParam(); return; }
     const code = normFamilyCode(String(u.searchParams.get('join') ?? '').slice(0,40));
     // Ve vestavěném prohlížeči (4.93) odkaz nechat: „Otevřít v Chrome/Safari“ převezme adresu i s pozvánkou
     // Neplatný kód z adresy pryč vždy (4.93)
     if(!IN_APP_BROWSER || !okFamilyCode(code)) stripJoinParam();
-    const od = cleanInviter(u.searchParams.get('od'));
-    if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify(od ? {code, ts: Date.now(), od} : {code, ts: Date.now()}));
+    const od = cleanInviter(u.searchParams.get('od')), co = cleanInviteCo(u.searchParams.get('co'));
+    if(okFamilyCode(code)) localStorage.setItem(PENDING_JOIN_KEY, JSON.stringify({code, ts: Date.now(), ...(od ? {od} : {}), ...(co ? {co} : {})}));
   } catch(e) {}
 }
 capturePendingJoin();
@@ -12135,13 +12176,36 @@ function initLoginScreen(){
   else if(known || isStandaloneApp() || _verifiedBack) showAuthPanel('login', false); // návrat z ověřovacího e-mailu (5.13): rovnou přihlášení
   window.__lpAuthMode=null;
   const inv=readPendingJoin();
-  ['lp-invite','auth-invite'].forEach(id=>{ const el=document.getElementById(id); if(el) el.hidden=!inv; });
+  lpInviteMode(inv);
+  const ai=document.getElementById('auth-invite'); if(ai) ai.hidden=!inv;
   // Jméno zvoucího z odkazu (5.10): „Jana tě zve…“ (textContent, data-i18n pryč, ať ho překlad nepřepíše)
-  if(inv?.od) [['lp-invite-t','landing.inviteFrom'],['auth-invite-t','auth.inviteFrom']].forEach(([id,k])=>{
-    const el=document.getElementById(id); if(el){ el.removeAttribute('data-i18n'); el.textContent=t(k,{who:inv.od}); } });
+  const ait=document.getElementById('auth-invite-t');
+  if(inv?.od&&ait){ ait.removeAttribute('data-i18n'); ait.textContent=t('auth.inviteFrom',{who:inv.od}); }
+  // iPhone v Safari (5.16): pozvánka platí jen tady, ne v appce z plochy
+  const ios=document.getElementById('auth-inv-ios'); if(ios) ios.hidden=!(inv&&isIOSDevice()&&!isStandaloneApp()&&!IN_APP_BROWSER);
   initVerifiedNote();
   document.documentElement.classList.remove('lp-boot'); // tlačítka přihlášení už fungují
   initInAppBrowser();
+}
+// Landing v režimu pozvánky (5.16): H1 „Jana tě zve do LifePocket“, podtitulek podle ?co=, Přijmout pozvánku / Už mám účet.
+// Rychlý start v index.html to přepne dřív (česky), tady se texty nastaví přes t() z ověřené pozvánky; bez ní zpět normální landing.
+// Jméno i co jsou z odkazu (podvržitelné): jen textContent, nic se podle nich nerozhoduje.
+const LP_INV_EL=[['lp-hero-t','landing.hero'],['lp-sub-t','landing.sub'],['lp-start-btn','landing.start','landing.invAccept'],['lp-have-btn','landing.haveAccount','landing.invHave'],['lp-why-t','landing.why','landing.invWhat']];
+function lpInviteMode(inv){
+  const lp=document.getElementById('lp-landing'); if(!lp) return;
+  if(!inv&&!lp.classList.contains('lp-inv')) return;
+  lp.classList.toggle('lp-inv',!!inv);
+  const what=inv?t('grp.inv.w.'+(inv.co?inviteWhatKey(inviteCoFlags(inv.co)):'group')):'';
+  LP_INV_EL.forEach(([id,k,ik])=>{
+    const el=document.getElementById(id); if(!el) return;
+    let key=inv?ik:k, txt;
+    if(!inv) txt=t(k);
+    else if(id==='lp-hero-t') txt=inv.od?t('landing.invH1',{who:inv.od}):t('landing.invH1A');
+    else if(id==='lp-sub-t') txt=t('landing.invSub',{what});
+    else txt=t(ik);
+    if(key) el.setAttribute('data-i18n',key); else el.removeAttribute('data-i18n'); // H1 a podtitulek s proměnnou: překlad je nepřepíše
+    el.textContent=txt;
+  });
 }
 // „E-mail je ověřený“ nad úvodem i přihlášením (5.10, návrat z odkazu v e-mailu)
 function initVerifiedNote(){
@@ -12162,6 +12226,8 @@ function inAppLink(){
   if(inv&&!u.searchParams.has('join')) u.searchParams.set('join',inv.code);
   const od=cleanInviter(u.searchParams.get('od'))||inv?.od||''; // jen ověřené jméno
   if(od&&u.searchParams.has('join')) u.searchParams.set('od',od); else u.searchParams.delete('od');
+  const co=cleanInviteCo(u.searchParams.get('co'))||inv?.co||'';
+  if(co&&u.searchParams.has('join')) u.searchParams.set('co',co); else u.searchParams.delete('co');
   return u.origin+u.pathname+u.search;
 }
 // Android: intent:// otevře Chrome (Messenger/FB jinak zůstane ve vlastním okně); iOS: x-safari-https:// otevře Safari
@@ -12330,32 +12396,50 @@ function readPendingJoin() {
     const p = JSON.parse(raw);
     const age = Date.now() - Number(p?.ts);
     if(p && okFamilyCode(p.code) && age >= -60000 && age < PENDING_JOIN_TTL) {
-      const od = cleanInviter(p.od); // jméno zvoucího (5.10), znovu ověřené
-      return od ? {code: p.code, ts: p.ts, od} : {code: p.code, ts: p.ts};
+      const od = cleanInviter(p.od), co = cleanInviteCo(p.co); // jméno zvoucího (5.10) a sdílené moduly (5.16), znovu ověřené
+      return {code: p.code, ts: p.ts, ...(od ? {od} : {}), ...(co ? {co} : {})};
     }
   } catch(e) {}
   clearPendingJoin(); // vypršelá / neplatná pozvánka: smaže i ?join= z adresy (stripJoinParam)
   return null;
 }
 function closeJoinInviteModal() { document.getElementById('join-invite-modal')?.remove(); }
-// who = jméno zakladatele skupiny (z dokumentu skupiny), když je známé
-function showJoinInviteModal(name, who) {
+// Okno pozvánky (5.16). Údaje jen z dokumentu skupiny (po přihlášení), ne z odkazu:
+// o = {st:'ok'|'full'|'limit'|'gone', name, who (zakladatel), n (počet členů), emoji, flags (sdílené moduly)}
+function showJoinInviteModal(o) {
   closeJoinInviteModal();
-  const body = name === null
-    ? '<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">'+tH('grp.inv.gone')+'</div>'
-      +'<button class="btn-p" onclick="cancelPendingJoin()">'+tH('common.close')+'</button>'
-    : (who ? '<div style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:8px">'+tH('grp.inv.from',{who})+'</div>' : '')
-      +'<div style="font-size:15px;color:var(--text);text-align:center;margin-bottom:18px">'+tH('grp.inv.q1')+' <b>'+esc(name)+'</b>?</div>'
-      +'<div style="display:flex;gap:10px"><button class="btn-p" style="flex:1" onclick="confirmPendingJoin()">'+tH('grp.inv.join')+'</button>'
-      +'<button class="btn-p" style="flex:1;background:var(--card2);color:var(--text2)" onclick="cancelPendingJoin()">'+tH('common.cancel')+'</button></div>';
+  const P = '<p class="jinv-p">', btnP = (k, fn) => '<button type="button" class="btn-p jinv-btn" onclick="'+fn+'">'+tH(k)+'</button>';
+  const btnS = (k, fn) => '<button type="button" class="btn-s jinv-btn" onclick="'+fn+'">'+tH(k)+'</button>';
+  const who = o.who ? '<p class="jinv-who">'+tH('grp.inv.from', {who: o.who})+'</p>' : '';
+  let body;
+  if(o.st === 'gone') body = P+tH('grp.inv.gone')+'</p>'+btnP('common.close', 'cancelPendingJoin()');
+  else if(o.st === 'full') body = who + P + tH('grp.inv.fullTA', {name: o.name, max: GROUP_MEMBERS_MAX})+'</p>'
+    + btnP('grp.inv.ok', 'laterPendingJoin()');
+  else if(o.st === 'limit') body = P+tH('grp.inv.limitT', {n: GROUP_MAX})+'</p>'
+    + '<div class="jinv-acts">'+btnP('grp.inv.openGroups', 'joinInviteGroups()')+btnS('common.close', 'laterPendingJoin()')+'</div>';
+  else {
+    const mods = GROUP_MOD_KEYS.filter(k => o.flags?.[k]);
+    body = who
+      + '<div class="jinv-grp"><span aria-hidden="true">'+esc(o.emoji)+'</span> <b>'+esc(o.name)+'</b></div>'
+      + '<p class="jinv-count">'+tH('grp.inv.count', {n: o.n, max: GROUP_MEMBERS_MAX})+'</p>'
+      + (mods.length ? '<p class="jinv-sh" id="jinv-sh">'+tH('grp.inv.sharedH')+'</p><ul class="jinv-mods" aria-labelledby="jinv-sh">'
+        + mods.map(k => '<li><span aria-hidden="true">'+GROUP_MOD_INFO[k][0]+'</span> '+esc(grpModName(k))+'</li>').join('')+'</ul>' : '')
+      + '<p class="jinv-priv">'+tH('grp.inv.private')+'</p>'
+      + '<div class="jinv-acts">'+btnP('grp.inv.join', 'confirmPendingJoin()')+btnS('grp.inv.later', 'laterPendingJoin()')+'</div>'
+      + '<button type="button" class="jinv-decline" onclick="cancelPendingJoin()">'+tH('grp.inv.decline')+'</button>';
+  }
   document.getElementById('app').insertAdjacentHTML('beforeend',
     '<div class="moverlay open" id="join-invite-modal" onclick="if(event.target===this)laterPendingJoin()">'
-    +'<div class="modal" style="max-width:380px;gap:0"><div style="font-size:36px;text-align:center;margin-bottom:8px">🔗</div>'
-    +'<div style="font-family:\'Playfair Display\',serif;font-style:italic;font-size:20px;color:var(--accent);text-align:center;margin-bottom:14px">'+tH('grp.inv.modalTitle')+'</div>'
+    +'<div class="modal jinv" role="dialog" aria-modal="true" aria-labelledby="jinv-t"><div class="jinv-ic" aria-hidden="true">🔗</div>'
+    +'<h2 class="jinv-t" id="jinv-t">'+tH('grp.inv.modalTitle')+'</h2>'
     +body+'</div></div>');
+  requestAnimationFrame(() => document.querySelector('#join-invite-modal .btn-p')?.focus({preventScroll: true}));
 }
+// Limit skupin: zavřít okno (pozvánka zůstane) a otevřít Nastavení → Skupiny
+window.joinInviteGroups = () => { window.laterPendingJoin(); ctaGoGroups(); };
 // Po přihlášení a načtení profilu (volá initApp): zjistí název skupiny a zeptá se
 let _pendingJoinTimer = null, _pendingJoinWait = 0, _pendingJoinBusy = false;
+let _pendingJoinFlags = null; // {code, flags} sdílené moduly z dokumentu skupiny (okno pozvánky → zapnutí modulů po připojení)
 const PENDING_JOIN_MAX_WAIT = 10 * 60 * 1000; // déle se na průvodce nečeká, dotaz pak spustí jeho konec
 // Po zavření průvodce zkusit pozvánku hned (i když už vypršel strop čekání)
 function resumePendingJoin() {
@@ -12393,10 +12477,17 @@ async function checkPendingJoin() {
       return;
     }
     if(!CU || !readPendingJoin()) return;
-    if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal(null); shown = true; return; }
+    if(!snap.exists()) { clearPendingJoin(); showJoinInviteModal({st: 'gone'}); shown = true; return; }
     const d = snap.data() || {};
     const who = (typeof d.createdBy === 'string' && d.createdBy !== CU.uid) ? cutName(lookupOr(d.members||{}, d.createdBy, null)?.name, 40) : '';
-    showJoinInviteModal(cutName(d.groupName,40) || t('grp.defName'), who);
+    const n = Object.keys(d.members || {}).length;
+    const flags = {}; GROUP_MOD_KEYS.forEach(k => { flags[k] = groupModVal(d, k); });
+    _pendingJoinFlags = {code: p.code, flags};
+    const e = d.emoji;
+    showJoinInviteModal({
+      st: !joinIsMember(d) && n >= GROUP_MEMBERS_MAX ? 'full' : groupCount() >= GROUP_MAX ? 'limit' : 'ok',
+      name: cutName(d.groupName,40) || t('grp.defName'), who, n, flags,
+      emoji: (typeof e === 'string' && e.trim() && e.length <= 8) ? e.trim() : '👥'});
     shown = true;
   } catch(e) { console.warn('checkPendingJoin selhalo', e?.code || e?.name); } // offline: pozvánka zůstane na příště
   finally { _pendingJoinBusy = false; if(!shown && !waiting) tourAfterJoin(); }
@@ -12406,19 +12497,54 @@ window.cancelPendingJoin = () => { clearPendingJoin(); closeJoinInviteModal(); t
 window.laterPendingJoin = () => { closeJoinInviteModal(); tourAfterJoin(); };
 window.confirmPendingJoin = async () => {
   const p = readPendingJoin();
+  const fl = p && _pendingJoinFlags?.code === p.code ? _pendingJoinFlags.flags : null;
   closeJoinInviteModal();
-  // Průvodce hned po zavření okna, na dokončení připojení nečeká (offline by visel).
+  // Průvodce až po přechodu do sdíleného modulu (5.16); offline by připojení viselo → nejpozději za 4 s.
   // Krok Nákupy vybírá tourSteps() až při zobrazení kroku, po připojení tedy ukáže sdílený nákup.
-  tourAfterJoin();
-  if(!p) return;
+  let tourGone = false, tm = null;
+  const goTour = () => { if(tourGone) return; tourGone = true; clearTimeout(tm); tourAfterJoin(); };
+  if(!p) { goTour(); return; }
+  tm = setTimeout(goTour, 4000);
   // Hlavní skupinu ještě nemám → hlavní, jinak přidaná
   let res = null;
   try { res = familyId ? await window.joinExtraGroup(p.code) : await window.joinFamily(p.code); }
   finally {
     // Pozvánku smaž po úspěchu i trvalém selhání; při dočasné chybě (null) zůstane na příště
     if(res !== null) clearPendingJoin();
+    if(res === true && fl) { try { afterInviteJoin(p.code, fl); } catch(e) { console.warn('[LP] afterInviteJoin', e?.name); } }
+    goTour();
   }
 };
+// Po připojení z pozvánky (5.16): zapnout moduly, které skupina sdílí, a otevřít první z nich s uvítacím řádkem
+const INVITE_MODS = [['shareShop','shopping','grp.inv.welcome'],['shareCal','calendar','grp.inv.welcomeCal'],['shareMeal','mealplan','grp.inv.welcomeMeal'],['shareChecklist','checklist','grp.inv.welcomeCheck']];
+function afterInviteJoin(code, flags) {
+  if(!CU || !prof) return;
+  const shared = INVITE_MODS.filter(([k, m]) => flags[k] && MODS.some(x => x.id === m));
+  if(!shared.length) return;
+  const add = shared.map(([, m]) => m).filter(m => !hasMod(m));
+  if(add.length) {
+    modsOnBatch(add);
+    const names = add.map(m => modName(MODS.find(x => x.id === m)));
+    setTimeout(() => toast(t('grp.inv.modsOn', {mods: names.join(', ')}), 5000), 2600); // po toastu „Připojeno“
+  }
+  const [, mod, wk] = shared[0];
+  if(mod === 'shopping') { shopViewSel = code; lsSave(SHOP_VIEW_KEY, {u: CU.uid, g: code}); } // seznam nové skupiny
+  lsSave('lp_inv_welcome', toDS());
+  window.sp(mod);
+  invWelcome(mod, wk);
+}
+// Uvítací řádek ve stránce modulu (styl nápovědy modulu, nic nepřekrývá); zmizí zavřením nebo odchodem ze stránky
+function invWelcome(mod, key) {
+  const page = document.getElementById('p-' + mod);
+  if(!page?.classList.contains('active')) return;
+  document.getElementById('inv-welcome')?.remove();
+  const el = document.createElement('div');
+  el.id = 'inv-welcome'; el.className = 'mod-hint'; el.setAttribute('role', 'status');
+  el.innerHTML = '<div class="mod-hint-b"><div class="inv-wel-t">'+tH(key)+'</div></div>'
+    + '<button type="button" class="mod-hint-x" aria-label="'+tH('common.close')+'" onclick="this.parentNode.remove()">×</button>';
+  const gh = page.querySelector(':scope > .gh, .journal-sidebar-top') || page.querySelector('.ptitle')?.parentElement;
+  if(gh && gh !== page) gh.after(el); else page.prepend(el);
+}
 
 window.toggleFamilyModule = async (key, gid = null) => {
   // Hlavní skupina (gid = familyId) se bere jako null, jinak by se hledala v extraGroupsData
@@ -13288,19 +13414,27 @@ function groupSheetBody(gid) {
     + '</div>'
     + (isAdmin && uid !== CU?.uid ? '<button type="button" class="grp-rm" data-fk="rm-'+esc(uid)+'" data-uid="'+esc(uid)+'" data-gid="'+g+'" aria-label="'+tH('grp.rmAria', {name: cutName(m.name, 40) || t('grp.member')})+'" onclick="removeFamilyMember(this.dataset.uid,this.dataset.gid)">✕</button>' : '')
     + '</div>').join('');
-  // Pozvat
+  // Pozvat (5.16): hlavní je Poslat pozvánku, pak QR, kód až jako záloha k nadiktování
   const legacyCode = FAMILY_CODE_LEGACY_RE.test(gid);
-  h += '<div class="grp-sec-h">'+tH('grp.inviteH')+'</div>'
-    + '<div class="family-code-box grp-code-box">'
-    + '<div class="family-code">'+g+'</div>'
-    + '<div class="family-code-lbl">'+tH('grp.codeLbl')+'</div>'
-    + '<div class="grp-code-acts">'
-    + '<button type="button" class="btn-s" data-fk="copy" data-gid="'+g+'" onclick="copyFamilyCode(this.dataset.gid)">'+tH('grp.copy')+'</button>'
-    + '<button type="button" class="btn-p grp-share-btn" data-fk="share" data-gid="'+g+'" onclick="shareGroupInvite(this.dataset.gid)">'+tH('grp.share')+'</button>'
-    + (isAdmin ? '<button type="button" class="btn-s rotcode-open'+(legacyCode ? ' grp-rot-warn' : '')+'" data-fk="rot" data-gid="'+g+'" onclick="openRotateGroupCode(this.dataset.gid)"'+(_rotateBusy?' disabled':'')+'>'+tH('grp.newCode')+'</button>' : '')
-    + '</div>'
-    + (isAdmin && legacyCode ? '<div role="note" class="grp-legacy">'+tH('grp.legacyWarn')+'</div>' : '')
-    + '</div>';
+  const memN = Object.keys(members).length, full = memN >= GROUP_MEMBERS_MAX;
+  const rot = isAdmin ? '<button type="button" class="'+(legacyCode ? 'btn-p grp-inv-btn' : 'grp-inv-rot')+' rotcode-open" data-fk="rot" data-gid="'+g+'" onclick="openRotateGroupCode(this.dataset.gid)"'+(_rotateBusy?' disabled':'')+'>'+tH('grp.newCode')+'</button>' : '';
+  h += '<div class="grp-sec-h">'+tH('grp.inviteH')+'</div><div class="grp-inv">';
+  if(legacyCode) {
+    // Starý kód WORD-NNNN: pravidla cizího nepustí, odkaz by příjemci jen řekl „kód už neplatí“
+    h += '<p class="grp-inv-note" role="note">'+tH('grp.inv.legacy')+'</p>' + (isAdmin ? rot : '<p class="grp-inv-note">'+tH('grp.inv.legacyAsk')+'</p>');
+  } else {
+    const dis = full ? ' disabled aria-describedby="grp-inv-full-'+g+'"' : '';
+    h += '<button type="button" class="btn-p grp-inv-btn" data-fk="share" data-gid="'+g+'" onclick="shareGroupInvite(this.dataset.gid)"'+dis+'>'+tH('grp.inv.send')+'</button>'
+      + '<div class="grp-inv-hint">'+tH('grp.inv.sendHint')+'</div>'
+      + '<button type="button" class="btn-s grp-inv-btn" data-fk="qr" data-gid="'+g+'" onclick="openGroupQr(this.dataset.gid)"'+dis+'>'+tH('grp.inv.qr')+'</button>'
+      + (full ? '<p class="grp-inv-note" id="grp-inv-full-'+g+'">'+tH('grp.inv.fullOwn')+'</p>' : '')
+      + '<div class="grp-inv-dict">'+tH('grp.inv.dictate')+'</div>'
+      + '<div class="grp-inv-code"><span class="family-code">'+g+'</span>'
+      + '<button type="button" class="btn-s" data-fk="copy" data-gid="'+g+'" onclick="copyFamilyCode(this.dataset.gid)">'+tH('grp.copy')+'</button></div>'
+      + '<div class="grp-inv-hint">'+tH('grp.inv.seats', {n: memN, max: GROUP_MEMBERS_MAX})+'</div>'
+      + rot;
+  }
+  h += '</div>';
   // Dole: nastavit jako hlavní, opustit
   h += '<div class="grp-bottom">'
     + (!isMain ? '<button type="button" class="btn-s grp-setmain" data-fk="main" data-gid="'+g+'" onclick="openSetMainGroup(this.dataset.gid)"'+(_setMainBusy?' disabled':'')+'>'+tH('grp.setMain')+'</button>' : '')
@@ -23994,6 +24128,21 @@ window.togModSet=(id,on)=>{
     toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
   });
 };
+// Zapnout víc modulů naráz (5.16, po připojení z pozvánky): jeden zápis, bez toastu za každý modul
+function modsOnBatch(ids){
+  if(!CU||!prof||!ids.length) return;
+  const prev=[...(prof.modules||[])];
+  prof.modules=[...new Set([...prev,...ids])];
+  subModules(); buildNav();rDash();rSetMods();
+  const uid=CU.uid;
+  updateDoc(doc(db,'users',uid,'profile','main'),{modules:prof.modules}).catch(e=>{
+    if(CU?.uid!==uid||!prof) return;
+    prof.modules=prev;
+    if(ids.some(id=>document.getElementById('p-'+id)?.classList.contains('active'))) window.sp('dashboard');
+    subModules(); buildNav();rDash();rSetMods();
+    toast(t('common.saveFailed',{err:userErr(e,'moduly')}));
+  });
+}
 // Bez čekání na server (4.84): offline se zápis odešle později, chyba jen toastem
 window.saveNick=()=>{
   if(!CU||!prof) return;
@@ -28285,6 +28434,7 @@ function showModuleHint(moduleId) {
   if(es && (nudgeSafe(es.empty) || nudgeSafe(es.wait))) return;
   const page = document.getElementById('p-' + moduleId);
   if(!page?.classList.contains('active')) return; // mezitím jiná stránka
+  if(page.querySelector('#inv-welcome')) return; // uvítání po připojení ke skupině (5.16), nápověda při další návštěvě
   const av = curAv();
 
   localStorage.setItem(key, '1');
@@ -28332,6 +28482,7 @@ const _origSp = window.sp;
 window.sp = id => {
   _origSp(id);
   document.getElementById('module-hint')?.remove(); // nápověda patří ke stránce, kde vznikla (5.13)
+  document.getElementById('inv-welcome')?.remove(); // uvítání po připojení ke skupině (5.16) taky
   window.ctaAskClose?.(); // nabídka sdílení patří ke stránce, kde vznikla
   document.getElementById('notif-ask')?.remove(); // dotaz na upozornění patří ke chvíli, kdy vznikl
   window.hideAvReaction?.(); // hláška parťáka (bez aktivity …) se netáhne na další obrazovku (5.10)
