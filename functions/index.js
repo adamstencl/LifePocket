@@ -2196,17 +2196,41 @@ const STATS_BATCH = 20;
 const SVY_HELP_IDS = ['shopping', 'calendar', 'habits', 'mealplan', 'goals', 'cooking', 'journal', 'checklist', 'water', 'finance', 'pets', 'share', 'ai', 'other'];
 // Souhrn odpovědí dotazníku: jen počty, součet hodnocení a mapa „co pomáhá“ (nikdy texty ani uid)
 function svyAggregate(docs) {
-  const a = {svyN: 0, svyRatingN: 0, svyRatingSum: 0, svyTextN: 0, svyHelps: {}};
+  const a = {svyN: 0, svyRatingN: 0, svyRatingSum: 0, svyHelps: {}};
   for (const x of docs) {
     if (!x || x.kind !== 'survey7') continue;
     a.svyN++;
     const r = x.rating;
     if (Number.isInteger(r) && r >= 1 && r <= 5) { a.svyRatingN++; a.svyRatingSum += r; }
-    if (typeof x.missing === 'string' && x.missing.trim()) a.svyTextN++;
-    const hs = Array.isArray(x.helps) ? [...new Set(x.helps)].filter(k => SVY_HELP_IDS.includes(k)).slice(0, 2) : [];
+    const hs = Array.isArray(x.helps) ? [...new Set(x.helps.slice(0, 10))].filter(k => SVY_HELP_IDS.includes(k)).slice(0, 2) : [];
     for (const k of hs) a.svyHelps[k] = (a.svyHelps[k] || 0) + 1;
   }
   return a;
+}
+// Odpovědi dotazníku za okno [fromMs, teď]: jen dokumenty survey7 (jedna odpověď na uživatele), nejvýš SVY_MAX
+// dokumentů po stránkách SVY_PAGE. Bez polí msg/missing; z vybraných polí se drží jen malé hodnoty, takže ani
+// dokument s 1MB polem nezvedne paměť víc než o jednu stránku.
+const SVY_PAGE = 25, SVY_MAX = 300;
+async function svyCollect(fromMs) {
+  const rows = [];
+  let last = null, read = 0;
+  while (read < SVY_MAX) {
+    let q = db.collectionGroup('feedback').where('createdAt', '>=', Timestamp.fromMillis(fromMs)).where('createdAt', '<=', Timestamp.now())
+      .orderBy('createdAt').select('createdAt', 'kind', 'rating', 'helps').limit(Math.min(SVY_PAGE, SVY_MAX - read));
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    read += snap.docs.length;
+    for (const d of snap.docs) {
+      if (d.id !== 'survey7') continue;
+      const x = d.data() || {};
+      rows.push({kind: x.kind === 'survey7' ? 'survey7' : null, rating: Number.isInteger(x.rating) ? x.rating : null,
+        helps: Array.isArray(x.helps) ? x.helps.slice(0, 10).filter(k => typeof k === 'string' && k.length <= 20) : []});
+    }
+    if (snap.docs.length < SVY_PAGE) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  if (read >= SVY_MAX) console.warn('[LP] dailyStats dotazník: dosažen limit', SVY_MAX);
+  return svyAggregate(rows);
 }
 
 // Čas v ms z ISO řetězce, Firestore Timestamp, Date nebo čísla; jinak null
@@ -2231,7 +2255,6 @@ exports.dailyStats = onSchedule(
       familiesTotal: 0, familyMembersAvg: 0, aiCallsToday: 0,
       errorLogs24h: null, errorLogsTotal: null, profileErrors: 0,
       pcParticipants: 0, pcCheckedYesterday: 0,
-      svyN: 0, svyRatingN: 0, svyRatingSum: 0, svyTextN: 0, svyHelps: {},
     };
 
     // 1) Uživatelé a profily (paralelně po dávkách; chyba u jednoho neshodí běh)
@@ -2320,20 +2343,24 @@ exports.dailyStats = onSchedule(
       }
     } catch(e) { console.error('[LP] dailyStats výzvy:', e.code || e.message); }
 
-    // 7) Dotazník po 7 dnech (5.16): odpovědi za 24 h (index feedback.createdAt už existuje), jen počty
-    try {
-      const fb = await db.collectionGroup('feedback').where('createdAt', '>=', Timestamp.fromMillis(now - DAY))
-        .select('kind', 'rating', 'helps', 'missing').get();
-      Object.assign(s, svyAggregate(fb.docs.map(d => d.data())));
-    } catch(e) { console.error('[LP] dailyStats dotazník:', e.code || e.message); }
-
-    await db.doc(`config/stats_daily/days/${statDay}`).set({
+    // Souhrn 1–6 se zapíše hned; krok 7 čte data od uživatelů, a tak ho nesmí zablokovat
+    const statRef = db.doc(`config/stats_daily/days/${statDay}`);
+    await statRef.set({
       ...s, date: statDay, generatedAt: new Date().toISOString(), version: 1,
     });
+
+    // 7) Dotazník po 7 dnech (5.16): odpovědi za 24 h (index feedback.createdAt už existuje), jen počty (bez textů a uid)
+    let svyN = null;
+    try {
+      const svy = await svyCollect(now - DAY);
+      await statRef.set(svy, {merge: true});
+      svyN = svy.svyN;
+    } catch(e) { console.error('[LP] dailyStats dotazník:', e.code || e.message); }
+
     console.log(`[LP] dailyStats ${statDay}: users=${s.usersTotal} a1=${s.active1d} a7=${s.active7d} a30=${s.active30d} `
       + `new1=${s.newUsers1d} new7=${s.newUsers7d} push=${s.withPushToken} fam=${s.familiesTotal} famAvg=${s.familyMembersAvg} `
       + `ai=${s.aiCallsToday} err24=${s.errorLogs24h} errAll=${s.errorLogsTotal} profErr=${s.profileErrors} `
-      + `pc=${s.pcParticipants} pcY=${s.pcCheckedYesterday} svy=${s.svyN}`);
+      + `pc=${s.pcParticipants} pcY=${s.pcCheckedYesterday} svy=${svyN}`);
   }
 );
 
@@ -3046,17 +3073,16 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
     part('stats', async () => {
       const s = await db.collection('config/stats_daily/days').orderBy('date', 'desc').limit(ADM_STATS_DAYS).get();
       // Dotazník (5.16): součet za 14 dní; „co pomáhá“ jen z allowlistu
-      const svy = {n: 0, rn: 0, rs: 0, textN: 0, helps: {}};
+      const svy = {n: 0, rn: 0, rs: 0, helps: {}};
       out.stats = s.docs.map(d => {
         const x = d.data() || {}, r = {date: admStr(x.date, 10) || d.id.slice(0, 10)};
         for (const k of ADM_STAT_KEYS) { const n = Number(x[k]); r[k] = x[k] === null || x[k] === undefined || !Number.isFinite(n) ? null : n; }
         svy.n += r.svyN || 0; svy.rn += r.svyRatingN || 0; svy.rs += r.svyRatingSum || 0;
-        const tn = Number(x.svyTextN); if (Number.isFinite(tn)) svy.textN += tn;
         const h = x.svyHelps && typeof x.svyHelps === 'object' ? x.svyHelps : {};
         for (const k of SVY_HELP_IDS) { const v = Number(h[k]); if (Number.isFinite(v) && v > 0) svy.helps[k] = (svy.helps[k] || 0) + v; }
         return r;
       }).reverse();
-      out.survey = {n: svy.n, avg: svy.rn ? Math.round(svy.rs / svy.rn * 10) / 10 : null, textN: svy.textN, helps: svy.helps};
+      out.survey = {n: svy.n, avg: svy.rn ? Math.round(svy.rs / svy.rn * 10) / 10 : null, textN: 0, helps: svy.helps};
     }),
     // Chyby napříč uživateli (errorLogs.ts = ISO řetězec); bez indexu prázdný seznam s příznakem
     part('errors', async () => {
@@ -3075,7 +3101,7 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
         out.feedback = s.docs.map(d => {
           const x = d.data() || {}, r = {id: d.ref.path, msg: admStr(x.msg, 2000), v: admStr(x.v, 12), ts: toMillis(x.createdAt), u: admUid(d.ref)};
           // Dotazník (5.16): druh, hodnocení 1–5 a text „Co chybí“ (max 500), ať ho klient umí oddělit od zpráv
-          if (x.kind === 'survey7') Object.assign(r, {kind: 'survey7', rating: Number.isInteger(x.rating) && x.rating >= 1 && x.rating <= 5 ? x.rating : null, missing: admStr(x.missing, 500)});
+          if (x.kind === 'survey7' && d.id === 'survey7') Object.assign(r, {kind: 'survey7', rating: Number.isInteger(x.rating) && x.rating >= 1 && x.rating <= 5 ? x.rating : null, missing: admStr(x.missing, 500)});
           return r;
         });
       } catch (e) { if (admNoIndex(e)) out.feedbackIndex = false; else throw e; }
@@ -3091,6 +3117,8 @@ exports.adminOverview = onCall({cors: true, region: 'europe-west1', maxInstances
         n: (await c.ref.collection('participants').count().get()).data().count};
     }),
   ]);
+  // Dotazník: počet vyplněných „Co chybí“ jen z vrácených odpovědí (texty do dailyStats nejdou)
+  if (out.survey) out.survey.textN = out.feedback.filter(f => f.kind === 'survey7' && f.missing.trim()).length;
   // Počet účtů z posledního dailyStats (listDocuments je drahé, count() nevidí účty bez dokumentu users/{uid})
   const last = out.stats[out.stats.length - 1];
   out.summary.users = last ? last.usersTotal : null;

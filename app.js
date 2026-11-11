@@ -22965,7 +22965,7 @@ window.svySend = async () => {
     // Bez spojení by zápis čekal ve frontě: po 10 s to bereme jako chybu (pevné ID, opakování nic nezdvojí)
     await Promise.race([
       setDoc(doc(db, 'users', uid, 'feedback', 'survey7'), {createdAt: serverTimestamp(), kind: 'survey7', v: APP_VERSION, lang: LANG,
-        accDay: Math.min(accDay(), 9999), helps, missing: txt, rating, grp: myGroupIds().length > 0, msg: svyMsg(helps, txt, rating)}),
+        helps, missing: txt, rating, msg: svyMsg(helps, txt, rating)}),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
     ]);
   } catch (e) {
