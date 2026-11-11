@@ -204,3 +204,8 @@
 - `finMoveGo` / `finDelete` nejsou atomické – při chybě druhé fáze zůstanou kopie; dočistit při dalším otevření.
 - Starší kopie profilu může přepsat `aiEntry` / `finAi` z jiného zařízení (stejně jako `healthConsent`).
 - Ověřit v prohlížeči: návrat z akční stránky do přihlášení bez přihlášení nepřepne zpět na landing, e-mail zůstane předvyplněný.
+- (tester) `setAiEntry` při chybě zápisu nevrací `prof.aiEntry` ani přepínač (na rozdíl od `finAiSet`).
+- (tester) Řádek „Automatická AI analýza zápisků“ ukazovat jen s modulem Deník; doplnit emoji.
+- (tester) Přepínače v Nastavení se neobnoví při změně z jiného zařízení.
+- (tester) `img/shot-*.webp` nejsou v OFFLINE_URLS (landing offline bez obrázků).
+- (tester) EN terminologie: „Budget“ / „companion“ / „buddy“ sjednotit.
