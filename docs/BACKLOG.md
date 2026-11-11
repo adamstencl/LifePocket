@@ -195,3 +195,12 @@
 - `ctMarkOpen`: poděkování se neukáže, když se krok splní dřív než `ctSync`.
 - Vestavěný prohlížeč: neověřeno na skutečném FB/Instagramu; mealplan člen smí zapisovat dle pravidel (omezení jen klient); App Check; profil čten cronem i bez tokenu.
 - Snížit allowlisty ci-check (inline interpolace 8, české literály 197).
+
+## Z 5.15 (revize Finance + K1 + K2)
+- Skupinový rozpočet: správu (smazat/přesunout) hlídá jen klient (`finCanManage`); zvážit pravidlo pro `finBudgets` (pravidla schvaluje uživatel) nebo zmírnit text v privacy.
+- Parťák se `finAi` dostane i souhrny skupinových rozpočtů a název skupiny – doplnit privacy nebo posílat jen „sdílený“.
+- `lp_ai_intro` (drží UID) přidat do `LOCAL_PERSONAL_KEYS`.
+- `<meta name="referrer" content="strict-origin">` do index.html (ochrana `oobCode`).
+- `finMoveGo` / `finDelete` nejsou atomické – při chybě druhé fáze zůstanou kopie; dočistit při dalším otevření.
+- Starší kopie profilu může přepsat `aiEntry` / `finAi` z jiného zařízení (stejně jako `healthConsent`).
+- Ověřit v prohlížeči: návrat z akční stránky do přihlášení bez přihlášení nepřepne zpět na landing, e-mail zůstane předvyplněný.
