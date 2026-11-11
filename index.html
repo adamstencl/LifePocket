@@ -137,6 +137,11 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
   <button class="btn-p" style="width:auto;padding:10px 24px" onclick="goHomeAfterDelete()" data-i18n="deleted.home">Na úvod</button>
 </div>
 
+<!-- Odkaz z e-mailu Firebase na lifepocket.app (5.15): ověření e-mailu, nové heslo, vrácení e-mailu; obsah skládá actRender -->
+<div class="screen" id="s-action">
+  <div class="card act-card" id="act-card" role="region" aria-live="polite" aria-labelledby="act-title"></div>
+</div>
+
 <!-- LOGIN: landing pro nové návštěvníky + přihlášení (ID prvků čte app.js, neměnit) -->
 <div class="screen" id="s-login">
   <div class="card lp-card">
@@ -148,7 +153,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
     <!-- LANDING -->
     <section id="lp-landing" aria-labelledby="lp-hero-t">
       <h1 class="lp-hero" id="lp-hero-t" data-i18n="landing.hero">Jedna appka místo deseti.</h1>
-      <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i deník na jednom místě. A celá rodina vidí, co je potřeba.</p>
+      <p class="lp-sub" data-i18n="landing.sub">Návyky, kalendář, nákupy i deník na jednom místě. Plánuj svůj den a s rodinou sdílej jen to, co chcete mít společné – nákupy, kalendář, úkoly.</p>
       <div class="lp-invite" id="lp-invite" hidden>
         <span aria-hidden="true">🔗</span>
         <span id="lp-invite-t" data-i18n="landing.invite">Máš pozvánku do skupiny. Založ si účet nebo se přihlas a hned se připojíš.</span>
@@ -163,7 +168,7 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
         <li class="lp-benefit">
           <span class="lp-b-em" aria-hidden="true">🛒</span>
           <div><div class="lp-b-t" data-i18n="landing.b1t">Nákup pro celou rodinu</div>
-          <div class="lp-b-d" data-i18n="landing.b1d">Jeden seznam pro všechny. Co koupí partner, tobě se hned odškrtne.</div></div>
+          <div class="lp-b-d" data-i18n="landing.b1d">Jeden seznam, když ho s rodinou sdílíte. Co koupí partner, tobě se hned odškrtne.</div></div>
         </li>
         <li class="lp-benefit">
           <span class="lp-b-em" aria-hidden="true">🔥</span>
@@ -180,7 +185,24 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
           <div><div class="lp-b-t" data-i18n="landing.b4t">Kalendář a připomínky</div>
           <div class="lp-b-d" data-i18n="landing.b4d">Narozeniny, kroužky i schůzky. Upozornění ti přijde do telefonu.</div></div>
         </li>
+        <li class="lp-benefit">
+          <span class="lp-b-em" aria-hidden="true">🔒</span>
+          <div><div class="lp-b-t" data-i18n="landing.b5t">Soukromé, dokud nesdílíš</div>
+          <div class="lp-b-d" data-i18n="landing.b5d">Co si zapíšeš, vidíš jen ty. Do skupiny jde jen to, co vybereš ty – nic se nesdílí samo.</div></div>
+        </li>
       </ul>
+      <!-- Náhled appky (5.15): snímky s ukázkovými daty, lazy (landing se ukáže hned, obrázky ho nebrzdí); v en jiné src přes data-i18n-attr -->
+      <h2 class="lp-sec" data-i18n="landing.preview">Jak appka vypadá</h2>
+      <div class="lp-shots">
+        <figure class="lp-shot"><img src="img/shot-home-cs.webp" width="390" height="844" loading="lazy" decoding="async" alt="Obrazovka Domů: přehled dne s parťákem a dnešními návyky" data-i18n-attr="src:landing.shot1Src;alt:landing.shot1Alt"><figcaption data-i18n="landing.shot1">Domů</figcaption></figure>
+        <figure class="lp-shot"><img src="img/shot-shop-cs.webp" width="390" height="844" loading="lazy" decoding="async" alt="Sdílený nákupní seznam rodiny s položkami podle kategorií" data-i18n-attr="src:landing.shot2Src;alt:landing.shot2Alt"><figcaption data-i18n="landing.shot2">Sdílený nákup</figcaption></figure>
+        <figure class="lp-shot"><img src="img/shot-habits-cs.webp" width="390" height="844" loading="lazy" decoding="async" alt="Seznam návyků se sériemi a splněnými dny" data-i18n-attr="src:landing.shot3Src;alt:landing.shot3Alt"><figcaption data-i18n="landing.shot3">Návyky</figcaption></figure>
+      </div>
+      <!-- Druhá výzva pod funkcemi (5.15); ve vestavěném prohlížeči ji initInAppBrowser vymění za „Otevřít v Chrome/Safari“ -->
+      <div class="lp-ctas lp-ctas2" id="lp-try-wrap">
+        <button type="button" class="btn-p" id="lp-try-btn" onclick="showAuthPanel('register')" data-i18n="landing.try">Vyzkoušet LifePocket zdarma →</button>
+      </div>
+      <p class="lp-promise" data-i18n="landing.promise">Bez reklam. Bez placeného tarifu. Začni jedním modulem a další přidávej podle potřeby.</p>
       <div class="lp-legal">
         <a href="privacy.html" target="_blank" rel="noopener" data-i18n="legal.privacy" data-i18n-attr="href:legal.privacyUrl">Ochrana osobních údajů</a> ·
         <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a>
@@ -225,6 +247,8 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
           <button type="button" class="lp-link" id="login-toggle-login" style="display:none" onclick="window.toggleLoginMode('login')" data-i18n="auth.toLogin">Už máš účet? Přihlas se</button>
         </div>
       </div>
+      <!-- Věková hranice (5.15): jen v režimu registrace (toggleLoginMode) -->
+      <div class="lp-age" id="auth-age" hidden><span data-i18n="auth.age">Aplikace je určena lidem od 15 let.</span> <a href="terms.html" target="_blank" rel="noopener" data-i18n="legal.terms" data-i18n-attr="href:legal.termsUrl">Podmínky použití</a></div>
       <div class="err" id="login-err" role="alert"></div>
       <div class="privacy" data-i18n="auth.note">🔒 Zdarma a bez reklam · Data jen pro tebe a tvou skupinu · AI přes Anthropic</div>
       <div class="lp-legal">
@@ -246,12 +270,15 @@ window.addEventListener('error',function(ev){try{var f=String(ev.filename||'');i
      jen přepínají landing/panel; app.js je přepíše a v initLoginScreen převezme zvolený režim. -->
 <script>(function(){
 var d=document,h=d.documentElement,known=false,sa=false;
+// Odkaz z e-mailu Firebase (ověření, nové heslo; 5.15): obrazovku ukáže app.js (actInit), landing ne
+if(/[?&]oobCode=/.test(location.search)&&/[?&]mode=(verifyEmail|resetPassword|recoverEmail|verifyAndChangeEmail)(&|$)/.test(location.search)) return;
 try{known=!!localStorage.getItem('lp_owner_uid');}catch(e){}
 try{sa=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;}catch(e){}
 if(known||sa) return;
 h.classList.add('lp-boot');
 function panel(on){var l=d.getElementById('lp-landing'),a=d.getElementById('auth-panel');if(l&&a){l.hidden=on;a.hidden=!on;}}
-window.showAuthPanel=function(m){window.__lpAuthMode=m==='register'?'register':'login';panel(true);window.scrollTo(0,0);};
+function age(){var a=d.getElementById('auth-age');if(a)a.hidden=window.__lpAuthMode!=='register';} // věk jen u registrace (5.15)
+window.showAuthPanel=function(m){window.__lpAuthMode=m==='register'?'register':'login';panel(true);age();window.scrollTo(0,0);};
 window.showLanding=function(){window.__lpAuthMode=null;try{sessionStorage.removeItem('lp_auth_panel');}catch(e){}panel(false);};
 window.landLang=function(l){if(l===window.__lpLang)return false;
   try{if(window.__lpAuthMode)sessionStorage.setItem('lp_auth_panel',window.__lpAuthMode);}catch(e){}
@@ -261,7 +288,7 @@ function show(){
   if(!h.classList.contains('lp-boot')||!ld||!lg||!ld.classList.contains('active'))return; // app.js už rozhodla
   // Režim panelu převezme __lpAuthMode a záznam se smaže: Zpět během načítání pak app.js panel znovu neotevře (4.75)
   var b=null;try{b=sessionStorage.getItem('lp_auth_panel');sessionStorage.removeItem('lp_auth_panel');}catch(e){}
-  if(b==='login'||b==='register'){window.__lpAuthMode=b;panel(true);}
+  if(b==='login'||b==='register'){window.__lpAuthMode=b;panel(true);age();}
   else if(/[?&]verified=1(&|$)/.test(location.search)){window.__lpAuthMode='login';panel(true);} // návrat z ověřovacího e-mailu (5.13)
   ld.classList.remove('active');lg.classList.add('active');
 }
@@ -1048,6 +1075,8 @@ else show();
           <input class="setinp" type="text" id="set-nick" placeholder="Tvoje jméno…" data-i18n-attr="placeholder:onb.namePh">
           <button class="btn-sv" onclick="saveNick()" data-i18n="common.save">Uložit</button>
         </div>
+        <!-- Automatická AI analýza zápisků (5.15, vykresluje renderAiEntrySetting) -->
+        <div id="set-aientry"></div>
       </div>
 
       <div class="setsec" id="set-sec-mods">
