@@ -68,8 +68,35 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.14.1';
+const APP_VERSION = '5.15';
 const CHANGELOG = [
+  { v:'5.15', items:[
+    '💰 Nový modul Finance: rozpočet na měsíc pro tebe nebo celou rodinu. Pravidelné příjmy a platby se přenášejí samy, útraty přidáš jedním klepnutím a hned vidíš, kolik zbývá a kam peníze jdou',
+    '🛍️ V seznamu Chceme koupit spočítám, za jak dlouho na věci našetříte; cenu ti na klepnutí odhadne AI',
+    '🔒 Bez napojení na banku a parťák do rozpočtu nevidí, dokud mu to nepovolíš. Zapneš v Nastavení → Ty a parťák',
+    '⚡ Příspěvek přes Lightning: tlačítko pro otevření peněženky a zkopírování adresy (na telefonu QR nenaskenuješ)',
+    '🛒 Nákupy a Zásoby: při psaní položky se nabízí návrhy z toho, co často kupuješ, a z běžného zboží, i bez internetu. Klepnutím ji rovnou přidáš, napsané množství zůstane',
+    '⚡ Podpora projektu: částka u Lightning už nemění QR platbu převodem',
+    '✨ Začátek je jednodušší: karta Co teď ti představí všechny tři vybrané moduly',
+    '♿ Lepší ovládání klávesnicí a čtečkou obrazovky při výběru parťáka a modulů',
+    '🏠 Nová úvodní stránka: náhled aplikace, jasně řečeno, že se sdílí jen to, co sami vyberete, a tlačítko Vyzkoušet zdarma',
+    '🤖 Parťák při prvním otevření chatu vysvětlí, jaká data dostává a kam jdou',
+    '🔒 Automatickou AI analýzu zápisků si teď zapínáš sám/sama: zeptáme se před první analýzou, změníš ji v Nastavení → Ty a parťák',
+    '✉️ Ověření e-mailu a obnova hesla mají vlastní stránku přímo v LifePocketu'
+  ], en:[
+    '💰 New Budget module: a monthly budget for you or the whole family. Regular income and payments carry over by themselves, add spending with one tap and see right away what’s left and where the money goes',
+    '🛍️ In the Wishlist I’ll work out how long until you can afford things; AI can estimate a price with one tap',
+    '🔒 No bank connection, and your companion can’t see the budget unless you allow it. Turn it on in Settings → You & your buddy',
+    '⚡ Lightning contributions: a button to open your wallet and copy the address (you can’t scan a QR on your own phone screen)',
+    '🛒 Shopping and Pantry: suggestions appear as you type, from what you often buy and from common groceries, even offline. Tap one to add it straight away, and the quantity you typed is kept',
+    '⚡ Support: the Lightning amount no longer changes the bank transfer QR code',
+    '✨ Easier start: the What now card introduces all three modules you picked',
+    '♿ Better keyboard and screen reader support when choosing your companion and modules',
+    '🏠 New welcome page: a preview of the app, a clear note that only what you choose is shared, and a Try it free button',
+    '🤖 The first time you open the chat, your companion explains what data it gets and where it goes',
+    '🔒 Automatic AI analysis of journal entries is now up to you: we ask before the first analysis, and you can change it in Settings → You & your buddy',
+    '✉️ Email verification and password reset now have their own page right in LifePocket'
+  ]},
   { v:'5.14.1', items:[
     '🔒 Souhlas se zpracováním údajů o zdraví (GDPR) – jednorázové potvrzení, v Nastavení ho můžeš odvolat'
   ], en:[
@@ -1250,6 +1277,7 @@ const MODS=[
   {id:'mealplan',emoji:'🥗'},
   {id:'checklist',emoji:'✅'},
   {id:'pets',emoji:'🐾'},
+  {id:'finance',emoji:'💰'},
 ];
 // Onboarding (4.60): moduly určuje jen šablona, parťák je jen vzhled a styl řeči.
 // Bez šablony („Vlastní výběr“) tyto moduly; doporučený parťák podle šablony.
@@ -2044,6 +2072,7 @@ onAuthStateChanged(auth,async u=>{
     unsubAllGroupShops(); shopViewSel=undefined;
     unsubAllGroupMeals(); mealViewSel=undefined; unsubAllGroupChecks();
     unsubAllGroupPets(); pets=[]; _petsReady=false; petSel=undefined; // Mazlíček (4.94)
+    finReset(); // Finance (5.15)
     Object.values(unsubExtraGroupDocs).forEach(u=>u&&u());
     Object.values(unsubExtraGroupCals).forEach(u=>u&&u());
     unsub=null; unsubHabits=null; unsubLogs=null;
@@ -2061,7 +2090,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -6006,7 +6035,7 @@ function retryFsClear(startup){
 // Podkolekce users/{uid}/… (při nové kolekci doplnit i sem); podcíle goals/{id}/subgoals se načtou zvlášť
 // Popisek kolekce: klíč exp.col.<název kolekce>
 const EXPORT_COLS = ['profile','entries','habits','habitLogs','events','goals','shopItems','recurringShop','shopStats','pantry',
-  'savedRecipes','foodLogs','healthLogs','checklists','pets','chatMemory','aiReports','feedback','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
+  'savedRecipes','foodLogs','healthLogs','checklists','pets','finBudgets','finMonths','chatMemory','aiReports','feedback','errorLogs','game','water'].map(c => [c, t('exp.col.' + c)]);
 // Hodnoty z Firestore → čisté JSON (Timestamp → ISO, reference → cesta)
 function exportPlain(v, depth = 0) {
   if (v === null || v === undefined || typeof v !== 'object') return v;
@@ -6214,6 +6243,7 @@ function stopSessionActivity() {
   unsubFamily = null; unsubFamilyCal = null;
   unsubExtraGroupDocs = {}; unsubExtraGroupCals = {};
   unsubAllGroupPantries();
+  finReset(); // Finance (5.15)
   entryDirty = false; _chatDirty = false;  // automatické uložení zápisku a chatu nic nezapíše
   _errLogCount = ERRLOG_MAX;               // zapisovač chyb nesmí znovu založit data
 }
@@ -11547,6 +11577,7 @@ function resetFamilyLocal() {
   unsubGroupPantry(familyId); // zásoby (4.70)
   unsubGroupMeal(familyId); unsubGroupCheck(familyId); // jídelníček a checklisty (4.53)
   unsubGroupPets(familyId); // mazlíčci (4.94)
+  unsubGroupFin(familyId); // finance (5.15)
   familyId = null; familyData = null;
   familyEvents = [];
   if(unsubFamily) { unsubFamily(); unsubFamily=null; }
@@ -11554,7 +11585,7 @@ function resetFamilyLocal() {
 }
 // Překreslí moduly se sdílenými daty po odchodu nebo změně skupiny
 function renderAfterFamilyChange() {
-  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh();
+  renderFamilySettings(); renderShop(); renderCal(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh(); finRefresh();
 }
 
 // ── Karta „Pozvat rodinu“ v Nákupech a Kalendáři ──
@@ -11690,7 +11721,8 @@ window.closeLeaveGroup = () => { if(_leaveBusy) return; document.getElementById(
 function leaveCopyText(gData, gid) {
   const parts = [gData?.shareCal && t('grp.leave.cpCal'), gData?.shareShop && t('grp.leave.cpShop'), gData?.shareShop && t('grp.leave.cpPantry'),
     gData?.shareMeal && t('grp.leave.cpMeal'), gData?.shareChecklist !== false && t('grp.leave.cpCheck'),
-    !!petGrp[gid]?.pets.length && t('grp.leave.cpPets')].filter(Boolean); // mazlíčci (4.94)
+    !!petGrp[gid]?.pets.length && t('grp.leave.cpPets'), // mazlíčci (4.94)
+    !!finGrp[gid]?.list.length && t('grp.leave.cpFin')].filter(Boolean); // finance (5.15)
   return parts.length ? t('grp.leave.optAllList', {list: parts.join(', ')}) : t('grp.leave.optAllNone');
 }
 function openLeaveGroup(gid) {
@@ -11752,7 +11784,8 @@ window.confirmLeaveGroup = async (gid) => {
       try {
         const n = await copyGroupToPersonal(gid, mode);
         _leaveCopied.add(gid);
-        if(n) toast(tN('grp.leave.copied', n), 4000);
+        const msg = [n && tN('grp.leave.copied', n), _leaveFinSkip && tN('grp.leave.finSkip', _leaveFinSkip, {max: FIN_MAX.budgets})].filter(Boolean).join(' ');
+        if(msg) toast(msg, _leaveFinSkip ? 7000 : 4000);
       } catch(e) {
         console.warn('[LP] kopie skupiny:', e?.code || e?.name);
         leaveSetStatus(t('grp.leave.copyFail', {err: userErr(e, 'kopie skupiny'), g: prof?.gender}), true);
@@ -11771,8 +11804,10 @@ window.confirmLeaveGroup = async (gid) => {
 // Zkopíruje sdílený obsah skupiny do osobních dat. mode 'all' = vše, 'mine' = jen položky s addedBy/owner = já.
 // Každá skupina: nekoupené nákupy, události, checklisty, (all) jídelníček a zásoby podle sdílených modulů (zásoby 4.70).
 // Zdroj se značí polem copiedFrom (název skupiny). Vrací počet zkopírovaných položek.
+let _leaveFinSkip = 0; // rozpočty, které se při kopii nevešly do limitu (pro hlášení)
 async function copyGroupToPersonal(gid, mode) {
   const uid = CU.uid;
+  _leaveFinSkip = 0;
   const isMain = gid === familyId;
   const gData = (isMain ? familyData : extraGroupsData[gid]) || {};
   const src = cutName(gData.groupName, 40) || gid;
@@ -11831,13 +11866,45 @@ async function copyGroupToPersonal(gid, mode) {
       petCopies.push({...pn, id, _gid: null});
     });
   }
+  // Finance (5.15, bez příznaku skupiny): 'mine' jen rozpočty, které jsem přidal (owner), 'all' všechny; nové ID i se všemi měsíci.
+  // Jen do volného místa (limit 5 po odchodu: osobní + ostatní skupiny), zbytek zůstane ve skupině (finSkip)
+  let finMonN = 0;
+  {
+    const sn = await getDocs(collection(db,'families',gid,'finBudgets'));
+    let bs = sn.docs.map(d => finNorm(d.data(), d.id, null)).filter(b => b && (mode === 'all' || b.owner === uid))
+      .sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
+    if(bs.length) {
+      let used = (await getDocs(collection(db,'users',uid,'finBudgets'))).size;
+      for(const g of myGroupIds()) {
+        if(g === gid) continue;
+        if(finGrp[g]?.ready) { used += finGrp[g].list.length; continue; }
+        try { used += (await getDocs(collection(db,'families',g,'finBudgets'))).size; } catch(e) { /* skupina nedostupná: nepočítá se */ }
+      }
+      const free = Math.max(0, FIN_MAX.budgets - used);
+      _leaveFinSkip = Math.max(0, bs.length - free);
+      bs = bs.slice(0, free);
+    }
+    if(bs.length) {
+      const ms = await getDocs(collection(db,'families',gid,'finMonths'));
+      bs.forEach(b => {
+        const nid = genId();
+        writes.push([doc(db,'users',uid,'finBudgets',nid), {...finDataOut(b, uid), copiedFrom: src}]);
+        ms.docs.forEach(d => {
+          const x = d.data() || {}, ym = d.id.slice(b.id.length + 1);
+          if(x.bid !== b.id || !d.id.startsWith(b.id + '_') || !FIN_YM_RE.test(ym)) return;
+          writes.push([doc(db,'users',uid,'finMonths',nid + '_' + ym), {...x, bid: nid, ym}]);
+          finMonN++;
+        });
+      });
+    }
+  }
   // Zápis po dávkách (limit 500 operací); čeká na potvrzení serveru
   for(let i = 0; i < writes.length; i += 400) {
     const b = writeBatch(db);
     writes.slice(i, i + 400).forEach(([ref, data, merge]) => merge ? b.set(ref, data, {merge: true}) : b.set(ref, data));
     await b.commit();
   }
-  n += writes.length;
+  n += writes.length - finMonN; // měsíce rozpočtů se nepočítají, uživatel vidí rozpočty
   petCopies.forEach(p => petSyncAll(p, true));
   if(mode === 'all') {
     // Jídelníček: doplní jen prázdná políčka osobního plánu (vlastní plán se nepřepíše)
@@ -12112,6 +12179,19 @@ function czAccountFromIban(iban){
 }
 // Kurz BTC/CZK pro ekvivalent v sats (4.71): veřejné API CoinGecko bez klíče a bez osobních dat,
 // cache 10 min v sessionStorage (lp_btc_czk), timeout 5 s, při chybě null = ekvivalent se nezobrazí
+// Lightning adresa pro příspěvky (veřejná, je i v img/ln-qr.jpg); support.json může dát vlastní „lnAddress“
+const LN_ADDRESS='fancifulskirt54@bitcoli.com';
+const LN_ADDR_RE=/^[a-z0-9._-]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
+let supLnAddr=LN_ADDRESS;
+function renderSupportLnAddr(){
+  const a=document.getElementById('support-ln-open'), el=document.getElementById('support-ln-addr');
+  if(a) a.href='lightning:'+supLnAddr;
+  if(el) el.textContent=supLnAddr;
+}
+window.copySupportLn=async()=>{
+  try{ await navigator.clipboard.writeText(supLnAddr); toast(t('set.support.lnCopied')); }
+  catch(e){ lpCopy(t('set.support.lnCopyPrompt'), supLnAddr); }
+};
 let btcCzk=null, btcLoading=null;
 const SUP_LN_AMTS=[50,100,200];
 async function loadBtcCzk(){
@@ -12155,9 +12235,13 @@ async function loadSupport(){
   if(!box||IS_TWA||supLoading) return;
   loadBtcCzk().then(()=>{ renderSupportLn(); if(supCfg) renderSupport(); });
   supLoading=true;
+  renderSupportLnAddr();
   try{
     const r=await fetch('/support.json',{cache:'no-store'});
     const c=r.ok?await r.json():null;
+    // Lightning adresa ze support.json má přednost (platí i bez QR platby, tj. bez enabled/IBAN)
+    supLnAddr=typeof c?.lnAddress==='string'&&LN_ADDR_RE.test(c.lnAddress.trim())?c.lnAddress.trim():LN_ADDRESS;
+    renderSupportLnAddr();
     if(!c||c.enabled!==true||!isValidCzIban(c.iban)){ supCfg=null; box.hidden=true; return; }
     let amts=(Array.isArray(c.amounts)?c.amounts:[]).filter(n=>Number.isInteger(n)&&n>=1&&n<=100000).slice(0,6);
     if(!amts.length) amts=[50,100,200];
@@ -12732,13 +12816,13 @@ function forgetExtraGroupLocal(gid) {
   prof.extraGroupIds = extraGroupIds;
   if(unsubExtraGroupDocs[gid]) { unsubExtraGroupDocs[gid](); delete unsubExtraGroupDocs[gid]; }
   if(unsubExtraGroupCals[gid]) { unsubExtraGroupCals[gid](); delete unsubExtraGroupCals[gid]; }
-  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid); unsubGroupPantry(gid); unsubGroupPets(gid);
+  unsubGroupShop(gid); unsubGroupMeal(gid); unsubGroupCheck(gid); unsubGroupPantry(gid); unsubGroupPets(gid); unsubGroupFin(gid);
   delete extraGroupsData[gid]; delete extraGroupEvents[gid];
 }
 // Odebere vedlejší skupinu z profilu a z paměti (po odchodu nebo odebrání)
 async function dropExtraGroupLocal(gid) {
   forgetExtraGroupLocal(gid);
-  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh(); // i přepínače seznamů a plánů
+  renderFamilySettings(); renderCal(); renderShop(); renderMealPlan(); renderChecklist(); renderPantry(); petRefresh(); finRefresh(); // i přepínače seznamů a plánů
   // arrayRemove – neodesílat celé pole z paměti (jiné zařízení mohlo mezitím přidat skupinu)
   await updateDoc(doc(db,'users',CU.uid,'profile','main'), {extraGroupIds: arrayRemove(gid)});
 }
@@ -13001,6 +13085,7 @@ function subscribeExtraGroup(gid) {
     if (!_gfUnsub[gid]) startGroupUnread(gid);
     startGroupSocial(gid); // sdílené návyky a reakce (běžící listener přeskočí)
     ensurePetSubs(); // mazlíčci skupiny (4.94), jen se zapnutým modulem
+    ensureFinSubs(); // rozpočty skupiny (5.15), jen se zapnutým modulem
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     // Subscribe to cal events if shareCal enabled
     if (extraGroupsData[gid]?.shareCal && !unsubExtraGroupCals[gid]) {
@@ -13073,6 +13158,7 @@ function subscribeFamily() {
     if(!_gfUnsub[fid]) startGroupUnread(fid);
     startGroupSocial(fid); // sdílené návyky a reakce (běžící listener přeskočí)
     ensurePetSubs(); // mazlíčci skupiny (4.94), jen se zapnutým modulem
+    ensureFinSubs(); // rozpočty skupiny (5.15), jen se zapnutým modulem
     consumePendingGrpFeed(); // odkaz z notifikace přijatý před načtením skupin
     renderFamilySettings();
     renderInviteHints(); // např. po připojení druhého člena zmizí „jsi zatím jen ty“
@@ -20096,6 +20182,1340 @@ function petsWidgetHTML() {
   return '<div class="dw" onclick="sp(\'pets\')"><div class="dw-head"><div class="dw-title">🐾 ' + tH('dash.card.pets') + '</div><div class="dw-arrow">→</div></div>' + body + '</div>';
 }
 
+// ── FINANCE DOMÁCNOSTI (5.15, docs/NAVRH-FINANCE.md) ──
+// Rozpočet osobní (users/{uid}) nebo ve skupině (families/{gid}): finBudgets/{bid} + finMonths/{bid}_{YYYY-MM}.
+// Částky jsou celá čísla v setinách; pravidelné položky se do měsíců dopočítávají (nic se nekopíruje).
+// Do feedu skupiny se nic nezapisuje (částky by šly v pushi ostatním).
+const FIN_CURS = ['CZK', 'EUR', 'USD'];
+const FIN_EMS = ['🏠', '💰', '👤', '👨‍👩‍👧', '🏖️', '🎓', '🚗', '🐾'];
+const FIN_CATS_DEF = [['home', '🏠'], ['food', '🛒'], ['car', '🚗'], ['kids', '🧸'], ['health', '💊'], ['fun', '🎉'], ['clothes', '👕'], ['other', '📦']];
+const FIN_CAT_EMS = ['📦', '🏠', '🛒', '🚗', '🧸', '💊', '🎉', '👕', '⚽', '🎁', '📚', '💡', '📱', '🐾', '✈️', '🍺', '💄', '🔧'];
+// Čipy průvodce: [klíč, emoji, kategorie]
+const FIN_CHIPS_EXP = [['rent', '🏠', 'home'], ['energy', '💡', 'home'], ['phone', '📱', 'home'], ['insur', '🛡️', 'other'], ['subs', '📺', 'fun'], ['school', '🧸', 'kids'], ['car', '🚗', 'car']];
+const FIN_CHIPS_INC = ['salary', 'salary2', 'pension', 'parental', 'benefit'];
+const FIN_ID_RE = /^[a-z0-9]{1,20}$/, FIN_YM_RE = /^20\d\d-(0[1-9]|1[0-2])$/;
+const FIN_MAX = {budgets: 5, cats: 20, rec: 40, ver: 60, wish: 50, one: 100, adds: 300};
+const FIN_AMT_MAX = 100000000000;
+const finErr = e => toast('⚠️ ' + userErr(e, 'finance'));
+
+// ── Výpočty (čisté funkce, simulace v testech) ──
+const finYm = (d = new Date()) => toDS(d).slice(0, 7);
+function finYmAdd(ym, n) { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+const finYmLabel = ym => fmtDate(ym + '-15', 'my');
+// Hodnota pravidelné položky pro měsíc ym (null = v tomto měsíci neplatí)
+function finRecAt(r, ym) {
+  if(!r || !r.v.length || ym < r.v[0].from || (r.end && ym > r.end)) return null;
+  let cur = null;
+  for(const v of r.v) if(v.from <= ym) cur = v;
+  return cur;
+}
+// Souhrn měsíce v setinách: příjmy, výdaje, zůstatek a výdaje po kategoriích (rec / one / var / total)
+function finCalc(b, m, ym) {
+  m = m || {};
+  const ovr = m.ovr || {}, cats = {};
+  let inc = 0, exp = 0;
+  const catOf = c => (b.cats[c] ? c : 'other');
+  const put = (c, k, a) => { const x = cats[c] || (cats[c] = {rec: 0, one: 0, var: 0, total: 0}); x[k] += a; x.total += a; };
+  for(const [rid, r] of Object.entries(b.rec)) {
+    const v = finRecAt(r, ym);
+    if(!v) continue;
+    const o = ovr[rid];
+    if(o && o.off) continue;
+    const a = o && Number.isInteger(o.amt) ? o.amt : v.amt;
+    if(r.kind === 'inc') inc += a; else { exp += a; put(catOf(v.cat), 'rec', a); }
+  }
+  for(const it of Object.values(m.one || {})) {
+    if(it.kind === 'inc') inc += it.amt; else { exp += it.amt; put(catOf(it.cat), 'one', it.amt); }
+  }
+  // Útraty: souhrnná částka (base, smí být záporná) + přičtené útraty, výsledek kategorie ≥ 0
+  const vr = {};
+  for(const [c, v] of Object.entries(m.base || {})) vr[catOf(c)] = (vr[catOf(c)] || 0) + v;
+  for(const a of Object.values(m.adds || {})) vr[catOf(a.cat)] = (vr[catOf(a.cat)] || 0) + a.amt;
+  for(const [c, v0] of Object.entries(vr)) { const v = Math.max(0, v0); if(v) { exp += v; put(c, 'var', v); } }
+  return {inc, exp, left: inc - exp, cats};
+}
+// Formát měny přes Intl; desetiny jen nenulové, o.round = celé jednotky, o.sign = +/− u rozdílů
+const _finNf = new Map();
+function finFmt(minor, cur, o = {}) {
+  const whole = !!o.round || minor % 100 === 0;
+  const k = LOCALE + cur + (whole ? 0 : 2) + (o.sign ? 's' : '');
+  try {
+    if(!_finNf.has(k)) _finNf.set(k, new Intl.NumberFormat(LOCALE, {style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2, signDisplay: o.sign ? 'exceptZero' : 'auto'}));
+    return _finNf.get(k).format(o.round ? Math.round(minor / 100) : minor / 100);
+  } catch(e) { return fmtNum(minor / 100) + ' ' + cur; }
+}
+// Značka měny za polem částky (Kč, €, $)
+function finSym(cur) {
+  try { return new Intl.NumberFormat(LOCALE, {style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol'}).formatToParts(0).find(p => p.type === 'currency').value; }
+  catch(e) { return cur; }
+}
+// Zadání částky → setiny; '1 250', '1 250,50', '1.250', '1,250.5', '450 Kč', '150,-'; neplatné nebo záporné → null
+function finParse(s) {
+  const x = String(s ?? '').replace(/[\s']/g, '').replace(/(Kč|CZK|EUR|USD|€|\$)/gi, '').replace(/[.,][-–—]?$/, '');
+  if(!/^\d[\d.,]*$/.test(x)) return null;
+  const m = x.match(/[.,](\d{1,2})$/); // 1–2 číslice za posledním oddělovačem = desetiny
+  let int = m ? x.slice(0, -m[0].length) : x;
+  const frac = m ? m[1].padEnd(2, '0') : '00';
+  if(!/^\d{1,3}([.,]\d{3})*$/.test(int) && !/^\d+$/.test(int)) return null; // tisíce jen po trojicích ('1.2.3' ne)
+  int = int.replace(/[.,]/g, '');
+  if(!/^\d{1,12}$/.test(int)) return null;
+  const v = Number(int) * 100 + Number(frac);
+  return v <= FIN_AMT_MAX ? v : null;
+}
+// Setiny → text do pole (bez oddělovačů tisíců, desetinná čárka podle jazyka)
+function finPlain(minor) {
+  if(!Number.isInteger(minor)) return '';
+  const s = minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2);
+  return LANG === 'cs' ? s.replace('.', ',') : s;
+}
+// Chceme koupit: kumulativní odhad podle priority, Y = zůstatek aktuálního měsíce (setiny)
+function finWishPlan(wish, Y) {
+  const list = Object.entries(wish || {}).map(([id, w]) => ({...w, id}));
+  const open = list.filter(w => !w.bought).sort((a, b) => (a.prio - b.prio) || (a.order - b.order) || (a.createdAt - b.createdAt));
+  const est = {};
+  let cum = 0;
+  for(const w of open) if(w.price > 0) { cum += w.price; est[w.id] = Y > 0 ? Math.ceil(cum / Y) : null; }
+  const bought = list.filter(w => w.bought).sort((a, b) => (b.bought.d || '').localeCompare(a.bought.d || ''));
+  return {open, bought, est, total: cum, months: Y > 0 && cum > 0 ? Math.ceil(cum / Y) : null, noPrice: open.filter(w => !(w.price > 0)).length};
+}
+// Text odhadu: 1 = tento měsíc, 2–60 = za n měsíců · cílový měsíc, víc = přes 5 let
+function finWhen(n, ym) {
+  if(n == null) return '';
+  if(n <= 1) return t('fin.wish.now');
+  if(n > 60) return t('fin.wish.long');
+  return tN('fin.wish.in', n, {month: finYmLabel(finYmAdd(ym, n - 1))});
+}
+// AI odhad ceny: {low, typ, high} v celých jednotkách, jinak null
+function finAiParse(raw) {
+  const s = String(raw || ''), a = s.indexOf('{'), z = s.lastIndexOf('}');
+  if(a < 0 || z <= a) return null;
+  let o;
+  try { o = JSON.parse(s.slice(a, z + 1)); } catch(e) { return null; }
+  const low = Number(o?.low), typ = Number(o?.typ), high = Number(o?.high);
+  if(![low, typ, high].every(Number.isFinite) || !(low > 0 && low <= typ && typ <= high && high <= 1e9)) return null;
+  return {low, typ, high};
+}
+// Zaokrouhlení odhadu na 2 platné číslice (pod 100 celé jednotky) → setiny
+function finRound2(x) {
+  if(x < 100) return Math.max(1, Math.round(x)) * 100;
+  const p = Math.pow(10, Math.floor(Math.log10(x)) - 1);
+  return Math.round(x / p) * p * 100;
+}
+
+// ── Data: kontrola tvaru (skupinový dokument smí psát každý člen) ──
+const finStr = (v, max) => cutName(typeof v === 'string' ? v : '', max);
+const finAmt = v => (Number.isInteger(v) && v >= 0 && v <= FIN_AMT_MAX ? v : null);
+const finOrd = v => (Number.isFinite(v) ? v : 0);
+const finCid = c => (typeof c === 'string' && FIN_ID_RE.test(c) ? c : 'other');
+const finObj = x => (x && typeof x === 'object' ? x : {});
+function finNorm(r, id, gid) {
+  if(!r || typeof r !== 'object' || !FIN_ID_RE.test(id)) return null;
+  const cats = {};
+  Object.entries(finObj(r.cats)).filter(([cid, c]) => FIN_ID_RE.test(cid) && c && typeof c === 'object')
+    .sort((a, b) => finOrd(a[1].order) - finOrd(b[1].order)).slice(0, FIN_MAX.cats)
+    .forEach(([cid, c]) => {
+      const def = FIN_CATS_DEF.some(d => d[0] === cid);
+      cats[cid] = {name: finStr(c.name, 40) || (def ? t('fin.cat.' + cid) : '–'), emoji: finStr(c.emoji, 8) || '📦', order: finOrd(c.order), arch: c.arch === true && cid !== 'other'};
+    });
+  if(!cats.other) cats.other = {name: t('fin.cat.other'), emoji: '📦', order: 99, arch: false};
+  const rec = {};
+  for(const [rid, x] of Object.entries(finObj(r.rec))) {
+    if(Object.keys(rec).length >= FIN_MAX.rec) break;
+    if(!FIN_ID_RE.test(rid) || !x || typeof x !== 'object' || (x.kind !== 'inc' && x.kind !== 'exp') || !Array.isArray(x.v)) continue;
+    const vm = new Map();
+    x.v.forEach(v => {
+      if(!v || typeof v !== 'object' || !FIN_YM_RE.test(v.from) || finAmt(v.amt) === null) return;
+      const o = {from: v.from, name: finStr(v.name, 40) || '–', amt: v.amt};
+      if(x.kind === 'exp') o.cat = finCid(v.cat);
+      vm.set(v.from, o);
+    });
+    const v = [...vm.values()].sort((a, b) => (a.from < b.from ? -1 : 1)).slice(-FIN_MAX.ver);
+    if(!v.length) continue;
+    rec[rid] = {kind: x.kind, order: finOrd(x.order), end: FIN_YM_RE.test(x.end) && x.end >= v[0].from ? x.end : null, v};
+  }
+  const wish = {};
+  for(const [wid, w] of Object.entries(finObj(r.wish))) {
+    if(Object.keys(wish).length >= FIN_MAX.wish) break;
+    if(!FIN_ID_RE.test(wid) || !w || typeof w !== 'object') continue;
+    const name = finStr(w.name, 40);
+    if(!name) continue;
+    const bo = w.bought && typeof w.bought === 'object' && isDS(w.bought.d)
+      ? {d: w.bought.d, ym: FIN_YM_RE.test(w.bought.ym) ? w.bought.ym : w.bought.d.slice(0, 7), iid: typeof w.bought.iid === 'string' && FIN_ID_RE.test(w.bought.iid) ? w.bought.iid : null, amt: finAmt(w.bought.amt)}
+      : null;
+    wish[wid] = {name, price: finAmt(w.price), prio: [1, 2, 3].includes(w.prio) ? w.prio : 2, cat: finCid(w.cat), order: finOrd(w.order), ai: w.ai === true,
+      createdAt: finOrd(w.createdAt), by: finStr(w.by, 128), bought: bo};
+  }
+  return {id, _gid: gid || null, name: finStr(r.name, 40) || t('fin.new.defName'), emoji: FIN_EMS.includes(r.emoji) ? r.emoji : '💰', cur: FIN_CURS.includes(r.cur) ? r.cur : 'CZK',
+    firstYm: FIN_YM_RE.test(r.firstYm) ? r.firstYm : finYm(), cats, rec, wish, owner: typeof r.owner === 'string' ? r.owner : '', order: finOrd(r.order), createdAt: finOrd(r.createdAt)};
+}
+function finMonthNorm(r) {
+  const o = {one: {}, base: {}, adds: {}, ovr: {}};
+  if(!r || typeof r !== 'object') return o;
+  let n = 0;
+  for(const [k, it] of Object.entries(finObj(r.one))) {
+    if(n >= FIN_MAX.one) break;
+    if(!FIN_ID_RE.test(k) || !it || typeof it !== 'object' || (it.kind !== 'inc' && it.kind !== 'exp') || finAmt(it.amt) === null) continue;
+    o.one[k] = {kind: it.kind, name: finStr(it.name, 40) || '–', amt: it.amt, cat: finCid(it.cat), d: isDS(it.d) ? it.d : '', by: finStr(it.by, 128),
+      wish: typeof it.wish === 'string' && FIN_ID_RE.test(it.wish) ? it.wish : null};
+    n++;
+  }
+  for(const [k, v] of Object.entries(finObj(r.base))) if(FIN_ID_RE.test(k) && Number.isInteger(v) && Math.abs(v) <= FIN_AMT_MAX) o.base[k] = v;
+  n = 0;
+  for(const [k, a] of Object.entries(finObj(r.adds))) {
+    if(n >= FIN_MAX.adds) break;
+    if(!FIN_ID_RE.test(k) || !a || typeof a !== 'object' || finAmt(a.amt) === null) continue;
+    o.adds[k] = {cat: finCid(a.cat), amt: a.amt, note: finStr(a.note, 40), d: isDS(a.d) ? a.d : '', by: finStr(a.by, 128)};
+    n++;
+  }
+  for(const [k, v] of Object.entries(finObj(r.ovr))) {
+    if(!FIN_ID_RE.test(k) || !v || typeof v !== 'object') continue;
+    if(v.off === true) o.ovr[k] = {off: true};
+    else if(finAmt(v.amt) !== null) o.ovr[k] = {amt: v.amt};
+  }
+  return o;
+}
+// Dokument rozpočtu k zápisu (přesun do skupiny a zpět, Zpět po smazání, kopie při odchodu)
+function finDataOut(b, owner) {
+  const cats = {};
+  Object.entries(b.cats).forEach(([k, c]) => { cats[k] = {name: c.name, emoji: c.emoji, order: c.order}; if(c.arch) cats[k].arch = true; });
+  return {name: b.name, emoji: b.emoji, cur: b.cur, firstYm: b.firstYm, cats, rec: JSON.parse(JSON.stringify(b.rec)), wish: JSON.parse(JSON.stringify(b.wish)),
+    owner: owner || b.owner || CU.uid, order: b.order, createdAt: b.createdAt || Date.now(), updatedAt: Date.now()};
+}
+// Jedna pravidelná položka k zápisu (bez pomocných polí)
+const finRecOut = r => ({kind: r.kind, order: r.order, end: r.end || null, v: r.v.map(v => ({...v}))});
+
+// ── Stav a listenery ──
+let finBudgets = [], _finReady = false, finSel, finViewYm = null, _finAiBusy = false;
+const finGrp = {};        // gid → {list, ready, unsub, err}
+const finMon = new Map(); // gid|bid_ym → {data, ready, unsub}: jen viditelné měsíce
+function subFin() {
+  if(!CU) return;
+  createFireSub('finBudgets', collection(db, 'users', CU.uid, 'finBudgets'), snap => {
+    finBudgets = snap.docs.map(d => finNorm(d.data(), d.id, null)).filter(Boolean);
+    _finReady = true;
+    finRefresh();
+  }, () => { _finReady = true; finRefresh(); });
+  ensureFinSubs();
+}
+// Rozpočty všech mých skupin (listener drží do odchodu ze skupiny nebo odhlášení)
+function ensureFinSubs() { if(CU && _fireSubs['finBudgets']) myGroupIds().forEach(subscribeGroupFin); }
+function subscribeGroupFin(gid) {
+  if(!gid || !CU || grpSubBlocked(finGrp[gid])) return;
+  const e = finGrp[gid] = {list: [], ready: false, unsub: null};
+  e.unsub = onSnapshot(collection(db, 'families', gid, 'finBudgets'), snap => {
+    if(finGrp[gid] !== e) return;
+    e.list = snap.docs.map(d => finNorm(d.data(), d.id, gid)).filter(Boolean);
+    e.ready = true; e.err = 0;
+    finRefresh();
+  }, err => {
+    familyListenErr(err);
+    if(finGrp[gid] !== e) return;
+    if(e.unsub) e.unsub();
+    e.unsub = null; e.ready = false; e.list = []; e.err = Date.now();
+  });
+}
+function finMonDrop(pred) { for(const [k, e] of [...finMon]) if(pred(k)) { if(e.unsub) e.unsub(); finMon.delete(k); } }
+// Bez překreslení (volá se před vynulováním skupiny); překreslí renderAfterFamilyChange
+function unsubGroupFin(gid) { const e = finGrp[gid]; if(e?.unsub) e.unsub(); delete finGrp[gid]; finMonDrop(k => k.startsWith(gid + '|')); }
+function unsubAllGroupFin() { Object.keys(finGrp).forEach(unsubGroupFin); }
+// Odhlášení: vše z paměti pryč
+function finReset() { unsubAllGroupFin(); finMonDrop(() => true); finBudgets = []; _finReady = false; finSel = undefined; finViewYm = null; _finAiBusy = false; }
+// Osobní + skupinové (kopie ve skupině má přednost při krátkém souběhu během přesunu). Limit 5 hlídá jen zakládání:
+// po připojení ke skupině jich může být víc a žádný se neschová (jde přepnout i smazat)
+function allFin() {
+  const m = new Map();
+  finBudgets.forEach(b => m.set(b.id, b));
+  myGroupIds().forEach(g => (finGrp[g]?.list || []).forEach(b => m.set(b.id, b)));
+  return [...m.values()].sort((a, b) => (a.order - b.order) || (a.createdAt - b.createdAt));
+}
+function finFind(id) { return allFin().find(b => b.id === id) || null; }
+function finSelGet() {
+  if(finSel === undefined) { const v = lsGet('lp_fin_sel', null); finSel = v && v.u === CU?.uid && typeof v.id === 'string' ? v.id : null; }
+  return finSel;
+}
+function finSelSave(id) { finSel = id; lsSave('lp_fin_sel', {u: CU?.uid, id}); }
+function finCur(all = allFin()) { const s = finSelGet(); return all.find(b => b.id === s) || all[0] || null; }
+function finRef(b) { return b._gid ? doc(db, 'families', b._gid, 'finBudgets', b.id) : doc(db, 'users', CU.uid, 'finBudgets', b.id); }
+function finMonRef(b, ym) { const id = b.id + '_' + ym; return b._gid ? doc(db, 'families', b._gid, 'finMonths', id) : doc(db, 'users', CU.uid, 'finMonths', id); }
+const finMonKey = (b, ym) => (b._gid || '') + '|' + b.id + '_' + ym;
+function finMonData(b, ym) { return finMon.get(finMonKey(b, ym))?.data || null; }
+function finMonReady(b, ym) { return !!finMon.get(finMonKey(b, ym))?.ready; }
+// Mazat a vracet ze skupiny smí vlastník a správce skupiny (pravidla to nehlídají, jen klient)
+function finCanManage(b) { return !b._gid || b.owner === CU?.uid || petIsAdmin(b._gid); }
+// Zobrazený měsíc v rozsahu rozpočtu (první měsíc … dnes + 12)
+function finViewYmGet(b) {
+  const cur = finYm(), min = b && b.firstYm < cur ? b.firstYm : cur, max = finYmAdd(cur, 12);
+  let ym = finViewYm || cur;
+  if(ym < min) ym = min;
+  if(ym > max) ym = max;
+  return ym;
+}
+// Dokumentové listenery jen na to, co je vidět: zobrazený a předchozí měsíc vybraného rozpočtu, aktuální měsíc každého rozpočtu
+function finSyncMonSubs() {
+  if(!CU || !hasMod('finance')) { finMonDrop(() => true); return; }
+  const all = allFin(), want = new Map(), cur = finYm(), sel = finCur(all);
+  all.forEach(b => want.set(finMonKey(b, cur), [b, cur]));
+  if(sel) {
+    const v = finViewYmGet(sel), p = finYmAdd(v, -1);
+    want.set(finMonKey(sel, v), [sel, v]);
+    if(p >= sel.firstYm) want.set(finMonKey(sel, p), [sel, p]);
+  }
+  finMonDrop(k => !want.has(k));
+  for(const [k, [b, ym]] of want) {
+    if(finMon.has(k)) continue;
+    const e = {data: null, ready: false, unsub: null};
+    finMon.set(k, e);
+    e.unsub = onSnapshot(finMonRef(b, ym), snap => {
+      if(finMon.get(k) !== e) return;
+      e.data = snap.exists() ? finMonthNorm(snap.data()) : null;
+      e.ready = true;
+      finRefresh();
+    }, err => {
+      console.warn('[LP] listener finMonths:', err?.code || err?.name);
+      if(finMon.get(k) !== e) return;
+      e.unsub = null; e.ready = true;
+    });
+  }
+}
+function finRefresh() {
+  if(document.getElementById('p-finance')?.classList.contains('active')) renderFin();
+  else finSyncMonSubs();
+  const dw = document.getElementById('fin-dash');
+  if(dw) dw.innerHTML = finWidgetHTML();
+  // Karta ještě není (data dorazila po vykreslení Domů): jednou překreslit, ne u schované karty a v prvních 14 dnech jednoduchého režimu
+  else if(hasMod('finance') && allFin().length && !dashLayout().hidden.includes('finance') && !(isSimple() && simpleDash())
+    && document.getElementById('p-dashboard')?.classList.contains('active')) rDash();
+  // Otevřené listy s živými daty (ne během psaní)
+  const typing = id => document.getElementById(id)?.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(document.getElementById('m-fincat') && !typing('m-fincat')) finCatRender();
+  if(document.getElementById('m-finset') && !typing('m-finset')) finSetRender();
+}
+
+// ── Pomocné prvky UI ──
+const finVal = id => String(document.getElementById(id)?.value ?? '');
+function finSheet(id, inner, label) {
+  document.getElementById(id)?.remove();
+  const m = document.createElement('div');
+  m.id = id; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal pet-modal fin-modal" role="dialog" aria-modal="true" aria-label="' + esc(label) + '">' + inner + '</div>';
+  const opener = document.activeElement;
+  mountGroupSheet(m, () => (opener?.isConnected ? opener : null));
+  return m;
+}
+const finClose = id => document.getElementById(id)?.remove();
+window.finClose = finClose;
+// Aktivní (neskryté) kategorie podle pořadí; keep = i tuto skrytou (výběr u staré položky)
+function finCatList(b, keep) {
+  return Object.entries(b.cats).filter(([cid, c]) => !c.arch || cid === keep).sort((a, z) => a[1].order - z[1].order);
+}
+function finCatSel(b, id, cur) {
+  return '<select class="finp" id="' + id + '">' + finCatList(b, cur).map(([cid, c]) => '<option value="' + esc(cid) + '"' + (cid === cur ? ' selected' : '') + '>' + esc(c.emoji + ' ' + c.name) + '</option>').join('') + '</select>';
+}
+const finCatName = (b, cid) => { const c = b.cats[cid] || b.cats.other; return c.emoji + ' ' + c.name; };
+// Pole částky se značkou měny
+const finAmtInp = (id, cur, val, attrs = '') => '<div class="fin-amt-w"><input class="finp" id="' + id + '" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" maxlength="20" value="' + esc(val || '') + '" ' + attrs + '><span class="fin-cur" aria-hidden="true">' + esc(finSym(cur)) + '</span></div>';
+const finSeg = (opts, cur, fn, aria, cls = '') => '<div class="seg seg--block' + cls + '" role="group" aria-label="' + esc(aria) + '">'
+  + opts.map(([v, lbl]) => '<button type="button" class="seg-btn' + (v === cur ? ' active' : '') + '" data-a0="' + esc(v) + '" aria-pressed="' + (v === cur) + '" onclick="' + fn + '(this.dataset.a0)">' + lbl + '</button>').join('') + '</div>';
+const finSegMark = (sel, v) => document.querySelectorAll(sel + ' .seg-btn').forEach(b => { const on = b.dataset.a0 === v; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+const finCurSeg = (cur, fn) => finSeg(FIN_CURS.map(c => [c, esc(finSym(c))]), cur, fn, t('fin.new.cur'), ' fin-curseg');
+function finMemberNames(gid) {
+  return Object.values(groupDataOf(gid)?.members || {}).map(m => cutName(m?.name, 40)).filter(Boolean).slice(0, 8).join(', ');
+}
+function finLastCat(bid) { const v = lsGet('lp_fin_lastcat', null); return v && v.u === CU?.uid && v.m && typeof v.m[bid] === 'string' ? v.m[bid] : null; }
+function finLastCatSave(bid, cid) { const v = lsGet('lp_fin_lastcat', null); const m = v && v.u === CU?.uid && v.m && typeof v.m === 'object' ? v.m : {}; m[bid] = cid; lsSave('lp_fin_lastcat', {u: CU?.uid, m}); }
+const finTabGet = () => (lsGet('lp_fin_tab', 'month') === 'wish' ? 'wish' : 'month');
+const finByName = (b, uid) => (b._gid && uid ? memberName(b._gid, uid) : '');
+// Výchozí datum položky: v aktuálním měsíci dnešek, jinak 1. den měsíce
+const finDefDay = ym => (ym === finYm() ? toDS() : ym + '-01');
+const finMonEnd = ym => toDS(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0));
+
+// ── Stránka ──
+const _finDetOpen = new Set();
+window.finDet = el => { const k = el?.dataset?.a0; if(k) { if(el.open) _finDetOpen.add(k); else _finDetOpen.delete(k); } };
+window.finSelect = id => { if(!finFind(id)) return; finSelSave(id); finViewYm = null; renderFin(); };
+window.finTab = v => { if(v !== 'month' && v !== 'wish') return; lsSave('lp_fin_tab', v); renderFin(); document.querySelector('#fin-content .fin-tabs .seg-btn.active')?.focus(); };
+window.finMonthGo = n => {
+  const b = finCur();
+  if(!b) return;
+  finViewYm = +n === 0 ? null : finYmAdd(finViewYmGet(b), +n > 0 ? 1 : -1);
+  renderFin();
+  const el = document.getElementById(+n < 0 ? 'fin-m-prev' : 'fin-m-next');
+  if(+n !== 0 && el && !el.disabled) el.focus(); else document.getElementById('fin-m-lbl')?.focus();
+};
+window.finAiGo = () => { window.sp('settings'); setTimeout(() => { window.setJump?.('set-sec-profile'); document.getElementById('set-finai-cb')?.focus({preventScroll: true}); }, 60); };
+function finEmptyHTML() {
+  return '<div class="pet-empty"><div class="pet-empty-em" aria-hidden="true">💰</div><p class="pet-empty-t">' + tH('fin.empty.t') + '</p>'
+    + '<p class="pet-empty-d">' + tH('fin.empty.d') + '</p><button type="button" class="btn-p fin-big-btn" onclick="finNewOpen()">' + tH('fin.empty.btn') + '</button>'
+    + '<div class="fin-empty-notes"><p><span aria-hidden="true">🏦</span> ' + tH('fin.empty.bank') + '</p><p><span aria-hidden="true">🔒</span> ' + tH('fin.empty.ai') + '</p></div></div>';
+}
+function renderFin() {
+  const box = document.getElementById('fin-content');
+  if(!box) return;
+  if(CU && !_fireSubs['finBudgets']) subFin();
+  ensureFinSubs();
+  const all = allFin(), setBtn = document.getElementById('fin-set-top');
+  if(setBtn) setBtn.hidden = !all.length;
+  finSyncMonSubs();
+  if(!all.length) {
+    box.innerHTML = !_finReady ? '<p class="pet-muted">' + tH('fin.loading') + '</p>' : finEmptyHTML();
+    return;
+  }
+  const b = finCur(all), tab = finTabGet();
+  let h = '';
+  if(all.length > 1) h += '<div class="fin-switch">' + all.map(x => '<button type="button" class="fin-pill" data-a0="' + esc(x.id) + '" aria-current="' + (x.id === b.id) + '" onclick="finSelect(this.dataset.a0)"><span aria-hidden="true">' + esc(x.emoji) + '</span> ' + esc(x.name) + '</button>').join('') + '</div>';
+  h += finSeg([['month', tH('fin.tab.month')], ['wish', tH('fin.tab.wish')]], tab, 'finTab', t('mod.finance'), ' fin-tabs');
+  h += tab === 'wish' ? finWishHTML(b) : finMonthHTML(b);
+  box.innerHTML = h;
+}
+// Řádek položky: tlačítko na úpravu
+function finRowHTML(fn, id, em, name, sub, amt, cls = '') {
+  return '<button type="button" class="fin-row fin-row--btn' + cls + '" data-a0="' + esc(id) + '" onclick="' + fn + '(this.dataset.a0)">'
+    + '<span class="fin-row-em" aria-hidden="true">' + em + '</span><span class="fin-row-main"><span class="fin-row-n">' + esc(name) + '</span>'
+    + (sub ? '<span class="fin-row-d">' + esc(sub) + '</span>' : '') + '</span><span class="fin-amt">' + amt + '</span></button>';
+}
+function finMonthHTML(b) {
+  const cur = finYm(), ym = finViewYmGet(b), m = finMonData(b, ym), c = finCalc(b, m, ym), fut = ym > cur;
+  const F = (v, o) => esc(finFmt(v, b.cur, o));
+  const min = b.firstYm < cur ? b.firstYm : cur, max = finYmAdd(cur, 12), ml = finYmLabel(ym);
+  let h = '<div class="fin-month"><button type="button" class="fin-month-btn" id="fin-m-prev" onclick="finMonthGo(-1)" aria-label="' + tH('fin.m.prev') + '"' + (ym <= min ? ' disabled' : '') + '>‹</button>'
+    + '<div class="fin-month-lbl" id="fin-m-lbl" tabindex="-1" aria-live="polite">' + esc(ml) + (fut ? ' <span class="fin-plan">' + tH('fin.m.plan') + '</span>' : '') + '</div>'
+    + '<button type="button" class="fin-month-btn" id="fin-m-next" onclick="finMonthGo(1)" aria-label="' + tH('fin.m.next') + '"' + (ym >= max ? ' disabled' : '') + '>›</button></div>';
+  if(ym !== cur) h += '<button type="button" class="pet-link fin-today" onclick="finMonthGo(0)">' + tH('fin.m.today') + '</button>';
+  // Zbývá
+  h += '<div class="fin-sec">';
+  if(!c.inc && c.exp) h += '<div class="dw-title">' + tH('fin.cmp.exp') + '</div><div class="fin-big fin-big--n">' + F(c.exp, {round: true}) + '</div>'
+    + '<button type="button" class="pet-link" data-a0="inc" data-a1="rec" onclick="finItemNew(this.dataset.a0,this.dataset.a1)">' + tH('fin.noInc') + '</button>';
+  else if(!c.inc) h += '<div class="dw-title">' + tH('fin.left') + '</div><div class="fin-big fin-big--n">' + F(0) + '</div><p class="fin-sub">' + tH('fin.nothing') + '</p>';
+  else {
+    const neg = c.left < 0, pct = Math.round(c.exp / c.inc * 100);
+    h += '<div class="dw-title">' + tH(neg ? 'fin.short' : 'fin.left') + '</div><div class="fin-big' + (neg ? ' fin-big--neg' : '') + '">' + F(Math.abs(c.left), {round: true}) + '</div>'
+      + '<div class="fin-sub">' + tH('fin.incExp', {inc: finFmt(c.inc, b.cur, {round: true}), exp: finFmt(c.exp, b.cur, {round: true})}) + '</div>'
+      + '<div class="fin-meter' + (neg ? ' fin-meter--over' : '') + '" aria-hidden="true"><i style="width:' + Math.min(100, pct) + '%"></i></div>'
+      + '<div class="fin-sub fin-sub--s">' + tH('fin.spentPct', {n: pct}) + '</div>'
+      + (neg ? '<p class="fin-sub fin-neg-t">' + tH('fin.shortNote') + '</p>' : '');
+  }
+  if(fut) h += '<p class="fin-sub fin-sub--s">' + tH('fin.m.planNote') + '</p>';
+  h += '</div>';
+  // Výdaje podle kategorií (pruhový graf bez knihovny)
+  const rows = Object.entries(c.cats).filter(([, x]) => x.total > 0).sort((a, z) => z[1].total - a[1].total);
+  const maxT = rows.length ? rows[0][1].total : 0;
+  const zero = finCatList(b).filter(([cid]) => !(c.cats[cid]?.total > 0));
+  h += '<div class="fin-sec"><div class="dw-title">' + tH('fin.sec.cats') + '</div>'
+    + rows.map(([cid, x]) => {
+      const cat = b.cats[cid] || b.cats.other, pct = c.exp ? Math.round(x.total / c.exp * 100) : 0, w = Math.max(2, Math.round(x.total / maxT * 100));
+      return '<button type="button" class="fin-cat" data-a0="' + esc(cid) + '" onclick="finCatOpen(this.dataset.a0)" aria-label="' + tH('fin.cat.aria', {name: cat.name, amt: finFmt(x.total, b.cur), pct}) + '">'
+        + '<span class="fin-cat-row" aria-hidden="true"><span>' + esc(cat.emoji) + '</span><span class="fin-cat-n">' + esc(cat.name) + '</span><span class="fin-amt">' + F(x.total) + '</span></span>'
+        + '<span class="fin-cat-bar" aria-hidden="true"><span><i style="width:' + w + '%"></i></span><small>' + tH('fin.pct', {n: pct}) + '</small></span></button>';
+    }).join('');
+  if(!fut && !Object.values(c.cats).some(x => x.var > 0)) h += '<p class="pet-muted">' + tH('fin.noSpend') + '</p>';
+  if(zero.length) h += '<details class="pet-det fin-det" data-a0="zero" ontoggle="finDet(this)"' + (_finDetOpen.has('zero') ? ' open' : '') + '><summary>' + tH('fin.cats.more', {n: zero.length}) + '</summary><div class="pet-det-b">'
+    + zero.map(([cid, cat]) => '<button type="button" class="fin-row fin-row--btn" data-a0="' + esc(cid) + '" onclick="finCatOpen(this.dataset.a0)"><span class="fin-row-em" aria-hidden="true">' + esc(cat.emoji) + '</span><span class="fin-row-main"><span class="fin-row-n">' + esc(cat.name) + '</span></span><span class="fin-amt">' + F(0) + '</span></button>').join('')
+    + '</div></details>';
+  h += '</div>';
+  // Oproti minulému měsíci
+  const pym = finYmAdd(ym, -1);
+  if(!fut && pym >= b.firstYm && finMonReady(b, pym)) {
+    const pc = finCalc(b, finMonData(b, pym), pym);
+    if(pc.inc || pc.exp) {
+      const row = (lbl, v, d, goodUp) => {
+        const r = Math.round(d / 100) * 100;
+        return '<span>' + tH(lbl) + '</span><span class="fin-amt">' + F(v, {round: true}) + '</span>'
+          + (r ? '<span class="' + ((r > 0) === goodUp ? 'fin-good' : 'fin-bad') + '"><span aria-hidden="true">' + (r > 0 ? '▲' : '▼') + '</span> ' + tH(r > 0 ? 'fin.cmp.more' : 'fin.cmp.less', {amt: finFmt(Math.abs(r), b.cur, {round: true})}) + '</span>'
+            : '<span class="fin-same">' + tH('fin.cmp.same') + '</span>');
+      };
+      let up = null, dn = null;
+      const thr = Math.max(100, c.exp / 100);
+      for(const k of new Set([...Object.keys(c.cats), ...Object.keys(pc.cats)])) {
+        const d = (c.cats[k]?.total || 0) - (pc.cats[k]?.total || 0);
+        if(d >= thr && (!up || d > up[1])) up = [k, d];
+        if(-d >= thr && (!dn || d < dn[1])) dn = [k, d];
+      }
+      h += '<div class="fin-sec"><div class="dw-title">' + tH('fin.sec.cmp') + '</div><div class="fin-cmp">'
+        + row('fin.cmp.exp', c.exp, c.exp - pc.exp, false) + row('fin.cmp.inc', c.inc, c.inc - pc.inc, true) + row('fin.cmp.left', c.left, c.left - pc.left, true) + '</div>'
+        + (up ? '<p class="fin-sub fin-sub--s">' + tH('fin.cmp.up', {cat: finCatName(b, up[0]), amt: finFmt(up[1], b.cur, {round: true, sign: true})}) + '</p>' : '')
+        + (dn ? '<p class="fin-sub fin-sub--s">' + tH('fin.cmp.down', {cat: finCatName(b, dn[0]), amt: finFmt(dn[1], b.cur, {round: true, sign: true})}) + '</p>' : '')
+        + '</div>';
+    }
+  }
+  // Příjmy, pravidelné platby, jednorázové výdaje
+  const mm = m || finMonthNorm(null), mlab = t('fin.onlyMonth', {month: ml});
+  const recOf = kind => Object.entries(b.rec).filter(([, r]) => r.kind === kind && finRecAt(r, ym)).sort((a, z) => a[1].order - z[1].order);
+  const recRow = ([rid, r]) => {
+    const v = finRecAt(r, ym), o = mm.ovr[rid], off = !!o?.off, amt = o && Number.isInteger(o.amt) ? o.amt : v.amt;
+    const sub = [off ? t('fin.offMonth') : o ? t('fin.ovrNote') : t('fin.everyMonth'), r.kind === 'exp' ? finCatName(b, v.cat) : ''].filter(Boolean).join(' · ');
+    return finRowHTML('finRecEdit', rid, '🔁', v.name, sub, F(amt), off ? ' fin-off' : '');
+  };
+  const oneOf = kind => Object.entries(mm.one).filter(([, it]) => it.kind === kind).sort((a, z) => (a[1].d || '').localeCompare(z[1].d || ''));
+  const oneRow = ([iid, it]) => finRowHTML('finOneEdit', iid, '', it.name, [mlab, it.kind === 'exp' ? finCatName(b, it.cat) : '', finByName(b, it.by)].filter(Boolean).join(' · '), F(it.amt));
+  const sumRec = list => list.reduce((s, [rid, r]) => { const o = mm.ovr[rid]; return s + (o?.off ? 0 : o && Number.isInteger(o.amt) ? o.amt : finRecAt(r, ym).amt); }, 0);
+  const incR = recOf('inc'), incO = oneOf('inc');
+  h += '<div class="fin-sec"><div class="fin-sec-h"><span class="dw-title">' + tH('fin.sec.inc') + '</span><span class="fin-amt">' + F(c.inc) + '</span></div>'
+    + incR.map(recRow).join('') + incO.map(oneRow).join('')
+    + '<button type="button" class="btn-s pet-wide" data-a0="inc" data-a1="rec" onclick="finItemNew(this.dataset.a0,this.dataset.a1)">' + tH('fin.inc.add') + '</button></div>';
+  const expR = recOf('exp'), expO = oneOf('exp');
+  const det = (k, title, body) => '<details class="pet-det fin-det" data-a0="' + k + '" ontoggle="finDet(this)"' + (_finDetOpen.has(k) ? ' open' : '') + '><summary>' + title + '</summary><div class="pet-det-b">' + body + '</div></details>';
+  h += '<div class="fin-sec">'
+    + det('rec', tH('fin.sec.rec') + ' (' + expR.length + ') · ' + F(sumRec(expR)), expR.map(recRow).join('')
+      + '<button type="button" class="btn-s pet-wide" data-a0="exp" data-a1="rec" onclick="finItemNew(this.dataset.a0,this.dataset.a1)">' + tH('fin.rec.add') + '</button>')
+    + det('one', tH('fin.sec.one') + ' (' + expO.length + ') · ' + F(expO.reduce((s, [, it]) => s + it.amt, 0)), expO.map(oneRow).join('')
+      + '<button type="button" class="btn-s pet-wide" data-a0="exp" data-a1="one" onclick="finItemNew(this.dataset.a0,this.dataset.a1)">' + tH('fin.one.add') + '</button>')
+    + '</div>';
+  h += '<button type="button" class="pet-link fin-ai-link" onclick="finAiGo()">' + tH(prof?.finAi === true ? 'fin.ai.seen.on' : 'fin.ai.seen.off') + ' <span aria-hidden="true">›</span></button>';
+  h += '<div class="fin-bar"><button type="button" class="btn-p" onclick="finAddOpen()">' + tH('fin.add.spend') + '</button>'
+    + '<button type="button" class="btn-s" data-a0="inc" data-a1="one" onclick="finItemNew(this.dataset.a0,this.dataset.a1)">' + tH('fin.add.inc') + '</button></div>';
+  return h;
+}
+
+// ── Chceme koupit ──
+function finWishHTML(b) {
+  const cur = finYm(), Y = finCalc(b, finMonData(b, cur), cur).left, P = finWishPlan(b.wish, Y);
+  const F = (v, o) => esc(finFmt(v, b.cur, o));
+  if(!P.open.length && !P.bought.length) {
+    return '<div class="pet-empty"><div class="pet-empty-em" aria-hidden="true">🛍️</div><p class="pet-empty-t">' + tH('fin.wish.empty.t') + '</p>'
+      + '<p class="pet-empty-d">' + tH('fin.wish.empty.d') + '</p><button type="button" class="btn-p fin-big-btn" onclick="finWishNew()">' + tH('fin.wish.addFirst') + '</button></div>';
+  }
+  let h = '';
+  if(P.total > 0 || P.noPrice) {
+    h += '<div class="fin-sec"><div class="dw-title">' + tH('fin.wish.sumT') + '</div><div class="fin-big fin-big--n fin-big--m">' + F(P.total, {round: true}) + '</div>';
+    if(P.total > 0) {
+      if(Y > 0) h += '<p class="fin-sub">' + tH('fin.wish.sumRate', {amt: finFmt(Y, b.cur, {round: true})}) + ' <strong>'
+        + (P.months > 60 ? tH('fin.wish.long') : tNH('fin.wish.sumWhen', P.months, {month: finYmLabel(finYmAdd(cur, P.months - 1))})) + '</strong></p>'
+        + '<p class="fin-sub fin-sub--s">' + tH('fin.wish.order') + '</p>';
+      else h += '<p class="fin-sub">' + tH('fin.wish.noLeft') + '</p>';
+    }
+    if(P.noPrice) h += '<p class="fin-sub fin-sub--s">' + tNH('fin.wish.noPrice', P.noPrice) + '</p>';
+    h += '</div>';
+  }
+  for(const prio of [1, 2, 3]) {
+    const ws = P.open.filter(w => w.prio === prio);
+    if(!ws.length) continue;
+    h += '<div class="fin-sec"><div class="dw-title">' + tH('fin.wish.prio' + prio) + '</div>' + ws.map(w => {
+      const when = w.price > 0 ? finWhen(P.est[w.id], cur) : '';
+      return '<div class="fin-row fin-wish"><button type="button" class="fin-wish-chk" role="checkbox" aria-checked="false" data-a0="' + esc(w.id) + '" aria-label="' + tH('fin.wish.buyAria', {name: w.name}) + '" onclick="finWishBuy(this.dataset.a0)"></button>'
+        + '<button type="button" class="fin-row-main fin-row-mainbtn" data-a0="' + esc(w.id) + '" onclick="finWishEdit(this.dataset.a0)" aria-label="' + tH('a11y.editName', {name: w.name}) + '"><span class="fin-row-n">' + esc(w.name) + '</span>' + (when ? '<span class="fin-row-d">' + esc(when) + '</span>' : '') + '</button>'
+        + '<span class="fin-amt">' + (w.price > 0 ? '~' + F(w.price, {round: true}) : '<span class="fin-row-d">' + tH('fin.wish.priceNone') + '</span>') + '</span></div>';
+    }).join('') + '</div>';
+  }
+  if(P.bought.length) {
+    h += '<div class="fin-sec"><details class="pet-det fin-det" data-a0="bought" ontoggle="finDet(this)"' + (_finDetOpen.has('bought') ? ' open' : '') + '><summary>' + tH('fin.wish.bought', {n: P.bought.length}) + '</summary><div class="pet-det-b">'
+      + P.bought.map(w => '<div class="fin-row fin-wish fin-wish--bought"><button type="button" class="fin-wish-chk" role="checkbox" aria-checked="true" data-a0="' + esc(w.id) + '" aria-label="' + tH('fin.wish.unbuyAria', {name: w.name}) + '" onclick="finWishUnbuy(this.dataset.a0)">✓</button>'
+        + '<span class="fin-row-main"><span class="fin-row-n">' + esc(w.name) + '</span><span class="fin-row-d">' + esc(fmtDate(w.bought.d, 'dmy')) + (w.bought.amt != null ? ' · ' + F(w.bought.amt) : '') + '</span></span>'
+        + '<button type="button" class="pet-icon-btn" data-a0="' + esc(w.id) + '" aria-label="' + tH('a11y.delName', {name: w.name}) + '" onclick="finWishDel(this.dataset.a0)">🗑️</button></div>').join('')
+      + '</div></details></div>';
+  }
+  h += '<div class="fin-bar"><button type="button" class="btn-p" onclick="finWishNew()">' + tH('fin.wish.add') + '</button></div>';
+  return h;
+}
+
+// ── Karta na Domů ──
+function finWidgetHTML() {
+  const all = allFin();
+  if(!all.length) return '';
+  const b = finCur(all), ym = finYm(), c = finCalc(b, finMonData(b, ym), ym), neg = c.left < 0;
+  let mon = '';
+  try { mon = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 15).toLocaleDateString(LOCALE, {month: 'long'}); } catch(e) {}
+  const pct = c.inc > 0 ? Math.round(c.exp / c.inc * 100) : 0;
+  return '<div class="dw" onclick="sp(\'finance\')"><div class="dw-head"><div class="dw-title">💰 ' + tH('dash.card.finance') + (mon ? ' · ' + esc(mon) : '') + '</div><div class="dw-arrow">→</div></div>'
+    + (all.length > 1 ? '<div class="fin-sub fin-sub--s"><span aria-hidden="true">' + esc(b.emoji) + '</span> ' + esc(b.name) + '</div>' : '')
+    + '<div class="fin-dw-big' + (neg ? ' fin-dw-big--neg' : '') + '">' + tH(neg ? 'fin.short' : 'fin.left') + ' ' + esc(finFmt(Math.abs(c.left), b.cur, {round: true})) + '</div>'
+    + '<div class="fin-sub fin-sub--s">' + tH('fin.incExp', {inc: finFmt(c.inc, b.cur, {round: true}), exp: finFmt(c.exp, b.cur, {round: true})}) + '</div>'
+    + (c.inc > 0 ? '<div class="fin-meter fin-meter--s' + (neg ? ' fin-meter--over' : '') + '" aria-hidden="true"><i style="width:' + Math.min(100, pct) + '%"></i></div><div class="fin-sub fin-sub--s">' + tH('fin.spentPct', {n: pct}) + '</div>' : '')
+    + (all.length > 1 ? '<div class="fin-sub fin-sub--s">' + tNH('dash.fin.more', all.length - 1) + '</div>' : '')
+    + '<button type="button" class="fin-dw-add" onclick="event.stopPropagation();finAddOpen(\'\',1)">' + tH('fin.add.spend') + '</button></div>';
+}
+
+// ── Založení rozpočtu (#m-finnew, 3 kroky) ──
+let _finNew = null;
+window.finNewOpen = () => {
+  if(!CU) return;
+  if(allFin().length >= FIN_MAX.budgets) { toast(t('fin.maxBudgets', {n: FIN_MAX.budgets})); return; }
+  _finNew = {step: 1, gid: null, cur: LANG === 'cs' ? 'CZK' : 'EUR', name: '', named: false, inc: [], exp: []};
+  finSheet('m-finnew', '', t('fin.empty.btn'));
+  finNewRender();
+};
+const finNewDefName = s => (s.gid ? grpName(s.gid) : t('fin.new.defName'));
+function finNewIncRow(x, i) {
+  return '<div class="fin-new-row" data-i="' + i + '"><input class="finp" id="fn-in-' + i + '" maxlength="40" autocomplete="off" value="' + esc(x.name) + '" aria-label="' + tH('fin.new.name') + '" data-a0="' + i + '" oninput="finNewIn(this,\'inc\',\'name\')">'
+    + finAmtInp('fn-ia-' + i, _finNew.cur, x.amt, 'aria-label="' + tH('fin.item.amount') + '" data-a0="' + i + '" oninput="finNewIn(this,\'inc\',\'amt\')"')
+    + '<button type="button" class="pet-icon-btn" data-a0="' + i + '" aria-label="' + tH('a11y.delName', {name: x.name || t('fin.item.amount')}) + '" onclick="finNewDel(\'inc\',this.dataset.a0)"' + (i >= _finNew.inc.length ? ' hidden' : '') + '>✕</button></div>';
+}
+function finNewExpRow(x, i) {
+  return '<div class="fin-new-row" data-i="' + i + '"><span class="fin-new-em" aria-hidden="true">' + esc(x.em) + '</span><input class="finp" id="fn-en-' + i + '" maxlength="40" autocomplete="off" value="' + esc(x.name) + '" aria-label="' + tH('fin.new.name') + '" data-a0="' + i + '" oninput="finNewIn(this,\'exp\',\'name\')">'
+    + finAmtInp('fn-ea-' + i, _finNew.cur, x.amt, 'aria-label="' + tH('fin.item.amount') + '" data-a0="' + i + '" oninput="finNewIn(this,\'exp\',\'amt\')"')
+    + '<button type="button" class="pet-icon-btn" data-a0="' + i + '" aria-label="' + tH('a11y.delName', {name: x.name || t('fin.item.amount')}) + '" onclick="finNewDel(\'exp\',this.dataset.a0)">✕</button></div>';
+}
+function finNewRender(focusId) {
+  const box = document.querySelector('#m-finnew .modal'), s = _finNew;
+  if(!box || !s) return;
+  let h = '<div class="fin-steps"><span class="fin-dots" aria-hidden="true">' + [1, 2, 3].map(i => '<i' + (i <= s.step ? ' class="on"' : '') + '></i>').join('') + '</span><span>' + tH('fin.new.step', {n: s.step}) + '</span></div>';
+  if(s.step === 1) {
+    const tile = (g, em, lbl) => '<button type="button" class="fin-tile" role="radio" aria-checked="' + ((s.gid || '') === g) + '" data-a0="' + esc(g) + '" onclick="finNewWho(this.dataset.a0)"><span class="em" aria-hidden="true">' + esc(em) + '</span><span class="fin-tile-l">' + esc(lbl) + '</span></button>';
+    h += '<div class="mtitle" id="fn-who">' + tH('fin.new.who') + '</div><div class="fin-tiles" role="radiogroup" aria-labelledby="fn-who">' + tile('', '👤', t('fin.new.me')) + myGroupIds().map(g => tile(g, grpEmoji(g), grpName(g))).join('') + '</div>'
+      + (s.gid ? '<p class="pet-hint">' + tH('fin.new.grpNote', {names: finMemberNames(s.gid)}) + '</p>' : '')
+      + '<div class="flbl fin-lbl">' + tH('fin.new.cur') + '</div>' + finCurSeg(s.cur, 'finNewCur')
+      + '<div class="fg"><label class="flbl" for="fn-name">' + tH('fin.new.name') + '</label><input class="finp" id="fn-name" maxlength="40" autocomplete="off" value="' + esc(s.named ? s.name : finNewDefName(s)) + '" oninput="finNewName(this.value)"></div>'
+      + '<div class="macts"><button type="button" class="btn-s" onclick="finClose(\'m-finnew\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="finNewNext()">' + tH('fin.new.next') + ' →</button></div>';
+  } else if(s.step === 2) {
+    h += '<div class="mtitle">' + tH('fin.new.inc.t') + '</div><p class="pet-hint">' + tH('fin.new.inc.d') + '</p>'
+      + '<div class="pet-chips fin-chips">' + FIN_CHIPS_INC.map(k => '<button type="button" class="chip fin-chip" data-a0="' + k + '" onclick="finNewIncChip(this.dataset.a0)">' + tH('fin.inc.' + k) + '</button>').join('') + '</div>'
+      + '<div id="fn-rows">' + [...s.inc, {name: '', amt: ''}].map(finNewIncRow).join('') + '</div>'
+      + '<div class="macts"><button type="button" class="btn-s" onclick="finNewSkip()">' + tH('fin.new.skip') + '</button><button type="button" class="btn-p" onclick="finNewNext()">' + tH('fin.new.next') + ' →</button></div>';
+  } else {
+    h += '<div class="mtitle">' + tH('fin.new.exp.t') + '</div>'
+      + '<div class="pet-chips fin-chips">' + FIN_CHIPS_EXP.map(([k, em]) => '<button type="button" class="chip fin-chip" data-a0="' + k + '" onclick="finNewExpChip(this.dataset.a0)"><span aria-hidden="true">' + em + '</span> ' + tH('fin.chip.' + k) + '</button>').join('')
+      + '<button type="button" class="chip fin-chip" data-a0="other" onclick="finNewExpChip(this.dataset.a0)">' + tH('fin.chip.other') + '</button></div>'
+      + '<div id="fn-rows">' + s.exp.map(finNewExpRow).join('') + '</div>'
+      + '<p class="pet-hint">' + tH('fin.new.exp.d') + '</p>'
+      + '<div class="macts"><button type="button" class="btn-s" onclick="finNewSkip()">' + tH('fin.new.skip') + '</button><button type="button" class="btn-p" onclick="finNewNext()">' + tH('fin.new.done') + ' ✓</button></div>';
+  }
+  box.innerHTML = h;
+  const f = focusId && document.getElementById(focusId);
+  if(f) { f.focus(); return; }
+  const ti = box.querySelector('.mtitle');
+  if(ti) { ti.setAttribute('tabindex', '-1'); ti.focus(); }
+}
+window.finNewWho = g => {
+  const s = _finNew;
+  if(!s || (g && !myGroupIds().includes(g))) return;
+  s.gid = g || null;
+  finNewRender();
+  document.querySelector('#m-finnew .fin-tile[aria-checked="true"]')?.focus();
+};
+window.finNewCur = c => { if(_finNew && FIN_CURS.includes(c)) { _finNew.cur = c; finSegMark('#m-finnew .fin-curseg', c); } };
+window.finNewName = v => { if(_finNew) { _finNew.name = String(v); _finNew.named = true; } };
+// Psaní do řádku: hodnoty do stavu; vyplněný poslední prázdný řádek příjmů přidá další (bez překreslení, fokus zůstane)
+window.finNewIn = (el, kind, field) => {
+  const s = _finNew, i = +el.dataset.a0;
+  if(!s || !Number.isInteger(i)) return;
+  const arr = s[kind];
+  if(i >= arr.length) {
+    if(kind !== 'inc' || !el.value.trim()) return;
+    arr.push({name: '', amt: ''});
+    document.querySelector('#fn-rows .fin-new-row[data-i="' + i + '"] .pet-icon-btn')?.removeAttribute('hidden');
+    document.getElementById('fn-rows')?.insertAdjacentHTML('beforeend', finNewIncRow({name: '', amt: ''}, arr.length));
+  }
+  arr[i][field] = el.value;
+};
+window.finNewDel = (kind, i) => {
+  const s = _finNew;
+  i = +i;
+  if(!s || !s[kind][i]) return;
+  s[kind].splice(i, 1);
+  finNewRender(kind === 'inc' ? 'fn-in-' + s.inc.length : null);
+};
+window.finNewIncChip = k => {
+  const s = _finNew;
+  if(!s || !FIN_CHIPS_INC.includes(k)) return;
+  s.inc.push({name: t('fin.inc.' + k), amt: ''});
+  finNewRender('fn-ia-' + (s.inc.length - 1));
+};
+window.finNewExpChip = k => {
+  const s = _finNew, c = FIN_CHIPS_EXP.find(x => x[0] === k);
+  if(!s) return;
+  s.exp.push(c ? {name: t('fin.chip.' + k), amt: '', cat: c[2], em: c[1]} : {name: '', amt: '', cat: 'other', em: '📦'});
+  finNewRender((c ? 'fn-ea-' : 'fn-en-') + (s.exp.length - 1));
+};
+// Platné řádky; chybná částka = null (fokus na ni)
+function finNewRows(kind) {
+  const out = [], s = _finNew;
+  for(let i = 0; i < s[kind].length; i++) {
+    const x = s[kind][i], name = cutName(x.name, 40), raw = String(x.amt || '').trim();
+    if(!name && !raw) continue;
+    const amt = finParse(raw);
+    if(amt === null || amt <= 0) { toast(t('fin.amt.err')); document.getElementById((kind === 'inc' ? 'fn-ia-' : 'fn-ea-') + i)?.focus(); return null; }
+    out.push({name: name || t(kind === 'inc' ? 'fin.item.recInc' : 'fin.item.recExp'), amt, cat: x.cat || 'other'});
+  }
+  return out;
+}
+window.finNewNext = () => {
+  const s = _finNew;
+  if(!s) return;
+  if(s.step === 1) {
+    if(!s.named) s.name = finNewDefName(s);
+    if(!cutName(s.name, 40)) { toast(t('common.nameReq')); document.getElementById('fn-name')?.focus(); return; }
+    s.step = 2; finNewRender(); return;
+  }
+  if(s.step === 2) { if(!finNewRows('inc')) return; s.step = 3; finNewRender(); return; }
+  const inc = finNewRows('inc'), exp = finNewRows('exp');
+  if(!inc || !exp) return;
+  finCreate(s, inc, exp);
+};
+window.finNewSkip = () => {
+  const s = _finNew;
+  if(!s) return;
+  if(s.step === 2) { s.inc = []; s.step = 3; finNewRender(); return; }
+  s.exp = [];
+  finCreate(s, finNewRows('inc') || [], []);
+};
+function finCreate(s, inc, exp) {
+  if(!CU) return;
+  if(s.gid && !myGroupIds().includes(s.gid)) s.gid = null;
+  const bid = genId(), ym = finYm(), cats = {}, rec = {};
+  FIN_CATS_DEF.forEach(([id, em], i) => { cats[id] = {name: t('fin.cat.' + id), emoji: em, order: i}; });
+  let o = 0;
+  inc.forEach(x => { rec[genId()] = {kind: 'inc', order: o++, end: null, v: [{from: ym, name: x.name, amt: x.amt}]}; });
+  exp.forEach(x => { rec[genId()] = {kind: 'exp', order: o++, end: null, v: [{from: ym, name: x.name, amt: x.amt, cat: x.cat}]}; });
+  const data = {name: cutName(s.name, 40) || finNewDefName(s), emoji: s.gid ? '🏠' : '👤', cur: s.cur, firstYm: ym, cats, rec, wish: {},
+    owner: CU.uid, order: allFin().length, createdAt: Date.now(), updatedAt: Date.now()};
+  setDoc(s.gid ? doc(db, 'families', s.gid, 'finBudgets', bid) : doc(db, 'users', CU.uid, 'finBudgets', bid), data).catch(finErr);
+  finSelSave(bid); finViewYm = null; lsSave('lp_fin_tab', 'month');
+  _finNew = null;
+  finClose('m-finnew');
+  if(!document.getElementById('p-finance')?.classList.contains('active')) window.sp('finance'); else renderFin();
+  toast(t('fin.new.toast'), 4000);
+}
+
+// ── Útrata (#m-finadd) ──
+let _finAdd = null;
+window.finAddOpen = (cid, dash) => {
+  const b = finCur();
+  if(!CU || !b) return;
+  const ym = dash ? finYm() : finViewYmGet(b), cats = finCatList(b), last = finLastCat(b.id);
+  const sel = cats.some(([k]) => k === cid) ? cid : null;
+  const ord = [...cats].sort((a, z) => (z[0] === last) - (a[0] === last));
+  _finAdd = {bid: b.id, gid: b._gid, ym, cat: sel};
+  const inner = '<div class="mtitle">' + tH('fin.add.spend') + '</div>'
+    + '<div class="fin-amt-w fin-amt-w--big"><input class="finp fin-amt-inp" id="fa-amt" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" maxlength="20" aria-label="' + tH('fin.item.amount') + '" oninput="finAddChk()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();finAddSave()}"><span class="fin-cur" aria-hidden="true">' + esc(finSym(b.cur)) + '</span></div>'
+    + '<div class="flbl fin-lbl" id="fa-what">' + tH('fin.add.what') + '</div><div class="fin-chips" role="radiogroup" aria-labelledby="fa-what">'
+    + ord.map(([k, c]) => '<button type="button" class="chip fin-chip" role="radio" aria-checked="' + (k === sel) + '" data-a0="' + esc(k) + '" onclick="finAddCat(this.dataset.a0)"><span aria-hidden="true">' + esc(c.emoji) + '</span> ' + esc(c.name) + '</button>').join('') + '</div>'
+    + '<div class="fg"><label class="flbl" for="fa-note">' + tH('fin.add.note') + '</label><input class="finp" id="fa-note" maxlength="40" autocomplete="off" enterkeyhint="done"></div>'
+    + '<div class="fg"><label class="flbl" for="fa-d">' + tH('fin.add.when') + '</label><input class="finp" type="date" id="fa-d" min="' + ym + '-01" max="' + finMonEnd(ym) + '" value="' + finDefDay(ym) + '"></div>'
+    + (ym !== finYm() ? '<p class="pet-hint">' + tH('fin.add.month', {month: finYmLabel(ym)}) + '</p>' : '')
+    + '<div class="macts"><button type="button" class="btn-s" onclick="finClose(\'m-finadd\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" id="fa-ok" disabled onclick="finAddSave()">' + tH('fin.add.btn') + '</button></div>';
+  finSheet('m-finadd', inner, t('fin.add.spend'));
+  setTimeout(() => document.getElementById('fa-amt')?.focus(), 100);
+};
+window.finAddChk = () => {
+  const ok = !!_finAdd?.cat && (finParse(finVal('fa-amt')) || 0) > 0, btn = document.getElementById('fa-ok');
+  if(btn) btn.disabled = !ok;
+};
+window.finAddCat = cid => {
+  if(!_finAdd) return;
+  _finAdd.cat = cid;
+  document.querySelectorAll('#m-finadd .fin-chip').forEach(el => el.setAttribute('aria-checked', String(el.dataset.a0 === cid)));
+  window.finAddChk();
+};
+window.finAddSave = () => {
+  const s = _finAdd, b = s && finFind(s.bid);
+  if(!CU || !b) { finClose('m-finadd'); return; }
+  const amt = finParse(finVal('fa-amt'));
+  if(amt === null || amt <= 0) { toast(t('fin.amt.err')); document.getElementById('fa-amt')?.focus(); return; }
+  if(!s.cat || !b.cats[s.cat]) { document.querySelector('#m-finadd .fin-chip')?.focus(); return; }
+  if(Object.keys(finMonData(b, s.ym)?.adds || {}).length >= FIN_MAX.adds) { toast(t('fin.add.tooMany'), 4000); return; }
+  let d = finVal('fa-d');
+  if(!isDS(d) || d.slice(0, 7) !== s.ym) d = finDefDay(s.ym);
+  const aid = genId();
+  setDoc(finMonRef(b, s.ym), {bid: b.id, ym: s.ym, adds: {[aid]: {cat: s.cat, amt, note: cutName(finVal('fa-note'), 40), d, by: CU.uid}}, updatedAt: Date.now()}, {merge: true}).catch(finErr);
+  finLastCatSave(b.id, s.cat);
+  _finAdd = null;
+  finClose('m-finadd');
+  toast(t('fin.add.toast', {amt: finFmt(amt, b.cur), cat: b.cats[s.cat].name}));
+  try { navigator.vibrate?.(12); } catch(e) {}
+};
+
+// ── List kategorie (#m-fincat) ──
+let _finCat = null;
+window.finCatOpen = cid => {
+  const b = finCur();
+  if(!b || !b.cats[cid]) return;
+  _finCat = {bid: b.id, ym: finViewYmGet(b), cid, edit: false};
+  finSheet('m-fincat', '', b.cats[cid].name);
+  finCatRender();
+};
+function finCatRender() {
+  const s = _finCat, box = document.querySelector('#m-fincat .modal');
+  if(!s || !box) return;
+  const b = finFind(s.bid);
+  if(!b) { finClose('m-fincat'); return; }
+  const ym = s.ym, m = finMonData(b, ym) || finMonthNorm(null), c = finCalc(b, m, ym), cat = b.cats[s.cid] || b.cats.other;
+  const x = c.cats[s.cid] || {rec: 0, one: 0, var: 0, total: 0}, F = v => esc(finFmt(v, b.cur));
+  const catOf = k => (b.cats[k] ? k : 'other');
+  const adds = Object.entries(m.adds).filter(([, a]) => catOf(a.cat) === s.cid).sort((p, q) => (q[1].d || '').localeCompare(p[1].d || ''));
+  const base = Object.entries(m.base).filter(([k]) => catOf(k) === s.cid).reduce((t0, [, v]) => t0 + v, 0);
+  const recs = Object.entries(b.rec).filter(([rid, r]) => { const v = r.kind === 'exp' && finRecAt(r, ym); return v && catOf(v.cat) === s.cid && !m.ovr[rid]?.off; });
+  const ones = Object.entries(m.one).filter(([, it]) => it.kind === 'exp' && catOf(it.cat) === s.cid);
+  let h = '<div class="mtitle"><span aria-hidden="true">' + esc(cat.emoji) + '</span> ' + esc(cat.name) + '</div><div class="fin-sub">' + esc(finYmLabel(ym)) + '</div>'
+    + '<div class="fin-big fin-big--n fin-big--m">' + tH('fin.cat.total', {amt: finFmt(x.total, b.cur)}) + '</div>'
+    + '<div class="fin-sec-h fin-sec-h--line"><span class="fin-row-n">' + tH('fin.cat.spend') + '</span><span class="fin-amt">' + F(x.var) + '</span>'
+    + '<button type="button" class="pet-icon-btn" onclick="finCatEdit()" aria-label="' + tH('fin.cat.editQ') + '">✏️</button></div>';
+  if(s.edit) h += '<div class="fg fin-edit"><label class="flbl" for="fc-tot">' + tH('fin.cat.editQ') + '</label>' + finAmtInp('fc-tot', b.cur, finPlain(x.var), 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();finCatTotSave()}"')
+    + '<div class="pet-hint">' + tH('fin.cat.editHint') + '</div><div class="macts"><button type="button" class="btn-s" onclick="finCatEdit(0)">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="finCatTotSave()">' + tH('common.save') + '</button></div></div>';
+  h += adds.map(([aid, a]) => '<div class="fin-row"><span class="fin-row-main"><span class="fin-row-n">' + esc([a.d ? fmtDate(a.d, 'dm') : '', a.note, finByName(b, a.by)].filter(Boolean).join(' · ') || cat.name) + '</span></span>'
+    + '<span class="fin-amt">' + F(a.amt) + '</span><button type="button" class="pet-icon-btn" data-a0="' + esc(aid) + '" aria-label="' + tH('a11y.delName', {name: (a.note || cat.name) + ' ' + finFmt(a.amt, b.cur)}) + '" onclick="finAddDel(this.dataset.a0)">🗑️</button></div>').join('');
+  if(base) h += '<div class="fin-row"><span class="fin-row-main"><span class="fin-row-d">' + tH('fin.cat.base') + '</span></span><span class="fin-amt fin-row-d">' + esc(finFmt(base, b.cur, {sign: base < 0})) + '</span></div>';
+  if(recs.length) h += '<div class="pet-subt">' + tH('fin.cat.rec') + '</div>' + recs.map(([rid, r]) => { const o = m.ovr[rid], v = finRecAt(r, ym); return '<div class="fin-row"><span class="fin-row-em" aria-hidden="true">🔁</span><span class="fin-row-main"><span class="fin-row-n">' + esc(v.name) + '</span></span><span class="fin-amt">' + F(o && Number.isInteger(o.amt) ? o.amt : v.amt) + '</span></div>'; }).join('');
+  if(ones.length) h += '<div class="pet-subt">' + tH('fin.cat.one') + '</div>' + ones.map(([, it]) => '<div class="fin-row"><span class="fin-row-main"><span class="fin-row-n">' + esc(it.name) + '</span></span><span class="fin-amt">' + F(it.amt) + '</span></div>').join('');
+  h += '<button type="button" class="btn-p pet-wide fin-big-btn" data-a0="' + esc(s.cid) + '" onclick="finClose(\'m-fincat\');finAddOpen(this.dataset.a0)">' + tH('fin.cat.addSpend') + '</button>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="finClose(\'m-fincat\')">' + tH('common.close') + '</button></div>';
+  box.innerHTML = h;
+}
+window.finCatEdit = on => {
+  if(!_finCat) return;
+  _finCat.edit = on !== 0;
+  finCatRender();
+  if(_finCat.edit) { const el = document.getElementById('fc-tot'); el?.focus(); el?.select?.(); }
+};
+window.finCatTotSave = () => {
+  const s = _finCat, b = s && finFind(s.bid);
+  if(!CU || !b) return;
+  const X = finParse(finVal('fc-tot'));
+  if(X === null) { toast(t('fin.amt.err')); document.getElementById('fc-tot')?.focus(); return; }
+  const m = finMonData(b, s.ym) || finMonthNorm(null), catOf = k => (b.cats[k] ? k : 'other');
+  const sumAdds = Object.values(m.adds).filter(a => catOf(a.cat) === s.cid).reduce((t0, a) => t0 + a.amt, 0);
+  // Souhrnná částka pod neplatnými kategoriemi (padají do Ostatní) zmizí, ať součet sedí
+  const base = {[s.cid]: X - sumAdds};
+  Object.keys(m.base).forEach(k => { if(k !== s.cid && catOf(k) === s.cid) base[k] = deleteField(); });
+  setDoc(finMonRef(b, s.ym), {bid: b.id, ym: s.ym, base, updatedAt: Date.now()}, {merge: true}).catch(finErr);
+  s.edit = false;
+  finCatRender();
+  toast(t('fin.saved'));
+};
+window.finAddDel = aid => {
+  const s = _finCat, b = s && finFind(s.bid), a = b && finMonData(b, s.ym)?.adds?.[aid];
+  if(!CU || !a) return;
+  const ref = finMonRef(b, s.ym), snap = {...a}, cat = b.cats[a.cat]?.name || '';
+  updateDoc(ref, {['adds.' + aid]: deleteField(), updatedAt: Date.now()}).catch(finErr);
+  undoNote(t('fin.deleted', {name: (snap.note || cat) + ' ' + finFmt(snap.amt, b.cur)}), () => {
+    const cur = finFind(b.id);
+    if(!cur) return;
+    toast(t('undo.done'));
+    return setDoc(finMonRef(cur, s.ym), {bid: cur.id, ym: s.ym, adds: {[aid]: snap}, updatedAt: Date.now()}, {merge: true});
+  });
+};
+
+// ── Příjem / výdaj (#m-finitem) ──
+let _finItem = null;
+window.finItemNew = (kind, repeat) => {
+  const b = finCur();
+  if(!b) return;
+  finItemOpen(b, {mode: 'new', kind: kind === 'inc' ? 'inc' : 'exp', repeat: repeat === 'one' ? 'one' : 'rec'});
+};
+window.finRecEdit = rid => { const b = finCur(); if(b?.rec[rid]) finItemOpen(b, {mode: 'rec', id: rid, kind: b.rec[rid].kind, repeat: 'rec', scope: 'fwd'}); };
+window.finOneEdit = iid => { const b = finCur(), it = b && finMonData(b, finViewYmGet(b))?.one?.[iid]; if(it) finItemOpen(b, {mode: 'one', id: iid, kind: it.kind, repeat: 'one'}); };
+const finItemTitle = s => 'fin.item.' + (s.repeat === 'rec' ? 'rec' : 'one') + (s.kind === 'inc' ? 'Inc' : 'Exp');
+function finItemOpen(b, st) {
+  const ym = finViewYmGet(b);
+  let name = '', amt = '', cat = finLastCat(b.id) || 'other';
+  if(st.mode === 'rec') {
+    const r = b.rec[st.id], v = finRecAt(r, ym);
+    if(!v) return;
+    const o = finMonData(b, ym)?.ovr?.[st.id];
+    name = v.name; amt = finPlain(o && Number.isInteger(o.amt) ? o.amt : v.amt); cat = v.cat || 'other';
+  } else if(st.mode === 'one') {
+    const it = finMonData(b, ym)?.one?.[st.id];
+    if(!it) return;
+    name = it.name; amt = finPlain(it.amt); cat = it.cat;
+  }
+  if(!b.cats[cat] || (b.cats[cat].arch && st.mode === 'new')) cat = 'other';
+  _finItem = {...st, bid: b.id, ym};
+  const ml = finYmLabel(ym);
+  const inner = '<div class="mtitle" id="fi-t">' + tH(finItemTitle(_finItem)) + '</div>'
+    + (st.mode === 'new' ? finSeg([['exp', tH('fin.item.kindExp')], ['inc', tH('fin.item.kindInc')]], st.kind, 'finItemKind', t('fin.item.kind'), ' fin-kseg') : '')
+    + '<div class="fg"><label class="flbl" for="fi-name">' + tH('fin.new.name') + '</label><input class="finp" id="fi-name" maxlength="40" autocomplete="off" enterkeyhint="next" value="' + esc(name) + '"></div>'
+    + '<div class="fg"><label class="flbl" for="fi-amt">' + tH('fin.item.amount') + '</label>' + finAmtInp('fi-amt', b.cur, amt) + '</div>'
+    + '<div class="fg" id="fi-catw"' + (st.kind === 'inc' ? ' hidden' : '') + '><label class="flbl" for="fi-cat">' + tH('fin.item.cat') + '</label>' + finCatSel(b, 'fi-cat', cat) + '</div>'
+    + (st.mode === 'new' ? '<div class="flbl fin-lbl">' + tH('fin.item.repeat') + '</div>' + finSeg([['rec', tH('fin.item.monthly')], ['one', tH('fin.item.once')]], st.repeat, 'finItemRep', t('fin.item.repeat'), ' fin-rseg')
+      + '<p class="pet-hint" id="fi-rep-h">' + esc(st.repeat === 'rec' ? t('fin.item.recHint', {month: ml}) : t('fin.onlyMonth', {month: ml})) + '</p>' : '')
+    + (st.mode === 'rec' ? '<fieldset class="fin-scope"><legend class="flbl">' + tH('fin.scope.t') + '</legend>'
+      + '<label class="pet-check"><input type="radio" name="fi-scope" value="one" onchange="finItemScope(this.value)"> ' + tH('fin.scope.one', {month: ml}) + '</label>'
+      + '<label class="pet-check"><input type="radio" name="fi-scope" value="fwd" checked onchange="finItemScope(this.value)"> ' + tH('fin.scope.fwd', {month: ml}) + '</label>'
+      + '<p class="pet-hint" id="fi-scope-h">' + tH('fin.scope.note') + '</p></fieldset>' : '')
+    + '<div class="macts">' + (st.mode !== 'new' ? '<button type="button" class="btn-s fin-del-btn" onclick="finItemDel()">🗑️ ' + tH('common.delete') + '</button>' : '')
+    + '<button type="button" class="btn-s" onclick="finClose(\'m-finitem\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="finItemSave()">' + tH('common.save') + '</button></div>';
+  finSheet('m-finitem', inner, t(finItemTitle(_finItem)));
+  setTimeout(() => document.getElementById(st.mode === 'new' ? 'fi-name' : 'fi-amt')?.focus(), 100);
+}
+window.finItemKind = k => {
+  if(!_finItem || _finItem.mode !== 'new' || (k !== 'inc' && k !== 'exp')) return;
+  _finItem.kind = k;
+  finSegMark('#m-finitem .fin-kseg', k);
+  const w = document.getElementById('fi-catw'); if(w) w.hidden = k === 'inc';
+  const ti = document.getElementById('fi-t'); if(ti) ti.textContent = t(finItemTitle(_finItem));
+};
+window.finItemRep = v => {
+  if(!_finItem || _finItem.mode !== 'new' || (v !== 'rec' && v !== 'one')) return;
+  _finItem.repeat = v;
+  finSegMark('#m-finitem .fin-rseg', v);
+  const ti = document.getElementById('fi-t'); if(ti) ti.textContent = t(finItemTitle(_finItem));
+  const hi = document.getElementById('fi-rep-h'), ml = finYmLabel(_finItem.ym);
+  if(hi) hi.textContent = v === 'rec' ? t('fin.item.recHint', {month: ml}) : t('fin.onlyMonth', {month: ml});
+};
+// „Jen tento měsíc“ mění jen částku (název a kategorie platí pro všechny měsíce)
+window.finItemScope = v => {
+  if(!_finItem || _finItem.mode !== 'rec') return;
+  _finItem.scope = v === 'one' ? 'one' : 'fwd';
+  const one = _finItem.scope === 'one', b = finFind(_finItem.bid), cur = b && finRecAt(b.rec[_finItem.id], _finItem.ym);
+  ['fi-name', 'fi-cat'].forEach(id => { const el = document.getElementById(id); if(el) { el.disabled = one; if(one && cur) el.value = id === 'fi-name' ? cur.name : (cur.cat || 'other'); } });
+  const h = document.getElementById('fi-scope-h'); if(h) h.textContent = t(one ? 'fin.scope.oneNote' : 'fin.scope.note');
+};
+window.finItemSave = () => {
+  const s = _finItem, b = s && finFind(s.bid);
+  if(!CU || !b) { finClose('m-finitem'); return; }
+  const name = cutName(finVal('fi-name'), 40), amt = finParse(finVal('fi-amt')), cv = finVal('fi-cat');
+  const cat = s.kind === 'exp' ? (b.cats[cv] ? cv : 'other') : null;
+  if(!name) { toast(t('common.nameReq')); document.getElementById('fi-name')?.focus(); return; }
+  if(amt === null) { toast(t('fin.amt.err')); document.getElementById('fi-amt')?.focus(); return; }
+  const ym = s.ym, now = Date.now();
+  if(s.mode === 'new') {
+    if(s.repeat === 'rec') {
+      if(Object.keys(b.rec).length >= FIN_MAX.rec) { toast(t('fin.max', {n: FIN_MAX.rec})); return; }
+      const v = {from: ym, name, amt};
+      if(cat) v.cat = cat;
+      const order = Object.values(b.rec).reduce((mx, r) => Math.max(mx, r.order), -1) + 1;
+      updateDoc(finRef(b), {['rec.' + genId()]: {kind: s.kind, order, end: null, v: [v]}, updatedAt: now}).catch(finErr);
+    } else {
+      if(Object.keys(finMonData(b, ym)?.one || {}).length >= FIN_MAX.one) { toast(t('fin.max', {n: FIN_MAX.one})); return; }
+      const it = {kind: s.kind, name, amt, d: finDefDay(ym), by: CU.uid};
+      if(cat) it.cat = cat;
+      setDoc(finMonRef(b, ym), {bid: b.id, ym, one: {[genId()]: it}, updatedAt: now}, {merge: true}).catch(finErr);
+    }
+    if(cat) finLastCatSave(b.id, cat);
+  } else if(s.mode === 'rec') finRecSave(b, s.id, {name, amt, cat}, s.scope, ym);
+  else {
+    const old = finMonData(b, ym)?.one?.[s.id];
+    if(old) {
+      const it = {kind: old.kind, name, amt, d: old.d || finDefDay(ym), by: old.by || CU.uid};
+      if(cat) it.cat = cat;
+      if(old.wish) it.wish = old.wish;
+      updateDoc(finMonRef(b, ym), {['one.' + s.id]: it, updatedAt: now}).catch(finErr);
+    }
+  }
+  _finItem = null;
+  finClose('m-finitem');
+  toast(t('fin.saved'));
+};
+// Výjimka měsíce ovr.<rid> k zápisu přes merge: merge slučuje vnořené mapy, druhé pole se proto vždy maže
+const finOvrOut = o => (!o ? deleteField() : o.off ? {off: true, amt: deleteField()} : {amt: o.amt, off: deleteField()});
+// Úprava pravidelné položky: 'one' = jen tento měsíc (ovr), 'fwd' = nová verze od měsíce ym (starší měsíce beze změny)
+function finRecSave(b, rid, x, scope, ym) {
+  const r = b.rec[rid], v = r && finRecAt(r, ym);
+  if(!v) return;
+  const ovr = finMonData(b, ym)?.ovr?.[rid], now = Date.now();
+  if(scope === 'one') {
+    if(x.amt === v.amt && !ovr) return;
+    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: finOvrOut(x.amt === v.amt ? null : {amt: x.amt})}, updatedAt: now}, {merge: true}).catch(finErr);
+    return;
+  }
+  const same = v.name === x.name && v.amt === x.amt && (r.kind === 'inc' || v.cat === x.cat);
+  if(!same) {
+    const nv = {from: ym, name: x.name, amt: x.amt};
+    if(r.kind === 'exp') nv.cat = x.cat;
+    const vs = r.v.filter(q => q.from < ym).concat([nv]).slice(-FIN_MAX.ver);
+    // Jen pole verzí (field path): souběžná změna konce nebo pořadí jiným členem se nepřepíše; transakce by offline nešla
+    updateDoc(finRef(b), {['rec.' + rid + '.v']: vs.map(q => ({...q})), updatedAt: now}).catch(finErr);
+  }
+  // Stará výjimka „jen tento měsíc“ by novou hodnotu přebila
+  if(ovr) setDoc(finMonRef(b, ym), {ovr: {[rid]: deleteField()}, updatedAt: now}, {merge: true}).catch(finErr);
+}
+window.finItemDel = () => {
+  const s = _finItem, b = s && finFind(s.bid);
+  if(!CU || !b) return;
+  if(s.mode === 'one') {
+    const ym = s.ym, it = finMonData(b, ym)?.one?.[s.id];
+    if(!it) return;
+    const snap = {...it};
+    if(!snap.wish) delete snap.wish;
+    updateDoc(finMonRef(b, ym), {['one.' + s.id]: deleteField(), updatedAt: Date.now()}).catch(finErr);
+    _finItem = null;
+    finClose('m-finitem');
+    undoNote(t('fin.deleted', {name: snap.name}), () => {
+      const cur = finFind(b.id);
+      if(!cur) return;
+      toast(t('undo.done'));
+      return setDoc(finMonRef(cur, ym), {bid: cur.id, ym, one: {[s.id]: snap}, updatedAt: Date.now()}, {merge: true});
+    });
+    return;
+  }
+  if(s.mode !== 'rec') return;
+  const v = finRecAt(b.rec[s.id], s.ym);
+  if(!v) return;
+  const ml = finYmLabel(s.ym), st = {bid: b.id, id: s.id, ym: s.ym};
+  finClose('m-finitem');
+  _finItem = null;
+  const inner = '<div class="mtitle">' + tH('fin.del.q', {name: v.name}) + '</div>'
+    + '<button type="button" class="btn-s pet-wide" onclick="finRecDelGo(\'one\')">' + tH('fin.del.one', {month: ml}) + '</button>'
+    + '<button type="button" class="btn-s pet-wide fin-del-btn" onclick="finRecDelGo(\'fwd\')">' + tH('fin.del.fwd', {month: ml}) + '</button>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="finClose(\'m-findel\')">' + tH('common.back') + '</button></div>';
+  finSheet('m-findel', inner, t('fin.del.q', {name: v.name}))._fin = st;
+  setTimeout(() => document.querySelector('#m-findel .btn-s')?.focus(), 50);
+};
+window.finRecDelGo = scope => {
+  const st = document.getElementById('m-findel')?._fin, b = st && finFind(st.bid);
+  finClose('m-findel');
+  if(!CU || !b || !b.rec[st.id]) return;
+  finRecDel(b, st.id, scope === 'one' ? 'one' : 'fwd', st.ym);
+};
+// Smazání pravidelné položky: 'one' = jen v měsíci ym, 'fwd' = od ym dál (end); od prvního měsíce = celá položka; vždy se Zpět
+function finRecDel(b, rid, scope, ym) {
+  const r = b.rec[rid], v = finRecAt(r, ym);
+  if(!v) return;
+  const now = Date.now();
+  if(scope === 'one') {
+    const prev = finMonData(b, ym)?.ovr?.[rid] || null;
+    setDoc(finMonRef(b, ym), {bid: b.id, ym, ovr: {[rid]: finOvrOut({off: true})}, updatedAt: now}, {merge: true}).catch(finErr);
+    undoNote(t('fin.deleted', {name: v.name}), () => {
+      const cur = finFind(b.id);
+      if(!cur) return;
+      toast(t('undo.done'));
+      return setDoc(finMonRef(cur, ym), {ovr: {[rid]: finOvrOut(prev)}, updatedAt: Date.now()}, {merge: true});
+    });
+    return;
+  }
+  const snap = finRecOut(r), end = finYmAdd(ym, -1), all = ym <= r.v[0].from;
+  updateDoc(finRef(b), {['rec.' + rid]: all ? deleteField() : {...snap, end, v: snap.v.filter(q => q.from <= end)}, updatedAt: now}).catch(finErr);
+  undoNote(t('fin.deleted', {name: v.name}), () => {
+    const cur = finFind(b.id);
+    if(!cur) return;
+    toast(t('undo.done'));
+    return updateDoc(finRef(cur), {['rec.' + rid]: snap, updatedAt: Date.now()});
+  });
+}
+
+// ── Chceme koupit: přidat / upravit (#m-finwish) a AI odhad ceny ──
+let _finWish = null;
+window.finWishNew = () => { const b = finCur(); if(b) finWishOpen(b, null); };
+window.finWishEdit = wid => { const b = finCur(); if(b?.wish[wid]) finWishOpen(b, wid); };
+function finWishOpen(b, wid) {
+  const w = wid ? b.wish[wid] : null;
+  if(!wid && Object.keys(b.wish).length >= FIN_MAX.wish) { toast(t('fin.max', {n: FIN_MAX.wish})); return; }
+  _finWish = {bid: b.id, id: wid, cur: b.cur, prio: w ? w.prio : 2, ai: !!w?.ai, aiPrice: w?.ai ? w.price : null};
+  const inner = '<div class="mtitle">' + tH('fin.tab.wish') + '</div>'
+    + '<div class="fg"><label class="flbl" for="fw-name">' + tH('fin.wish.what') + '</label><input class="finp" id="fw-name" maxlength="40" autocomplete="off" enterkeyhint="next" value="' + esc(w?.name || '') + '" oninput="finWishAiChk()"></div>'
+    + '<div class="fg"><label class="flbl" for="fw-price">' + tH('fin.wish.price') + '</label>' + finAmtInp('fw-price', b.cur, w?.price != null ? finPlain(w.price) : '', 'oninput="finWishPriceIn()"')
+    + '<button type="button" class="btn-s fin-ai-btn" id="fw-ai" onclick="finWishAi()"' + ((w?.name || '').length < 2 ? ' disabled' : '') + '>' + tH('fin.ai.btn') + '</button>'
+    + '<div class="pet-hint fin-ai-what">' + tH('fin.ai.what') + '</div><div class="pet-hint" id="fw-ai-res" aria-live="polite"></div></div>'
+    + '<div class="flbl fin-lbl">' + tH('fin.wish.prio') + '</div>' + finSeg([[1, tH('fin.wish.prio1')], [2, tH('fin.wish.prio2')], [3, tH('fin.wish.prio3')]].map(([v, l]) => [String(v), l]), String(_finWish.prio), 'finWishPrio', t('fin.wish.prio'), ' fin-pseg')
+    + '<div class="fg"><label class="flbl" for="fw-cat">' + tH('fin.item.cat') + '</label>' + finCatSel(b, 'fw-cat', w?.cat || 'other') + '</div>'
+    + '<div class="macts">' + (w ? '<button type="button" class="btn-s fin-del-btn" data-a0="' + esc(wid) + '" onclick="finClose(\'m-finwish\');finWishDel(this.dataset.a0)">🗑️ ' + tH('common.delete') + '</button>' : '')
+    + '<button type="button" class="btn-s" onclick="finClose(\'m-finwish\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="finWishSave()">' + tH('common.save') + '</button></div>';
+  finSheet('m-finwish', inner, t('fin.tab.wish'));
+  setTimeout(() => document.getElementById('fw-name')?.focus(), 100);
+}
+window.finWishPrio = v => { if(!_finWish || !['1', '2', '3'].includes(String(v))) return; _finWish.prio = +v; finSegMark('#m-finwish .fin-pseg', String(v)); };
+window.finWishAiChk = () => { const btn = document.getElementById('fw-ai'); if(btn && !_finAiBusy) btn.disabled = cutName(finVal('fw-name'), 40).length < 2; };
+window.finWishPriceIn = () => { if(_finWish) _finWish.ai = false; };
+function finAiBtn(busy) {
+  const btn = document.getElementById('fw-ai');
+  if(!btn) return;
+  btn.disabled = busy || cutName(finVal('fw-name'), 40).length < 2;
+  btn.textContent = t(busy ? 'fin.ai.busy' : 'fin.ai.btn');
+  btn.setAttribute('aria-busy', String(!!busy));
+}
+// Jen na klepnutí: AI dostane jen název (jako data) a měnu rozpočtu, nic dalšího
+window.finWishAi = async () => {
+  const s = _finWish, name = cutName(finVal('fw-name'), 40);
+  if(!s || name.length < 2 || _finAiBusy) return;
+  if(navigator.onLine === false) { toast(t('fin.ai.offline')); return; }
+  _finAiBusy = true; finAiBtn(true);
+  try {
+    const raw = await callClaude([
+      {role: 'system', content: tA('aip.fin.price.sys', {cur: s.cur})},
+      {role: 'user', content: '<data>' + ctxT(name, 40) + '</data>'}
+    ], 120);
+    const r = finAiParse(raw);
+    if(!r) throw new SyntaxError('price');
+    if(_finWish === s && document.getElementById('m-finwish')) await finAiApply(s, r);
+  } catch(e) { if(e?.code !== 'functions/resource-exhausted') toast(t('fin.ai.err'), 4000); }
+  finally { _finAiBusy = false; finAiBtn(false); }
+};
+// Ručně změněnou cenu AI bez potvrzení nepřepíše
+async function finAiApply(s, r) {
+  const el = document.getElementById('fw-price'), p = finRound2(r.typ), old = finParse(el?.value);
+  if(!el) return;
+  const res = document.getElementById('fw-ai-res');
+  if(res) res.textContent = t('fin.ai.res', {low: finFmt(Math.round(r.low) * 100, s.cur, {round: true}), high: finFmt(Math.round(r.high) * 100, s.cur, {round: true})});
+  if(old !== null && el.value.trim() && !(s.ai && old === s.aiPrice) && old !== p) {
+    if(!(await lpConfirm(t('fin.ai.replaceQ', {old: finFmt(old, s.cur), new: finFmt(p, s.cur)})))) return;
+    if(_finWish !== s || !el.isConnected) return;
+  }
+  el.value = finPlain(p);
+  s.ai = true; s.aiPrice = p;
+}
+window.finWishSave = () => {
+  const s = _finWish, b = s && finFind(s.bid);
+  if(!CU || !b) { finClose('m-finwish'); return; }
+  const name = cutName(finVal('fw-name'), 40), raw = finVal('fw-price').trim(), price = raw ? finParse(raw) : null, cv = finVal('fw-cat');
+  if(!name) { toast(t('common.nameReq')); document.getElementById('fw-name')?.focus(); return; }
+  if(raw && (price === null || price <= 0)) { toast(t('fin.amt.err')); document.getElementById('fw-price')?.focus(); return; }
+  const old = s.id ? b.wish[s.id] : null;
+  if(s.id && !old) { finClose('m-finwish'); return; }
+  const wid = s.id || genId();
+  const f = {name, price, prio: s.prio, cat: b.cats[cv] ? cv : 'other', ai: !!(s.ai && price != null && price === s.aiPrice)};
+  // Úprava jen po polích bez bought: souběžné „koupeno“ od jiného člena se nepřepíše
+  const up = old ? Object.fromEntries(Object.entries(f).map(([k, v]) => ['wish.' + wid + '.' + k, v]))
+    : {['wish.' + wid]: {...f, order: Object.values(b.wish).reduce((mx, x) => Math.max(mx, x.order), -1) + 1, createdAt: Date.now(), by: CU.uid, bought: null}};
+  updateDoc(finRef(b), {...up, updatedAt: Date.now()}).catch(finErr);
+  _finWish = null;
+  finClose('m-finwish');
+  toast(t('fin.saved'));
+};
+window.finWishDel = wid => {
+  const b = finCur(), w = b?.wish[wid];
+  if(!CU || !w) return;
+  const snap = JSON.parse(JSON.stringify(w));
+  updateDoc(finRef(b), {['wish.' + wid]: deleteField(), updatedAt: Date.now()}).catch(finErr);
+  undoNote(t('fin.deleted', {name: w.name}), () => {
+    const cur = finFind(b.id);
+    if(!cur) return;
+    toast(t('undo.done'));
+    return updateDoc(finRef(cur), {['wish.' + wid]: snap, updatedAt: Date.now()});
+  });
+};
+// Koupeno (#m-finbought): jednorázový výdaj vždy do aktuálního měsíce
+let _finBought = null;
+window.finWishBuy = wid => {
+  const b = finCur(), w = b?.wish[wid];
+  if(!CU || !w || w.bought) return;
+  _finBought = {bid: b.id, wid};
+  const inner = '<div class="mtitle">' + tH('fin.bought.t', {name: w.name}) + '</div>'
+    + '<div class="fg"><label class="flbl" for="fb-amt">' + tH('fin.bought.howMuch') + '</label>' + finAmtInp('fb-amt', b.cur, w.price != null ? finPlain(w.price) : '') + '</div>'
+    + '<div class="fg"><label class="flbl" for="fb-cat">' + tH('fin.item.cat') + '</label>' + finCatSel(b, 'fb-cat', w.cat) + '</div>'
+    + '<p class="fin-sub fin-sub--s">' + tH('fin.bought.note', {month: finYmLabel(finYm())}) + '</p>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="finBoughtSave(0)">' + tH('fin.bought.justTick') + '</button><button type="button" class="btn-p" onclick="finBoughtSave(1)">' + tH('fin.bought.save') + ' ✓</button></div>';
+  finSheet('m-finbought', inner, t('fin.bought.t', {name: w.name}));
+  setTimeout(() => document.getElementById('fb-amt')?.focus(), 100);
+};
+window.finBoughtSave = withExp => {
+  const s = _finBought, b = s && finFind(s.bid), w = b?.wish[s.wid];
+  if(!CU || !w) { finClose('m-finbought'); return; }
+  const ym = finYm(), d = toDS(), cv = finVal('fb-cat'), cat = b.cats[cv] ? cv : 'other';
+  let amt = null, iid = null;
+  if(+withExp) {
+    amt = finParse(finVal('fb-amt'));
+    if(amt === null || amt <= 0) { toast(t('fin.amt.err')); document.getElementById('fb-amt')?.focus(); return; }
+    if(Object.keys(finMonData(b, ym)?.one || {}).length >= FIN_MAX.one) { toast(t('fin.max', {n: FIN_MAX.one})); return; }
+    iid = genId();
+    setDoc(finMonRef(b, ym), {bid: b.id, ym, one: {[iid]: {kind: 'exp', name: w.name, amt, cat, d, by: CU.uid, wish: s.wid}}, updatedAt: Date.now()}, {merge: true}).catch(finErr);
+  }
+  updateDoc(finRef(b), {['wish.' + s.wid + '.bought']: {d, ym, iid, amt}, ['wish.' + s.wid + '.cat']: cat, updatedAt: Date.now()}).catch(finErr);
+  _finBought = null;
+  finClose('m-finbought');
+  const wid = s.wid;
+  undoNote(t('fin.bought.t', {name: w.name}), () => {
+    const cur = finFind(b.id);
+    if(!cur) return;
+    toast(t('undo.done'));
+    if(iid) updateDoc(finMonRef(cur, ym), {['one.' + iid]: deleteField(), updatedAt: Date.now()}).catch(finErr);
+    return updateDoc(finRef(cur), {['wish.' + wid + '.bought']: null, updatedAt: Date.now()});
+  });
+};
+// Vrácení mezi Chceme koupit: zapsaný výdaj se smaže (s potvrzením)
+window.finWishUnbuy = async wid => {
+  const b = finCur(), w = b?.wish[wid];
+  if(!CU || !w?.bought) return;
+  const bo = w.bought;
+  if(bo.iid && !(await lpConfirm(t('fin.bought.undoQ', {amt: finFmt(bo.amt || 0, b.cur), month: finYmLabel(bo.ym)})))) return;
+  const cur = finFind(b.id);
+  if(!cur?.wish[wid]?.bought) return;
+  if(bo.iid) updateDoc(finMonRef(cur, bo.ym), {['one.' + bo.iid]: deleteField(), updatedAt: Date.now()}).catch(() => {});
+  updateDoc(finRef(cur), {['wish.' + wid + '.bought']: null, updatedAt: Date.now()}).catch(finErr);
+};
+
+// ── Nastavení rozpočtu (#m-finset) ──
+let _finSet = null;
+window.finSetOpen = () => {
+  const b = finCur();
+  if(!CU || !b) return;
+  _finSet = {bid: b.id, emoji: b.emoji, cur: b.cur};
+  finSheet('m-finset', '', t('fin.set.t'));
+  finSetRender(true);
+};
+function finSetRender(full) {
+  const s = _finSet, box = document.querySelector('#m-finset .modal');
+  if(!s || !box) return;
+  const b = finFind(s.bid);
+  if(!b) { finClose('m-finset'); return; }
+  // Při živé změně dat jen kategorie a sdílení (rozepsaný název a ikona zůstanou)
+  if(!full && document.getElementById('fs-live')) { document.getElementById('fs-live').innerHTML = finSetLiveHTML(b); return; }
+  box.innerHTML = '<div class="mtitle">' + tH('fin.set.t') + '</div>'
+    + '<div class="fg"><label class="flbl" for="fs-name">' + tH('fin.new.name') + '</label><input class="finp" id="fs-name" maxlength="40" autocomplete="off" value="' + esc(b.name) + '"></div>'
+    + '<div class="flbl fin-lbl" id="fs-icon">' + tH('fin.set.icon') + '</div><div class="pet-ems" role="group" aria-labelledby="fs-icon">'
+    + FIN_EMS.map(e => '<button type="button" class="pet-em-btn" data-a0="' + e + '" aria-pressed="' + (e === s.emoji) + '" onclick="finSetEm(this.dataset.a0)">' + e + '</button>').join('') + '</div>'
+    + '<div class="flbl fin-lbl">' + tH('fin.new.cur') + '</div>' + finCurSeg(s.cur, 'finSetCur')
+    + '<div class="macts fin-set-save"><button type="button" class="btn-p" onclick="finSetSave()">' + tH('common.save') + '</button></div>'
+    + '<div id="fs-live">' + finSetLiveHTML(b) + '</div>'
+    + '<div class="macts"><button type="button" class="btn-s" onclick="finClose(\'m-finset\')">' + tH('common.close') + '</button></div>';
+}
+function finSetLiveHTML(b) {
+  let h = '<div class="pet-subt">' + tH('fin.set.cats') + '</div>'
+    + Object.entries(b.cats).sort((a, z) => (a[1].arch - z[1].arch) || (a[1].order - z[1].order)).map(([cid, c]) => '<div class="fin-row' + (c.arch ? ' fin-off' : '') + '"><span class="fin-row-em" aria-hidden="true">' + esc(c.emoji) + '</span><span class="fin-row-main"><span class="fin-row-n">' + esc(c.name) + '</span>'
+      + (c.arch ? '<span class="fin-row-d">' + tH('fin.set.archived') + '</span>' : '') + '</span><button type="button" class="pet-icon-btn" data-a0="' + esc(cid) + '" aria-label="' + tH('a11y.editName', {name: c.name}) + '" onclick="finCatEditOpen(this.dataset.a0)">✏️</button></div>').join('')
+    + (Object.keys(b.cats).length < FIN_MAX.cats ? '<button type="button" class="btn-s pet-wide" onclick="finCatEditOpen(\'\')">' + tH('fin.set.addCat') + '</button>' : '');
+  h += '<div class="pet-subt">' + tH('fin.set.share') + '</div>';
+  if(b._gid) h += '<p class="fin-sub">' + tH('fin.sharedIn', {to: grpLabel(b._gid)}) + '</p>'
+    + (finCanManage(b) ? '<button type="button" class="btn-s pet-wide fin-share-btn" onclick="finUnshare()">' + tH('fin.unshare') + '</button>' : '');
+  else {
+    h += '<p class="fin-sub"><span aria-hidden="true">👤</span> ' + tH('fin.new.me') + '</p>';
+    if(myGroupIds().length) h += '<button type="button" class="btn-s pet-wide fin-share-btn" onclick="finShare()">' + tH('fin.share') + '</button>';
+  }
+  h += '<button type="button" class="pet-link fin-ai-link" onclick="finClose(\'m-finset\');finAiGo()">' + tH(prof?.finAi === true ? 'fin.ai.seen.on' : 'fin.ai.seen.off') + ' <span aria-hidden="true">›</span></button>';
+  if(allFin().length < FIN_MAX.budgets) h += '<button type="button" class="btn-s pet-wide" onclick="finClose(\'m-finset\');finNewOpen()">' + tH('fin.set.newBudget') + '</button>';
+  if(finCanManage(b)) h += '<button type="button" class="pet-link pet-del" onclick="finDelete()">' + tH('fin.set.del') + '</button>';
+  return h;
+}
+window.finSetEm = e => {
+  if(!_finSet || !FIN_EMS.includes(e)) return;
+  _finSet.emoji = e;
+  document.querySelectorAll('#m-finset .pet-em-btn').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.a0 === e)));
+};
+window.finSetCur = c => { if(_finSet && FIN_CURS.includes(c)) { _finSet.cur = c; finSegMark('#m-finset .fin-curseg', c); } };
+window.finSetSave = async () => {
+  const s = _finSet, b = s && finFind(s.bid);
+  if(!CU || !b) return;
+  const name = cutName(finVal('fs-name'), 40);
+  if(!name) { toast(t('common.nameReq')); document.getElementById('fs-name')?.focus(); return; }
+  if(s.cur !== b.cur && !(await lpConfirm(t('fin.set.curQ')))) return;
+  const cur = finFind(s.bid);
+  if(!cur) return;
+  updateDoc(finRef(cur), {name, emoji: s.emoji, cur: s.cur, updatedAt: Date.now()}).catch(finErr);
+  finClose('m-finset');
+  toast(t('fin.saved'));
+};
+// Kategorie: název, ikona, skrytí (#m-fincatedit)
+let _finCatEd = null;
+window.finCatEditOpen = cid => {
+  const b = _finSet && finFind(_finSet.bid);
+  if(!b) return;
+  const c = cid ? b.cats[cid] : null;
+  if(cid && !c) return;
+  _finCatEd = {bid: b.id, cid: cid || null, emoji: c ? c.emoji : '📦'};
+  const ems = FIN_CAT_EMS.includes(_finCatEd.emoji) ? FIN_CAT_EMS : [_finCatEd.emoji, ...FIN_CAT_EMS];
+  const inner = '<div class="mtitle">' + tH(c ? 'fin.cat.edit' : 'fin.set.addCat') + '</div>'
+    + '<div class="fg"><label class="flbl" for="fce-name">' + tH('fin.new.name') + '</label><input class="finp" id="fce-name" maxlength="40" autocomplete="off" value="' + esc(c?.name || '') + '"></div>'
+    + '<div class="flbl fin-lbl" id="fce-ic">' + tH('fin.set.icon') + '</div><div class="pet-ems" role="group" aria-labelledby="fce-ic">'
+    + ems.map(e => '<button type="button" class="pet-em-btn" data-a0="' + esc(e) + '" aria-pressed="' + (e === _finCatEd.emoji) + '" onclick="finCatEm(this.dataset.a0)">' + esc(e) + '</button>').join('') + '</div>'
+    + '<div class="macts">' + (c && cid !== 'other' ? '<button type="button" class="btn-s' + (c.arch ? '' : ' fin-del-btn') + '" onclick="finCatArch()">' + tH(c.arch ? 'fin.set.unarchCat' : 'fin.set.archCat') + '</button>' : '')
+    + '<button type="button" class="btn-s" onclick="finClose(\'m-fincatedit\')">' + tH('common.cancel') + '</button><button type="button" class="btn-p" onclick="finCatSave()">' + tH('common.save') + '</button></div>';
+  finSheet('m-fincatedit', inner, t(c ? 'fin.cat.edit' : 'fin.set.addCat'));
+  setTimeout(() => document.getElementById('fce-name')?.focus(), 100);
+};
+window.finCatEm = e => {
+  if(!_finCatEd || [...e].length > 4) return;
+  _finCatEd.emoji = e;
+  document.querySelectorAll('#m-fincatedit .pet-em-btn').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.a0 === e)));
+};
+window.finCatSave = () => {
+  const s = _finCatEd, b = s && finFind(s.bid);
+  if(!CU || !b) { finClose('m-fincatedit'); return; }
+  const name = cutName(finVal('fce-name'), 40);
+  if(!name) { toast(t('common.nameReq')); document.getElementById('fce-name')?.focus(); return; }
+  if(s.cid) {
+    if(!b.cats[s.cid]) { finClose('m-fincatedit'); return; }
+    updateDoc(finRef(b), {['cats.' + s.cid + '.name']: name, ['cats.' + s.cid + '.emoji']: s.emoji, updatedAt: Date.now()}).catch(finErr);
+  } else {
+    if(Object.keys(b.cats).length >= FIN_MAX.cats) { toast(t('fin.max', {n: FIN_MAX.cats})); return; }
+    const order = Object.values(b.cats).filter(c => c.order < 99).reduce((mx, c) => Math.max(mx, c.order), -1) + 1;
+    updateDoc(finRef(b), {['cats.' + genId()]: {name, emoji: s.emoji, order}, updatedAt: Date.now()}).catch(finErr);
+  }
+  _finCatEd = null;
+  finClose('m-fincatedit');
+  toast(t('fin.saved'));
+};
+// Skrytí kategorie = „smazání“ se Zpět (staré měsíce ji dál ukazují)
+window.finCatArch = () => {
+  const s = _finCatEd, b = s && finFind(s.bid), c = b?.cats[s.cid];
+  if(!CU || !c || s.cid === 'other') return;
+  const arch = !c.arch, cid = s.cid;
+  updateDoc(finRef(b), {['cats.' + cid + '.arch']: arch, updatedAt: Date.now()}).catch(finErr);
+  _finCatEd = null;
+  finClose('m-fincatedit');
+  if(!arch) { toast(t('fin.saved')); return; }
+  undoNote(t('fin.deleted', {name: c.name}), () => {
+    const cur = finFind(b.id);
+    if(!cur?.cats[cid]) return;
+    toast(t('undo.done'));
+    return updateDoc(finRef(cur), {['cats.' + cid + '.arch']: false, updatedAt: Date.now()});
+  });
+};
+
+// ── Sdílení se skupinou: přesun rozpočtu i všech měsíců (žádné dvě kopie), vzor Mazlíček ──
+window.finShare = () => {
+  const b = finCur(), gs = myGroupIds();
+  if(!CU || !b || b._gid || !gs.length) return;
+  const go = async g => { if(await lpConfirm(t('fin.shareQ', {name: b.name, to: grpLabel(g), names: finMemberNames(g)}))) finMoveGo(b.id, g); };
+  if(gs.length === 1) go(gs[0]);
+  else openGrpChoiceSheet({opts: gs, cur: '', label: grpLabel, aria: t('fin.shareTo'), focusSel: '.fin-share-btn', onPick: go});
+};
+window.finUnshare = async () => {
+  const b = finCur();
+  if(!CU || !b?._gid || !finCanManage(b)) return;
+  if(!(await lpConfirm(t('fin.unshareQ', {name: b.name, to: grpLabel(b._gid)})))) return;
+  finMoveGo(b.id, null);
+};
+// Zápis do cíle (budget + měsíce po dávkách ≤ 400), zdroj se maže až po potvrzení serveru
+async function finMoveGo(bid, toGid) {
+  const b = finFind(bid);
+  if(!CU || !b || (toGid && (b._gid || !myGroupIds().includes(toGid))) || (!toGid && !b._gid)) return;
+  if(navigator.onLine === false) { toast(t('fin.offline')); return; }
+  const uid = CU.uid, from = b._gid;
+  const col = from ? collection(db, 'families', from, 'finMonths') : collection(db, 'users', uid, 'finMonths');
+  const dstMon = id => (toGid ? doc(db, 'families', toGid, 'finMonths', id) : doc(db, 'users', uid, 'finMonths', id));
+  const dstB = toGid ? doc(db, 'families', toGid, 'finBudgets', b.id) : doc(db, 'users', uid, 'finBudgets', b.id);
+  try {
+    const sn = await getDocs(query(col, where('bid', '==', b.id)));
+    const months = sn.docs.filter(d => d.id.startsWith(b.id + '_'));
+    const ops = [[dstB, finDataOut(b, toGid ? undefined : uid)], ...months.map(d => [dstMon(d.id), d.data()])];
+    for(let i = 0; i < ops.length; i += 400) { const wb = writeBatch(db); ops.slice(i, i + 400).forEach(([r, d]) => wb.set(r, d)); await wb.commit(); }
+    const del = [finRef(b), ...months.map(d => d.ref)];
+    for(let i = 0; i < del.length; i += 400) { const wb = writeBatch(db); del.slice(i, i + 400).forEach(r => wb.delete(r)); await wb.commit(); }
+  } catch(e) { finErr(e); return; }
+  finClose('m-finset');
+  toast(toGid ? t('fin.shared', {name: b.name, to: grpLabel(toGid)}) : t('fin.unshared', {name: b.name}), 4000);
+}
+// Smazání rozpočtu i se všemi měsíci (potvrzení) a Zpět, které vrátí vše pod stejnými ID
+window.finDelete = async () => {
+  const b = finCur();
+  if(!CU || !b || !finCanManage(b)) return;
+  if(!(await lpConfirm(t('fin.set.delQ', {name: b.name}), {danger: true, ok: t('common.delete')}))) return;
+  if(navigator.onLine === false) { toast(t('fin.offline')); return; }
+  const gid = b._gid, uid = CU.uid;
+  const col = gid ? collection(db, 'families', gid, 'finMonths') : collection(db, 'users', uid, 'finMonths');
+  try {
+    const sn = await getDocs(query(col, where('bid', '==', b.id)));
+    const months = sn.docs.filter(d => d.id.startsWith(b.id + '_')).map(d => [d.ref, d.data()]);
+    const data = finDataOut(b, b.owner || uid), bref = finRef(b);
+    const del = [bref, ...months.map(x => x[0])];
+    for(let i = 0; i < del.length; i += 400) { const wb = writeBatch(db); del.slice(i, i + 400).forEach(r => wb.delete(r)); await wb.commit(); }
+    finClose('m-finset');
+    undoNote(t('fin.deleted', {name: b.name}), async () => {
+      if(!CU || CU.uid !== uid || (gid && !myGroupIds().includes(gid))) return;
+      const ops = [[bref, data], ...months];
+      for(let i = 0; i < ops.length; i += 400) { const wb = writeBatch(db); ops.slice(i, i + 400).forEach(([r, d]) => wb.set(r, d)); await wb.commit(); }
+      finSelSave(b.id);
+      toast(t('undo.done'));
+    }, 10000);
+  } catch(e) { finErr(e); }
+};
+
+// ── Souhlas „Parťák vidí moje finance“ (Nastavení → Ty a parťák), výchozí vypnuto ──
+function rSetFinAi() {
+  const el = document.getElementById('set-finai');
+  if(!el) return;
+  if(!hasMod('finance')) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="togrow fin-ai-row"><div class="toginf"><div class="tognm" id="set-finai-t">' + tH('set.finAi.t') + '</div><div class="togds" id="set-finai-d">' + tH('set.finAi.d') + '</div></div>'
+    + '<label class="togswitch"><input type="checkbox" id="set-finai-cb" aria-labelledby="set-finai-t" aria-describedby="set-finai-d"' + (prof?.finAi === true ? ' checked' : '') + ' onchange="finAiSet(this.checked)"><span class="togsl"></span></label></div>';
+}
+window.finAiSet = on => {
+  if(!CU || !prof) return;
+  const uid = CU.uid, prev = prof.finAi === true;
+  on = !!on;
+  prof.finAi = on;
+  setDoc(doc(db, 'users', uid, 'profile', 'main'), {finAi: on}, {merge: true}).catch(e => {
+    if(CU?.uid !== uid || !prof) return;
+    prof.finAi = prev;
+    rSetFinAi();
+    toast(t('common.saveFailed', {err: userErr(e, 'profil')}));
+  });
+  if(on) toast(t('set.finAi.on'), 4000);
+  if(document.getElementById('p-finance')?.classList.contains('active')) renderFin();
+};
+// Souhrn Chceme koupit pro parťáka: počet a cena nekoupených věcí s cenou
+function finWishSum(b) {
+  const ws = Object.values(b.wish).filter(w => !w.bought && w.price > 0);
+  return {n: ws.length, total: ws.reduce((s, w) => s + w.price, 0)};
+}
+
 let _weeklyReportIv=null;
 let _appStarted=false; // initApp proběhl (5.14.1: obrazovka souhlasu appku nespouští, viz refreshProfileFromServer)
 async function initApp(){
@@ -20148,6 +21568,7 @@ function subModules(){
   subWater(); // sám hlídá waterOn()
   if(on('checklist')&&!_fireSubs['checklist']) subChecklist();
   if(on('pets')&&!_fireSubs['pets']) subPets(); // Mazlíček (4.94)
+  if(on('finance')&&!_fireSubs['finBudgets']) subFin(); // Finance (5.15)
   if(on('calendar')&&!_fireSubs['events']) subEvents();
   if(on('journal')&&!_fireSubs['entries']) subEntries();
   // Nákupy plní i vaření, jídelníček a parťák (suroviny receptu do seznamu, kontrola duplicit)
@@ -20165,7 +21586,7 @@ function buildNav(){
   const showRex=(prof.modules||[]).includes('rex');
   const home={id:'dashboard',emoji:'🏠',label:t('nav.home')};
   const rex=showRex?[{id:'avatar',emoji:av.emoji,label:av.name,aria:t('nav.rexAria',{av:av.name})}]:[];
-  const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist','pets'];
+  const hasUI=['goals','journal','calendar','habits','water','cooking','shopping','mealplan','checklist','pets','finance'];
   const uMods=MODS.filter(m=>(prof.modules||[]).includes(m.id)&&hasUI.includes(m.id)).map(m=>({id:m.id,emoji:m.emoji,label:modName(m)}));
   const settings={id:'settings',emoji:'🔧',label:t('nav.settings')};
   let all, nPrim=4;
@@ -20243,7 +21664,7 @@ window.navModReset=()=>{ navModSave(null); toast(t('set.nav.resetDone')); docume
 // Hlavní moduly šablony na začátek lišty (Rodina → Nákupy v liště)
 const NAV_TPL={family:['shopping','calendar'],student:['calendar','habits'],health:['habits','water']};
 // Kategorie modulů v panelu Více (4.72)
-const MORE_CATS=[{id:'home',mods:['shopping','mealplan','cooking','checklist','pets']},{id:'me',mods:['habits','water','goals','journal']},{id:'time',mods:['calendar']}];
+const MORE_CATS=[{id:'home',mods:['shopping','mealplan','cooking','checklist','pets','finance']},{id:'me',mods:['habits','water','goals','journal']},{id:'time',mods:['calendar']}];
 let _bnMore=[];
 const bnmTile=p=>`<button type="button" class="bn-more-item" id="bnm-${esc(p.id)}" data-a0="${esc(p.id)}" onclick="sp(this.dataset.a0);closeBnMore()"><span class="bn-more-em" aria-hidden="true">${p.emoji}</span><span class="bn-more-lbl">${esc(p.label)}</span></button>`;
 function renderBnMore(){
@@ -20378,6 +21799,7 @@ window.sp=id=>{
   if(id==='dashboard')rDash();
   if(id==='checklist'){ensureCheckSubs();renderChecklist();}
   if(id==='pets')renderPets();
+  if(id==='finance')renderFin();
   if(id==='cooking'){initPantry();refreshCookChipFade();}
   if(id==='shopping')renderShopViewToggle(shopGid()); // počty u přepínače: odběr dalších skupin až tady (5.13)
 };
@@ -20590,7 +22012,7 @@ function simpleModOrder(){
 // 5.10: Návyky hned pod bannerem parťáka, citát a energie níž (uložené pořadí uživatele se nemění)
 // 5.13: Pití hned pod Návyky (jen výchozí pořadí, uložené dashLayout zůstává)
 const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'focus',em:'🎯'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
-  {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},
+  {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},{id:'finance',em:'💰'},
   {id:'mood',em:'😊'},{id:'quote',em:'💬'},{id:'energy',em:'⭐'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
 // Ve výchozím stavu (bez vlastního dashLayout) schované herní karty: energie parťáka a Aktivní série (5.10)
 const DASH_HID_DEF=['energy','streaks'];
@@ -21112,6 +22534,13 @@ function rDash(){
     if(!_fireSubs['pets']) subPets();
     const ph=petsWidgetHTML();
     if(ph) mw.pets='<div id="pet-dash">'+ph+'</div>';
+  }
+
+  // ── WIDGET: FINANCE (5.15) ── jen s rozpočtem; obal #fin-dash překreslí listener (finRefresh)
+  if(mods.includes('finance')&&!dHid.has('finance')){
+    if(!_fireSubs['finBudgets']) subFin();
+    const fh=finWidgetHTML();
+    if(fh) mw.finance='<div id="fin-dash">'+fh+'</div>';
   }
 
   // ── WIDGET: NÁLADA (pokud aktivní) ──
@@ -21865,6 +23294,7 @@ function initSet(){
   renderPcSettings(); pcCheckAdmin(); // ID účtu, správa výzev (4.63)
   renderHcSetting(); // souhlas s údaji o zdraví (5.14.1)
   renderAiEntrySetting(); // automatická AI analýza zápisků (5.15)
+  rSetFinAi(); // souhlas Parťák vidí finance (5.15)
 }
 // Sbalené skupiny Nastavení: otevřené si pamatuje lp_set_open (jen zařízení)
 function setGrpInit(){
@@ -21929,6 +23359,7 @@ function rSetMods(){
   document.getElementById('set-mods').insertAdjacentHTML('beforeend',simpleDash()?'':`<button type="button" class="dl-set" onclick="openDashEdit()"><span>${tH('set.mods.dash')}</span><span aria-hidden="true">→</span></button>`);
   document.getElementById('set-mods').insertAdjacentHTML('beforeend','<div id="set-navmods" class="set-navmods"></div>'); // spodní lišta (5.10)
   renderNavPick();
+  rSetFinAi(); // řádek souhlasu jen se zapnutým modulem Finance (5.15)
 }
 // Optimisticky (4.84): lišta a Domů hned (i offline), zápis na pozadí; při chybě původní moduly zpět
 window.togModSet=(id,on)=>{
@@ -22470,6 +23901,24 @@ function buildChatContext(question=''){
       const fc=petFoodCalc(p.food,today);
       const care=petCareSorted(p).slice(0,4).map(([,c])=>ctxT(c.name,30)+' '+c.next).join(', ');
       return '- '+ctxT(p.name,40)+' ('+info+')'+(fc?' · '+tA('aip.ctx.pet.food',{date:addDays(fc.runOut,-1)}):'')+(care?' · '+tA('aip.ctx.pet.care',{list:care}):'');
+    });
+  });
+
+  // Finance (5.15): jen se souhlasem prof.finAi, jen souhrny (bez útrat, poznámek, názvů položek a autorů), max. 3 rozpočty
+  add(tA('aip.ctx.s.fin'),0,()=>{
+    if(!hasMod('finance')) return [];
+    if(prof.finAi!==true) return [tA('aip.ctx.fin.off')];
+    const ym=finYm(), pym=finYmAdd(ym,-1);
+    return allFin().slice(0,3).map(b=>{
+      const R=v=>finFmt(v,b.cur,{round:true});
+      const c=finCalc(b,finMonData(b,ym),ym), p=finMonData(b,pym); // minulý měsíc jen z cache, bez nového čtení
+      const top=Object.entries(c.cats).sort((x,y)=>y[1].total-x[1].total).slice(0,3).map(([k,v])=>ctxT(b.cats[k]?.name||'',30)+' '+R(v.total)).join(', ');
+      const w=finWishSum(b);
+      return '- '+ctxT(b.name,40)+(b._gid?tA('aip.ctx.fin.shared',{group:ctxGrp(b._gid)}):'')+' · '+finYmLabel(ym)+': '
+        +tA('aip.ctx.fin.sum',{inc:R(c.inc),exp:R(c.exp),left:R(c.left)})
+        +(p&&pym>=b.firstYm?tA('aip.ctx.fin.prev',{left:R(finCalc(b,p,pym).left)}):'')
+        +(top?tA('aip.ctx.fin.top',{list:top}):'')
+        +(w.n?tA('aip.ctx.fin.wish',{n:w.n,total:R(w.total)}):'');
     });
   });
 
@@ -26011,7 +27460,7 @@ function scrollChat(){const c=document.getElementById('chatmsgs');c.scrollTop=c.
 // ── TOUR / PRŮVODCE ───────────────────────────────────
 
 // Texty kroků: tour.<modul>.t / tour.<modul>.x
-const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist','pets']
+const TOUR_MODULES = Object.fromEntries(['dashboard','habits','journal','calendar','goals','cooking','shopping','mealplan','water','checklist','pets','finance']
   .map(k => [k, {title: t('tour.' + k + '.t'), text: t('tour.' + k + '.x')}]));
 // Bubliny jen ze zapnutých modulů (5.10): výčet pro uvítání a Domů, příklad dotazu pro parťáka (vrací HTML)
 const TOUR_W_INTRO = {goals:'tour.w.goals', habits:'tour.w.habits', cooking:'tour.w.recipes', mealplan:'tour.w.meals', shopping:'tour.w.shop', calendar:'tour.w.cal', journal:'tour.w.journal', water:'tour.w.water'};

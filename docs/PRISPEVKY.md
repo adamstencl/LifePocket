@@ -20,6 +20,7 @@ Sekce se řídí souborem [`support.json`](../support.json) v kořeni repa. Doku
 | `accountName` | Jméno příjemce, jak se ukáže v bance (max. 35 znaků). Může zůstat prázdné. |
 | `message` | Zpráva pro příjemce v platbě (max. 60 znaků). Diakritika se v QR kódu odstraní kvůli kompatibilitě bank. |
 | `amounts` | Předvolené částky v Kč, celá čísla (1 až 6 hodnot, max. 100 000). Uživatel může zadat i vlastní částku. |
+| `lnAddress` | Volitelné: Lightning adresa (`jmeno@domena.cz`) pro tlačítka „Otevřít v peněžence“ a „Zkopírovat adresu“ v kartě ⚡ BTC Lightning. Bez ní nebo při neplatném tvaru platí `LN_ADDRESS` z app.js. QR obrázek `img/ln-qr.jpg` se tím nemění. |
 
 Příklad IBAN výše je ukázkový z dokumentace (neexistující platba), **použij svůj**.
 
