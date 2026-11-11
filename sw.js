@@ -92,7 +92,14 @@ const OFFLINE_URLS = [
   '/icon-maskable-192.png',
   '/icon-maskable-512.png',
   '/img/app-icon.jpg', // ikona na úvodní stránce
-  '/img/ln-qr.jpg'     // QR v Nastavení (dřív base64 v index.html)
+  '/img/ln-qr.jpg',    // QR v Nastavení (dřív base64 v index.html)
+  // Snímky na úvodní stránce (cs + en, ~200 kB), ať landing offline nemá prázdná místa
+  '/img/shot-home-cs.webp',
+  '/img/shot-shop-cs.webp',
+  '/img/shot-habits-cs.webp',
+  '/img/shot-home-en.webp',
+  '/img/shot-shop-en.webp',
+  '/img/shot-habits-en.webp'
 ];
 
 self.addEventListener('install', e => {
