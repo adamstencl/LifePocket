@@ -83,6 +83,7 @@ const OFFLINE_URLS = [
   '/i18n/en.js', // oba slovníky kvůli přepnutí jazyka offline
   '/i18n/ai-cs.js', // prompty AI (fáze 5)
   '/i18n/ai-en.js',
+  '/shopdict.js', // slovník zboží pro našeptávání (5.15), import z app.js
   '/style.css',
   '/pwa.js', // instalace a banner iOS (4.93)
   '/manifest.json',

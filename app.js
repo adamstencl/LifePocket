@@ -4,6 +4,7 @@ import{getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleT
 // Messaging a Functions se načítají až za běhu (4.74), nebrzdí první vykreslení; verze musí sedět s importy výše
 const FB_SDK='https://www.gstatic.com/firebasejs/10.12.0/';
 import{LANG,LOCALE,SUPPORTED,initI18n,t,tH,tA,applyI18n,fmtDate,fmtNum,fmtTime,weekdayNames,dowNames,tN,tNH,langSyncPending,clearLangSync,clearLangLocal,reloadWithLang,reloadForProfileLang,previewLang}from'./i18n.js';
+import{SHOP_DICT}from'./shopdict.js';
 
 // Jazyk a slovník musí být hotové dřív, než se cokoli vykreslí (pro češtinu bez čekání na síť)
 await initI18n();
@@ -1283,7 +1284,7 @@ let selTpl = null;
 const ONB_START = {
   home:   {mods:['shopping','mealplan','calendar'], tpl:'family'},
   health: {mods:['habits','water','goals'],         tpl:'health'},
-  study:  {mods:['calendar','habits','journal'],    tpl:'student'},
+  study:  {mods:['calendar','habits','journal'],    tpl:'student'}, // 5.15: v otázce se už nenabízí, jen pro stávající profily
   growth: {mods:['goals','habits','journal'],       tpl:'growth'},
   basic:  {mods:['habits','shopping','calendar'],   tpl:null},
 };
@@ -6477,7 +6478,13 @@ window.pickStartCustom=()=>{
   document.getElementById('onb-grid')?.querySelector('.tpl-card')?.focus();
 };
 window.pickStartBack=()=>{ window.pickStart(selStart); document.querySelector('.startq-opt[aria-checked="true"],.startq-opt')?.focus(); };
-function rAvGrid(cid,isC){document.getElementById(cid).innerHTML=AVS.map(a=>`<div class="av-card ${(isC?tmpAv:selAv)===a.id?'sel':''}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><div class="av-em">${a.emoji}</div><div class="av-nm">${a.name}</div><div class="av-vb">${avVibe(a).replace('\n','<br>')}</div></div>`).join('');}
+// Karty jako skutečná tlačítka (aria-pressed); po překreslení se fokus vrátí na stejnou kartu
+function keepCardFocus(box,draw){
+  const id=box&&box.contains(document.activeElement)?document.activeElement.dataset?.a0:null;
+  draw();
+  if(id) [...box.querySelectorAll('[data-a0]')].find(b=>b.dataset.a0===id)?.focus({preventScroll:true});
+}
+function rAvGrid(cid,isC){const box=document.getElementById(cid);keepCardFocus(box,()=>{box.innerHTML=AVS.map(a=>{const on=(isC?tmpAv:selAv)===a.id;return `<button type="button" class="av-card ${on?'sel':''}" aria-pressed="${on}" data-a0="${esc(a.id)}" onclick="${isC?'sTmpAv':'selAv2'}(this.dataset.a0)"><span class="av-em" aria-hidden="true">${a.emoji}</span><span class="av-nm">${a.name}</span><span class="av-vb">${avVibe(a).replace('\n','<br>')}</span></button>`;}).join('');});}
 window.selAv2=id=>{if(!AVS.some(a=>a.id===id))return;selAv=id;_selAvTouched=true;rAvGrid('av-grid',false);};
 window.sTmpAv=id=>{tmpAv=id;rAvGrid('av-change-grid',true);};
 // Krok 3 = parťák: předvybraný podle šablony (dokud ho uživatel sám nezměnil), „Jdeme na to!“ aktivní hned
@@ -6500,10 +6507,10 @@ function preStepBack(){
 window.onbBack=id=>{ if(history.state?.type==='pre') history.back(); else ss(id); };
 function rMods(){
   const p=selTpl?ONB_TPLS[selTpl].mods:ONB_BASE_MODS;
-  const mp=document.getElementById('mods-primary'); if(mp) mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');
-  const me=document.getElementById('mods-extra'); if(me) me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');
+  const mp=document.getElementById('mods-primary'); if(mp) keepCardFocus(mp,()=>{mp.innerHTML=MODS.filter(m=>p.includes(m.id)).map(mCard).join('');});
+  const me=document.getElementById('mods-extra'); if(me) keepCardFocus(me,()=>{me.innerHTML=MODS.filter(m=>!p.includes(m.id)).map(mCard).join('');});
 }
-function mCard(m){const s=selMods.has(m.id);return`<div class="mod-card ${s?'sel':''}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><div class="mem">${m.emoji}</div><div><div class="mnm">${modName(m)}</div><div class="mds">${modDesc(m)}</div></div><div class="mchk">${s?'✓':''}</div></div>`;}
+function mCard(m){const s=selMods.has(m.id);return`<button type="button" class="mod-card ${s?'sel':''}" aria-pressed="${s}" data-a0="${esc(m.id)}" onclick="togMod(this.dataset.a0)"><span class="mem" aria-hidden="true">${m.emoji}</span><span class="mtx"><span class="mnm">${modName(m)}</span><span class="mds">${modDesc(m)}</span></span><span class="mchk" aria-hidden="true">${s?'✓':''}</span></button>`;}
 window.togMod=id=>{selMods.has(id)?selMods.delete(id):selMods.add(id);rMods();};
 window.togMore=()=>{const el=document.getElementById('extra-mods'),b=document.getElementById('more-tog');el.classList.toggle('open');b.textContent=t(el.classList.contains('open')?'onb.less':'onb.more');};
 // Šablona: přepíše předvybrané moduly a nabídne ukázkové návyky (id null = bez šablony)
@@ -9444,7 +9451,7 @@ window.esBtn = mod => {
 };
 
 // ── Karta „Co teď“ (4.72, jen jednoduchý režim): místo Začínáme vždy jen jeden krok, kde to jde, splnitelný přímo v kartě ──
-// Kroky = první 3 moduly v pořadí lišty, které krok mají. Splněný krok si pamatuje lp_qs_done ('ct.<modul>').
+// Kroky = první 3 moduly v pořadí lišty, které krok mají (s AI parťákem navíc čtvrtý „Zeptej se“). Splněný krok si pamatuje lp_qs_done ('ct.<modul>').
 const CT = {
   shopping: {em: '🧺', done: () => shopItems.length > 0 || activeShopItems().length > 0, kind: () => 'inp'},
   habits:   {em: () => habits.some(h => !h.archived) ? '✅' : '🔥', done: () => doneLogCount() > 0,
@@ -9485,9 +9492,9 @@ function ctMarkOpen(st) { st.forEach(s => { if (!s.done && ctReady(s.id)) _ctOpe
 function ctSteps() {
   const mem = lsGet('lp_qs_done', []), done = Array.isArray(mem) ? mem : [];
   const ids = simpleModOrder().filter(id => id !== 'ask' && Object.prototype.hasOwnProperty.call(CT, id));
-  // S AI parťákem (5.10): 2 kroky z modulů + „Zeptej se {av} …“
+  // S AI parťákem: 3 kroky z modulů + „Zeptej se {av} …“ (dřív jen 2 moduly, třetí vybraný se nepředstavil)
   const ask = needsVerify() && !done.includes('ct.' + 'ask') && !nudgeSafe(CT.ask.done) ? 'verify' : 'ask'; // 5.13: neověřený místo „Zeptej se“
-  return ((prof?.modules || []).includes('rex') ? [...ids.slice(0, 2), ask] : ids.slice(0, 3))
+  return ((prof?.modules || []).includes('rex') ? [...ids.slice(0, 3), ask] : ids.slice(0, 3))
     .map(id => {
       const ok = !!nudgeSafe(CT[id].done);
       // pre = hotový ze skupiny (pozvaný, den 0, vlastní aktivita v modulu žádná): kroky se pak číslují od 1 bez něj
@@ -9699,10 +9706,11 @@ function quickStartHTML() {
   const taskHTML = relevant.map(t => {
     const isDone = t.done || done.includes(t.id);
     const onclick = t.action ? t.action : `sp('${t.page}')`;
-    return `<div class="qs-task ${isDone ? 'done' : ''}" onclick="${isDone ? '' : onclick}">
-      <div class="qs-check">${isDone ? '✓' : ''}</div>
-      <span class="qs-task-text">${t.emoji} ${esc(t.text)}</span>
-    </div>`;
+    // Skutečné tlačítko; splněný úkol je vypnutý (bez akce, mimo pořadí Tab) a čtečka ho ohlásí jako hotový
+    return `<button type="button" class="qs-task ${isDone ? 'done' : ''}"${isDone ? ' disabled' : ` onclick="${onclick}"`}>
+      <span class="qs-check" aria-hidden="true">${isDone ? '✓' : ''}</span>
+      <span class="qs-task-text">${t.emoji} ${esc(t.text)}${isDone ? `<span class="sr-only"> (${tH('qs.doneSr')})</span>` : ''}</span>
+    </button>`;
   }).join('');
 
   return ctTipHTML() + `<div class="qs-card" id="qs-card">
@@ -12020,7 +12028,7 @@ function qrSvg(text,px){
 }
 // Sekce „Podpořit LifePocket“: config z /support.json (docs/PRISPEVKY.md), bez enabled:true a platného IBAN skrytá.
 // V TWA se nenačítá (podpora tam je skrytá). Chyba sítě / JSON = sekce se tiše nezobrazí.
-let supCfg=null, supAmt=0, supLoading=false;
+let supCfg=null, supAmt=0, supLnAmt=0, supLoading=false; // supLnAmt: Lightning má vlastní výběr, bankovní QR se jím nemění
 function czAccountFromIban(iban){
   const v=normIban(iban), pre=v.slice(8,14).replace(/^0+/,''), num=v.slice(14).replace(/^0+/,'');
   return (pre?pre+'-':'')+num+'/'+v.slice(4,8);
@@ -12049,17 +12057,19 @@ async function loadBtcCzk(){
   return btcLoading;
 }
 function czkToSats(czk){ return btcCzk>0&&czk>0?Math.round(czk/btcCzk*1e8):0; }
-// Lightning karta: stejné předvolby jako QR platba (jinak 50/100/200 Kč) a částka v sats k zadání v peněžence
+// Lightning karta: stejné předvolby jako QR platba (jinak 50/100/200 Kč) a částka v sats k zadání v peněžence.
+// Výběr je nezávislý na bankovní kartě (supLnAmt): vlastní částka v Kč patří jen k převodu.
 function renderSupportLn(){
   const box=document.getElementById('support-ln');
   if(!box) return;
   if(!(btcCzk>0)){ box.hidden=true; return; }
   const amts=supCfg?supCfg.amounts:SUP_LN_AMTS;
-  const custom=supCfg?supCustomVal():0;
-  if(!supAmt||!custom&&!amts.includes(supAmt)) supAmt=amts[Math.min(1,amts.length-1)];
-  const amt=custom||supAmt;
+  if(!amts.includes(supLnAmt)) supLnAmt=amts[Math.min(1,amts.length-1)];
+  const amt=supLnAmt;
+  const foc=document.activeElement?.closest?.('#support-ln-amts')?document.activeElement.dataset.a1:null; // fokus po překreslení zůstane
   document.getElementById('support-ln-amts').innerHTML=amts.map(n=>
-    `<button type="button" class="sup-amt sup-amt--s${!custom&&n===supAmt?' on':''}" aria-pressed="${!custom&&n===supAmt}" onclick="pickSupportAmt(this.dataset.a1)" data-a1="${n}">${tH('set.support.amt',{n})}</button>`).join('');
+    `<button type="button" class="sup-amt sup-amt--s${n===supLnAmt?' on':''}" aria-pressed="${n===supLnAmt}" onclick="pickSupportLnAmt(this.dataset.a1)" data-a1="${n}">${tH('set.support.amt',{n})}</button>`).join('');
+  if(foc) document.querySelector('#support-ln-amts [data-a1="'+Number(foc)+'"]')?.focus();
   document.getElementById('support-ln-sats').textContent=t('set.support.lnSats',{sats:fmtNum(czkToSats(amt)),czk:fmtNum(amt)});
   box.hidden=false;
 }
@@ -12105,7 +12115,12 @@ function supCustomVal(){
 window.pickSupportAmt=n=>{
   supAmt=Number(n)||supAmt;
   const inp=document.getElementById('support-custom'); if(inp) inp.value='';
-  if(supCfg) renderSupport(); else renderSupportLn();
+  if(supCfg) renderSupport();
+};
+// Lightning: jen vlastní částka a přepočet na sats, bankovní QR ani vlastní částka se nemění
+window.pickSupportLnAmt=n=>{
+  supLnAmt=Number(n)||supLnAmt;
+  renderSupportLn();
 };
 window.supportCustom=()=>renderSupport();
 window.copySupportAccount=async()=>{
@@ -22873,6 +22888,7 @@ window.shopGnNoteClose = () => {
   const n = document.getElementById('shop-gn-note'); if(n) { n.hidden = true; n.innerHTML = ''; }
 };
 function guessShopCategory(name){
+  const dc=shopDictCat(name); if(dc) return dc; // 5.15: přesný název ze slovníku zboží (cs i en)
   const n=name.toLowerCase();
   const rules=[
     ['Zelenina & ovoce', ['zelenina','ovoce','salát','špenát','kapusta','brokolice','brokoli','karfiol','květák','cuketa','paprika','rajče','okurka','mrkev','cibule','česnek','petržel','pórek','ředkvička','kedlubna','hrášek','fazole','kukuřice','lilek','batát','dýně','zelí','řepa','chřest','šalvěj','bazalka','kopr','mango','banán','jablko','hruška','pomeranč','citron','grep','kiwi','jahoda','borůvka','malina','třešeň','višeň','meruňka','broskev','švestka','hrozno','ananas','kokos','meloun','avokádo','fík','datle','lesní plody','ovoce','zeleniny']],
@@ -22888,6 +22904,7 @@ function guessShopCategory(name){
   for(const [cat,kw] of rules){
     for(const k of kw) if(k.length>bl && n.includes(k)){ best=cat; bl=k.length; }
   }
+  if(!bl){ const fc=shopDictCat(name,true); if(fc) return fc; } // „brambor“, „rohlíků“: tvar podobný slovníku
   return best;
 }
 
@@ -22997,6 +23014,7 @@ function parseShopInput(raw){
 
 window.onShopInpKey=()=>{
   const raw=document.getElementById('shop-inp')?.value||'';
+  acShow(document.getElementById('shop-inp'), SHOP_AC_CFG); // návrhy pod polem (5.15)
   const {name, qty}=parseShopInput(raw);
   // Náhled: jak appka text pochopila (jen když našla množství)
   const ph=document.getElementById('shop-parse-hint');
@@ -23012,6 +23030,214 @@ window.onShopInpKey=()=>{
     if(match){ hint.textContent=t('shop.inPantry',{qty:Number(match.qty)>0?Number(match.qty):0,unit:unitLabel(match.unit)}); hint.style.display=''; }
     else hint.style.display='none';
   }
+};
+
+// ── NAŠEPTÁVÁNÍ POLOŽEK (5.15) ── okamžitě a offline, bez AI: oblíbené ⭐ a často nakupované, pak slovník zboží (shopdict.js)
+// Volba: klepnutí na návrh položku rovnou přidá (1 klepnutí, klávesnice zůstane otevřená pro další);
+// množství napsané před názvem se zachová. Enter bez vybraného návrhu přidá text z pole jako dřív.
+const SHOP_AC_MAX = 5;
+const _shopDictL = {}; let _shopDictMap = null;
+// Normalizace pro hledání: malá písmena, bez diakritiky, jedna mezera (stejná jako u zásob)
+function shopAcNorm(s){ return pantryNorm(s); }
+function shopDictList(lang){
+  const L = lang === 'en' ? 'en' : 'cs';
+  if(!_shopDictL[L]){
+    const out = [];
+    for(const [c, str] of Object.entries(SHOP_DICT[L] || {})) for(const n of str.split('|')) if(n) out.push({n, c, k: shopAcNorm(n)});
+    _shopDictL[L] = out;
+  }
+  return _shopDictL[L];
+}
+// Kategorie podle slovníku (oba jazyky). loose: podobný tvar („brambor“ ~ „brambory“, jen jednoslovné, rozdíl ≤ 2 znaky)
+function shopDictCat(name, loose){
+  const n = shopAcNorm(name);
+  if(!n) return '';
+  if(!_shopDictMap){ _shopDictMap = new Map(); for(const L of ['cs', 'en']) for(const e of shopDictList(L)) if(!_shopDictMap.has(e.k)) _shopDictMap.set(e.k, e.c); }
+  if(_shopDictMap.has(n)) return _shopDictMap.get(n);
+  if(!loose || n.length < 4 || n.includes(' ')) return '';
+  for(const [k, c] of _shopDictMap){
+    if(k.includes(' ')) continue;
+    const a = k.length >= n.length ? k : n, b = a === k ? n : k;
+    let i = 0; while(i < b.length && a[i] === b[i]) i++;
+    if(i >= Math.max(4, a.length - 2) && i >= b.length - 2) return c;
+  }
+  return '';
+}
+// Třída shody (menší = lepší): 0 začátek názvu, 1 začátek slova, 2 uvnitř (od 3 znaků), 3 podobný tvar (skloňování), -1 nic
+function shopAcRank(k, q){
+  if(k.startsWith(q)) return 0;
+  if(k.includes(' ' + q) || k.includes('-' + q)) return 1;
+  if(q.length >= 3 && k.includes(q)) return 2;
+  for(const cut of [1, 2]){
+    const q2 = q.slice(0, -cut);
+    if(q2.length < 4) continue; // „mléka“→„mlek“, „jablek“→„jabl“; kratší kořen by nabízel nesmysly
+    if(k.startsWith(q2) || k.includes(' ' + q2)) return 3;
+  }
+  return -1;
+}
+// Čistá funkce (testovatelná v node): user = [{n, c, s, fav}] seřazené podle skóre, dict = shopDictList(), exclude = klíče shopKey
+function shopSuggest(query, user, dict, exclude, max = SHOP_AC_MAX){
+  const q = shopAcNorm(query);
+  if(q.length < 2 || !/\p{L}/u.test(q)) return [];
+  const seen = new Set(exclude || []), out = [];
+  const add = (e, src) => {
+    if(!e || typeof e.n !== 'string') return;
+    const key = shopKey(e.n);
+    if(!key || seen.has(key)) return;
+    const r = shopAcRank(e.k || shopAcNorm(e.n), q);
+    if(r < 0) return;
+    seen.add(key);
+    out.push({n: e.n, c: e.c || '', r, src, s: Number(e.s) || 0, fav: !!e.fav});
+  };
+  (user || []).forEach(e => add(e, 0));
+  (dict || []).forEach(e => add(e, 1));
+  return out.sort((a, b) => a.r - b.r || a.src - b.src || b.s - a.s || a.n.length - b.n.length || a.n.localeCompare(b.n)).slice(0, max);
+}
+// Uživatelovy položky: oblíbené ⭐, často nakupované zobrazeného seznamu (osobní / skupina), ve skupině i osobní s poloviční vahou
+function shopAcUser(gid){
+  const today = toDS(), mine = shopFreqMine || {}, out = [];
+  for(const f of getFavShopItems()) if(f && typeof f.name === 'string' && f.name) out.push({n: f.name, c: f.category || '', s: 1e6, fav: true});
+  const take = (src, w) => { for(const [k, e] of Object.entries(src || {})) {
+    if(!e || typeof e.n !== 'string' || !e.n || e.h || mine[k]?.h) continue; // skryté čipy se nenabízí
+    out.push({n: e.n, c: e.c || '', s: w * (qsScore(e, today) + (Number(e.k) || 0) * 1e-3)});
+  } };
+  take(gid ? shopGrpFreq(gid) : mine, 1);
+  if(gid) take(mine, .5);
+  return out.sort((a, b) => b.s - a.s);
+}
+const shopAcCat = c => SHOP_CATS.includes(c) ? c : '';
+// Nákupy: co už je v zobrazeném seznamu nekoupené, se nenabízí; vedle návrhu napsané množství
+const SHOP_AC_CFG = {
+  list: raw => {
+    const {name, qty} = parseShopInput(raw), gid = shopGid();
+    const ex = activeShopItems().filter(i => i && !i.done).map(i => shopKey(i.name));
+    return {q: name, items: shopSuggest(name, shopAcUser(gid), shopDictList(LANG), ex).map(s => ({...s, sub: qty}))};
+  },
+  pick: s => window.addShopItem({name: s.n, category: shopAcCat(s.c) || guessShopCategory(s.n)}),
+};
+// Zásoby (formulář přidání): návrh jen doplní název a fokus jde na množství; co už v zásobách je, se nenabízí
+function pantryAcCfg(gid){
+  return {
+    list: raw => {
+      const ex = pantryItemsOf(gid).filter(p => p && p.name).map(p => shopKey(p.name));
+      return {q: raw, items: shopSuggest(raw, shopAcUser(null), shopDictList(LANG), ex)};
+    },
+    pick: s => {
+      const i = document.getElementById('pi-name'); if(i) i.value = s.n;
+      document.getElementById('pi-qty')?.focus();
+    },
+  };
+}
+// Ovládání (combobox + listbox, jeden seznam pro celou appku): šipky, Enter, Esc; poloha podle visualViewport (klávesnice telefonu)
+const _ac = {inp: null, cfg: null, items: [], act: -1, raf: 0};
+function acBox(){
+  let b = document.getElementById('shop-ac');
+  if(b) return b;
+  b = document.createElement('ul');
+  b.id = 'shop-ac'; b.className = 'shop-ac'; b.hidden = true;
+  b.setAttribute('role', 'listbox'); b.setAttribute('aria-label', t('shop.ac.label'));
+  // Fokus zůstane v poli (klávesnice telefonu se nezavře)
+  b.addEventListener('pointerdown', e => e.preventDefault());
+  b.addEventListener('mousedown', e => e.preventDefault());
+  b.addEventListener('click', e => { const li = e.target.closest('[data-i]'); if(li) acPick(Number(li.dataset.i)); });
+  document.body.appendChild(b);
+  // Přepočet polohy nejvýš jednou za snímek; posun uvnitř seznamu polohu nemění
+  const rp = e => { if(_ac.raf || b.hidden || e?.target === b) return; _ac.raf = requestAnimationFrame(() => { _ac.raf = 0; acPos(); }); };
+  addEventListener('resize', rp); addEventListener('scroll', rp, true);
+  window.visualViewport?.addEventListener('resize', rp); window.visualViewport?.addEventListener('scroll', rp);
+  return b;
+}
+// Jednorázové napojení pole: atributy comboboxu, zavření při opuštění pole
+function acBind(inp){
+  if(!inp || inp.dataset.ac) return;
+  inp.dataset.ac = '1';
+  inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-autocomplete', 'list');
+  inp.setAttribute('aria-expanded', 'false'); inp.setAttribute('aria-controls', 'shop-ac');
+  inp.addEventListener('blur', () => setTimeout(() => { if(_ac.inp === inp && document.activeElement !== inp) acClose(); }, 0));
+}
+// Zvýraznění shody v názvu (jen když normalizace zachová délku, jinak bez zvýraznění)
+function acMark(n, q){
+  const nq = shopAcNorm(q), map = [...n].map(ch => ch.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase());
+  if(!nq || map.some(x => x.length !== 1)) return esc(n);
+  const chars = [...n], nn = map.join('');
+  const at = x => nn.startsWith(x) ? 0 : nn.indexOf(' ' + x) >= 0 ? nn.indexOf(' ' + x) + 1 : -1;
+  let i = at(nq), len = nq.length;
+  if(i < 0 && nq.length >= 3) i = nn.indexOf(nq);
+  for(let cut = 1; i < 0 && cut <= 2; cut++){ const q2 = nq.slice(0, -cut); if(q2.length < 4) break; len = q2.length; i = at(q2); }
+  if(i < 0) return esc(n);
+  return esc(chars.slice(0, i).join('')) + '<b>' + esc(chars.slice(i, i + len).join('')) + '</b>' + esc(chars.slice(i + len).join(''));
+}
+function acShow(inp, cfg){
+  if(!inp) return;
+  acBind(inp);
+  if(document.activeElement !== inp){ acClose(); return; }
+  const r = cfg.list(inp.value || '');
+  const b = acBox();
+  _ac.inp = inp; _ac.cfg = cfg; _ac.items = r.items; _ac.act = -1;
+  if(!r.items.length){ acClose(); return; }
+  b.innerHTML = r.items.map((s, i) => `<li id="shop-ac-${i}" class="shop-ac-o" role="option" aria-selected="false" data-i="${i}">`
+    + `<span class="shop-ac-i" aria-hidden="true">${s.fav ? '⭐' : s.src === 0 ? '🕘' : ''}</span>`
+    + `<span class="shop-ac-n">${acMark(s.n, r.q)}</span>${s.sub ? `<span class="shop-ac-q">${esc(s.sub)}</span>` : ''}</li>`).join('');
+  b.hidden = false;
+  inp.setAttribute('aria-expanded', 'true'); inp.removeAttribute('aria-activedescendant');
+  acPos();
+}
+function acClose(){
+  const b = document.getElementById('shop-ac');
+  if(b && !b.hidden){ b.hidden = true; b.innerHTML = ''; }
+  if(_ac.inp){ _ac.inp.setAttribute('aria-expanded', 'false'); _ac.inp.removeAttribute('aria-activedescendant'); }
+  _ac.items = []; _ac.act = -1;
+}
+// Pod polem, když se tam vejde aspoň část seznamu; jinak nad polem (klávesnice zabírá spodek). Pole ani tlačítko nezakryje.
+function acPos(){
+  const b = document.getElementById('shop-ac'), inp = _ac.inp;
+  if(!b || b.hidden || !inp) return;
+  if(!inp.isConnected || inp.offsetParent === null){ acClose(); return; }
+  const r = inp.getBoundingClientRect(), vv = window.visualViewport;
+  const vTop = vv ? vv.offsetTop : 0, vBot = vv ? vv.offsetTop + vv.height : innerHeight;
+  b.style.left = Math.max(0, r.left) + 'px'; b.style.width = r.width + 'px';
+  b.style.maxHeight = 'none';
+  const h = b.scrollHeight, below = vBot - r.bottom - 8, above = r.top - vTop - 8;
+  const up = below < Math.min(h, 140) && above > below;
+  const room = Math.max(96, up ? above : below), hh = Math.min(h, room);
+  b.style.maxHeight = hh + 'px';
+  b.style.top = (up ? r.top - 4 - hh : r.bottom + 4) + 'px';
+  b.classList.toggle('up', up);
+}
+function acSetAct(i){
+  const b = document.getElementById('shop-ac'); if(!b) return;
+  _ac.act = i;
+  b.querySelectorAll('.shop-ac-o').forEach((li, j) => { li.setAttribute('aria-selected', String(j === i)); li.classList.toggle('act', j === i); });
+  const li = b.querySelector('#shop-ac-' + i);
+  if(li){ _ac.inp?.setAttribute('aria-activedescendant', li.id); li.scrollIntoView({block: 'nearest'}); }
+  else _ac.inp?.removeAttribute('aria-activedescendant');
+}
+function acPick(i){
+  const s = _ac.items[i], cfg = _ac.cfg;
+  if(!s || !cfg) return;
+  acClose();
+  cfg.pick(s);
+}
+// Klávesy v poli; vrací true, když je obsloužil našeptávač
+function acKey(e, inp, cfg){
+  if(e.isComposing || e.keyCode === 229) return false;
+  const b = document.getElementById('shop-ac'), open = !!b && !b.hidden && _ac.inp === inp && _ac.items.length > 0;
+  const n = _ac.items.length;
+  if(e.key === 'ArrowDown'){
+    if(!open){ acShow(inp, cfg); if(_ac.items.length) acSetAct(0); }
+    else acSetAct(_ac.act + 1 >= n ? 0 : _ac.act + 1);
+    e.preventDefault(); return true;
+  }
+  if(e.key === 'ArrowUp' && open){ acSetAct(_ac.act <= 0 ? n - 1 : _ac.act - 1); e.preventDefault(); return true; }
+  if(e.key === 'Enter' && open && _ac.act >= 0){ e.preventDefault(); acPick(_ac.act); return true; }
+  if(e.key === 'Escape' && open){ e.preventDefault(); e.stopPropagation(); acClose(); return true; }
+  if(e.key === 'Tab' && open) acClose();
+  return false;
+}
+window.shopInpKeydown = e => {
+  const inp = document.getElementById('shop-inp');
+  if(acKey(e, inp, SHOP_AC_CFG)) return;
+  if(e.key === 'Enter' && !e.isComposing){ acClose(); window.addShopItem(); }
 };
 
 let _shopMoveBusy=false;
@@ -23079,13 +23305,17 @@ async function addShopEntry({name, category, qty, gid}){
   return false;
 }
 
-window.addShopItem=async()=>{
+// pick (5.15): návrh z našeptávače {name, category}; množství se bere z pole („2 kg bra“ → Brambory, 2 kg)
+window.addShopItem=async(pick)=>{
   const inp=document.getElementById('shop-inp');
   const rawInp=inp.value;
-  const {name, qty}=parseShopInput(rawInp);
+  const p=parseShopInput(rawInp), qty=p.qty;
+  const name=pick&&typeof pick.name==='string'&&pick.name.trim()?cutName(pick.name,60):p.name;
   if(!name)return;
-  const cat=guessShopCategory(name); // 5.10: bez výběru kategorie, opravuje se přes ✏️ u položky
+  // 5.10: bez výběru kategorie, opravuje se přes ✏️ u položky; návrh nese kategorii ze slovníku / historie
+  const cat=pick&&SHOP_CATS.includes(pick.category)?pick.category:guessShopCategory(name);
   inp.value='';
+  acClose();
   const ph=document.getElementById('shop-parse-hint'); if(ph){ph.hidden=true;ph.textContent='';}
   const ph2=document.getElementById('shop-pantry-hint'); if(ph2)ph2.style.display='none';
   unhideQuickShop(name); // ručně přidaná skrytá položka se vrátí mezi často nakupované
@@ -24736,7 +24966,14 @@ window.openPantryAdd = function(prefill = {}) {
   </div>`;
   document.body.appendChild(m);
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-  document.getElementById('pi-name').focus();
+  const pin = document.getElementById('pi-name');
+  if (!prefill.id) { // našeptávání jen u nové položky (5.15)
+    const cfg = pantryAcCfg(gid);
+    pin.addEventListener('input', () => acShow(pin, cfg));
+    pin.addEventListener('keydown', e => acKey(e, pin, cfg));
+    acBind(pin);
+  }
+  pin.focus();
 };
 
 window.savePantryItem = async function(existingId, gidArg) {
