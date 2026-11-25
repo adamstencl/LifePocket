@@ -71,8 +71,10 @@ if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podpo
 const APP_VERSION = '5.16.1';
 const CHANGELOG = [
   { v:'5.16.1', items:[
+    '📅 V Kalendáři v seznamu nadcházejících událostí jsou teď i úkoly s termínem; úkoly po termínu jsou nahoře červeně a odškrtneš je rovnou v seznamu',
     '⚡ Lightning: peněženka se otevře rovnou s vybranou částkou'
   ], en:[
+    '📅 The upcoming list in Calendar now shows tasks with a due date too; overdue tasks are at the top in red and you can tick them off right in the list',
     '⚡ Lightning: your wallet now opens with the selected amount already filled in'
   ]},
   { v:'5.16', items:[
