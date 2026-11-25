@@ -204,6 +204,8 @@ LANGUAGE RULE: Write the reason ONLY in English, even if the entry is in another
   'aip.ctx.pet.allergy': 'allergies: {a}',
   'aip.ctx.pet.food': 'food lasts until {date}',
   'aip.ctx.pet.care': 'care: {list}',
+  'aip.ctx.pet.feed': 'fed today {done}/{total}, last {last}',
+  'aip.ctx.pet.with': 'is with {who} until {until}',
   'aip.ctx.s.shop': 'SHOPPING (open + recurring)',
   'aip.ctx.s.cal': 'CALENDAR – personal and shared ({from} to {to}, including past days of this month)',
   'aip.ctx.s.calQ': 'CALENDAR FOR THE QUESTION – {p}',

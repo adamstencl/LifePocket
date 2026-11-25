@@ -218,6 +218,8 @@ PRAVIDLO JAZYK: Vysvětlení piš VÝHRADNĚ česky. ZAKÁZÁNO použít jakéko
   'aip.ctx.pet.allergy': 'alergie: {a}',
   'aip.ctx.pet.food': 'granule vystačí do {date}',
   'aip.ctx.pet.care': 'péče: {list}',
+  'aip.ctx.pet.feed': 'krmení dnes {done}/{total}, naposledy {last}',
+  'aip.ctx.pet.with': 'je u: {who} do {until}',
   'aip.ctx.s.shop': 'NÁKUPY (nesplněné + pravidelné)',
   'aip.ctx.s.cal': 'KALENDÁŘ – osobní i sdílený ({from} až {to}, včetně proběhlých dnů tohoto měsíce)',
   'aip.ctx.s.calQ': 'KALENDÁŘ K DOTAZU – {p}',

@@ -523,7 +523,8 @@ exports.testPush = onCall({cors: true, region: 'europe-west1', maxInstances: 3},
 // Výchozí hodnoty musí být stejné jako GROUP_NOTIF_DEFAULTS v app.js
 const GROUP_NOTIF_DEFAULTS = {shop: 'instant', cal: 'instant', meal: 'evening', check: 'evening', pantry: 'evening',
   habit: 'evening', goal: 'evening', react: 'instant', challenge: 'instant', note: 'evening', recipe: 'evening',
-  quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true};
+  quiet: {from: '22:00', to: '07:00'}, notifyChecked: false, msInstant: true, feed: 'rem'};
+const GN_FEED_MODES = ['rem', 'instant', 'off']; // krmení (5.17): jen místo připomínky / vždy / nikdy
 const GN_MODULES = ['shop', 'cal', 'meal', 'check', 'pantry', 'habit', 'goal', 'react', 'challenge', 'note', 'recipe'];
 const GN_MODES = ['instant', 'q15', 'evening'];       // + 'off' (nic)
 const INSTANT_SETTLE = 2 * 60000;                     // „Hned“: 2 min bez další změny…
@@ -554,13 +555,81 @@ function groupNotifPrefs(prof) {
   else gp.quiet = {...GROUP_NOTIF_DEFAULTS.quiet};
   gp.notifyChecked = raw.notifyChecked === true;
   gp.msInstant = raw.msInstant !== false;
+  gp.feed = GN_FEED_MODES.includes(raw.feed) ? raw.feed : GROUP_NOTIF_DEFAULTS.feed;
   return gp;
 }
 // Milník (série návyku, mezník cíle 25/50/75/100 %, splněná společná výzva) přijde při „Milníky hned“ okamžitě
 // i v režimu Večer / 15 min; „Vypnuto“ platí vždy
 const gnIsMs = (a) => (a.module === 'habit' && a.action === 'streak') || (a.module === 'goal' && (a.action === 'progress' || a.action === 'done'))
   || (a.module === 'challenge' && a.action === 'done');
-const gnModeOf = (a, gp) => gp[a.module] === 'off' ? 'off' : (gnIsMs(a) && gp.msInstant ? 'instant' : gp[a.module]);
+const gnModeOf = (a, gp) => gnIsFeed(a) ? (gp.feed === 'off' ? 'off' : 'instant')
+  : gp[a.module] === 'off' ? 'off' : (gnIsMs(a) && gp.msInstant ? 'instant' : gp[a.module]);
+
+// ── Krmení mazlíčka (5.17, docs/NAVRH-KRMENI.md) ──
+// Aktivita cal/done s ref feed:<petId>:<den>:<slot>[:w] (:w = krmil ten, u koho mazlíček je → nikomu)
+const FEED_REF_RE = /^feed:([A-Za-z0-9_-]{1,40}):(\d{4}-\d{2}-\d{2}):([0-3])(:w)?$/;
+const FEED_PID_RE = /^[A-Za-z0-9_-]{1,40}$/, FEED_DS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FEED_IDX_MAX = 10, FEED_GAP_MS = 3600000, FEED_DONE_STALE = 30 * 60000, TTL_FEED = 3600;
+const gnIsFeed = (a) => a.module === 'cal' && a.action === 'done' && typeof a.ref === 'string' && FEED_REF_RE.test(a.ref);
+// Časy krmení z dokumentu mazlíčka: platné HH:MM, unikátní, seřazené, max 4 (jako feedTimesNorm v app.js)
+const feedTimes = (a) => [...new Set((Array.isArray(a) ? a : []).filter(x => typeof x === 'string' && HHMM_RE.test(x)))].sort().slice(0, 4);
+// Slot pro čas HH:MM: hranice = půlka mezi sousedními časy (jako feedSlot v app.js); bez plánu -1
+function feedSlotS(times, hm) {
+  if (!times.length) return -1;
+  const n = hhmmMin(hm);
+  for (let i = 0; i < times.length - 1; i++) if ((hhmmMin(times[i]) + hhmmMin(times[i + 1])) / 2 > n) return i;
+  return times.length - 1;
+}
+const feedSlotKeyS = (hm) => { const m = hhmmMin(hm); return m < 660 ? 'am' : m < 840 ? 'noon' : m < 1020 ? 'pm' : 'eve'; };
+// Splatný čas krmení z indexu (bez I/O): {s, time, day} nebo null; okno přes půlnoc (23:58 → běh 0:00) = den včera
+function feedRemDue(r, zn) {
+  if (!r || typeof r !== 'object' || r.on !== true || !Array.isArray(r.t)) return null;
+  const t = r.t.slice(0, 4);
+  for (let s = 0; s < t.length; s++) {
+    if (typeof t[s] !== 'string' || !HHMM_RE.test(t[s]) || !isTimeMatch(zn.h, zn.m, t[s])) continue;
+    const past = zn.h * 60 + zn.m < hhmmMin(t[s]);
+    return {s, time: t[s], day: past ? addDaysDS(zn.today, -1) : zn.today};
+  }
+  return null;
+}
+// Rozhodnutí z dokumentu mazlíčka (bez I/O): null = neposílat, jinak 'own' | 'grp' | 'with' (mazlíček je u příjemce).
+// nowWall = teď v zóně příjemce jako 'YYYY-MM-DDTHH:MM'; záznamy mají místní čas krmícího (rodina = jedna zóna).
+function feedRemCheck(pd, uid, due, nowWall, fam) {
+  const feed = pd && typeof pd.feed === 'object' && pd.feed ? pd.feed : {};
+  const times = feedTimes(feed.times);
+  if (times[due.s] !== due.time) return null;                           // zastaralý index (klient ho přepíše)
+  const w = pd.with && typeof pd.with === 'object' ? pd.with : null;
+  const wOk = !!fam && !!w && typeof w.uid === 'string' && (w.until === null || w.until === undefined || (typeof w.until === 'string' && w.until >= due.day))
+    && !!(fam.members && fam.members[w.uid]);
+  if (wOk && w.uid !== uid) return null;                                 // mazlíček je u jiného člena
+  const nowMs = Date.parse(nowWall + ':00Z');
+  for (const l of Array.isArray(feed.log) ? feed.log : []) {
+    if (!l || typeof l !== 'object' || typeof l.d !== 'string' || !FEED_DS_RE.test(l.d) || typeof l.t !== 'string' || !HHMM_RE.test(l.t)) continue;
+    if (l.d === due.day && feedSlotS(times, l.t) === due.s) return null; // už nakrmeno
+    if (Math.abs(nowMs - Date.parse(l.d + 'T' + l.t + ':00Z')) < FEED_GAP_MS) return null; // krmilo se před chvílí
+  }
+  return wOk ? 'with' : fam ? 'grp' : 'own';
+}
+// Potvrzení „nakrmeno“ příjemci: :w nikdy; „Vždy“; „Jen místo připomínky“ = má připomínky zapnuté a krmilo se
+// po čase připomínky (připomínka odešla). Jen z načteného profilu, 0 čtení.
+function gnFeedWanted(a, gp, prof, nowMs) {
+  const m = FEED_REF_RE.exec(a.ref);
+  if (!m || m[4] || gp.feed === 'off' || nowMs - a._ts > FEED_DONE_STALE) return false; // staré (po nočním klidu) už nemá smysl
+  if (gp.feed === 'instant') return true;
+  const r = prof && prof.petFeed && typeof prof.petFeed === 'object' ? prof.petFeed[m[1]] : null;
+  const tm = r && r.on === true && Array.isArray(r.t) ? r.t[Number(m[3])] : null;
+  if (typeof tm !== 'string' || !HHMM_RE.test(tm)) return false;
+  const fz = zoneNow(prof.tz, new Date(a._ts));
+  return fz.today === m[2] && fz.h * 60 + fz.m >= hhmmMin(tm);
+}
+// Push „Bára: nakrmeno“ se stejným tagem jako připomínka (tiše ji přepíše)
+function gnFeedPush(a, fam, L, tz) {
+  const m = FEED_REF_RE.exec(a.ref), fz = zoneNow(tz, new Date(a._ts));
+  const pet = gnRef(a) || tS(L, 'gn.someone');
+  const time = `${String(fz.h).padStart(2, '0')}:${String(fz.m).padStart(2, '0')}`;
+  return [tS(L, 'feed.done.t', {pet}), tS(L, 'feed.done.b', {who: gnAuthorName(fam, a, L), time, g: a.g === 'f' ? 'f' : ''}).slice(0, GN_BODY_MAX),
+    `feed-${m[1]}-${m[2]}-${m[3]}`, {data: {open: 'pets', id: m[1]}, quiet: true, ttl: TTL_FEED}];
+}
 
 // Je pražský čas h:m v nočním klidu? Rozsah může přecházet přes půlnoc (22:00–07:00)
 function inQuiet(h, m, q) {
@@ -1713,12 +1782,14 @@ exports.sendScheduledNotifications = onSchedule(
             check: fam.shareChecklist !== false, pantry: isMain || !!fam.shareShop, habit: true, goal: true, react: true, challenge: true,
             note: true, recipe: true};
           const mods = GN_MODULES.filter(k => shared[k] && gp[k] !== 'off');
+          const feedOn = shared.cal && gp.feed !== 'off'; // krmení (5.17): jen se sdíleným kalendářem
           const cur = (sentMap[gid] && typeof sentMap[gid] === 'object') ? sentMap[gid] : {};
           // Chybějící kurzor = start na „teď“: po nasazení ani novému členovi nepřijde stará historie
           for (const mode of GN_MODES) if (typeof cur[mode] !== 'number' || !Number.isFinite(cur[mode])) updates.push([gid, mode, upperMs]);
           const from = {};
           const modes = new Set(mods.map(k => gp[k]));
           if (gp.msInstant && (mods.includes('habit') || mods.includes('goal') || mods.includes('challenge'))) modes.add('instant'); // milníky hned
+          if (feedOn) modes.add('instant');
           for (const mode of modes) {
             const c = cur[mode];
             if (typeof c === 'number' && Number.isFinite(c)) from[mode] = Math.max(c, nowMs - GN_BACKLOG_MAX);
@@ -1743,7 +1814,7 @@ exports.sendScheduledNotifications = onSchedule(
           if (!due.length) continue;
           // „Hlásit i odškrtnuté“ jen u nákupu a checklistu; reakce jen adresátovi
           const wanted = (a) => typeof a.uid === 'string' && a.uid !== uid   // autor nedostane nic
-            && mods.includes(a.module)
+            && (gnIsFeed(a) ? feedOn && gnFeedWanted(a, gp, prof, nowMs) : mods.includes(a.module))
             && (a.action !== 'done' || !(a.module === 'shop' || a.module === 'check') || gp.notifyChecked)
             && (a.module !== 'react' || a.to === uid);
           const groupName = String(fam.groupName || tS(L, 'gn.groupDef')).slice(0, 30);
@@ -1754,8 +1825,12 @@ exports.sendScheduledNotifications = onSchedule(
             const list = await gnResolveComments(gid,
               acts.filter(a => a._ts > from[mode] && a._ts <= end && gnModeOf(a, gp) === mode && wanted(a)), uid);
             if (!list.length) continue;
+            // Krmení: každé zvlášť (tag připomínky), do souhrnů se nepočítá
+            for (const a of list.filter(gnIsFeed)) pushes.push(gnFeedPush(a, fam, L, prof.tz));
+            const rest0 = list.filter(a => !gnIsFeed(a));
+            if (!rest0.length) continue;
             const byModule = new Map();
-            for (const a of list) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
+            for (const a of rest0) { if (!byModule.has(a.module)) byModule.set(a.module, []); byModule.get(a.module).push(a); }
             if (mode === 'evening') {
               pushes.push([tS(L, 'gn.evening.t', {group: groupName}), gnEveningBody(byModule, L), `grp-${gid}-evening`, {data: {open: 'grpfeed', gid}, quiet: true}]);
             } else {
@@ -2078,6 +2153,45 @@ exports.sendScheduledNotifications = onSchedule(
                 r.t ? tS(L, 'task.b', {time: r.t}) : tS(L, 'task.am.b'),
                 `task-${id}`, {data: {open: 'tasks', id}, ttl: TTL_EVENT});
             } catch(e) { console.error(`[LP] úkol push uid=${uid}:`, e.message); }
+          }
+        }
+
+        // ── Krmení mazlíčka (5.17): index v profilu, 0 čtení navíc; dokument mazlíčka se čte jen ve splatný čas ──
+        const pf = prof.petFeed && typeof prof.petFeed === 'object' && !Array.isArray(prof.petFeed) ? prof.petFeed : null;
+        if (pf && ns.feed !== false && Array.isArray(prof.modules) && prof.modules.includes('pets')) {
+          const del = [], send = [];
+          const nowWall = `${today}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          for (const [pid, r] of Object.entries(pf).slice(0, FEED_IDX_MAX)) {
+            if (!pid) continue;                                   // prázdný klíč nejde přes FieldPath smazat
+            if (!FEED_PID_RE.test(pid) || !r || typeof r !== 'object') { del.push(pid); continue; }
+            const due = feedRemDue(r, zn);
+            if (!due) continue;                                   // takhle skončí skoro každý běh (0 čtení)
+            try {
+              let fam = null, snap;
+              if (r.g) {                                          // skupina: jen člen a se sdíleným kalendářem
+                if (typeof r.g !== 'string' || !GROUP_ID_RE.test(r.g)) { del.push(pid); continue; }
+                const fe = famEntry(r.g), fs = await fe.doc;
+                fam = fs.exists ? fs.data() : null;
+                if (!fam || !fam.members || !fam.members[uid] || !fam.shareCal) { del.push(pid); continue; }
+                snap = await lazy(fe, 'pet|' + pid, () => db.doc(`families/${r.g}/pets/${pid}`).get()); // 1 čtení na skupinu a běh
+              } else snap = await db.doc(`users/${uid}/pets/${pid}`).get();
+              if (!snap.exists) { del.push(pid); continue; }
+              const pd = snap.data() || {}, kind = feedRemCheck(pd, uid, due, nowWall, fam);
+              if (!kind) continue;
+              const pet = String(pd.name || '').slice(0, 40).trim() || tS(L, 'gn.someone');
+              const v = {pet, slot: tS(L, 'feed.slot.' + feedSlotKeyS(due.time)), time: due.time};
+              send.push([tS(L, 'feed.rem.t', v), tS(L, kind === 'with' ? 'feed.rem.bWith' : kind === 'grp' ? 'feed.rem.bGrp' : 'feed.rem.b', v),
+                `feed-${pid}-${due.day}-${due.s}`, {data: {open: 'pets', id: pid}, ttl: TTL_FEED}]);
+            } catch(e) { console.error(`[LP] krmení uid=${uid}:`, e.code || e.message); }
+          }
+          if (del.length) {
+            // Neplatné záznamy (smazaný mazlíček, odchod ze skupiny, zrušené sdílení kalendáře) pryč; chyba zápisu pushe neblokuje
+            try { await db.doc(`users/${uid}/profile/main`).update(...del.flatMap(id => [new FieldPath('petFeed', id), FieldValue.delete()])); }
+            catch(e) { console.error(`[LP] petFeed uid=${uid}:`, e.message); }
+          }
+          for (const [title, body, tag, opt] of send) {
+            try { await push(title, body, tag, opt); }
+            catch(e) { console.error(`[LP] krmení push uid=${uid}:`, e.message); }
           }
         }
 
