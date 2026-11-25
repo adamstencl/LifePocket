@@ -218,3 +218,13 @@
 - `CAL_TK='_tk'`: odmítat vlastní typy událostí začínající `_`.
 - `parseBolt11`: podpis a `h` se neověřují (dělá peněženka) – zapsat do komentáře.
 - Ověřit na telefonu CORS na bitcoli.com (jinak vždy fallback na adresu).
+
+## Z 5.17 (krmení mazlíčka)
+- Oprava zastaralého indexu petFeed proběhne až v nejbližším starém čase (nejpozději 24 h) – nové dřívější časy mezitím nepřipomenou.
+- Karta Domů: max. 3 řádky, se 4 mazlíčky nemají všichni 🍖; řazení podle splatnosti.
+- „Mám u sebe“ se ve feedu skupiny ukazuje jako „Změněná událost …“ (cal/edit) – vlastní text.
+- Smazání vlastního záznamu krmení nevezme zpět už odeslané potvrzení.
+- Nakrmeno u mazlíčka smazaného jinde: obecná hláška + šum v errorLogs.
+- Kosmetika: „✓ ty · 00:40“ s malým písmenem.
+- Zpět u krmení nemusí stihnout zrušit aktivitu při druhém krmení ve slotu do 20 s.
+- Pravidla: validace tvaru `feed`/`with` v families/*/pets při příštím nasazení pravidel.
