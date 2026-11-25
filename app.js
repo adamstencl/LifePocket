@@ -20501,7 +20501,8 @@ function petNorm(r, id, gid) {
   const w = r.with && typeof r.with === 'object' && typeof r.with.uid === 'string' && r.with.uid && r.with.uid.length <= 128
     && (r.with.until === null || r.with.until === undefined || isDS(r.with.until))
     ? {uid: r.with.uid, n: petStr(r.with.n, 40), g: r.with.g === 'f' ? 'f' : '', until: isDS(r.with.until) ? r.with.until : null, at: Number.isFinite(r.with.at) ? r.with.at : 0} : null;
-  return {id, _gid: gid || null, _noFeed: !('feed' in r), feed, with: w, name: petStr(r.name, 40) || t('pet.kind.' + kind), kind, emoji: ems.includes(r.emoji) ? r.emoji : ems[0],
+  // _noTimes = feed je, ale bez times (offline arrayUnion do dokumentu bez feed) → časy doplní petFeedMemo z paměti / indexu
+  return {id, _gid: gid || null, _noFeed: !('feed' in r), _noTimes: 'feed' in r && !Array.isArray(fd.times), feed, with: w, name: petStr(r.name, 40) || t('pet.kind.' + kind), kind, emoji: ems.includes(r.emoji) ? r.emoji : ems[0],
     breed: petStr(r.breed, 60), birth: isDS(r.birth) ? r.birth : '', weight: petNum(r.weight, 0.05, 150), weightAt: isDS(r.weightAt) ? r.weightAt : null,
     chip: petStr(r.chip, 20), vet: {name: petStr(v.name, 80), phone: petStr(v.phone, 80), addr: petStr(v.addr, 80)},
     allergies: petStr(r.allergies, 200), notes: petStr(r.notes, 1000), care, log, food,
@@ -21233,6 +21234,12 @@ function feedSlot(times, hm) {
   for(let i = 0; i < times.length - 1; i++) if((feedMin(times[i]) + feedMin(times[i + 1])) / 2 > n) return i;
   return times.length - 1;
 }
+// Den a slot krmení: po půlnoci do půlky mezi posledním a prvním časem (+24 h) patří k poslednímu slotu včera (feedKeyS na serveru)
+function feedKey(times, d, hm) {
+  const n = feedMin(hm), k = times.length;
+  if(k > 1 && n < (feedMin(times[k - 1]) + feedMin(times[0]) + 1440) / 2 - 1440) return {d: addDays(d, -1), s: k - 1};
+  return {d, s: feedSlot(times, hm)};
+}
 // Název slotu podle času (jen text): do 10:59 ráno, do 13:59 poledne, do 16:59 odpoledne, pak večer
 const feedSlotKey = hm => { const m = feedMin(hm); return m < 660 ? 'am' : m < 840 ? 'noon' : m < 1020 ? 'pm' : 'eve'; };
 const feedSlotName = hm => t('pet.feed.slot.' + feedSlotKey(hm));
@@ -21240,12 +21247,15 @@ const feedAt = l => new Date(l.d + 'T' + l.t + ':00').getTime(); // místní ča
 // Ořez: posledních 14 dní a nejvýš 80 záznamů
 function feedPrune(log, today = toDS()) { const from = addDays(today, -(PET_FEED_DAYS - 1)); return log.filter(l => l.d >= from).slice(-PET_FEED_LOG); }
 // Záznamy dne ve slotu s (slot podle času záznamu a nynějších časů krmení)
-const feedInSlot = (p, ds, s) => p.feed.log.filter(l => l.d === ds && feedSlot(p.feed.times, l.t) === s);
+const feedInSlot = (p, ds, s) => p.feed.log.filter(l => { const k = feedKey(p.feed.times, l.d, l.t); return k.d === ds && k.s === s; });
 // „Opravdu znovu?“: dnes záznam ve stejném slotu, nebo kdykoli méně než 60 min od času krmení. Vrací poslední takový záznam.
 function feedClash(p, at = new Date(), log = p.feed.log) {
-  const ds = toDS(at), s = feedSlot(p.feed.times, feedHM(at)), ms = at.getTime();
+  const c = feedKey(p.feed.times, toDS(at), feedHM(at)), ms = at.getTime();
   let hit = null;
-  for(const l of log) if((s >= 0 && l.d === ds && feedSlot(p.feed.times, l.t) === s) || Math.abs(ms - feedAt(l)) < 3600000) hit = l;
+  for(const l of log) {
+    const k = feedKey(p.feed.times, l.d, l.t);
+    if((c.s >= 0 && k.d === c.d && k.s === c.s) || Math.abs(ms - feedAt(l)) < 3600000) hit = l;
+  }
   return hit;
 }
 // „U koho je“ platí do konce dne until (null = bez konce) a jen pro člena skupiny (nenačtená skupina = platí)
@@ -21280,15 +21290,18 @@ const petFeedHealTimes = p => { const m = _petFeedMem.get(p.id); return m?.times
 // Starší verze (5.16) při sdílení / vrácení / Zpět po smazání zapíše dokument bez feed → vrátit časy a historii, pokud pole pořád chybí
 function petFeedMemo(list) {
   for(const p of list) {
-    if(!p._noFeed) { if(p.feed.times.length || p.feed.log.length) _petFeedMem.set(p.id, {times: p.feed.times, log: p.feed.log}); continue; }
-    const times = petFeedHealTimes(p), log = feedPrune(_petFeedMem.get(p.id)?.log || []);
+    if(!p._noFeed && !p._noTimes) { if(p.feed.times.length || p.feed.log.length) _petFeedMem.set(p.id, {times: p.feed.times, log: p.feed.log}); continue; }
+    const times = petFeedHealTimes(p), log = p._noFeed ? feedPrune(_petFeedMem.get(p.id)?.log || []) : [];
     if((!times.length && !log.length) || _petFeedHealed.has(p.id) || !CU || navigator.onLine === false) continue;
     _petFeedHealed.add(p.id);
     const ref = petRef(p);
     runTransaction(db, async tx => {
       const s = await tx.get(ref);
-      if(!s.exists() || 'feed' in s.data()) return;
-      tx.update(ref, {feed: {times, log, upd: Date.now()}});
+      if(!s.exists()) return;
+      const fd = s.data().feed;
+      if(fd === undefined) tx.update(ref, {feed: {times, log, upd: Date.now()}});
+      // feed bez times: doplnit jen časy, historie v dokumentu zůstává
+      else if(fd && typeof fd === 'object' && !Array.isArray(fd.times) && times.length) tx.update(ref, {'feed.times': times, 'feed.upd': Date.now()});
     }).catch(e => console.warn('[LP] petFeed heal:', e?.code || e?.name));
   }
 }
@@ -21305,7 +21318,7 @@ function petFeedSync() {
   if(hasMod('pets')) {
     if(!_petsReady || gids.some(g => !petGrp[g]?.ready && !petGrp[g]?.err)) return; // data se ještě načítají
     for(const p of allPets()) {
-      if(p._noFeed) { if(map[p.id]) keep.add(p.id); continue; } // čeká na opravu (petFeedMemo), index nechat
+      if(p._noFeed || p._noTimes) { if(map[p.id]) keep.add(p.id); continue; } // čeká na opravu (petFeedMemo), index nechat
       if(!p.feed.times.length || (p._gid && !groupModShared(p._gid, 'cal'))) continue;
       if(Object.keys(want).length >= PET_FEED_IDX) break;
       want[p.id] = {g: p._gid || '', t: [...p.feed.times], on: map[p.id]?.on !== false};
@@ -21355,7 +21368,8 @@ async function petFeedWrite(p, entry, force) {
       if(!force) { const r = feedClash({...p, feed: {times, log}}, at, log.filter(l => !known.has(l.id))); if(r) return {race: r}; }
       const nl = feedPrune(feedSort([...feedRm(log, entry.id), entry]));
       // Pole feed chybí (přesun starší verzí): s časy z paměti / indexu, ať se oprava neztratí
-      tx.update(ref, 'feed' in d ? {'feed.log': nl} : {feed: {times: petFeedHealTimes(p), log: nl, upd: Date.now()}});
+      const ht = 'feed' in d && !Array.isArray(d.feed?.times) ? petFeedHealTimes(p) : [];
+      tx.update(ref, !('feed' in d) ? {feed: {times: petFeedHealTimes(p), log: nl, upd: Date.now()}} : ht.length ? {'feed.log': nl, 'feed.times': ht} : {'feed.log': nl});
       return {ok: true};
     }, {maxAttempts: 3});
   } catch(e) { return clIsOffline(e) ? offline() : {err: e}; }
@@ -21385,7 +21399,7 @@ window.petFeed = async (id, hm) => {
   let p = petFind(id);
   if(!CU || !p) return;
   const tm = feedHM(at);
-  const entry = {id: genId(), d: toDS(at), t: tm, s: Math.max(0, feedSlot(p.feed.times, tm)), by: CU.uid,
+  const entry = {id: genId(), d: toDS(at), t: tm, s: Math.max(0, feedKey(p.feed.times, toDS(at), tm).s), by: CU.uid,
     n: petMyName(p._gid), g: prof?.gender === 'f' ? 'f' : ''};
   let r = await petFeedWrite(p, entry, false);
   if(r.race) {
@@ -21397,13 +21411,14 @@ window.petFeed = async (id, hm) => {
   if(r.ok) petFeedDone(p, entry, r.offline);
 };
 function petFeedDone(p, entry, offline) {
-  const w = petWithOk(p), title = gaTitle(p.name);
-  // :w = krmil ten, u koho mazlíček je → ostatním se potvrzení nepushuje
-  const ref = 'feed:' + p.id + ':' + entry.d + ':' + entry.s + (w && w.uid === CU.uid ? ':w' : '');
-  if(p._gid) logGroupActivity(p._gid, 'cal', 'done', title, 1, {ref});
+  const w = petWithOk(p), title = gaTitle(p.name), k = feedKey(p.feed.times, entry.d, entry.t);
+  // :w = krmil ten, u koho mazlíček je → ostatním se potvrzení nepushuje; :o = je u jiného člena (to) → při „Jen místo
+  // připomínky“ potvrzení jen jemu. Den podle slotu (po půlnoci večer včera) = tag připomínky na serveru.
+  const ref = 'feed:' + p.id + ':' + k.d + ':' + entry.s + (w ? (w.uid === CU.uid ? ':w' : ':o') : ''), x = w && w.uid !== CU.uid ? {ref, to: w.uid} : {ref};
+  if(p._gid) logGroupActivity(p._gid, 'cal', 'done', title, 1, x);
   try { navigator.vibrate?.(15); } catch(e) {}
   undoNote(t('pet.feed.toast', {name: p.name, time: entry.t}) + (offline ? ' ' + t('pet.feed.offline') : ''), () => {
-    if(p._gid) unlogGroupActivity(p._gid, 'cal', 'done', title, {ref});
+    if(p._gid) unlogGroupActivity(p._gid, 'cal', 'done', title, x);
     toast(t('pet.feed.undone'));
     return petFeedRemove(petFind(p.id) || p, entry);
   }, 6000);
@@ -21520,7 +21535,7 @@ window.petWithOpen = async id => {
   const w = petWithOk(p);
   if(w && w.uid !== CU.uid && !(await lpConfirm(t('pet.with.takeQ', {name: p.name, who: feedWho(p, {by: w.uid, n: w.n})})))) return;
   if(!petFind(id)) return;
-  const today = toDS(), sun = addDays(today, (7 - new Date(today + 'T12:00:00').getDay()) % 7);
+  const today = toDS(), sun = petSunday(today);
   const opt = (v, lbl, chk) => '<label class="pet-check"><input type="radio" name="pw-k" value="' + v + '"' + (chk ? ' checked' : '') + '> ' + lbl + '</label>';
   const inner = '<div class="mtitle"><span aria-hidden="true">' + esc(p.emoji) + '</span> ' + tH('pet.with.sheetT', {name: p.name}) + '</div>'
     + '<div role="radiogroup" aria-label="' + tH('pet.with.sheetT', {name: p.name}) + '">'
@@ -21533,13 +21548,16 @@ window.petWithOpen = async id => {
   const m = petSheet('m-petwith', inner, t('pet.with.sheetT', {name: p.name}));
   m.dataset.pid = p.id; m.dataset.sun = sun;
 };
+// Nejbližší neděle (v neděli dnešek)
+function petSunday(ds) { return addDays(ds, (7 - new Date(ds + 'T12:00:00').getDay()) % 7); }
 window.petWithDate = () => { const r = document.querySelector('#m-petwith input[value="date"]'); if(r) r.checked = true; };
 window.petWithSave = () => {
   const m = document.getElementById('m-petwith'), p = petFind(m?.dataset.pid || '');
   if(!CU || !p || !petWithShow(p)) { petClose('m-petwith'); return; }
   const k = document.querySelector('#m-petwith input[name="pw-k"]:checked')?.value, today = toDS();
   let until = null;
-  if(k === 'sun') until = m.dataset.sun;
+  // Neděle spočítaná při otevření: list otevřený přes půlnoc z neděle → příští neděle
+  if(k === 'sun') until = isDS(m.dataset.sun) && m.dataset.sun >= today ? m.dataset.sun : petSunday(today);
   else if(k === 'date') {
     until = petVal('pw-date');
     if(!isDS(until) || until < today || until > addDays(today, 60)) { toast(t('pet.with.dateBad')); document.getElementById('pw-date')?.focus(); return; }
@@ -21561,7 +21579,7 @@ window.petWithBack = id => {
 // ── Sekce Krmení na stránce mazlíčka ──
 function petFeedSecHTML(p) {
   const now = new Date(), today = toDS(now), times = p.feed.times, simple = isSimple(), id = esc(p.id);
-  const cur = feedSlot(times, feedHM(now)), curFed = cur >= 0 && feedInSlot(p, today, cur).length > 0;
+  const ck = feedKey(times, today, feedHM(now)), cur = ck.d === today ? ck.s : -1, curFed = ck.s >= 0 && feedInSlot(p, ck.d, ck.s).length > 0;
   let h = '<div class="pet-sec pet-feed"><div class="pet-feed-head"><div class="dw-title">' + tH('pet.feed.t') + '</div>'
     + (times.length ? '<button type="button" class="pet-feed-set" data-a0="' + id + '" aria-label="' + tH('pet.feed.setAria', {name: p.name}) + '" onclick="petFeedEdit(this.dataset.a0)">' + tH('pet.feed.perDay', {n: times.length}) + ' <span aria-hidden="true">›</span></button>' : '') + '</div>';
   if(times.length) {
@@ -21608,7 +21626,7 @@ function petFeedWeekHTML(p) {
   for(let i = 0; i < 7; i++) {
     const ds = addDays(today, -i), dl = p.feed.log.filter(l => l.d === ds);
     h += '<tr><th scope="row">' + esc(i ? fmtDate(ds, 'wShortDm') : t('gf.today')) + '</th>' + cols.map((tm, s) => {
-      const ls = tm ? dl.filter(l => feedSlot(times, l.t) === s) : dl;
+      const ls = tm ? feedInSlot(p, ds, s) : dl;
       if(!ls.length) {
         const missed = !!tm && (i > 0 || feedMin(tm) + 60 < nowM);
         return '<td class="pet-feed-c pet-feed-c--none"><span aria-hidden="true">' + (missed ? '–' : '·') + '</span><span class="sr-only">' + tH(missed ? 'pet.feed.missed' : 'pet.feed.notYet') + '</span></td>';
@@ -21626,7 +21644,7 @@ function petFeedDashRows(all) {
   for(const p of all) {
     const times = p.feed.times, tl = p.feed.log.filter(l => l.d === today);
     if(!times.length && !tl.length) continue;
-    const cur = feedSlot(times, hm), ls = cur >= 0 ? feedInSlot(p, today, cur) : tl, last = ls[ls.length - 1];
+    const ck = feedKey(times, today, hm), cur = ck.s, ls = cur >= 0 ? feedInSlot(p, ck.d, cur) : tl, last = ls[ls.length - 1];
     const slot = cur >= 0 ? feedSlotName(times[cur]).toLocaleLowerCase(LOCALE) : '';
     rows.push({p, feed: true, due: !last && cur >= 0, txt: last ? '✓ ' + (slot ? slot + ' ' : '') + feedWho(p, last) + ' ' + last.t : t('pet.feed.dashNot', {slot})});
   }

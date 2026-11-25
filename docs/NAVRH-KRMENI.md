@@ -153,8 +153,10 @@ klepnutí 🍖 Nakrmeno
          – jinak přidat, ořezat (§2.1), tx.update({'feed.log': …, updatedAt})
        offline: updateDoc s arrayUnion(entry) (jako petDoneWrite), kontrola jen proti lokálnímu logu
   ├─ toast s Zpět (undoNote, 6 s): „🍖 Bára nakrmená v 7:40“  [Zpět]
-  ├─ ve skupině: logGroupActivity(gid, 'cal', 'done', gaTitle(p.name), 1, {ref: 'feed:<petId>:<d>:<s>[:w]'})
-  │    (:w = krmil ten, u koho mazlíček je → ostatním se nic nepushuje, §4.4)
+  ├─ ve skupině: logGroupActivity(gid, 'cal', 'done', gaTitle(p.name), 1, {ref: 'feed:<petId>:<d>:<s>[:w|:o]'[, to]})
+  │    (:w = krmil ten, u koho mazlíček je → ostatním se nic nepushuje, §4.4;
+  │     :o + to = mazlíček je u jiného člena → při „Jen místo připomínky“ potvrzení jen jemu;
+  │     <d> = den slotu: krmení po půlnoci do půlky k prvnímu času = poslední slot včera, feedKey/feedKeyS)
   └─ haptika navigator.vibrate?.(15) jako u odškrtnutí návyku
 ```
 
@@ -224,9 +226,10 @@ Pozn. ke skloňování jména v titulku („nakrmit Báru“): jméno mazlíčka
 Nová preference v `groupNotif`: `feed: 'rem' | 'instant' | 'off'`, výchozí **`'rem'`** (klient `GROUP_NOTIF_DEFAULTS` i server stejně).
 
 V `groupNotifs`:
-- `gnIsFeed(a) = a.module === 'cal' && a.action === 'done' && /^feed:[A-Za-z0-9_-]{1,40}:\d{4}-\d{2}-\d{2}:[0-3](:w)?$/.test(a.ref)`.
+- `gnIsFeed(a) = a.module === 'cal' && a.action === 'done' && /^feed:[A-Za-z0-9_-]{1,40}:\d{4}-\d{2}-\d{2}:[0-3](:w|:o)?$/.test(a.ref)`.
 - `gnModeOf`: pro `gnIsFeed` vrací `'instant'`, pokud `gp.feed !== 'off'`, jinak `'off'` (nezávisle na nastavení Kalendáře).
-- `wanted`: feed akce se ':w' (krmil držitel) nikomu; při `gp.feed === 'rem'` jen tomu, kdo má v `prof.petFeed[pid]` `on` a čas slotu `s` už dnes minul (tj. připomínka mu odešla nebo měla odejít). Rozhoduje se jen z načteného profilu, 0 čtení.
+- `wanted`: feed akce se ':w' (krmil držitel) nikomu; při `gp.feed === 'rem'` jen tomu, kdo má v `prof.petFeed[pid]` `on` a čas slotu `s` už dnes minul (tj. připomínka mu odešla nebo měla odejít). U ':o' jen držiteli (`a.to`). Rozhoduje se jen z načteného profilu, 0 čtení. Feed se ve skupině vyhodnocuje jen s modulem Mazlíček a u 'rem' jen s indexem `on` z této skupiny.
+- Zastaralý index (časy změnil jiný člen): ve starém čase server dokument stejně čte → přepíše `petFeed.<id>.t` podle dokumentu (chybí nejvýš jedna připomínka, oprava nejpozději do 24 h, v nejbližším starém čase).
 - Odeslání zvlášť (jako milníky): titulek „🍖 Bára je nakrmená“, text „Jana nakrmila v 7:40“ (čas z ref slotu nestačí → čas vezme z `ts` aktivity v zóně příjemce), **tag `feed-<pid>-<d>-<s>`** = stejný jako připomínka, `quiet: true`. Připomínka na zamknuté obrazovce se tak tiše přepíše na „už je hotovo“ a nezvoní znovu.
 - Večerní souhrn feed akce nepočítá (krmení je rutina, souhrn by zahltilo).
 - Noční klid platí (jako u všech „Hned“ ze skupiny).
