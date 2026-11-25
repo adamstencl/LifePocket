@@ -228,3 +228,9 @@
 - Kosmetika: „✓ ty · 00:40“ s malým písmenem.
 - Zpět u krmení nemusí stihnout zrušit aktivitu při druhém krmení ve slotu do 20 s.
 - Pravidla: validace tvaru `feed`/`with` v families/*/pets při příštím nasazení pravidel.
+
+## Z 5.17.1 (výkon)
+- Další zrychlení: self-hosting fontů (~−1 s), Firestore až po přihlášení přes import() (~−0,5 s), rozdělení app.js na moduly na vyžádání (největší páka, riziko).
+- Firebase SDK do lp-cdn-v1 při instalaci SW (offline start nepřihlášeného po první návštěvě).
+- Rychlý start: klik na e-mail/heslo před načtením app.js zařadit do fronty.
+- sw.js firstInstall(): otevřít cache až po úspěšném stažení / kontrolovat prázdnou cache.
