@@ -209,3 +209,12 @@
 - (tester) Přepínače v Nastavení se neobnoví při změně z jiného zařízení.
 - (tester) `img/shot-*.webp` nejsou v OFFLINE_URLS (landing offline bez obrázků).
 - (tester) EN terminologie: „Budget“ / „companion“ / „buddy“ sjednotit.
+
+## Z 5.16.1 (Lightning faktura, úkoly v nadcházejících)
+- `openSupportLn`: po přepnutí částky během načítání otevře fakturu na starou částku – kontrolovat `supLnKey()` před otevřením.
+- `openSupportLn`: opakované klepnutí během načítání volá `location.href` vícekrát – příznak „čekám na otevření“.
+- `lnFetchJson`: zvážit `redirect:'error'` (pozor na přesměrování v rámci bitcoli.com).
+- `refreshSupportLn`: mazat cache jen když `supLnInv.get(key)===p`.
+- `CAL_TK='_tk'`: odmítat vlastní typy událostí začínající `_`.
+- `parseBolt11`: podpis a `h` se neověřují (dělá peněženka) – zapsat do komentáře.
+- Ověřit na telefonu CORS na bitcoli.com (jinak vždy fallback na adresu).
