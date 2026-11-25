@@ -70,12 +70,12 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v122';
+const CACHE = 'lifepocket-v123';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
 const OFFLINE_URLS = [
-  '/',
+  // '/' ne (5.17.1): navigaci bez zásahu v cache obslouží '/index.html' (fetch níže), dřív se stahovala dvakrát
   '/index.html',
   '/app.js',
   '/i18n.js',
@@ -87,10 +87,9 @@ const OFFLINE_URLS = [
   '/style.css',
   '/pwa.js', // instalace a banner iOS (4.93)
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-192.png',
-  '/icon-maskable-512.png',
+  '/icon-192.png', // splash smazaného účtu, notifikace
+  '/icon-maskable-192.png', // ikona na ploše iOS
+  // icon-512 a maskable-512 (600 kB) ne (5.17.1): stránka je nepoužívá, prohlížeč si je při instalaci stáhne sám
   '/img/app-icon.jpg', // ikona na úvodní stránce
   '/img/ln-qr.jpg',    // QR v Nastavení (dřív base64 v index.html)
   // Snímky na úvodní stránce (cs + en, ~200 kB), ať landing offline nemá prázdná místa
@@ -102,9 +101,23 @@ const OFFLINE_URLS = [
   '/img/shot-habits-en.webp'
 ];
 
+// První instalace (5.17.1): offline cache až po načtení stránky (zpráva LP_PRECACHE z index.html, nejdéle 30 s),
+// jinak by na pomalé síti stahování ~1,5 MB brzdilo app.js a landing by byl ovladatelný o několik sekund později
+const PRECACHE_WAIT = 30000;
+let precacheGo = null;
+const precacheGate = new Promise(r => { precacheGo = r; });
+self.addEventListener('message', e => { if (e.data && e.data.type === 'LP_PRECACHE') precacheGo(); });
+function firstInstall() {
+  return caches.keys().then(keys => !keys.some(k => k.startsWith('lifepocket-v'))).catch(() => false);
+}
+
 self.addEventListener('install', e => {
-  // cache:'reload' (4.84): nová verze nesmí do offline cache převzít starý soubor z HTTP cache prohlížeče
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS.map(u => new Request(u, {cache: 'reload'})))));
+  // cache:'no-cache' (5.17.1, dřív 'reload' ze 4.84): vždy ověřit u serveru, takže nová verze nepřevezme starý soubor,
+  // ale nezměněný soubor, který stránka právě stáhla, se vezme z HTTP cache (304) a nestahuje se podruhé
+  e.waitUntil(firstInstall()
+    .then(first => first && Promise.race([precacheGate, new Promise(r => setTimeout(r, PRECACHE_WAIT))]))
+    .then(() => caches.open(CACHE))
+    .then(c => c.addAll(OFFLINE_URLS.map(u => new Request(u, {cache: 'no-cache'})))));
   self.skipWaiting();
 });
 

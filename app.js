@@ -68,8 +68,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.17';
+const APP_VERSION = '5.17.1';
 const CHANGELOG = [
+  { v:'5.17.1', items:[
+    '⚡ Rychlejší první spuštění: na pomalém připojení se dá přihlásit a registrovat o několik sekund dřív'
+  ], en:[
+    '⚡ Faster first start: on a slow connection you can sign in or sign up several seconds sooner'
+  ]},
   { v:'5.17', items:[
     '🍖 Krmení mazlíčka: tlačítko Nakrmeno u mazlíčka i na Domů, celá rodina hned vidí, kdo a kdy krmil',
     '⏰ Nastav, kolikrát denně krmíte, a appka připomene – jen když ještě nikdo nenakrmil',
@@ -10313,7 +10318,7 @@ async function drawShareCard(spec){
   const g=c.createRadialGradient(900,140,0,900,140,520); g.addColorStop(0,'rgba(245,200,66,.16)'); g.addColorStop(1,'rgba(245,200,66,0)');
   c.fillStyle=g; c.fillRect(0,0,SC_W,SC_H);
   // Hlavička: logo (stejný origin → canvas zůstane čistý), název, rozsah nebo datum
-  try{ const img=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src='icon-512.png'; });
+  try{ const img=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src='img/app-icon.jpg'; }); // offline cache (icon-512 v ní od 5.17.1 není)
     c.save(); scRound(c,80,80,72,72,16); c.clip(); c.drawImage(img,80,80,72,72); c.restore(); }catch(e){}
   c.textBaseline='middle';
   const lg=c.createLinearGradient(172,0,460,0); lg.addColorStop(0,SC.gold); lg.addColorStop(1,SC.gold2);
