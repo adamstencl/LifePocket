@@ -68,8 +68,13 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.16';
+const APP_VERSION = '5.16.1';
 const CHANGELOG = [
+  { v:'5.16.1', items:[
+    '⚡ Lightning: peněženka se otevře rovnou s vybranou částkou'
+  ], en:[
+    '⚡ Lightning: your wallet now opens with the selected amount already filled in'
+  ]},
   { v:'5.16', items:[
     '📤 Pozvání do skupiny je jednodušší: velké tlačítko Poslat pozvánku a nově i QR kód k naskenování',
     '👋 Pozvánka ukáže, co se ve skupině sdílí a co zůstane jen tvoje. Po připojení se zapnou sdílené moduly a appka tě do nich rovnou vezme',
@@ -11986,10 +11991,137 @@ const LN_ADDRESS='fancifulskirt54@bitcoli.com';
 const LN_ADDR_RE=/^[a-z0-9._-]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i;
 let supLnAddr=LN_ADDRESS;
 function renderSupportLnAddr(){
-  const a=document.getElementById('support-ln-open'), el=document.getElementById('support-ln-addr');
-  if(a) a.href='lightning:'+supLnAddr;
+  const el=document.getElementById('support-ln-addr');
   if(el) el.textContent=supLnAddr;
+  renderSupportLnInv();
 }
+// ── LNURL-pay (LUD-06/16): faktura na vybranou částku, aby peněženka nenabízela 1 sat ──
+// Jen povolené domény (žádné libovolné z support.json). Bez osobních dat: credentials omit, bez referreru.
+// Faktura vzniká až při výběru částky (debounce) nebo klepnutí na „Otevřít v peněžence“, cache per částka 5 min.
+// Jakákoli chyba = dnešní chování: lightning:adresa + statický QR a nápověda s částkou v sats.
+const LN_ALLOWED_DOMAINS=['bitcoli.com'];
+const LN_INV_TTL=300000, LN_FETCH_MS=6000, LN_GESTURE_MS=4500;
+const supLnInv=new Map(); // `${adresa}|${sats}` → {pr,sats,exp,expAt} nebo Promise při načítání
+let supLnPay=null; // {addr,t,j}: odpověď payRequest (5 min)
+let supLnTimer=0, supLnFailed=false;
+const lnDomainOk=h=>LN_ALLOWED_DOMAINS.some(d=>h===d||h.endsWith('.'+d));
+async function lnFetchJson(url){
+  const ac=typeof AbortController==='function'?new AbortController():null;
+  const tm=setTimeout(()=>ac?.abort(),LN_FETCH_MS);
+  try{
+    const r=await fetch(url,{signal:ac?.signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',headers:{Accept:'application/json'}});
+    if(!r.ok) throw new Error('http '+r.status);
+    if(r.url&&!lnDomainOk(new URL(r.url).hostname)) throw new Error('redirect'); // přesměrování mimo povolenou doménu
+    const j=await r.json();
+    if(!j||typeof j!=='object'||String(j.status).toUpperCase()==='ERROR') throw new Error('lnurl error');
+    return j;
+  }finally{ clearTimeout(tm); }
+}
+// BOLT11: částka z HRP (lnbc<číslo><m|u|n|p>) v msat a expirace (timestamp + pole x, výchozí 3600 s).
+// Jen základní kontrola bez ověření podpisu; nečitelná expirace = null.
+const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function parseBolt11(pr){
+  const s=String(pr||'').toLowerCase(), sep=s.lastIndexOf('1');
+  if(s.length<100||s.length>2000||sep<4||!/^ln(bc|tbs|tb)/.test(s)) return null;
+  const m=/^ln(bc|tbs|tb)(\d*)([munp]?)$/.exec(s.slice(0,sep));
+  if(!m||(m[3]&&!m[2])) return null;
+  const MUL={'':1e11,m:1e8,u:1e5,n:100,p:0.1};
+  const msat=m[2]?Math.round(Number(m[2])*MUL[m[3]]*10)/10:null;
+  if(m[2]&&!Number.isSafeInteger(msat)) return null;
+  const d=[...s.slice(sep+1)].map(c=>BECH32.indexOf(c));
+  if(d.length<7+104+6||d.some(v=>v<0)) return null;
+  let ts=0; for(let i=0;i<7;i++) ts=ts*32+d[i];
+  let exp=3600;
+  for(let i=7,end=d.length-110;i+3<=end;){
+    const type=d[i], len=d[i+1]*32+d[i+2]; i+=3;
+    if(i+len>end) break;
+    if(type===6){ let x=0; for(let k=0;k<len;k++) x=x*32+d[i+k]; exp=x; } // pole x
+    i+=len;
+  }
+  return {msat,expAt:ts>0?(ts+exp)*1000:null};
+}
+async function lnFetchInvoice(addr,sats){
+  const [user,domain]=addr.toLowerCase().split('@');
+  if(!user||!domain||!lnDomainOk(domain)) throw new Error('domain');
+  if(!(supLnPay&&supLnPay.addr===addr&&Date.now()-supLnPay.t<LN_INV_TTL))
+    supLnPay={addr,t:Date.now(),j:await lnFetchJson('https://'+domain+'/.well-known/lnurlp/'+encodeURIComponent(user))};
+  const j=supLnPay.j;
+  const min=Number(j.minSendable), max=Number(j.maxSendable);
+  if(j.tag!=='payRequest'||typeof j.callback!=='string'||typeof j.metadata!=='string'||!(min>0)||!(max>=min)){ supLnPay=null; throw new Error('payRequest'); }
+  const cb=new URL(j.callback);
+  if(cb.protocol!=='https:'||!lnDomainOk(cb.hostname)){ supLnPay=null; throw new Error('callback'); }
+  let msat=sats*1000;
+  if(msat<min) msat=Math.ceil(min/1000)*1000;
+  if(msat>max) msat=Math.floor(max/1000)*1000;
+  if(msat<min||msat>max) throw new Error('range');
+  cb.searchParams.set('amount',String(msat)); // existující query v callbacku zůstane
+  const r=await lnFetchJson(cb.href);
+  const pr=typeof r.pr==='string'?r.pr.trim():'';
+  const b=parseBolt11(pr);
+  if(!b||!/^ln(bc|tb)/i.test(pr)) throw new Error('pr');
+  if(b.msat!==null&&b.msat!==msat) throw new Error('amount');
+  const exp=Math.min(Date.now()+LN_INV_TTL,b.expAt||Infinity);
+  if(exp-Date.now()<60000) throw new Error('expired');
+  return {pr,sats:msat/1000,exp,expAt:b.expAt};
+}
+const supLnKey=()=>supLnAddr+'|'+czkToSats(supLnAmt);
+function supLnCached(){
+  const v=supLnInv.get(supLnKey());
+  return v&&!(v instanceof Promise)&&v.exp-Date.now()>30000?v:null;
+}
+// Platná faktura pro aktuální částku (nebo null); souběžné dotazy na stejnou částku sdílí jeden požadavek
+function supLnEnsure(){
+  const sats=czkToSats(supLnAmt), key=supLnKey();
+  if(!(sats>0)||IS_TWA||navigator.onLine===false){ supLnFailed=sats>0; renderSupportLnInv(); return Promise.resolve(null); }
+  const hit=supLnCached(); if(hit) return Promise.resolve(hit);
+  const cur=supLnInv.get(key); if(cur instanceof Promise) return cur;
+  const p=lnFetchInvoice(supLnAddr,sats)
+    .then(v=>{ supLnInv.set(key,v); if(key===supLnKey()) supLnFailed=false; return v; })
+    .catch(()=>{ supLnInv.delete(key); if(key===supLnKey()) supLnFailed=true; return null; }) // detail chyby se neloguje
+    .finally(()=>renderSupportLnInv());
+  supLnInv.set(key,p);
+  renderSupportLnInv();
+  return p;
+}
+// Odkaz, QR a info podle faktury v cache; bez ní adresa + statický QR
+function renderSupportLnInv(){
+  const a=document.getElementById('support-ln-open'); if(!a) return;
+  const img=document.getElementById('support-ln-qrimg'), box=document.getElementById('support-ln-inv');
+  const info=document.getElementById('support-ln-info'), it=document.getElementById('support-ln-info-t'), rb=document.getElementById('support-ln-refresh');
+  const inv=btcCzk>0?supLnCached():null, loading=btcCzk>0&&supLnInv.get(supLnKey()) instanceof Promise;
+  a.href='lightning:'+(inv?inv.pr:supLnAddr);
+  const svg=inv?qrSvg(inv.pr,180):''; // nevejde-li se faktura do QR, zůstane statický obrázek adresy
+  if(box){ box.innerHTML=svg; box.hidden=!svg; box.querySelector('svg')?.setAttribute('aria-label',t('set.support.lnInvAlt',{sats:fmtNum(inv?.sats||0)})); }
+  if(img) img.hidden=!!svg;
+  if(!info||!it) return;
+  const failed=supLnFailed&&btcCzk>0&&!inv&&!loading;
+  if(inv){
+    const min=inv.expAt?Math.floor((inv.expAt-Date.now())/60000):0;
+    it.textContent=min>=1?t('set.support.lnInv',{sats:fmtNum(inv.sats),min}):t('set.support.lnInvSoon',{sats:fmtNum(inv.sats)});
+  }else if(loading) it.textContent=t('set.support.lnLoading');
+  else if(failed) it.textContent=t('set.support.lnManual',{sats:fmtNum(czkToSats(supLnAmt))});
+  if(rb){ rb.hidden=!inv&&!failed; rb.disabled=loading; }
+  info.hidden=!(inv||loading||failed);
+}
+// Klepnutí na „Otevřít v peněžence“: s hotovou fakturou rovnou odkaz, jinak ji vytvoří a otevře.
+// Peněženku jde otevřít jen krátce po klepnutí (gesto), pozdější faktura počká na další klepnutí.
+window.openSupportLn=ev=>{
+  const sats=czkToSats(supLnAmt);
+  if(!(btcCzk>0)||supLnCached()){ renderSupportLnInv(); return true; }
+  // Faktura pro tuto částku už selhala: rovnou adresa (dnešní chování), nové pokusy jen přes Obnovit / jinou částku
+  if(supLnFailed&&!(supLnInv.get(supLnKey()) instanceof Promise)){ renderSupportLnInv(); toast(t('set.support.lnManual',{sats:fmtNum(sats)}),4000); return true; }
+  ev?.preventDefault?.();
+  clearTimeout(supLnTimer);
+  const t0=Date.now();
+  supLnEnsure().then(inv=>{
+    const late=Date.now()-t0>LN_GESTURE_MS;
+    if(!inv) toast(t('set.support.lnManual',{sats:fmtNum(sats)})+(late?' · '+t('set.support.lnTapAgain'):''),4000);
+    else if(late) toast(t('set.support.lnReady'),3500);
+    if(!late) location.href='lightning:'+(inv?inv.pr:supLnAddr);
+  });
+  return false;
+};
+window.refreshSupportLn=()=>{ supLnInv.delete(supLnKey()); supLnFailed=false; supLnEnsure(); };
 window.copySupportLn=async()=>{
   try{ await navigator.clipboard.writeText(supLnAddr); toast(t('set.support.lnCopied')); }
   catch(e){ lpCopy(t('set.support.lnCopyPrompt'), supLnAddr); }
@@ -12030,6 +12162,7 @@ function renderSupportLn(){
     `<button type="button" class="sup-amt sup-amt--s${n===supLnAmt?' on':''}" aria-pressed="${n===supLnAmt}" onclick="pickSupportLnAmt(this.dataset.a1)" data-a1="${n}">${tH('set.support.amt',{n})}</button>`).join('');
   if(foc) document.querySelector('#support-ln-amts [data-a1="'+Number(foc)+'"]')?.focus();
   document.getElementById('support-ln-sats').textContent=t('set.support.lnSats',{sats:fmtNum(czkToSats(amt)),czk:fmtNum(amt)});
+  renderSupportLnInv();
   box.hidden=false;
 }
 async function loadSupport(){
@@ -12083,7 +12216,9 @@ window.pickSupportAmt=n=>{
 // Lightning: jen vlastní částka a přepočet na sats, bankovní QR ani vlastní částka se nemění
 window.pickSupportLnAmt=n=>{
   supLnAmt=Number(n)||supLnAmt;
+  supLnFailed=false;
   renderSupportLn();
+  clearTimeout(supLnTimer); supLnTimer=setTimeout(supLnEnsure,500); // faktura až po výběru (debounce)
 };
 window.supportCustom=()=>renderSupport();
 window.copySupportAccount=async()=>{
