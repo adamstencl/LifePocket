@@ -4948,33 +4948,81 @@ function getUpcoming14(){
 
 window.setCalFilter=t=>{calFilter=t;renderEvList();};
 
+// Úkoly v seznamu nadcházejících: otevřené s termínem do 14 dní + nesplněné po termínu.
+// Odškrtnutý řádek zůstane chvíli vidět (animace, Zpět), pak zmizí. Bez modulu Úkoly/Checklist nic.
+const CAL_TK='_tk'; // klíč čipu filtru (typ události s „_“ na začátku nevzniká)
+const _calTkHold=new Map(); // k → timeout: hotový řádek je ještě vidět
+function calUpcomingTasks(){
+  if(!CU||!tkDataOn()) return [];
+  const today=toDS(), lim=addDays(today,14);
+  return tkAll().list.filter(e=>e.due&&e.due<=lim&&(!e.it.done||_calTkHold.has(e.k)))
+    .map(e=>({...e,_tk:true,_over:e.due<today}));
+}
+// Klíč řazení: po termínu nahoře, pak den a čas (bez času dřív)
+const calSortKey=x=>x._tk?(x._over?'0':'1')+x.due+(x.dueT||''):'1'+toDS(x._date)+(okEvTime(x.time)?x.time:'');
+function calTkRowHTML(e){
+  const {it,l,gid}=e, done=!!it.done, nm=it.text||'';
+  const when=fmtDate(e.due,'wdm')+(e.dueT?' · '+e.dueT:'');
+  return '<div class="ev-card ev-tk'+(done?' done':'')+(e._over?' over':'')+(it.star?' star':'')+'" data-tk="'+esc(e.k)+'">'
+    +'<button type="button" class="tk-chk" role="checkbox" aria-checked="'+done+'" data-a0="'+esc(l)+'" data-a1="'+esc(it.id)+'" aria-label="'+tH('cl.checkAria',{name:nm})+'" onclick="calTkToggle(this.dataset.a0,this.dataset.a1)"><span class="tk-box" aria-hidden="true">'+(done?'✓':'')+'</span></button>'
+    +'<button type="button" class="ev-info ev-tk-open" data-a0="'+esc(l)+'" data-a1="'+esc(it.id)+'" aria-label="'+tH('tk.editAria',{name:nm})+', '+(e._over?tH('cal.tkOver')+', ':'')+esc(when)+'" onclick="tkOpen(this.dataset.a0,this.dataset.a1)">'
+    +'<span class="ev-name">'+(it.star?'<span class="tk-star" aria-hidden="true">🎯</span>':'')+esc(nm)+'</span>'
+    +'<span class="ev-date">'+(e._over?'<span class="ev-tk-over">'+tH('cal.tkOver')+'</span> · ':'')+esc(when)+'</span>'
+    +'</button>'
+    +(gid?'<span class="tk-grp" role="img" aria-label="'+esc(grpName(gid))+'">'+esc(grpEmoji(gid))+'</span>':'')
+    +'</div>';
+}
+// Odškrtnutí ze seznamu: tkToggle + lišta Zpět; druhé klepnutí během animace vrátí hned
+window.calTkToggle=(l,id)=>{
+  const k=l+'/'+id, it=clFind(l)?.items?.find(i=>i.id===id);
+  if(!it) return;
+  const unhold=()=>{ clearTimeout(_calTkHold.get(k)); _calTkHold.delete(k); };
+  if(it.done){
+    if(!_calTkHold.has(k)) return;
+    unhold();
+    window.tkToggle(l,id);
+    return;
+  }
+  _calTkHold.set(k,setTimeout(()=>{ _calTkHold.delete(k); renderEvList(); },1200));
+  window.tkToggle(l,id);
+  if(!clFind(l)?.items?.find(i=>i.id===id)?.done){ unhold(); return; } // neodškrtlo se (zámek, seznam nejde upravit)
+  undoNote(t('cal.tkDone',{name:cutName(it.text||'',40)}),()=>{
+    unhold();
+    if(clFind(l)?.items?.find(i=>i.id===id)?.done){ _tkLock={k:'',until:0}; window.tkToggle(l,id); }
+    toast(t('undo.done'));
+  });
+};
+
 function renderEvList(){
   const allEvents=getUpcoming14();
   const container=document.getElementById('cal-events-list');
   const filterBar=document.getElementById('cal-filter-bar');
   if(!container)return;
   renderInviteHint('cal');
+  const tasks=calUpcomingTasks(), allN=allEvents.length+tasks.length;
 
   // ── Filter chips ──
   if(filterBar){
     const types=[...new Set(allEvents.map(e=>e.type||'event'))];
-    if(types.length>1){
+    if(types.length+(tasks.length?1:0)>1){
       let fb='<div class="cal-filter-chips">';
-      fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">'+tH('cal.all')+' <span class="cal-fchip-cnt">'+allEvents.length+'</span></button>';
+      fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">'+tH('cal.all')+' <span class="cal-fchip-cnt">'+allN+'</span></button>';
       for(const t of types){
         const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
         const sm=allEvents.find(e=>(e.type||'event')===t);
         fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(t==='vet'?EV_ICONS.vet:getEvIcon(t,sm))+' '+esc(t==='vet'?getEvLabel('vet'):getEvLabel(t,sm))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
+      if(tasks.length) fb+='<button class="cal-fchip'+(calFilter===CAL_TK?' sel':'')+'" onclick="setCalFilter(\''+CAL_TK+'\')">✅ '+tH('cal.tasks')+' <span class="cal-fchip-cnt">'+tasks.length+'</span></button>';
       fb+='</div>';
       filterBar.innerHTML=fb;
     }else{
       filterBar.innerHTML='';
-      if(calFilter!=='all'&&(allEvents.length===0||!types.includes(calFilter)))calFilter='all';
+      if(calFilter!=='all'&&(allN===0||!(calFilter===CAL_TK?tasks.length:types.includes(calFilter))))calFilter='all';
     }
   }
+  if(calFilter===CAL_TK&&!tasks.length) calFilter='all'; // poslední úkol hotový nebo modul vypnutý
 
-  const filtered=calFilter==='all'?allEvents:allEvents.filter(e=>(e.type||'event')===calFilter);
+  const filtered=calFilter==='all'?[...allEvents,...tasks]:calFilter===CAL_TK?tasks:allEvents.filter(e=>(e.type||'event')===calFilter);
   if(!filtered.length){
     // Úplně prázdný kalendář (ani události skupin): prázdný stav s tlačítkem a příkladem (4.68)
     if(calFilter==='all'&&!events.length&&!getAllFamilyEvents().length){
@@ -4989,7 +5037,12 @@ function renderEvList(){
     container.innerHTML='<div style="color:var(--text3);font-size:14px;padding:12px">'+(calFilter==='all'?tH('cal.none14'):tH('cal.noneType14'))+'</div>';
     return;
   }
-  container.innerHTML=filtered.map(ev=>{
+  // Stabilní řazení: události mezi sebou drží pořadí z getUpcoming14, úkoly se vřadí podle dne a času
+  const rows=filtered.map((x,i)=>[calSortKey(x),i,x]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:a[1]-b[1]).map(r=>r[2]);
+  // Fokus na řádku úkolu přežije překreslení; zmizelý řádek → fokus na řádek na jeho místě
+  const ae=document.activeElement, fk=ae&&container.contains(ae)&&ae.dataset?.a1?{c:ae.className,a0:ae.dataset.a0,a1:ae.dataset.a1,i:[...container.children].indexOf(ae.closest('.ev-card'))}:null;
+  container.innerHTML=rows.map(ev=>{
+    if(ev._tk) return calTkRowHTML(ev);
     const author=getEventAuthorName(ev);
     return '<div class="ev-card">'
       +'<div class="ev-icon">'+esc(getEvIcon(ev.type,ev))+'</div>'
@@ -5003,6 +5056,10 @@ function renderEvList(){
       +'<button type="button" class="ev-del" data-a0="'+esc(ev.id)+'" aria-label="'+tH('a11y.delName',{name:ev.name})+'" onclick="delEvent(this.dataset.a0)">🗑️</button>'
       +'</div>';
   }).join('');
+  if(fk){
+    const same=[...container.querySelectorAll('button[data-a1]')].find(b=>b.className===fk.c&&b.dataset.a0===fk.a0&&b.dataset.a1===fk.a1);
+    (same||container.children[Math.min(fk.i,container.children.length-1)]?.querySelector('button'))?.focus({preventScroll:true});
+  }
 }
 
 window.calPrev=()=>{calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal();};

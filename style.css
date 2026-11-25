@@ -1041,6 +1041,17 @@ button:focus-visible,.btn-sv:focus-visible,.btn-p:focus-visible,.bnbtn:focus-vis
 .cal-fchip:hover{border-color:var(--accent2);color:var(--text1)}
 .cal-fchip.sel{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .cal-fchip-cnt{font-size:11px;opacity:.65;margin-left:2px}
+/* Úkoly v seznamu nadcházejících */
+.ev-tk{padding:4px 12px 4px 4px;gap:4px;transition:border-color .2s,opacity .3s}
+.ev-tk .tk-chk{margin:0}
+.ev-tk-open{background:none;border:none;padding:6px 0;margin:0;min-height:44px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+.ev-tk-open .ev-name,.ev-tk-open .ev-date{display:block}
+.ev-tk.done{opacity:.6}
+.ev-tk.done .tk-box{background:var(--green);border-color:var(--green);color:var(--on-green)}
+.ev-tk.done .ev-name{text-decoration:line-through;color:var(--text3)}
+.ev-tk.star .ev-name{font-weight:700}
+.ev-tk-over{color:var(--red);font-weight:700}
+@media (prefers-reduced-motion:reduce){.ev-tk{transition:none}}
 
 /* HABITS */
 .habit-day-nav{display:flex;align-items:center;gap:10px}
