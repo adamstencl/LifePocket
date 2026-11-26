@@ -237,3 +237,8 @@
 
 ## Z 5.17.2 (opravy z backlogu)
 - notifyFamily: aktivita cal/edit s ref `with:<petId>` (Mám u sebe / Vrátit domů) poslat vlastním textem, dnes push „změnil událost: …“.
+
+## Z 5.17.2 (revize)
+- gaKey `|w` stejný pro všechny mazlíčky – víc „Mám u sebe“ do 10 s se sloučí; dát `'|'+x.ref` nebo doplnit gf.more.
+- en `hc.text` (souhlas se zdravím) má „AI companion“ – sjednotit s „buddy“ jen s rozhodnutím uživatele (právní text).
+- Server push notifyFamily u „Mám u sebe“ dál píše „změnil událost“.
