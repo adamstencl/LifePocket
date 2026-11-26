@@ -68,8 +68,19 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.17.1';
+const APP_VERSION = '5.17.2';
 const CHANGELOG = [
+  { v:'5.17.2', items:[
+    '🛠️ Drobné opravy a vylepšení',
+    '🐾 Karta Mazlíček na Domů ukáže nejdřív nenakrmené mazlíčky, a když se všichni nevejdou, kolik jich je navíc',
+    '👪 „Mám u sebe“ a „Vrátit domů“ se ve skupině ukazují srozumitelně, ne jako změněná událost',
+    '⚙️ Volba Automatická AI analýza zápisků je v Nastavení jen se zapnutým Deníkem a po chybě uložení se vrátí'
+  ], en:[
+    '🛠️ Small fixes and improvements',
+    '🐾 The Pets card on Home shows unfed pets first and, if they don’t all fit, how many more there are',
+    '👪 “I have them” and “Back home” now read clearly in the group feed instead of “Changed event”',
+    '⚙️ The Automatic AI analysis of entries option shows in Settings only with Journal on, and switches back if saving fails'
+  ]},
   { v:'5.17.1', items:[
     '⚡ Rychlejší první spuštění: na pomalém připojení se dá přihlásit a registrovat o několik sekund dřív'
   ], en:[
@@ -1562,6 +1573,7 @@ function snapErr(tag) {
 }
 function destroyAllFireSubs() {
   Object.keys(_fireSubs).forEach(k => { if (_fireSubs[k]) _fireSubs[k](); delete _fireSubs[k]; });
+  _subReady.clear(); // i ručně přidané klíče (habits, goals …), patří ukončené relaci (5.17.2)
 }
 // ──────────────────────────────────────────────────────────
 
@@ -2154,7 +2166,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list','lp_ai_intro'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_','lp_tknotif_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -2555,16 +2567,22 @@ function aiEntryAsk(){
 }
 // Uložení volby přesným polem (celoprofilový zápis ho nese z paměti stejně)
 async function setAiEntry(on, quiet){
-  if(!CU) return;
+  if(!CU||!prof) return;
+  const uid=CU.uid, prev=prof.aiEntry; // při chybě zápisu vrátit předchozí stav (5.17.2, jako finAiSet)
   prof.aiEntry=!!on;
   renderAiEntrySetting();
-  try{ await setDoc(doc(db,'users',CU.uid,'profile','main'),{aiEntry:!!on},{merge:true}); }
-  catch(e){ if(!quiet) toast(t('common.saveFailed',{err:userErr(e,'profil')}),5000); else console.warn('[LP] aiEntry:',e?.code||e?.name); }
+  try{ await setDoc(doc(db,'users',uid,'profile','main'),{aiEntry:!!on},{merge:true}); }
+  catch(e){
+    if(CU?.uid!==uid||!prof) return;
+    if(prof.aiEntry===!!on){ if(prev===undefined) delete prof.aiEntry; else prof.aiEntry=prev; renderAiEntrySetting(); }
+    if(!quiet) toast(t('common.saveFailed',{err:userErr(e,'profil')}),5000); else console.warn('[LP] aiEntry:',e?.code||e?.name);
+  }
 }
 window.setAiEntry=on=>setAiEntry(on);
 function renderAiEntrySetting(){
   const el=document.getElementById('set-aientry'); if(!el) return;
-  el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">${tH('aie.t')}</div><div class="togds">${tH('aie.d')}</div></div>
+  if(!hasMod('journal')){ el.innerHTML=''; return; } // jen s modulem Deník (5.17.2)
+  el.innerHTML=`<div class="togrow"><div class="toginf"><div class="tognm">✨ ${tH('aie.t')}</div><div class="togds">${tH('aie.d')}</div></div>
     <label class="togswitch"><input type="checkbox" ${prof?.aiEntry===true?'checked':''} aria-label="${tH('aie.t')}" onchange="setAiEntry(this.checked)"><span class="togsl"></span></label></div>`;
 }
 
@@ -4974,6 +4992,8 @@ window.setCalFilter=t=>{calFilter=t;renderEvList();};
 // Úkoly v seznamu nadcházejících: otevřené s termínem do 14 dní + nesplněné po termínu.
 // Odškrtnutý řádek zůstane chvíli vidět (animace, Zpět), pak zmizí. Bez modulu Úkoly/Checklist nic.
 const CAL_TK='_tk'; // klíč čipu filtru (typ události s „_“ na začátku nevzniká)
+// Typ pro čipy filtru: cizí typ s „_“ na začátku (zápis z jiného klienta) jako běžná událost, ať nekoliduje s CAL_TK (5.17.2)
+const calEvType=e=>{ const t=e.type||'event'; return typeof t==='string'&&t[0]!=='_'?t:'event'; };
 const _calTkHold=new Map(); // k → timeout: hotový řádek je ještě vidět
 function calUpcomingTasks(){
   if(!CU||!tkDataOn()) return [];
@@ -5026,13 +5046,13 @@ function renderEvList(){
 
   // ── Filter chips ──
   if(filterBar){
-    const types=[...new Set(allEvents.map(e=>e.type||'event'))];
+    const types=[...new Set(allEvents.map(calEvType))];
     if(types.length+(tasks.length?1:0)>1){
       let fb='<div class="cal-filter-chips">';
       fb+='<button class="cal-fchip'+(calFilter==='all'?' sel':'')+'" onclick="setCalFilter(\'all\')">'+tH('cal.all')+' <span class="cal-fchip-cnt">'+allN+'</span></button>';
       for(const t of types){
-        const cnt=allEvents.filter(e=>(e.type||'event')===t).length;
-        const sm=allEvents.find(e=>(e.type||'event')===t);
+        const cnt=allEvents.filter(e=>calEvType(e)===t).length;
+        const sm=allEvents.find(e=>calEvType(e)===t);
         fb+='<button class="cal-fchip'+(calFilter===t?' sel':'')+'" data-a0="'+esc(t)+'" onclick="setCalFilter(this.dataset.a0)">'+esc(t==='vet'?EV_ICONS.vet:getEvIcon(t,sm))+' '+esc(t==='vet'?getEvLabel('vet'):getEvLabel(t,sm))+' <span class="cal-fchip-cnt">'+cnt+'</span></button>';
       }
       if(tasks.length) fb+='<button class="cal-fchip'+(calFilter===CAL_TK?' sel':'')+'" onclick="setCalFilter(\''+CAL_TK+'\')">✅ '+tH('cal.tasks')+' <span class="cal-fchip-cnt">'+tasks.length+'</span></button>';
@@ -5045,7 +5065,7 @@ function renderEvList(){
   }
   if(calFilter===CAL_TK&&!tasks.length) calFilter='all'; // poslední úkol hotový nebo modul vypnutý
 
-  const filtered=calFilter==='all'?[...allEvents,...tasks]:calFilter===CAL_TK?tasks:allEvents.filter(e=>(e.type||'event')===calFilter);
+  const filtered=calFilter==='all'?[...allEvents,...tasks]:calFilter===CAL_TK?tasks:allEvents.filter(e=>calEvType(e)===calFilter);
   if(!filtered.length){
     // Úplně prázdný kalendář (ani události skupin): prázdný stav s tlačítkem a příkladem (4.68)
     if(calFilter==='all'&&!events.length&&!getAllFamilyEvents().length){
@@ -12097,7 +12117,7 @@ async function lnFetchJson(url){
   }finally{ clearTimeout(tm); }
 }
 // BOLT11: částka z HRP (lnbc<číslo><m|u|n|p>) v msat a expirace (timestamp + pole x, výchozí 3600 s).
-// Jen základní kontrola bez ověření podpisu; nečitelná expirace = null.
+// Jen základní kontrola: podpis ani description hash (pole h) se neověřují, to dělá peněženka; nečitelná expirace = null.
 const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 function parseBolt11(pr){
   const s=String(pr||'').toLowerCase(), sep=s.lastIndexOf('1');
@@ -12154,9 +12174,10 @@ function supLnEnsure(){
   if(!(sats>0)||IS_TWA||navigator.onLine===false){ supLnFailed=sats>0; renderSupportLnInv(); return Promise.resolve(null); }
   const hit=supLnCached(); if(hit) return Promise.resolve(hit);
   const cur=supLnInv.get(key); if(cur instanceof Promise) return cur;
+  // Cache přepsat / smazat jen když v ní je pořád tento požadavek (5.17.2: mezitím Obnovit)
   const p=lnFetchInvoice(supLnAddr,sats)
-    .then(v=>{ supLnInv.set(key,v); if(key===supLnKey()) supLnFailed=false; return v; })
-    .catch(()=>{ supLnInv.delete(key); if(key===supLnKey()) supLnFailed=true; return null; }) // detail chyby se neloguje
+    .then(v=>{ if(supLnInv.get(key)===p) supLnInv.set(key,v); if(key===supLnKey()) supLnFailed=false; return v; })
+    .catch(()=>{ if(supLnInv.get(key)===p) supLnInv.delete(key); if(key===supLnKey()) supLnFailed=true; return null; }) // detail chyby se neloguje
     .finally(()=>renderSupportLnInv());
   supLnInv.set(key,p);
   renderSupportLnInv();
@@ -12184,15 +12205,17 @@ function renderSupportLnInv(){
 }
 // Klepnutí na „Otevřít v peněžence“: s hotovou fakturou rovnou odkaz, jinak ji vytvoří a otevře.
 // Peněženku jde otevřít jen krátce po klepnutí (gesto), pozdější faktura počká na další klepnutí.
+let supLnOpenTok=0; // jen poslední klepnutí otevře peněženku (5.17.2)
 window.openSupportLn=ev=>{
-  const sats=czkToSats(supLnAmt);
+  const sats=czkToSats(supLnAmt), key=supLnKey();
   if(!(btcCzk>0)||supLnCached()){ renderSupportLnInv(); return true; }
   // Faktura pro tuto částku už selhala: rovnou adresa (dnešní chování), nové pokusy jen přes Obnovit / jinou částku
   if(supLnFailed&&!(supLnInv.get(supLnKey()) instanceof Promise)){ renderSupportLnInv(); toast(t('set.support.lnManual',{sats:fmtNum(sats)}),4000); return true; }
   ev?.preventDefault?.();
   clearTimeout(supLnTimer);
-  const t0=Date.now();
+  const t0=Date.now(), tok=++supLnOpenTok;
   supLnEnsure().then(inv=>{
+    if(tok!==supLnOpenTok||key!==supLnKey()) return; // další klepnutí nebo jiná částka mezitím: stará faktura se neotevře
     const late=Date.now()-t0>LN_GESTURE_MS;
     if(!inv) toast(t('set.support.lnManual',{sats:fmtNum(sats)})+(late?' · '+t('set.support.lnTapAgain'):''),4000);
     else if(late) toast(t('set.support.lnReady'),3500);
@@ -14109,6 +14132,7 @@ function gaKey(gid, module, action, x) {
   if(action === 'streak' || module === 'goal' || module === 'challenge' || module === 'note' || module === 'recipe') key += '|'+(x?.ref || '');
   if(module === 'react') key += '|'+(x?.to || '') + (x?.rid ? '|c'+(++_gaSeq) : '');
   if(typeof x?.ref === 'string' && x.ref.startsWith('feed:')) key += '|'+x.ref; // krmení (5.17): každý mazlíček a čas zvlášť
+  if(typeof x?.ref === 'string' && x.ref.startsWith('with:')) key += '|w'; // u koho je mazlíček (5.17.2): nesloučit s událostí
   return key;
 }
 function logGroupActivity(gid, module, action, title = '', count = 1, x = null) {
@@ -17333,9 +17357,12 @@ function gfDayLabel(ds) {
 // Krmení mazlíčka (5.17): cal/done s ref feed:<petId>:<den>:<slot>[:w]
 const GF_FEED_RE = /^feed:[A-Za-z0-9_-]{1,40}:\d{4}-\d{2}-\d{2}:[0-3](:w)?$/;
 const gfIsFeed = a => a.module === 'cal' && a.action === 'done' && typeof a.ref === 'string' && GF_FEED_RE.test(a.ref);
+// „Mám u sebe“ / „Vrátit domů“ (5.17.2): cal/edit s ref with:<petId>, text je celý v názvu (ne „Změněná událost“)
+const gfIsWith = a => a.module === 'cal' && a.action === 'edit' && typeof a.ref === 'string' && /^with:[A-Za-z0-9_-]{1,40}$/.test(a.ref);
 // Text záznamu (neosobní, bez rodu): „Přidáno do nákupu: banány, mléko a 3 další“
 function gfWhat(a, gid) {
   if(gfIsFeed(a)) { const tt = typeof a.title === 'string' ? a.title.trim() : ''; return t('gf.a.feed') + (tt ? ': ' + tt : ''); }
+  if(gfIsWith(a) && typeof a.title === 'string' && a.title.trim()) return a.title.trim();
   const key = (GF_ACTS[a.module] || []).includes(a.action) ? 'gf.a.' + a.module + '.' + a.action : 'gf.a.other';
   let s = t(key);
   const count = Number.isInteger(a.count) && a.count > 0 ? a.count : 1;
@@ -17368,7 +17395,7 @@ function gfLocalTitle(a, title) {
 }
 // Kam vede klepnutí: reakce podle svého cíle (s_g_ / s_h_ zrcadlo, a_<id> záznam feedu), jinak modul záznamu
 function gfTargetMod(a, items) {
-  if(gfIsFeed(a)) return 'pets';
+  if(gfIsFeed(a) || gfIsWith(a)) return 'pets';
   if(a.module !== 'react') return a.module;
   const ref = typeof a.ref === 'string' ? a.ref : '';
   if(ref.startsWith('s_g_')) return 'goal';
@@ -17439,7 +17466,7 @@ function renderGroupFeed() {
       ? (mine ? rxSumHTML(gid, 'a_' + a._id, a.title || '') : rxBarHTML(gid, 'a_' + a._id, a.uid, a.title || ''))
       : '';
     html += `<div class="gf-item${unread ? ' unread' : ''}${ms ? ' ms' : ''}">
-      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(gfTargetMod(a, items))}))}" data-a0="${gfTargetMod(a, items)}" data-a1="${esc(gfItemRef(a, items))}" onclick="gfOpenItem(this.dataset.a0,this.dataset.a1)">${gfIsFeed(a) ? '🍖' : a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
+      <button type="button" class="gf-em" aria-label="${esc(t('gf.openMod', {mod: gfModName(gfTargetMod(a, items))}))}" data-a0="${gfTargetMod(a, items)}" data-a1="${esc(gfItemRef(a, items))}" onclick="gfOpenItem(this.dataset.a0,this.dataset.a1)">${gfIsFeed(a) ? '🍖' : gfIsWith(a) ? '🐾' : a.module === 'goal' && a.action === 'progress' ? GF_EMOJI.goal : ms ? '🎉' : GF_EMOJI[a.module]}</button>
       <div class="gf-body"><div class="gf-who"><b>${esc(who)}</b> · ${esc(gfTime(a._ts))}${unread ? ` <span class="sr-only">${tH('gf.new')}</span>` : ''}</div>
       <div class="gf-what">${esc(gfWhat(a, gid))}</div>${rx}</div>
     </div>`;
@@ -21026,7 +21053,8 @@ function petDoneWrite(ref, upd, entry, localLog, onErr) {
   }, {maxAttempts: 3}).catch(e => { if(clIsOffline(e)) offline(); else onErr(e); });
 }
 // Chyba zápisu mazlíčka: smazaný mazlíček (not-found, jiné zařízení / člen) → zrcadla zapsaná hned pryč (5.08)
-const petWriteErr = p => e => { if(e?.code === 'not-found') petMirrorsDel(p); petErr(e); };
+// 5.17.2: smazaný mazlíček = vlastní hláška bez zápisu do errorLogs (není to chyba appky)
+const petWriteErr = p => e => { if(e?.code === 'not-found') { petMirrorsDel(p); toast(t('pet.gone')); return; } petErr(e); };
 window.petDoneSave = () => {
   const s = _petDone, p = s ? petFind(s.pid) : null, c = p?.care[s.cid];
   if(!CU || !c) { petClose('m-petdone'); return; }
@@ -21202,12 +21230,14 @@ function petsWidgetHTML(feedOnly = false) {
   // Krmení první (5.17), ale péče do zítřka se vejde vždy (aspoň jeden řádek)
   const urg = rows.filter(r => r.n <= 1);
   const shown = [...feed.slice(0, urg.length ? 2 : 3), ...rows].slice(0, 3);
-  const body = shown.length ? shown.map(r => r.feed
+  const more = feed.length + rows.length - shown.length; // skryté řádky (5.17.2): víc mazlíčků, než se vejde
+  const body = (shown.length ? shown.map(r => r.feed
       ? '<div class="pet-dw-row"><span class="pet-dw-t"><span aria-hidden="true">' + esc(r.p.emoji) + '</span> ' + esc(r.p.name) + ' · ' + esc(r.txt) + '</span>'
         + '<button type="button" class="pet-dw-cart pet-dw-feed' + (r.due ? ' pet-dw-feed--due' : '') + '" data-a0="' + esc(r.p.id) + '" aria-label="' + tH('pet.feed.btnAria', {name: r.p.name}) + '" onclick="event.stopPropagation();petFeed(this.dataset.a0)">🍖</button></div>'
       : '<div class="pet-dw-row"><span class="pet-dw-t"><span aria-hidden="true">' + esc(r.p.emoji) + '</span> ' + esc(r.p.name) + ' · <span aria-hidden="true">' + r.em + '</span> ' + esc(r.txt) + '</span>'
       + (r.food && !r.p.food.inShopAt ? '<button type="button" class="pet-dw-cart" data-a0="' + esc(r.p.id) + '" aria-label="' + tH('pet.food.add') + '" onclick="event.stopPropagation();petAddFood(this.dataset.a0)">🛒</button>' : '') + '</div>').join('')
-    : '<div class="pet-dw-row"><span class="pet-dw-t">✓ ' + tH('pet.dash.ok') + (next ? ' · ' + tH('pet.dash.next') + ' <span aria-hidden="true">' + (PET_CARE_EM[next.c.kind] || '🩺') + '</span> ' + esc(next.c.name + ' ' + fmtDate(next.c.next, 'dm')) : '') + '</span></div>';
+    : '<div class="pet-dw-row"><span class="pet-dw-t">✓ ' + tH('pet.dash.ok') + (next ? ' · ' + tH('pet.dash.next') + ' <span aria-hidden="true">' + (PET_CARE_EM[next.c.kind] || '🩺') + '</span> ' + esc(next.c.name + ' ' + fmtDate(next.c.next, 'dm')) : '') + '</span></div>')
+    + (more > 0 ? '<div class="fin-sub fin-sub--s">' + tNH('pet.dash.more', more) + '</div>' : '');
   return '<div class="dw" onclick="sp(\'pets\')"><div class="dw-head"><div class="dw-title">🐾 ' + tH('dash.card.pets') + '</div><div class="dw-arrow">→</div></div>' + body + '</div>';
 }
 
@@ -21278,6 +21308,8 @@ function feedWho(p, l) {
   if(l.by === CU?.uid) return t('pet.feed.you');
   return cutName(p._gid ? groupDataOf(p._gid)?.members?.[l.by]?.name : '', 40) || l.n || t('gf.someone');
 }
+// Na začátku textu velké písmeno („✓ Ty · 07:30“, 5.17.2)
+const feedWhoCap = (p, l) => { const s = feedWho(p, l); return s.charAt(0).toLocaleUpperCase(LOCALE) + s.slice(1); };
 // Moje jméno do záznamu (přezdívka, jinak jméno ve skupině)
 const petMyName = gid => cutName(prof?.prezdivka || prof?.nickname || (gid ? groupDataOf(gid)?.members?.[CU?.uid]?.name : '') || '', 40);
 const feedInit = s => ([...String(s).trim()][0] || '?').toLocaleUpperCase(LOCALE);
@@ -21569,7 +21601,7 @@ window.petWithSave = () => {
   }
   const n = petMyName(p._gid);
   updateDoc(petRef(p), {with: {uid: CU.uid, n, g: prof?.gender === 'f' ? 'f' : '', until, at: Date.now()}}).catch(petWriteErr(p));
-  logGroupActivity(p._gid, 'cal', 'edit', gaTitle(t('pet.with.actT', {em: p.emoji, name: p.name, who: n || t('gf.someone')})));
+  logGroupActivity(p._gid, 'cal', 'edit', gaTitle(t('pet.with.actT', {em: p.emoji, name: p.name, who: n || t('gf.someone')})), 1, {ref: 'with:' + p.id});
   petClose('m-petwith');
   toast(until ? t('pet.with.atMe', {name: p.name, date: fmtDate(until, 'wShortDm')}) : t('pet.with.atMeOn', {name: p.name}), 4000);
 };
@@ -21577,7 +21609,7 @@ window.petWithBack = id => {
   const p = petFind(id);
   if(!CU || !p?.with) return;
   updateDoc(petRef(p), {with: null}).catch(petWriteErr(p));
-  logGroupActivity(p._gid, 'cal', 'edit', gaTitle(t('pet.with.actBack', {name: p.name})));
+  logGroupActivity(p._gid, 'cal', 'edit', gaTitle(t('pet.with.actBack', {name: p.name})), 1, {ref: 'with:' + p.id});
   toast(t('pet.with.backDone', {name: p.name}), 4000);
 };
 
@@ -21590,7 +21622,7 @@ function petFeedSecHTML(p) {
   if(times.length) {
     h += '<ul class="pet-feed-slots">' + times.map((tm, i) => {
       const ls = feedInSlot(p, today, i), last = ls[ls.length - 1];
-      const st = last ? '✓ ' + esc(feedWho(p, last)) + ' · ' + esc(last.t) + (ls.length > 1 ? ' · ' + tH('pet.feed.nTimes', {n: ls.length}) : '') : tH('pet.feed.notYet');
+      const st = last ? '✓ ' + esc(feedWhoCap(p, last)) + ' · ' + esc(last.t) + (ls.length > 1 ? ' · ' + tH('pet.feed.nTimes', {n: ls.length}) : '') : tH('pet.feed.notYet');
       return '<li class="pet-feed-slot' + (i === cur ? ' pet-feed-slot--cur' : '') + (last ? ' pet-feed-slot--done' : '') + '"' + (i === cur ? ' aria-current="true"' : '') + '>'
         + '<span class="pet-feed-sl"><span aria-hidden="true">' + PET_FEED_SLOT_EM[feedSlotKey(tm)] + '</span> ' + esc(feedSlotName(tm)) + ' ' + esc(tm) + '</span>'
         + '<span class="pet-feed-st">' + st + '</span></li>';
@@ -21651,9 +21683,10 @@ function petFeedDashRows(all) {
     if(!times.length && !tl.length) continue;
     const ck = feedKey(times, today, hm), cur = ck.s, ls = cur >= 0 ? feedInSlot(p, ck.d, cur) : tl, last = ls[ls.length - 1];
     const slot = cur >= 0 ? feedSlotName(times[cur]).toLocaleLowerCase(LOCALE) : '';
-    rows.push({p, feed: true, due: !last && cur >= 0, txt: last ? '✓ ' + (slot ? slot + ' ' : '') + feedWho(p, last) + ' ' + last.t : t('pet.feed.dashNot', {slot})});
+    rows.push({p, feed: true, due: !last && cur >= 0, fed: !!last, txt: last ? '✓ ' + (slot ? slot + ' ' + feedWho(p, last) : feedWhoCap(p, last)) + ' ' + last.t : t('pet.feed.dashNot', {slot})});
   }
-  return rows;
+  // Podle splatnosti (5.17.2): nenakrmení v aktuálním čase první, nakrmení na konec (stabilní řazení)
+  return rows.sort((a, b) => (a.due ? 0 : a.fed ? 2 : 1) - (b.due ? 0 : b.fed ? 2 : 1));
 }
 
 // ── FINANCE DOMÁCNOSTI (5.15, docs/NAVRH-FINANCE.md) ──
@@ -25075,6 +25108,7 @@ function rSetMods(){
   document.getElementById('set-mods').insertAdjacentHTML('beforeend','<div id="set-navmods" class="set-navmods"></div>'); // spodní lišta (5.10)
   renderNavPick();
   rSetFinAi(); // řádek souhlasu jen se zapnutým modulem Finance (5.15)
+  renderAiEntrySetting(); // AI analýza zápisků jen s modulem Deník (5.17.2)
 }
 // Optimisticky (4.84): lišta a Domů hned (i offline), zápis na pozadí; při chybě původní moduly zpět
 window.togModSet=(id,on)=>{

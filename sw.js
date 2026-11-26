@@ -70,7 +70,7 @@ if (fmsg) fmsg.onBackgroundMessage(payload => {
   return self.registration.showNotification(d.title || 'LifePocket', opts);
 });
 
-const CACHE = 'lifepocket-v123';
+const CACHE = 'lifepocket-v124';
 // Neměnné soubory z CDN (Firebase SDK s verzí v adrese, soubory fontů): cache-first, přežije update SW (4.74)
 const CDN_CACHE = 'lp-cdn-v1';
 const isImmutableCdn = u => u.startsWith('https://www.gstatic.com/firebasejs/') || u.startsWith('https://fonts.gstatic.com/');
@@ -107,8 +107,11 @@ const PRECACHE_WAIT = 30000;
 let precacheGo = null;
 const precacheGate = new Promise(r => { precacheGo = r; });
 self.addEventListener('message', e => { if (e.data && e.data.type === 'LP_PRECACHE') precacheGo(); });
+// Prázdná cache po nedokončené instalaci (5.17.2) se nepočítá: rozhoduje, jestli je v cache appky index.html
 function firstInstall() {
-  return caches.keys().then(keys => !keys.some(k => k.startsWith('lifepocket-v'))).catch(() => false);
+  return caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('lifepocket-v'))
+    .map(k => caches.open(k).then(c => c.match('/index.html')).catch(() => null))))
+    .then(hits => !hits.some(Boolean)).catch(() => false);
 }
 
 self.addEventListener('install', e => {

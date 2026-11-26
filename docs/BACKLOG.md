@@ -189,7 +189,7 @@
 - ci-check: allowlist českých literálů snížit na 196.
 
 ## Z 5.14 (finální kontrola)
-- `destroyAllFireSubs()` nemaže `_subReady` (dnes nevadí kvůli reloadu).
+- `destroyAllFireSubs()` nemaže `_subReady` (dnes nevadí kvůli reloadu). ✅ 5.17.2
 - Jídelníček: jídlo k neděli zapsané v neděli po 12:00 jde na příští neděli – ověřit s UX (dnešní večeře „posunutá“).
 - `pnPlace`: na nízkém displeji lišta Zpět, která se nevejde nad panel, hned zmizí; na iOS (`html.lp-iosb` !important bottom) může překrýt panel.
 - `ctMarkOpen`: poděkování se neukáže, když se krok splní dřív než `ctSync`.
@@ -199,33 +199,33 @@
 ## Z 5.15 (revize Finance + K1 + K2)
 - Skupinový rozpočet: správu (smazat/přesunout) hlídá jen klient (`finCanManage`); zvážit pravidlo pro `finBudgets` (pravidla schvaluje uživatel) nebo zmírnit text v privacy.
 - Parťák se `finAi` dostane i souhrny skupinových rozpočtů a název skupiny – doplnit privacy nebo posílat jen „sdílený“.
-- `lp_ai_intro` (drží UID) přidat do `LOCAL_PERSONAL_KEYS`.
-- `<meta name="referrer" content="strict-origin">` do index.html (ochrana `oobCode`).
+- `lp_ai_intro` (drží UID) přidat do `LOCAL_PERSONAL_KEYS`. (`lp_tknotif_` už je v LOCAL_DATED_PREFIXES) ✅ 5.17.2
+- `<meta name="referrer" content="strict-origin">` do index.html (ochrana `oobCode`). ✅ 5.17.2
 - `finMoveGo` / `finDelete` nejsou atomické – při chybě druhé fáze zůstanou kopie; dočistit při dalším otevření.
 - Starší kopie profilu může přepsat `aiEntry` / `finAi` z jiného zařízení (stejně jako `healthConsent`).
 - Ověřit v prohlížeči: návrat z akční stránky do přihlášení bez přihlášení nepřepne zpět na landing, e-mail zůstane předvyplněný.
-- (tester) `setAiEntry` při chybě zápisu nevrací `prof.aiEntry` ani přepínač (na rozdíl od `finAiSet`).
-- (tester) Řádek „Automatická AI analýza zápisků“ ukazovat jen s modulem Deník; doplnit emoji.
+- (tester) `setAiEntry` při chybě zápisu nevrací `prof.aiEntry` ani přepínač (na rozdíl od `finAiSet`). ✅ 5.17.2
+- (tester) Řádek „Automatická AI analýza zápisků“ ukazovat jen s modulem Deník; doplnit emoji. ✅ 5.17.2
 - (tester) Přepínače v Nastavení se neobnoví při změně z jiného zařízení.
-- (tester) `img/shot-*.webp` nejsou v OFFLINE_URLS (landing offline bez obrázků).
-- (tester) EN terminologie: „Budget“ / „companion“ / „buddy“ sjednotit.
+- (tester) `img/shot-*.webp` nejsou v OFFLINE_URLS (landing offline bez obrázků). (ověřeno, hotovo už v 5.17.1) ✅ 5.17.2
+- (tester) EN terminologie: „Budget“ / „companion“ / „buddy“ sjednotit. (UI všude „buddy“ podle sekce You & your buddy, souhlas s financemi „budget“; právní texty a starší CHANGELOG beze změny) ✅ 5.17.2
 
 ## Z 5.16.1 (Lightning faktura, úkoly v nadcházejících)
-- `openSupportLn`: po přepnutí částky během načítání otevře fakturu na starou částku – kontrolovat `supLnKey()` před otevřením.
-- `openSupportLn`: opakované klepnutí během načítání volá `location.href` vícekrát – příznak „čekám na otevření“.
+- `openSupportLn`: po přepnutí částky během načítání otevře fakturu na starou částku – kontrolovat `supLnKey()` před otevřením. ✅ 5.17.2
+- `openSupportLn`: opakované klepnutí během načítání volá `location.href` vícekrát – příznak „čekám na otevření“. ✅ 5.17.2
 - `lnFetchJson`: zvážit `redirect:'error'` (pozor na přesměrování v rámci bitcoli.com).
-- `refreshSupportLn`: mazat cache jen když `supLnInv.get(key)===p`.
-- `CAL_TK='_tk'`: odmítat vlastní typy událostí začínající `_`.
-- `parseBolt11`: podpis a `h` se neověřují (dělá peněženka) – zapsat do komentáře.
+- `refreshSupportLn`: mazat cache jen když `supLnInv.get(key)===p`. ✅ 5.17.2
+- `CAL_TK='_tk'`: odmítat vlastní typy událostí začínající `_`. (typ s „_“ z jiného klienta se ve filtru počítá jako Událost; vlastní typy mají klíč c_…) ✅ 5.17.2
+- `parseBolt11`: podpis a `h` se neověřují (dělá peněženka) – zapsat do komentáře. ✅ 5.17.2
 - Ověřit na telefonu CORS na bitcoli.com (jinak vždy fallback na adresu).
 
 ## Z 5.17 (krmení mazlíčka)
 - Oprava zastaralého indexu petFeed proběhne až v nejbližším starém čase (nejpozději 24 h) – nové dřívější časy mezitím nepřipomenou.
-- Karta Domů: max. 3 řádky, se 4 mazlíčky nemají všichni 🍖; řazení podle splatnosti.
-- „Mám u sebe“ se ve feedu skupiny ukazuje jako „Změněná událost …“ (cal/edit) – vlastní text.
+- Karta Domů: max. 3 řádky, se 4 mazlíčky nemají všichni 🍖; řazení podle splatnosti. (nenakrmení první, pod kartou „+ N další“) ✅ 5.17.2
+- „Mám u sebe“ se ve feedu skupiny ukazuje jako „Změněná událost …“ (cal/edit) – vlastní text. (feed v appce; push ze serveru dál „změnil událost“ – oprava ve functions zbývá) ✅ 5.17.2
 - Smazání vlastního záznamu krmení nevezme zpět už odeslané potvrzení.
-- Nakrmeno u mazlíčka smazaného jinde: obecná hláška + šum v errorLogs.
-- Kosmetika: „✓ ty · 00:40“ s malým písmenem.
+- Nakrmeno u mazlíčka smazaného jinde: obecná hláška + šum v errorLogs. ✅ 5.17.2
+- Kosmetika: „✓ ty · 00:40“ s malým písmenem. ✅ 5.17.2
 - Zpět u krmení nemusí stihnout zrušit aktivitu při druhém krmení ve slotu do 20 s.
 - Pravidla: validace tvaru `feed`/`with` v families/*/pets při příštím nasazení pravidel.
 
@@ -233,4 +233,7 @@
 - Další zrychlení: self-hosting fontů (~−1 s), Firestore až po přihlášení přes import() (~−0,5 s), rozdělení app.js na moduly na vyžádání (největší páka, riziko).
 - Firebase SDK do lp-cdn-v1 při instalaci SW (offline start nepřihlášeného po první návštěvě).
 - Rychlý start: klik na e-mail/heslo před načtením app.js zařadit do fronty.
-- sw.js firstInstall(): otevřít cache až po úspěšném stažení / kontrolovat prázdnou cache.
+- sw.js firstInstall(): otevřít cache až po úspěšném stažení / kontrolovat prázdnou cache. (první instalace = žádná cache appky s /index.html) ✅ 5.17.2
+
+## Z 5.17.2 (opravy z backlogu)
+- notifyFamily: aktivita cal/edit s ref `with:<petId>` (Mám u sebe / Vrátit domů) poslat vlastním textem, dnes push „změnil událost: …“.

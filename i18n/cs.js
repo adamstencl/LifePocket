@@ -3097,6 +3097,7 @@ export default {
   'pet.form.new': 'Nový mazlíček',
   'pet.form.edit': 'Upravit mazlíčka',
   'pet.del': 'Smazat mazlíčka',
+  'pet.gone': 'Tento mazlíček už je smazaný.',
   'pet.deleted': '🗑️ Smazáno: {name}',
   'pet.saved': '✓ Uloženo',
   'pet.plan.t': 'Naplánujeme péči?',
@@ -3119,6 +3120,7 @@ export default {
   'pet.delEvInPets': 'Upravuje se v Mazlíčkovi',
   'pet.dash.food': {one: 'granule na {n} den', few: 'granule na {n} dny', other: 'granule na {n} dní'},
   'pet.dash.foodOut': 'granule došly',
+  'pet.dash.more': {one: '+ {n} další', few: '+ {n} další', other: '+ {n} dalších'},
   'pet.dash.ok': 'Vše v pořádku',
   'pet.dash.next': 'další:',
   // Krmení (5.17)
