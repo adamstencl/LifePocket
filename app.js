@@ -68,8 +68,17 @@ const IS_TWA=(()=>{
 if(IS_TWA) document.documentElement.classList.add('is-twa'); // CSS skryje podporu projektu (.lp-support)
 
 
-const APP_VERSION = '5.17.2';
+const APP_VERSION = '5.18';
 const CHANGELOG = [
+  { v:'5.18', items:[
+    '🌙 Večerní chvilka: na Domů se tě večer zeptám, co chceš zítra dokázat – jedna věc, jedno pole',
+    '🎯 Ráno najdeš svůj cíl nahoře na Domů a odškrtneš ho jedním klepnutím; tečky za týden ukážou, jak se ti daří',
+    '🔔 Když chceš, připomenu se večer notifikací a ranní přehled začne tvým cílem'
+  ], en:[
+    '🌙 Evening moment: on Home I’ll ask what you want to achieve tomorrow – one thing, one field',
+    '🎯 In the morning your goal waits at the top of Home, tick it off with one tap; weekly dots show how you’re doing',
+    '🔔 If you like, I’ll remind you in the evening and the morning summary starts with your goal'
+  ]},
   { v:'5.17.2', items:[
     '🛠️ Drobné opravy a vylepšení',
     '🐾 Karta Mazlíček na Domů ukáže nejdřív nenakrmené mazlíčky, a když se všichni nevejdou, kolik jich je navíc',
@@ -7332,6 +7341,7 @@ function loadNotifSettings() {
     const el = document.getElementById(id);
     if (el) el.checked = notifSettings[keys[i]];
   });
+  glNotifUi(); // večerní připomínka cíle (5.18, prof.goalEve)
   renderGroupNotifSettings();
   updateInstallBtn();
 }
@@ -7371,6 +7381,15 @@ window.saveNotifSettings = () => {
   notifSettings.eveningDigest = document.getElementById('nt-evening')?.checked ?? true;
   notifSettings.weekly = document.getElementById('nt-weekly')?.checked ?? true;
   notifSettings.pc = document.getElementById('nt-pc')?.checked ?? true;
+  // Cíl na zítra (5.18): v prof.goalEve; bez řádku (starší index.html z cache) beze změny
+  const ntg = document.getElementById('nt-goal'), ngt = document.getElementById('notif-goal');
+  if (ntg && CU && prof) {
+    const gp = {};
+    if (ntg.checked !== (glCfg().push === true)) Object.assign(gp, ntg.checked ? {push: true, asked: 1, quiet: 0} : {push: false, asked: 1});
+    if (ngt && TP_RE.test(ngt.value || '') && ngt.value !== glPt()) gp.pt = ngt.value;
+    if (Object.keys(gp).length) { glCfgSet(gp); glDashRefresh(); }
+    glNotifUi();
+  }
 
   localStorage.setItem('lp_notif', JSON.stringify(notifSettings));
   scheduleAllNotifications();
@@ -7526,7 +7545,7 @@ function notifAskShow(why) {
   el.className = 'invite-hint na-card';
   el.setAttribute('role', 'region');
   el.setAttribute('aria-label', t('na.aria'));
-  const title = tH(why === 'group' ? 'na.t.group' : why === 'event' ? 'na.t.event' : why === 'task' ? 'na.t.task' : 'na.t.habit');
+  const title = tH(why === 'group' ? 'na.t.group' : why === 'event' ? 'na.t.event' : why === 'task' ? 'na.t.task' : why === 'goal' ? 'na.t.goal' : 'na.t.habit');
   el.innerHTML = `<span class="invite-hint-em" aria-hidden="true">🔔</span>
     <div class="invite-hint-body">
       <div class="invite-hint-t">${title}</div>
@@ -7800,6 +7819,8 @@ function scheduleAllNotifications() {
     const [eh, em] = evening.split(':').map(Number);
     if (!isNaN(eh) && !isNaN(em)) scheduleDaily(eh, em, sendEveningNotif);
   }
+  // Cíl na zítra (5.18): bez push tokenu připomíná appka
+  if (glCfg().push === true) { const [gh, gm] = glPt().split(':').map(Number); scheduleDaily(gh, gm, glLocalEve, 'goal'); }
 
   // Návykové připomínky — každou hodinu kontroluj
   if (notifSettings.habits) {
@@ -7996,13 +8017,16 @@ function sendMorningNotif() {
   // Doplň včerejšek (5.09): věta navíc, jen po štítech (ydReady) a se zapnutou volbou; před štíty zkusit znovu (lastRun nezapisovat)
   if (hasMod('habits') && ydPref() && !ydReady()) return false;
   const ydN = hasMod('habits') && ydPref() ? ydList(today).length : 0;
-  if (!habitCount && !ydN) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
-  let body = [habitCount ? tN('ln.morningHabits', habitCount) : '', ydN ? tN('ln.morningYd', ydN) : ''].filter(Boolean).join(' ');
+  // Cíl dne (5.18): první věta z paměti (bez čtení), jen se serverovými daty seznamů
+  const g = _clServer ? glFind(today) : null, goalTxt = g && !g.it.done ? cutName(g.it.text || '', 80) : '';
+  const hab = !!(habitCount || ydN);
+  if (!hab && !goalTxt) return; // 4.84: bez návyků na dnešek žádné prázdné shrnutí
+  let body = [goalTxt ? t('gl.n.am', {goal: goalTxt}) : '', habitCount ? tN('ln.morningHabits', habitCount) : '', ydN ? tN('ln.morningYd', ydN) : '', hab ? '' : t('gl.n.cheer')].filter(Boolean).join(' ');
   if (todayEvents.length > 0) {
     body += ` 📅 ${todayEvents[0].name}${todayEvents.length > 1 ? ` +${todayEvents.length-1}` : ''}`;
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(t('ln.morningTitle', {emoji: av?.emoji || '⭐', name: prof?.prezdivka||prof?.nickname || t('ln.friend')}), body, av?.emoji || '🌅', {open: 'habits'}, [], 'morning');
+  sendNotif(t('ln.morningTitle', {emoji: av?.emoji || '⭐', name: prof?.prezdivka||prof?.nickname || t('ln.friend')}), body, av?.emoji || '🌅', {open: hab ? 'habits' : 'goal'}, [], 'morning');
 }
 
 function sendEveningNotif() {
@@ -8023,7 +8047,10 @@ function sendEveningNotif() {
     body = tN('ln.evePart', total - done, {done, total, g: prof?.gender});
   }
   const av = AVS.find(a => a.id === prof?.avatarId);
-  sendNotif(t('ln.eveTitle', {emoji: av?.emoji || '⭐'}), body, av?.emoji || '🌙', {open: 'habits'}, [], 'evening');
+  // Cíl na zítra (5.18): ve stejný čas jedna notifikace místo dvou
+  const gl = glPt() === (notifSettings.evening || '21:00') && glEveLocalDue();
+  if (gl) { body += ' ' + t('gl.n.eveAdd'); _glEveDone = today; }
+  sendNotif(t('ln.eveTitle', {emoji: av?.emoji || '⭐'}), body, av?.emoji || '🌙', {open: gl ? 'goal' : 'habits'}, [], 'evening');
 }
 
 function checkAndRemindHabits() {
@@ -17505,7 +17532,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('messa
 
 // Odkaz z notifikace návyku / kalendáře: nové okno (?open=habit&id=…, ?open=habits, ?open=cal) nebo zpráva OPEN_TARGET od SW
 let _pendingOpen = null;
-const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets', 'mealplan', 'tasks'];
+const OPEN_TARGETS = ['habit', 'habits', 'cal', 'water', 'pc', 'pets', 'mealplan', 'tasks', 'goal'];
 function okNotifHabitId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id); }
 function captureOpenTargetLink() {
   try {
@@ -17536,6 +17563,8 @@ async function consumePendingOpen() {
     if(p.open === 'water') { await wtOpenFromNotif(p); return; }
     // Připomínka úkolu (5.15) → Domů s rozbalenou kartou Úkoly a krátce zvýrazněným řádkem
     if(p.open === 'tasks') { tkOpenFromNotif(p.id); return; }
+    // Cíl na zítra / dnešní cíl (5.18) → Domů, karta Cíl dne
+    if(p.open === 'goal') { glOpenFromNotif(); return; }
     // Připomínka plánování jídelníčku (5.00) → Jídelníček, záložka Plán týdne
     if(p.open === 'mealplan') { try { localStorage.setItem('lp_meal_tab', 'plan'); } catch(e) {} window.sp('mealplan'); return; }
     // Mazlíček (4.94): péče / granule z ranního upozornění (i při vypnutém modulu – data se dotáhnou)
@@ -19465,6 +19494,7 @@ window.deleteCheckItem = function(itemId) {
   if (!list) return;
   const idx = list.items.findIndex(i => i.id === itemId), gone = list.items[idx];
   if (expandedCheckItemId === itemId) expandedCheckItemId = null;
+  if (gone) glOnDel(list.id, gone);
   clSave(list, clOps.del(itemId)).catch(clSaveErr);
   if (gone) { gaCheck(list, 'del', gone.text); clUndoNote(list.id, [{item: clCopyItems([gone])[0], idx}], t('undo.item', {name: cutName(gone.text || '', 40) || '📷'})); }
   renderChecklist();
@@ -19706,6 +19736,7 @@ const _tkPrevT = {};
 function tkReset() {
   _tkVer++; _tkMemo = null; _clServer = false; _tkOrd = {day: '', uid: '', m: new Map(), top: 0, touched: false};
   _tkAllOpen = false; _tkFlash = ''; _tkEd = null; _tkDayAdd = ''; _tkMigBusy = false;
+  _glEdit = ''; _glEveDone = ''; clearTimeout(_glRecT); // cíl dne (5.18)
   Object.keys(_tkIgn).forEach(k => delete _tkIgn[k]);
 }
 // Karta Úkoly na Domů: všem (5.15, Q3); v jednoduchém režimu po odkrytí hlavního úkolu nebo se zapnutým Checklistem
@@ -19949,7 +19980,7 @@ function tkCalRefresh() {
   const ds = document.getElementById('m-day-events')?.dataset.ds;
   if (ds) showDaySheet(ds);
 }
-function tkViewsRefresh() { tkDashRefresh(); tkCalRefresh(); }
+function tkViewsRefresh() { tkDashRefresh(); glDashRefresh(); tkCalRefresh(); }
 window.tkMore = v => { _tkAllOpen = !!v; tkDashRefresh(); document.getElementById('tk-more')?.focus({preventScroll: true}); };
 window.tkGoList = () => { const id = tkListId(); if (id) activeChecklist = id; window.sp('checklist'); };
 window.tkExample = txt => {
@@ -20058,14 +20089,21 @@ window.tkToggle = (listId, itemId) => {
 // „Vše na dnes“: jedna transakce na seznam, lišta Zpět vrátí původní termíny
 window.tkAllToToday = () => {
   const today = toDS(), S = tkSections(today), by = new Map();
-  S.over.filter(e => !e.it.done).forEach(e => { if (!by.has(e.l)) by.set(e.l, {}); by.get(e.l)[e.it.id] = e.due; });
+  // Cíl dne (5.18): přesunutá osobní 🎯 zůstane cílem jen tehdy, když dnešek cíl nemá (jinak se hvězda zruší, Zpět ji vrátí)
+  let goalTaken = !!glFind(today);
+  S.over.filter(e => !e.it.done).forEach(e => {
+    if (!by.has(e.l)) by.set(e.l, {});
+    let un = false;
+    if (e.it.star && !e.gid && glPersonal(e.l)) { if (goalTaken) un = true; else goalTaken = true; }
+    by.get(e.l)[e.it.id] = un ? {d: e.due, un} : e.due;
+  });
   if (!by.size) return;
   const back = [];
   for (const [l, m] of by) {
     const list = clEditFind(l);
     if (!list) continue;
     const pm = {};
-    Object.keys(m).forEach(id => { pm[id] = {due: today}; });
+    Object.entries(m).forEach(([id, d]) => { pm[id] = d && d.un ? {due: today, star: undefined} : {due: today}; });
     clSave(list, clOps.setMany(pm)).catch(clSaveErr);
     back.push([l, m]);
   }
@@ -20077,7 +20115,7 @@ window.tkAllToToday = () => {
       const list = clEditFind(l);
       if (!list) continue;
       const pm = {};
-      Object.entries(m).forEach(([id, d]) => { pm[id] = {due: d}; });
+      Object.entries(m).forEach(([id, d]) => { pm[id] = d && d.un ? {due: d.d, star: true} : {due: d}; });
       w.push(clSave(list, clOps.setMany(pm)).catch(clSaveErr));
     }
     renderChecklist();
@@ -20091,7 +20129,8 @@ window.tkOpen = (listId, itemId) => {
   if (!list || !it) return;
   const due = isDS(it.due) ? it.due : null;
   _tkEd = {l: list.id, id: it.id, text: it.text || '', due, dueT: due && TP_RE.test(it.dueT || '') ? it.dueT : null, star: !!(due && it.star),
-    rem: !!(prof?.taskRem && typeof prof.taskRem === 'object' && prof.taskRem[it.id]), gid: list._family ? list._gid : null, ln: list.name || ''};
+    rem: !!(prof?.taskRem && typeof prof.taskRem === 'object' && prof.taskRem[it.id]), gid: list._family ? list._gid : null, ln: list.name || '',
+    star0: !!(due && it.star)}; // skupinový seznam: 🎯 jen ze starší verze a jen k vypnutí (5.18)
   tkEnsureModal();
   tkEdRender();
   const ov = document.getElementById('m-task');
@@ -20129,7 +20168,8 @@ function tkEdRender(focusSel) {
     <div class="tk-ed-row"><label for="tk-time">⏰ ${tH('tk.time')}</label><input class="finp time-picker-inp tk-ed-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="tk-time" value="${esc(e.dueT || '')}" onchange="tkEdTime(this.value)"${e.due ? '' : ' disabled'}></div>
     <label class="tk-ed-row tk-ed-tg"><span>🔔 ${tH('tk.remind')}</span><input type="checkbox" id="tk-rem"${e.rem && e.due ? ' checked' : ''}${e.due ? '' : ' disabled'} onchange="tkEdSet('rem',this.checked)"></label>
     <div class="tk-sub">${e.due ? (e.dueT ? tH('tk.remAt', {time: e.dueT}) : tH('tk.remAm', {time: morning})) : tH('tk.remNoDate')}</div>
-    <label class="tk-ed-row tk-ed-tg"><span>🎯 ${tH('tk.star')}</span><input type="checkbox" id="tk-star"${e.star && e.due ? ' checked' : ''}${e.due ? '' : ' disabled'} onchange="tkEdSet('star',this.checked)"></label>
+    ${!e.gid || e.star0 ? `<label class="tk-ed-row tk-ed-tg"><span>🎯 ${tH('tk.star')}</span><input type="checkbox" id="tk-star"${e.star && e.due ? ' checked' : ''}${e.due ? '' : ' disabled'} onchange="tkEdSet('star',this.checked)"></label>
+    <div class="tk-sub">${tH(e.gid ? 'tk.starGrp' : 'tk.starHint')}</div>` : ''}
     <div class="tk-sub">📋 ${tH('tk.list', {name: (e.gid ? grpEmoji(e.gid) + ' ' : '') + cutName(e.ln, 40)})}</div>
     <div class="macts"><button type="button" class="btn-s tk-del" onclick="tkDel()">🗑 ${tH('hd.delete')}</button><button type="button" class="btn-p" onclick="tkSave()">${tH('common.save')}</button></div>`;
   const ta = document.getElementById('tk-text');
@@ -20152,10 +20192,10 @@ window.tkEdSet = (k, v) => {
   e[k] = !!v && !!e.due;
   tkEdRender('#tk-' + k);
 };
-// Hlavní úkol dne je jen jeden: hvězdu jiných úkolů téhož dne vypnout
+// Cíl dne je jen jeden: hvězdu jiných úkolů téhož dne vypnout, jen v osobních seznamech (5.18: do skupin se nezapisuje)
 function tkUnstar(due, l0, id0) {
   const by = new Map();
-  tkAll().list.forEach(e => { if (e.it.star && e.due === due && !(e.l === l0 && e.it.id === id0)) { if (!by.has(e.l)) by.set(e.l, {}); by.get(e.l)[e.it.id] = {star: undefined}; } });
+  tkAll().list.forEach(e => { if (!e.gid && e.it.star && e.due === due && !(e.l === l0 && e.it.id === id0)) { if (!by.has(e.l)) by.set(e.l, {}); by.get(e.l)[e.it.id] = {star: undefined}; } });
   for (const [l, pm] of by) { const list = clEditFind(l); if (list) clSave(list, clOps.setMany(pm)).catch(clSaveErr); }
 }
 window.tkSave = () => {
@@ -20168,9 +20208,11 @@ window.tkSave = () => {
   if (!list) return;
   const it = (list.items || []).find(i => i.id === e.id);
   if (!it) { toast(t('cl.gone')); cm('m-task'); return; }
-  const due = isDS(e.due) ? e.due : null, dueT = due && TP_RE.test(e.dueT || '') ? e.dueT : null, star = !!(due && e.star);
+  const due = isDS(e.due) ? e.due : null, dueT = due && TP_RE.test(e.dueT || '') ? e.dueT : null, star = !!(due && e.star && (!e.gid || e.star0));
   const changed = it.text !== text || (it.due || null) !== due || (it.dueT || null) !== dueT || !!it.star !== star;
-  if (star && !(it.star && it.due === due)) tkUnstar(due, e.l, e.id);
+  // Cíl dne (5.18): jen v osobních seznamech; měl-li den jiný cíl, krátké oznámení (původní úkol zůstává)
+  const prevG = star && !e.gid && !(it.star && it.due === due) ? glFind(due) : null;
+  if (star && !e.gid && !(it.star && it.due === due)) tkUnstar(due, e.l, e.id);
   if (changed) {
     clSave(list, clOps.set(e.id, {text, due: due || undefined, dueT: dueT || undefined, star: star || undefined})).catch(clSaveErr);
     gaCheck(list, 'edit', text);
@@ -20179,6 +20221,7 @@ window.tkSave = () => {
   _tkEd = null;
   cm('m-task');
   renderChecklist();
+  if (prevG && !(prevG.l === e.l && prevG.it.id === e.id)) toast(t('gl.moved', {when: tkDueLabel(due), name: cutName(text, 40)}), 3500);
 };
 window.tkDel = () => {
   const e = _tkEd;
@@ -20190,6 +20233,7 @@ window.tkDel = () => {
   cm('m-task');
   if (!gone) return;
   if (expandedCheckItemId === gone.id) expandedCheckItemId = null;
+  glOnDel(list.id, gone);
   clSave(list, clOps.del(gone.id)).catch(clSaveErr);
   gaCheck(list, 'del', gone.text);
   clUndoNote(list.id, [{item: clCopyItems([gone])[0], idx}], t('undo.item', {name: cutName(gone.text || '', 40) || '📷'}));
@@ -20419,6 +20463,401 @@ function showDaySheet(ds) {
   tkFlashDone(modal);
 }
 window.tkDayAddOpen = ds => { _tkDayAdd = ds; showDaySheet(ds); document.getElementById('tk-day-inp')?.focus(); };
+
+
+// 🎯  CÍL DNE (5.18, docs/NAVRH-CIL-ZITRA.md)
+// Cíl dne D = úkol s 🎯 (star) a termínem D v osobním nesdíleném seznamu; žádný nový druh záznamu.
+// Profil: goalEve (nastavení, quiet píše server), goal (ukazatel na poslední cíl, bez textu), goalLog (den → 1 nastaveno / 2 splněno),
+// goalList (osobní seznam pro cíle, když je seznam Úkoly sdílený do skupiny). Pravidla Firestore beze změny.
+const GL_LOG_MAX = 60;
+let _glEdit = '', _glSig = '', _glRecT = 0, _glEveDone = '';
+function glCfg() { const g = prof?.goalEve; return g && typeof g === 'object' && !Array.isArray(g) ? g : {}; }
+// Od kdy se ukazuje večerní otázka (15:00–23:30) a čas připomínky
+const glT = () => { const v = glCfg().t; return TP_RE.test(v || '') && v >= '15:00' && v <= '23:30' ? v : '18:00'; };
+const glPt = () => TP_RE.test(glCfg().pt || '') ? glCfg().pt : '21:00';
+// 04:00 = začátek dne pro cíl (po půlnoci je pořád „dnešní večer“)
+function glDay(d = new Date()) { const x = new Date(d); if (x.getHours() < 4) x.setDate(x.getDate() - 1); return toDS(x); }
+const glTmrw = () => addDays(glDay(), 1);
+function glIsEve(now = new Date()) {
+  const [h, m] = glT().split(':').map(Number), mins = now.getHours() * 60 + now.getMinutes();
+  return mins < 240 || mins >= h * 60 + m;
+}
+// Karta: všem; v jednoduchém režimu od 3. dne nebo po odkrytí (unl focus)
+const glCardOn = () => !isSimple() || accDay() >= 2 || unl('focus');
+// Osobní a nesdílený seznam (cíl je vždy osobní)
+function glPersonal(l) { const c = CU ? checklists.find(x => x && x.id === l) : null; return !!c && !c.shared; }
+function glPtr() {
+  const p = prof?.goal;
+  return p && typeof p === 'object' && isDS(p.d) && TK_ID_RE.test(p.l || '') && TK_ID_RE.test(p.id || '') ? p : null;
+}
+function glLog() {
+  const m = prof?.goalLog, o = {};
+  if (m && typeof m === 'object' && !Array.isArray(m)) for (const [k, v] of Object.entries(m)) if (isDS(k) && (v === 1 || v === 2)) o[k] = v;
+  return o;
+}
+// Cíl dne ds: osobní úkol s hvězdou; při více (dvě zařízení, starší data) vyhrává ukazatel, jinak nejdřív založený
+function glFind(ds) {
+  if (!isDS(ds)) return null;
+  const arr = getTasksForDate(ds).filter(e => !e.gid && e.it.star && glPersonal(e.l));
+  if (arr.length < 2) return arr[0] || null;
+  const p = glPtr();
+  return (p && p.d === ds && arr.find(e => e.l === p.l && e.it.id === p.id)) || arr[arr.length - 1];
+}
+// Kam se cíl zakládá: seznam Úkoly (osobní, nesdílený) → prof.goalList → '' (založit)
+function glListId() {
+  const tl = tkListId();
+  if (tl && glPersonal(tl)) return tl;
+  if (prof?.goalList && glPersonal(prof.goalList)) return prof.goalList;
+  return '';
+}
+// Seznam Úkoly je sdílený do skupiny: cíle do osobního „🎯 Moje cíle“
+function glCreateList(items) {
+  const def = {id: genId(), name: t('gl.listName'), items: clCopyItems(items), shared: false, createdAt: Date.now()};
+  prof.goalList = def.id;
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), {goalList: def.id}).catch(e => console.warn('[LP] goalList:', e?.code || e?.name));
+  return {id: def.id, w: setDoc(doc(db, 'users', CU.uid, 'checklists', def.id), def)};
+}
+// Index v profilu jedním zápisem: log {den: 1|2|null}, ptr (undefined = beze změny, null = smazat), quiet0 = vynulovat počítadlo
+function glIdx(o) {
+  if (!CU || !prof) return;
+  const patch = {}, log = glLog();
+  for (const [d, v] of Object.entries(o.log || {})) {
+    if (!isDS(d)) continue;
+    if (v) { if (log[d] !== v) { log[d] = v; patch['goalLog.' + d] = v; } }
+    else if (d in log) { delete log[d]; patch['goalLog.' + d] = deleteField(); }
+  }
+  const lim = addDays(glDay(), -GL_LOG_MAX);
+  for (const d of Object.keys(log)) if (d < lim) { delete log[d]; patch['goalLog.' + d] = deleteField(); }
+  if (o.ptr !== undefined) {
+    const p = glPtr(), q = o.ptr;
+    if (q && !(p && p.d === q.d && p.l === q.l && p.id === q.id)) { patch.goal = {d: q.d, l: q.l, id: q.id}; prof.goal = patch.goal; }
+    else if (!q && prof.goal) { patch.goal = deleteField(); delete prof.goal; }
+  }
+  if (o.quiet0 && (Number(glCfg().quiet) || 0) > 0) { patch['goalEve.quiet'] = 0; prof.goalEve = {...glCfg(), quiet: 0}; }
+  if (!Object.keys(patch).length) return;
+  prof.goalLog = log;
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), patch).catch(e => console.warn('[LP] goal:', e?.code || e?.name));
+}
+// Nastavení goalEve po polích (quiet zapisuje server, celý objekt se nepřepisuje)
+function glCfgSet(p) {
+  if (!CU || !prof) return;
+  const patch = {};
+  for (const [k, v] of Object.entries(p)) patch['goalEve.' + k] = v;
+  prof.goalEve = {...glCfg(), ...p};
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), patch).catch(e => toast(t('common.saveFailed', {err: userErr(e, 'profil')})));
+}
+// Srovnání indexu s položkami v paměti (posledních 7 dní a zítřek): úkol s 🎯 přidaný jinde, odškrtnutí, změna termínu,
+// smazání dnešního / zítřejšího. Jen se serverovými daty osobních seznamů; zapisuje jen rozdíl.
+function glReconcileSoon() { clearTimeout(_glRecT); _glRecT = setTimeout(glReconcile, 1200); }
+function glReconcile() {
+  if (!CU || !prof || !_clServer) return;
+  const D0 = glDay(), T = addDays(D0, 1), log = glLog(), o = {log: {}};
+  for (let i = -7; i <= 1; i++) {
+    const d = addDays(D0, i), g = glFind(d);
+    if (g) o.log[d] = g.it.done ? 2 : 1;
+    else if (i >= 0 && log[d] === 1) o.log[d] = null; // splněný den zůstává i po smazání úkolu
+  }
+  const gT = glFind(T), g = gT || glFind(D0), p = glPtr();
+  if (g) o.ptr = {d: g.due, l: g.l, id: g.it.id};
+  else if (p && p.d >= D0) o.ptr = null;
+  o.quiet0 = !!gT;
+  glIdx(o);
+}
+// Smazání nesplněného cíle (i minulého dne): den z teček zmizí, když nemá jiný cíl
+function glOnDel(listId, it) {
+  if (!it || !it.star || it.done || !isDS(it.due) || !glPersonal(listId) || glLog()[it.due] !== 1) return;
+  if (getTasksForDate(it.due).some(e => !e.gid && e.it.star && glPersonal(e.l) && !(e.l === listId && e.it.id === it.id))) return;
+  glIdx({log: {[it.due]: null}});
+}
+// Série: splněné cíle po sobě do včerejška, plus dnešek, když je splněný
+function glStreak(D0, log) {
+  let n = log[D0] === 2 ? 1 : 0, d = addDays(D0, -1);
+  while (log[d] === 2 && n < 400) { n++; d = addDays(d, -1); }
+  return n;
+}
+// Tečky týdne (po–ne) a série; dnešek z paměti (index se dopíše se zpožděním)
+function glDotsHTML(D0) {
+  const g0 = glFind(D0), log = {...glLog()};
+  if (g0) log[D0] = g0.it.done ? 2 : 1;
+  if (glCfg().dots === false || Object.keys(log).length < 2) return '';
+  const mon = addDays(D0, -((new Date(D0 + 'T12:00:00').getDay() + 6) % 7));
+  const sh = weekdayNames('short'), lg = weekdayNames('long'), parts = [];
+  let names = '', dots = '';
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(mon, i), v = log[d];
+    const c = d > D0 ? '' : v === 2 ? 'ok' : d === D0 ? (v ? 'now' : '') : v === 1 ? 'set' : '';
+    parts.push(t('gl.dot.' + (c || 'none'), {day: d === D0 ? t('tk.d.today') : lg[i]}));
+    names += `<span class="gl-dn">${esc(sh[i])}</span>`;
+    dots += `<span class="gl-dot${c ? ' ' + c : ''}"></span>`;
+  }
+  const n = glStreak(D0, log), st = n >= 2 ? tN('gl.streak', n) : '';
+  return `<div class="gl-dots" role="img" aria-label="${esc(t('gl.dotsAria', {list: parts.join(', ')}) + (st ? '. ' + st : ''))}">${names}${dots}<span class="gl-streak" aria-hidden="true">${esc(st)}</span></div>`;
+}
+// Stav karty: A = dnešní cíl (ve dne, nebo večer po „Dnes ne“), C = večerní otázka, D = zítřejší cíl uložen, '' = nic
+function glState() {
+  const D0 = glDay(), T = addDays(D0, 1), eve = glIsEve(), g0 = glFind(D0), gT = eve ? glFind(T) : null;
+  if (eve && (gT || lsGet('lp_goal_skip', '') !== D0)) return {k: gT && _glEdit !== T ? 'D' : 'C', D0, T, g0, gT};
+  return {k: g0 ? 'A' : '', D0, T, g0, gT: null};
+}
+function glRowHTML(e, cls) {
+  const {it, l} = e, done = !!it.done, nm = it.text || '';
+  return `<div class="gl-row ${cls}${done ? ' done' : ''}">
+    <button type="button" class="tk-chk" data-a0="${esc(l)}" data-a1="${esc(it.id)}" aria-pressed="${done}" aria-label="${tH('cl.checkAria', {name: nm})}" onclick="tkToggle(this.dataset.a0,this.dataset.a1)"><span class="tk-box" aria-hidden="true">${done ? '✓' : ''}</span></button>
+    <button type="button" class="gl-txt" data-a0="${esc(l)}" data-a1="${esc(it.id)}" aria-label="${tH('tk.editAria', {name: nm})}" onclick="tkOpen(this.dataset.a0,this.dataset.a1)">${esc(nm)}</button>
+  </div>`;
+}
+function glInner(s) {
+  const eve = s.k === 'C' || s.k === 'D';
+  const title = s.k === 'A' ? tH('gl.day.t') : s.k === 'D' ? tH('gl.tmrw.t') : tH('gl.eve.t');
+  let h = `<div class="dw-head"><div class="dw-title" id="gl-h">${title}</div>
+    <button type="button" class="tk-go gl-more" onclick="glMenuOpen()" aria-label="${tH('gl.menuAria')}" aria-haspopup="dialog">⋯</button></div>`;
+  if (s.k === 'A') {
+    h += glRowHTML(s.g0, 'gl-main');
+    if (s.g0.it.done) h += `<div class="gl-sub gl-yay">${tH('gl.done')}</div>`;
+    return h + glDotsHTML(s.D0);
+  }
+  if (s.k === 'D') {
+    h += `<div class="gl-big"><span aria-hidden="true">🎯</span> ${esc(s.gT.it.text || '')}</div>
+      <div class="gl-sub">${tH(notifGranted() && notifSettings.morningDigest !== false ? 'gl.saved.push' : 'gl.saved')}</div>
+      <button type="button" class="btn-s gl-edit" id="gl-edit" onclick="glEditOpen()">${tH('gl.edit')}</button>`;
+    if (glCfg().asked !== 1) h += `<div class="gl-ask"><div class="gl-ask-t">${tH('gl.ask.t')}</div><div class="gl-ask-b">
+      <button type="button" class="btn-p" onclick="glAsk(1)">${tH('gl.ask.yes', {time: glPt()})}</button>
+      <button type="button" class="btn-s" onclick="glAsk(0)">${tH('gl.ask.no')}</button></div></div>`;
+    return h;
+  }
+  // C: večerní otázka (v úpravě předvyplněná); text se ukládá doslova, termín je vždy zítřek
+  const ed = !!s.gT, v = ed ? s.gT.it.text || '' : '';
+  h += `<div class="gl-sub">${tH('gl.eve.sub')}</div>
+    <div class="tk-add"><input id="gl-inp" class="finp tk-inp" type="text" maxlength="120" enterkeyhint="done" autocomplete="off" placeholder="${tH('gl.ph')}" aria-label="${tH('gl.inpAria')}" value="${esc(v)}" oninput="glInput()" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();glSave()}"><button type="button" class="tk-addbtn" id="gl-ok" onclick="glSave()" aria-label="${tH('gl.saveAria')}"${ed || v ? '' : ' disabled'}>✓</button></div>`;
+  if (!ed) {
+    const pick = getTasksForDate(s.T).filter(e => !e.gid && glPersonal(e.l) && !e.it.done && !e.it.star).slice(0, 3);
+    if (pick.length) h += `<div class="gl-pick">${tH('gl.pick')}</div><div class="gl-chips">${pick.map(e =>
+      `<button type="button" class="tk-chip gl-chip" data-a0="${esc(e.l)}" data-a1="${esc(e.it.id)}" aria-label="${tH('gl.pickAria', {name: e.it.text || ''})}" onclick="glPick(this.dataset.a0,this.dataset.a1)">${esc(cutName(e.it.text || '', 60))}</button>`).join('')}</div>`;
+  }
+  h += `<div class="gl-foot">${s.g0 ? `<span class="gl-tl">${tH('gl.today')}</span>${glRowHTML(s.g0, 'gl-today')}` : ''}
+    ${ed ? `<button type="button" class="gl-skip" onclick="glEditCancel()">${tH('common.cancel')}</button>`
+      : `<button type="button" class="gl-skip" onclick="glSkip()">${tH('gl.skip')}</button>`}</div>`;
+  return h;
+}
+function glDashHTML() {
+  _glSig = glIsEve() + '|' + glDay();
+  if (!CU || !_subReady.has('checklist')) return '';
+  const s = glState();
+  if (!s.k) return '';
+  return `<div class="dw gl-card ${s.k === 'A' ? 'day' : 'eve'}" id="dw-goal" role="region" aria-labelledby="gl-h">${glInner(s)}</div>`;
+}
+// Překreslí jen kartu; rozepsaný text a fokus zůstanou
+function glDashRefresh() {
+  const el = document.getElementById('gl-dash');
+  if (el) {
+    const ae = document.activeElement, inp = document.getElementById('gl-inp'), had = !!ae && el.contains(ae);
+    const st = inp ? {v: inp.value, f: ae === inp, s: inp.selectionStart, e: inp.selectionEnd} : null;
+    const fk = had ? (ae.dataset?.a1 ? {c: ae.className, a1: ae.dataset.a1} : ae.id ? {id: ae.id} : null) : null;
+    el.innerHTML = glDashHTML();
+    const ni = document.getElementById('gl-inp');
+    if (ni && st && (st.v || st.f)) {
+      ni.value = st.v; glInput();
+      if (st.f) { try { ni.focus({preventScroll: true}); ni.setSelectionRange(st.s, st.e); } catch (e) {} }
+    }
+    if (fk && !el.contains(document.activeElement)) {
+      const b = fk.id ? document.getElementById(fk.id) : [...el.querySelectorAll('button[data-a1]')].find(x => x.className === fk.c && x.dataset.a1 === fk.a1);
+      if (b && el.contains(b)) b.focus({preventScroll: true});
+    }
+    if (had && !el.contains(document.activeElement)) glFocusLost();
+  }
+  glReconcileSoon();
+}
+// Fokus ze zmizelé karty na nadpis Domů (jako u nabídek)
+function glFocusLost() {
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && ae.isConnected) return;
+  const h = document.getElementById('d-greet');
+  if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll: true}); }
+}
+// Večer od goalEve.t a ve 04:00 se karta přepne sama (minutová kontrola, jen když je vidět)
+function glTick() {
+  if (document.visibilityState !== 'visible' || !document.getElementById('gl-dash')) return;
+  if (glIsEve() + '|' + glDay() !== _glSig) glDashRefresh();
+}
+setInterval(glTick, 60000);
+document.addEventListener('visibilitychange', glTick);
+
+window.glInput = () => {
+  const i = document.getElementById('gl-inp'), b = document.getElementById('gl-ok');
+  if (i && b && _glEdit !== glTmrw()) b.disabled = !i.value.trim();
+};
+window.glSave = () => {
+  const inp = document.getElementById('gl-inp');
+  if (!inp || !CU) return;
+  const text = cutName(inp.value.replace(/\s+/g, ' ').trim(), 120), T = glTmrw(), g = glFind(T);
+  if (!text) { if (g && _glEdit === T) glCancel(g); else inp.focus(); return; }
+  let l = '', id = '';
+  if (g) { // úprava (nebo cíl mezitím vznikl na jiném zařízení): text téže položky
+    const list = clEditFind(g.l);
+    if (!list) return;
+    if (g.it.text !== text) clSave(list, clOps.set(g.it.id, {text})).catch(clSaveErr);
+    l = g.l; id = g.it.id;
+  } else {
+    id = 'gl' + T.replace(/-/g, ''); // deterministické id: dvě zařízení nevytvoří dva cíle
+    const item = {id, text, done: false, due: T, star: true};
+    const lid = glListId();
+    if (lid) {
+      const list = clEditFind(lid);
+      if (!list) return;
+      tkUnstar(T, lid, id);
+      if ((list.items || []).some(i => i && i.id === id)) clSave(list, clOps.set(id, {text, due: T, star: true, done: false, doneAt: undefined})).catch(clSaveErr);
+      else { const r = tkAddItems([item], lid, true); if (!r) return; r.w.catch(clSaveErr); }
+      l = lid;
+    } else {
+      if (!tkCanCreate()) { if (!_fireSubs['checklist']) subChecklist(); toast(t('tk.loading')); return; }
+      const c = tkListId() ? glCreateList([item]) : tkCreateList([item]);
+      c.w.catch(clSaveErr);
+      l = c.id;
+    }
+  }
+  _glEdit = '';
+  glIdx({log: {[T]: 1}, ptr: {d: T, l, id}, quiet0: true});
+  renderChecklist();
+  document.getElementById('gl-edit')?.focus({preventScroll: true});
+};
+// Zrušení v úpravě (prázdné pole + ✓): položku z karty smazat, jinak jen vzít 🎯; lišta Zpět
+function glCancel(g) {
+  const list = clEditFind(g.l);
+  if (!list) return;
+  const id = g.it.id, msg = t('gl.cleared');
+  if (/^gl\d{8}$/.test(id)) {
+    const idx = (list.items || []).findIndex(i => i.id === id), gone = list.items[idx];
+    if (!gone) return;
+    clSave(list, clOps.del(id)).catch(clSaveErr);
+    clUndoNote(list.id, [{item: clCopyItems([gone])[0], idx}], msg);
+    taskRemSet(list, id, null, null, false);
+  } else {
+    clSave(list, clOps.set(id, {star: undefined})).catch(clSaveErr);
+    undoNote(msg, () => {
+      const l2 = clEditFind(g.l);
+      if (!l2) { toast(t('cl.gone')); return; }
+      toast(t('undo.done'));
+      const p = clSave(l2, clOps.set(id, {star: true}));
+      renderChecklist();
+      return p.catch(clSaveErr);
+    });
+  }
+  _glEdit = '';
+  const p = glPtr();
+  glIdx({log: {[g.due]: null}, ...(p && p.l === g.l && p.id === id ? {ptr: null} : {})});
+  renderChecklist();
+}
+// Čip „Nebo vyber z úkolů na zítra“: dá úkolu 🎯 (text se nekopíruje)
+window.glPick = (l, id) => {
+  const T = glTmrw(), list = clEditFind(l), it = list?.items?.find(i => i && i.id === id);
+  if (!it || it.due !== T || !glPersonal(l)) return;
+  tkUnstar(T, l, id);
+  clSave(list, clOps.set(id, {star: true})).catch(clSaveErr);
+  _glEdit = '';
+  glIdx({log: {[T]: it.done ? 2 : 1}, ptr: {d: T, l, id}, quiet0: true});
+  renderChecklist();
+  document.getElementById('gl-edit')?.focus({preventScroll: true});
+};
+window.glEditOpen = () => {
+  _glEdit = glTmrw();
+  glDashRefresh();
+  const i = document.getElementById('gl-inp');
+  if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+};
+window.glEditCancel = () => { _glEdit = ''; glDashRefresh(); document.getElementById('gl-edit')?.focus({preventScroll: true}); };
+// „Dnes ne“: otázka se schová do zítřejšího večera (jen v tomto zařízení)
+window.glSkip = () => { lsSave('lp_goal_skip', glDay()); glDashRefresh(); glFocusLost(); };
+window.glAsk = yes => {
+  glCfgSet(yes ? {asked: 1, push: true, quiet: 0} : {asked: 1});
+  if (yes) { if (!notifGranted()) notifAskNow('goal'); else scheduleAllNotifications(); }
+  glNotifUi();
+  glDashRefresh();
+  document.getElementById('gl-edit')?.focus({preventScroll: true});
+};
+// ── Menu karty ⋯ (#m-goal) ──
+window.glMenuOpen = () => {
+  document.getElementById('m-goal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'm-goal'; m.className = 'moverlay open';
+  m.innerHTML = '<div class="modal tk-ed" role="dialog" aria-modal="true" aria-labelledby="gl-m-t" id="gl-m-body"></div>';
+  mountGroupSheet(m, () => document.querySelector('#dw-goal .gl-more') || document.getElementById('d-greet'));
+  glMenuRender('#gl-m-from');
+};
+function glMenuRender(focusSel) {
+  const box = document.getElementById('gl-m-body');
+  if (!box) return;
+  const c = glCfg(), push = c.push === true;
+  const tp = (id, v, k) => `<input class="finp time-picker-inp tk-ed-inp" type="text" readonly inputmode="none" data-time-picker data-time-clear="0" role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" id="${id}" value="${esc(v)}" data-a0="${k}" onchange="glMenuSet(this.dataset.a0,this.value)">`;
+  box.innerHTML = `<div class="tk-ed-head"><div class="mtitle" id="gl-m-t" style="margin:0">${tH('gl.menu.t')}</div>
+      <button type="button" class="tk-x" onclick="document.getElementById('m-goal')?.remove()" aria-label="${tH('common.close')}">✕</button></div>
+    <div class="tk-ed-row"><label for="gl-m-from">${tH('gl.menu.from')}</label>${tp('gl-m-from', glT(), 't')}</div>
+    <label class="tk-ed-row tk-ed-tg"><span>${tH('gl.menu.push')}</span><input type="checkbox" id="gl-m-push"${push ? ' checked' : ''} onchange="glMenuSet('push',this.checked)"></label>
+    ${push ? `<div class="tk-sub">${tH('gl.menu.pushHint', {time: glPt()})}</div>
+      <div class="tk-ed-row"><label for="gl-m-pt">${tH('gl.menu.pushTime')}</label>${tp('gl-m-pt', glPt(), 'pt')}</div>
+      ${(Number(c.quiet) || 0) >= 3 ? `<div class="tk-sub">${tH('gl.menu.quiet')}</div>` : ''}` : ''}
+    <label class="tk-ed-row tk-ed-tg"><span>${tH('gl.menu.dots')}</span><input type="checkbox" id="gl-m-dots"${c.dots !== false ? ' checked' : ''} onchange="glMenuSet('dots',this.checked)"></label>
+    <div class="macts"><button type="button" class="btn-s" id="gl-m-hide" onclick="glHide()">${tH('gl.menu.hide')}</button></div>`;
+  if (focusSel) box.querySelector(focusSel)?.focus();
+}
+window.glMenuSet = (k, v) => {
+  if (k === 't') {
+    if (!TP_RE.test(v || '') || v < '15:00' || v > '23:30') { toast(t('gl.menu.range')); glMenuRender('#gl-m-from'); return; }
+    glCfgSet({t: v});
+  } else if (k === 'pt') {
+    if (!TP_RE.test(v || '')) return;
+    glCfgSet({pt: v});
+    scheduleAllNotifications();
+  } else if (k === 'push') {
+    glCfgSet(v ? {push: true, asked: 1, quiet: 0} : {push: false, asked: 1});
+    if (v && !notifGranted()) notifAskNow('goal');
+    scheduleAllNotifications();
+  } else if (k === 'dots') glCfgSet({dots: !!v});
+  else return;
+  glMenuRender('#gl-m-' + (k === 't' ? 'from' : k));
+  glNotifUi();
+  glDashRefresh();
+};
+window.glHide = () => {
+  document.getElementById('m-goal')?.remove();
+  const h = new Set(dashLayout().hidden);
+  h.add('goal');
+  dashApply(dashMerged(), [...h]);
+  glFocusLost();
+};
+// Nastavení → Upozornění: řádek a čas večerní připomínky (stav v prof.goalEve, ne v notifSettings)
+function glNotifUi() {
+  const on = glCfg().push === true, c = document.getElementById('nt-goal'), w = document.getElementById('notif-goal-wrap'), i = document.getElementById('notif-goal');
+  if (c) c.checked = on;
+  if (w) w.hidden = !on;
+  if (i) i.value = glPt();
+}
+// Klepnutí na notifikaci (open: 'goal'): Domů, posun na kartu, ve večerní otázce fokus do pole (iOS bez gesta jen posun)
+function glOpenFromNotif() {
+  window.sp('dashboard');
+  const t0 = Date.now(), uid = CU?.uid, go = () => {
+    if (!CU || CU.uid !== uid) return;
+    const el = document.getElementById('dw-goal');
+    if (!el && Date.now() - t0 < 8000 && (!_subReady.has('checklist') || !_clServer)) { setTimeout(go, 500); return; }
+    if (!el) return;
+    el.scrollIntoView({block: 'center'});
+    document.getElementById('gl-inp')?.focus({preventScroll: true});
+  };
+  setTimeout(go, 150);
+}
+window.glFocusInput = glOpenFromNotif;
+// Bez push tokenu: večerní připomínka z appky (stejné podmínky jako server)
+function glEveLocalDue() {
+  const c = glCfg();
+  return c.push === true && (Number(c.quiet) || 0) < 3 && _clServer && !glFind(glTmrw());
+}
+function glLocalEve() {
+  if (hasPushToken() || !notifGranted() || glCfg().push !== true) return;
+  if (!_clServer) return _fireSubs['checklist'] ? false : undefined; // data ještě nejsou ze serveru → zkusit za minutu
+  const send = () => { if (_glEveDone !== toDS() && glEveLocalDue()) sendNotif(t('gl.n.eveT'), t('gl.n.eveB'), '🌙', {open: 'goal'}, [], 'goal-eve'); };
+  // Ve stejný čas jako večerní shrnutí: věta se přidá k němu (sendEveningNotif), samostatně jen když shrnutí nepřišlo
+  if (notifSettings.eveningDigest && glPt() === (notifSettings.evening || '21:00')) { notifTimers.push(setTimeout(send, 3000)); return; }
+  send();
+}
 
 
 
@@ -23373,9 +23812,11 @@ const NUDGES = [
       return {em:av.emoji, t:tH('game.intro.title', {av:av.name}), d:(n ? tH('game.intro.text', {n, lvl:gameLevel()}) + ' ' : '') + tH('game.intro.how'), btn:tH('game.intro.show')}; },
     yes:() => window.openGame() },
   // 5.15: nabídka karty Úkoly (id 'focus' zůstává kvůli uloženým odpovědím a prof.unl)
+  // 5.18: večer, dokud se karta Cíl dne neukazuje sama (3. den), jako večerní chvilka; „Ano“ odkryje i ji
   { id:'focus', when:() => accDay() >= 1 && !tkCardOn(), // po 14 dnech už Domů úkoly ukazuje
-    txt:() => ({em:'✅', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}),
-    yes:() => { unlock('focus'); rDash(); window.tkFocusInput(); } },
+    txt:() => glCardOn() || !glIsEve() ? {em:'✅', t:tH('nd.focus.t'), d:tH('nd.focus.d'), btn:tH('nd.focus.btn')}
+      : {em:'🌙', t:tH('nd.goal.t'), d:tH('nd.goal.d'), btn:tH('nd.goal.btn')},
+    yes:() => { const eve = !glCardOn() && glIsEve(); unlock('focus'); rDash(); if (eve) window.glFocusInput(); else window.tkFocusInput(); } },
   { id:'water', when:() => hasMod('habits') && !waterOn() && accDay() >= 7 && actN('habits') >= 5,
     txt:() => ({em:'💧', t:tH('nd.water.t'), d:tH('nd.water.d'), btn:tH('nd.on')}),
     yes:() => { lsSave('lp_wt_intro', 1); wtEnableModule(); window.sp('water'); } },
@@ -23751,7 +24192,8 @@ function simpleModOrder(){
 // 5.10: Návyky hned pod bannerem parťáka, citát a energie níž (uložené pořadí uživatele se nemění)
 // 5.13: Pití hned pod Návyky (jen výchozí pořadí, uložené dashLayout zůstává)
 // 5.15: karta Hlavní úkol (focus) nahrazena kartou Úkoly (tasks) na stejném místě
-const DASH_CARDS=[{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'tasks',em:'✅'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
+// 5.18: Cíl dne (goal) na prvním místě, i v uložených rozvrženích (dashMerged ji vloží na začátek)
+const DASH_CARDS=[{id:'goal',em:'🎯'},{id:'habits',em:'🔥'},{id:'water',em:'💧'},{id:'tasks',em:'✅'},{id:'pc',em:'🏅'},{id:'ch',em:'🤝'},
   {id:'journal',em:'📒'},{id:'goals',em:'🏆'},{id:'calendar',em:'🗓️'},{id:'cooking',em:'👨‍🍳'},{id:'shopping',em:'🧺'},{id:'pets',em:'🐾'},{id:'finance',em:'💰'},
   {id:'mood',em:'😊'},{id:'quote',em:'💬'},{id:'energy',em:'⭐'},{id:'report',em:'📊'},{id:'streaks',em:'🔥'}];
 // Ve výchozím stavu (bez vlastního dashLayout) schované herní karty: energie parťáka a Aktivní série (5.10)
@@ -23798,6 +24240,7 @@ function dashEditAvail(){
   return DASH_IDS.filter(id=>{
     switch(id){
       case 'tasks': return tkCardOn();
+      case 'goal': return true;
       case 'water': return waterOn();
       case 'pc': return unlD('pc')||pcJoined();
       case 'ch': case 'quote': case 'report': return true;
@@ -24048,6 +24491,7 @@ function rDash(){
   if(!slots){
   // Pevné pásmo nahoře: karta Začínáme (nováček), nabídky a novinky, týdenní souhrn
   if(tkCardOn()&&!dHid.has('tasks')){ tkEnsureSubs(); mw.tasks=tkDashHTML(); } // Úkoly (5.15) místo Hlavního úkolu
+  if(glCardOn()&&!dHid.has('goal')){ tkEnsureSubs(); mw.goal='<div id="gl-dash">'+glDashHTML()+'</div>'; } // Cíl dne (5.18), obal překreslí glDashRefresh
   mw.water=waterWidgetHTML();
   // Úvodní karty (5.10): nejvýš jedna naráz, v pořadí priority; další se ukáže po zavření předchozí.
   // Začínáme, úroveň 10 (pojmenovat parťáka, 5.07), nabídka z fronty (jednoduchý režim) nebo novinky:
@@ -24318,6 +24762,8 @@ function rDash(){
     // Karta vestavěného prohlížeče (5.13) hned pod „Co teď“, slot nezabírá
     const ia=inAppDashHTML();
     if(ia) cards.splice(qs?cards.indexOf(qs)+1:0,0,ia);
+    // Cíl dne (5.18): od 3. dne (nebo po odkrytí) hned pod „Co teď“ / nákup pozvaného, slot nezabírá; ve dne bez cíle prázdný obal
+    if(glCardOn()&&!dashLayout().hidden.includes('goal')){ tkEnsureSubs(); cards.splice(Math.max(cards.indexOf(gShop),cards.indexOf(qs),cards.indexOf(ia))+1,0,'<div id="gl-dash">'+glDashHTML()+'</div>'); }
     html+=cards.join('');
     // Krmení (5.17): s nastaveným krmením karta mazlíčka hned (jen řádky krmení), slot nezabírá
     if(!cards.includes(mw.pets)&&mods.includes('pets')&&petFeedAny()){ const fh=petsWidgetHTML(true); if(fh) html+='<div id="pet-dash" data-feed="1">'+fh+'</div>'; }
@@ -24390,6 +24836,7 @@ function rDash(){
     // Rozepsaný text v kartě „Co teď“ přežije překreslení (snapshot během psaní)
     const ci=document.getElementById('ct-inp'), cv=ci?{m:ci.dataset.a0,v:ci.value,f:document.activeElement===ci}:null;
     const ti=document.getElementById('tk-inp'), tv=ti?{v:ti.value,f:document.activeElement===ti,s:ti.selectionStart,e:ti.selectionEnd}:null; // pole karty Úkoly (5.15)
+    const gi=document.getElementById('gl-inp'), gv=gi?{v:gi.value,f:document.activeElement===gi}:null; // pole karty Cíl dne (5.18)
     // Upozornění na ověření (5.13) leží pod kartou „Co teď“ uvnitř d-widgets: před přepsáním zpět, ať nezmizí
     const vn=document.getElementById('verify-note');
     if(vn&&vn.parentNode===dw) dw.before(vn);
@@ -24400,6 +24847,8 @@ function rDash(){
     if(ni&&ni.dataset.a0===cv.m){ ni.value=cv.v; if(cv.f){ ni.focus({preventScroll:true}); try{ ni.setSelectionRange(cv.v.length,cv.v.length); }catch(e){} } }
     const nt=tv&&document.getElementById('tk-inp');
     if(nt){ nt.value=tv.v; if(tv.f){ nt.focus({preventScroll:true}); try{ nt.setSelectionRange(tv.s,tv.e); }catch(e){} } tkPrevRender('tk-inp'); }
+    const ng=gv&&(gv.v||gv.f)&&document.getElementById('gl-inp');
+    if(ng){ ng.value=gv.v; window.glInput(); if(gv.f) ng.focus({preventScroll:true}); }
   }
   dashBannerDay0(); // den 0 (5.13): „Začni tady 👇“ / „Jsi ve skupině …“ v bublině parťáka
   dashShieldNote(); // ohlídaná série (5.14)
@@ -25844,7 +26293,14 @@ function buildChatContext(question=''){
     lines.push(td.length?tA('aip.ctx.tk.today')+td.slice(0,6).map(fmt).join('; '):tA('aip.ctx.tk.today')+tA('aip.ctx.tk.none'));
     if(tw.length) lines.push(tA('aip.ctx.tk.tmrw')+tw.slice(0,5).map(fmt).join('; '));
     if(nx.length) lines.push(...ctxList(tA('aip.ctx.tk.week'),nx.slice(0,6).map(fmt),3),...ctxMore(nx.length,6));
-    return all.length?lines:[];
+    // Cíl dne (5.18): jedna řádka, text cíle jako data
+    const D0=glDay(), g0=glFind(D0), gT=glFind(addDays(D0,1)), lg=glLog();
+    if(g0) lg[D0]=g0.it.done?2:1;
+    const gl=g0||gT||Object.keys(lg).length?tA('aip.ctx.tk.goal',{today:g0?tA('aip.ctx.tk.goalSet',{goal:ctxT(g0.it.text,60),st:tA(g0.it.done?'aip.ctx.tk.goalDone':'aip.ctx.tk.goalOpen')}):tA('aip.ctx.tk.goalNone'),
+      tmrw:gT?tA('aip.ctx.tk.goalTm',{goal:ctxT(gT.it.text,60)}):tA('aip.ctx.tk.goalNone'),n:glStreak(D0,lg)}):'';
+    if(!all.length) return gl?[gl]:[];
+    if(gl) lines.push(gl);
+    return lines;
   });
 
   add(tA('aip.ctx.s.report'),1,()=>{

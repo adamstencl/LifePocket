@@ -1894,6 +1894,7 @@ exports.sendScheduledNotifications = onSchedule(
         const push = async (title, body, tag, options) => {
           const res = await sendPushToUser(uid, prof, title, body, tag, options);
           sentTotal += res.sent;
+          return res;
         };
 
         const ns = prof.notifSettings || {};
@@ -1937,20 +1938,42 @@ exports.sendScheduledNotifications = onSchedule(
         const getDigestHabits = async () => (await getDueHabits()).filter(d => !isWeeklyHabit(d.data()));
 
         // ── Ranní notifikace ──
-        if (habitsOn && ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
-          const total = (await getDigestHabits()).length;
-          // Doplň včerejšek (5.09): věta navíc, volba notifSettings.yday (undefined = zapnuto); chyba čtení = jen bez věty
-          let yd = 0;
-          if (ns.yday !== false) {
-            try { yd = (await ydayUnfilled(uid, await getAllHabits(), today, zn.tz)).n; }
-            catch(e) { console.error(`[LP] včerejšek uid=${uid}:`, e.message); }
+        // Cíl dne (5.18): první věta, když ukazatel prof.goal míří na dnešek; checklist se čte jen tehdy (1 čtení za den)
+        if (ns.morningDigest !== false && isTimeMatch(h, m, morningTime)) {
+          let goalTxt = '';
+          const gp = prof.goal && typeof prof.goal === 'object' && !Array.isArray(prof.goal) ? prof.goal : null;
+          if (gp && gp.d === today && typeof gp.l === 'string' && TASK_ID_RE.test(gp.l) && typeof gp.id === 'string' && TASK_ID_RE.test(gp.id)) {
+            try {
+              const ls = await db.doc(`users/${uid}/checklists/${gp.l}`).get();
+              const it = ls.exists && Array.isArray(ls.data().items) ? ls.data().items.find(i => i && i.id === gp.id) : null;
+              if (it && it.star && it.due === today && !it.done) goalTxt = String(it.text || '').slice(0, 80);
+            } catch(e) { console.error(`[LP] cíl ráno uid=${uid}:`, e.code || e.message); }
           }
-          if (total > 0 || yd > 0) {
-            const body = [total > 0 ? tS(L, 'morning.b', {n: total}) : '', yd > 0 ? tS(L, 'morning.yd', {n: yd}) : ''].filter(Boolean).join(' ');
-            try { await push(tS(L, 'morning.t', {name: nickname}), body, 'morning', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
+          let total = 0, yd = 0;
+          if (habitsOn) {
+            total = (await getDigestHabits()).length;
+            // Doplň včerejšek (5.09): věta navíc, volba notifSettings.yday (undefined = zapnuto); chyba čtení = jen bez věty
+            if (ns.yday !== false) {
+              try { yd = (await ydayUnfilled(uid, await getAllHabits(), today, zn.tz)).n; }
+              catch(e) { console.error(`[LP] včerejšek uid=${uid}:`, e.message); }
+            }
+          }
+          const hab = total > 0 || yd > 0;
+          if (hab || goalTxt) {
+            const body = [goalTxt ? tS(L, 'goal.am', {goal: goalTxt}) : '', total > 0 ? tS(L, 'morning.b', {n: total}) : '',
+              yd > 0 ? tS(L, 'morning.yd', {n: yd}) : '', hab ? '' : tS(L, 'goal.am.cheer')].filter(Boolean).join(' ');
+            try { await push(tS(L, 'morning.t', {name: nickname}), body, 'morning', {data: {open: hab ? 'habits' : 'goal'}, ttl: TTL_DIGEST}); }
             catch(e) { console.error(`[LP] ranní push uid=${uid}:`, e.message); }
           }
         }
+
+        // ── Cíl na zítra (5.18): večerní připomínka jen z profilu (0 čtení navíc). Ve stejné minutě jako večerní
+        // (nebo nedělní týdenní) souhrn se k němu přidá věta, jinak samostatně; po 3 večerech bez cíle ticho (goalEve.quiet) ──
+        const ge = prof.goalEve && typeof prof.goalEve === 'object' && !Array.isArray(prof.goalEve) ? prof.goalEve : null;
+        const goalEveDue = !!(ge && ge.push === true && (Number(ge.quiet) || 0) < 3
+          && isTimeMatch(h, m, typeof ge.pt === 'string' && HHMM_RE.test(ge.pt) ? ge.pt : '21:00')
+          && !(prof.goal && typeof prof.goal === 'object' && prof.goal.d === zn.tmrw));
+        let goalEveSent = false;
 
         // ── Týdenní souhrn: neděle v čase večerního souhrnu (undefined = zapnuto). Když se pošle, nahradí
         // večerní souhrn (jinak by v neděli přišly dvě notifikace); týden bez dat = nic a večerní souhrn jako obvykle ──
@@ -1996,9 +2019,11 @@ exports.sendScheduledNotifications = onSchedule(
               const body = wkBody(L, {habits: hs, streak, water: ws, events: evN});
               if (body) {
                 // Odesláno = aspoň jedno zařízení; jinak (chyba, 0 doručení) přijde běžný večerní souhrn
-                const res = await sendPushToUser(uid, prof, tS(L, 'wk.t', {name: nickname}), body, `weekly-${mon}`, {data: {open: hs ? 'habits' : 'water'}, ttl: TTL_WEEKLY});
+                const res = await sendPushToUser(uid, prof, tS(L, 'wk.t', {name: nickname}), goalEveDue ? body + ' ' + tS(L, 'goal.eve.add') : body,
+                  `weekly-${mon}`, {data: {open: goalEveDue ? 'goal' : hs ? 'habits' : 'water'}, ttl: TTL_WEEKLY});
                 sentTotal += res.sent;
                 weeklySent = res.sent > 0;
+                if (goalEveDue && weeklySent) goalEveSent = true;
               }
             }
           } catch(e) { console.error(`[LP] týdenní souhrn uid=${uid}:`, e.message); }
@@ -2023,10 +2048,23 @@ exports.sendScheduledNotifications = onSchedule(
               if (done === total) body = tS(L, 'evening.all', {n: total, g});
               else if (done === 0) body = tS(L, 'evening.zero', {g});
               else body = tS(L, 'evening.part', {done, total, n: total - done, g}); // plurál podle zbývajících
-              try { await push(tS(L, 'evening.t'), body, 'evening', {data: {open: 'habits'}, ttl: TTL_DIGEST}); }
+              try {
+                const res = await push(tS(L, 'evening.t'), goalEveDue ? body + ' ' + tS(L, 'goal.eve.add') : body, 'evening',
+                  {data: {open: goalEveDue ? 'goal' : 'habits'}, ttl: TTL_DIGEST});
+                if (goalEveDue && res.sent > 0) goalEveSent = true;
+              }
               catch(e) { console.error(`[LP] večerní push uid=${uid}:`, e.message); }
             }
           }
+        }
+        if (goalEveDue && !goalEveSent) {
+          try { goalEveSent = (await push(tS(L, 'goal.eve.t'), tS(L, 'goal.eve.b'), 'goal-eve', {data: {open: 'goal'}, ttl: 3 * 3600})).sent > 0; }
+          catch(e) { console.error(`[LP] cíl večer uid=${uid}:`, e.message); }
+        }
+        // Počet připomínek bez nastaveného cíle (klient ho při uložení cíle vynuluje); jediný zápis, jen v minutu připomínky
+        if (goalEveSent) {
+          try { await db.doc(`users/${uid}/profile/main`).update({'goalEve.quiet': FieldValue.increment(1)}); }
+          catch(e) { console.error(`[LP] goalEve.quiet uid=${uid}:`, e.code || e.message); }
         }
 
         // ── Změny ve skupinách (za večerním shrnutím, ať skupinový souhrn přijde hned po něm) ──

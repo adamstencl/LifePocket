@@ -1162,6 +1162,10 @@ else{try{inv(null);}catch(e){}show();}
               <label class="flbl" data-i18n="set.notif.evening">🌙 Večerní shrnutí</label>
               <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-evening" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
             </div>
+            <div class="fg" id="notif-goal-wrap" hidden>
+              <label class="flbl" for="notif-goal" data-i18n="set.notif.goalTime">🌙 Cíl na zítra</label>
+              <input class="time-picker-inp" type="text" readonly inputmode="none" data-time-picker role="button" aria-haspopup="dialog" placeholder="--:--" autocomplete="off" data-time-clear="0" id="notif-goal" value="21:00" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:&#39;Crimson Pro&#39;,serif;font-size:15px;outline:none;width:7.5em" onchange="saveNotifSettings()">
+            </div>
           </div>
         </div>
         <!-- 5.10: typy připomínek a upozornění ze skupin v jedné sekci (dřív v Pokročilých) -->
@@ -1174,6 +1178,10 @@ else{try{inv(null);}catch(e){}show();}
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-tasks" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
                 <span data-i18n="set.notif.tasks">✅ Připomínky úkolů</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
+                <input type="checkbox" id="nt-goal" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">
+                <span data-i18n="set.notif.goal">🌙 Večer se zeptat na cíl na zítra</span>
               </label>
               <label id="nt-feed-row" hidden style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px">
                 <input type="checkbox" id="nt-feed" checked="" onchange="saveNotifSettings()" style="width:18px;height:18px;accent-color:var(--accent)">

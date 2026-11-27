@@ -1941,6 +1941,39 @@ button.tk-chip{cursor:pointer}
 .tk-sub{font-size:12px;color:var(--text2);margin-top:2px}
 .tk-evhint{display:block;margin-top:6px;min-height:36px;padding:0;border:none;background:none;color:var(--accent);font-size:13px;font-family:inherit;cursor:pointer;text-align:left}
 .tk-evhint[hidden]{display:none}
+/* Cíl dne (5.18): karta Domů, jen tokeny (světlý i tmavý motiv) */
+.gl-card{cursor:default}
+.gl-card.eve{border-left:3px solid var(--blue)}
+.gl-card.day{border-left:3px solid var(--accent)}
+.gl-more{font-size:18px;font-weight:700;line-height:1}
+.gl-row{display:flex;align-items:center;gap:4px;min-height:44px;min-width:0}
+.gl-txt{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;text-align:left;background:none;border:none;padding:0;color:var(--text);font-size:17px;font-weight:700;font-family:inherit;overflow-wrap:anywhere;cursor:pointer}
+.gl-row.done .tk-box{background:var(--green);border-color:var(--green);color:var(--on-green)}
+.gl-row.done .gl-txt{text-decoration:line-through;color:var(--text3)}
+.gl-big{font-size:17px;font-weight:700;color:var(--text);overflow-wrap:anywhere;margin-bottom:2px}
+.gl-sub{font-size:14px;color:var(--text2);margin:2px 0 10px}
+.gl-yay{margin-bottom:4px}
+.gl-pick{font-size:13px;color:var(--text2);margin:6px 0}
+.gl-chips{display:flex;flex-wrap:wrap;gap:6px}
+.gl-chip{min-height:44px;text-align:left;overflow-wrap:anywhere}
+.gl-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:10px;padding-top:2px}
+.gl-tl{font-size:13px;color:var(--text3);flex-shrink:0}
+.gl-today{flex:1 1 160px}
+.gl-today .gl-txt{font-size:15px;font-weight:600}
+.gl-skip{min-height:44px;margin-left:auto;padding:0 8px;background:none;border:none;color:var(--text3);font-size:14px;font-family:inherit;cursor:pointer}
+.gl-edit{width:auto;min-height:44px;padding:0 16px}
+.gl-ask{border-top:1px solid var(--border);margin-top:12px;padding-top:10px}
+.gl-ask-t{font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px}
+.gl-ask-b{display:flex;flex-wrap:wrap;gap:8px}
+.gl-ask-b button{width:auto;flex:1 1 auto;min-height:44px;padding:0 14px}
+.gl-dots{display:grid;grid-template-columns:repeat(7,1fr) auto;gap:4px 2px;align-items:center;justify-items:center;font-size:11px;color:var(--text3);margin-top:8px}
+.gl-dn{grid-row:1}
+.gl-dot{grid-row:2;width:10px;height:10px;border-radius:50%;border:2px solid var(--border);box-sizing:border-box}
+.gl-dot.ok{background:var(--green);border-color:var(--green)}
+.gl-dot.set{border-color:var(--text3)}
+.gl-dot.now{border-color:var(--accent)}
+.gl-streak{grid-column:8;grid-row:1/3;padding-left:8px;font-size:13px;font-weight:700;color:var(--text2);white-space:nowrap}
+.gl-streak:empty{padding:0}
 .cl-due{display:block;font-size:12px;color:var(--text2);margin-top:2px}
 .cl-due.over{color:var(--red)}
 .cl-clear-many{font-weight:700;color:var(--text2)}

@@ -47,6 +47,12 @@ const cs = {
   'task.b': 'Úkol na dnes v {time}',
   'task.am.t': '✅ Dnes tě čeká: {task}',
   'task.am.b': 'Klepni a odškrtni, až bude hotovo.',
+  // Cíl dne (5.18): ranní přehled a večerní připomínka
+  'goal.am': '🎯 Dnešní cíl: {goal}.',
+  'goal.am.cheer': 'Držím palce!',
+  'goal.eve.t': 'Co chceš zítra dokázat? 🌙',
+  'goal.eve.b': 'Napiš si jednu věc na zítřek.',
+  'goal.eve.add': '🌙 Co chceš zítra dokázat?',
   // Krmení mazlíčka (5.17): jméno mazlíčka v 1. pádu (bez skloňování)
   'feed.rem.t': '🍖 Krmení: {pet}',
   'feed.rem.b': 'Je čas – {slot} {time}',
@@ -249,6 +255,12 @@ const en = {
   'task.b': 'Task for today at {time}',
   'task.am.t': '✅ Today: {task}',
   'task.am.b': 'Tap and tick it off when done.',
+  // Goal of the day (5.18)
+  'goal.am': '🎯 Today’s goal: {goal}.',
+  'goal.am.cheer': 'Fingers crossed!',
+  'goal.eve.t': 'What do you want to achieve tomorrow? 🌙',
+  'goal.eve.b': 'Write down one thing for tomorrow.',
+  'goal.eve.add': '🌙 What do you want to achieve tomorrow?',
   // Pet feeding (5.17)
   'feed.rem.t': '🍖 Feeding: {pet}',
   'feed.rem.b': 'Time to feed – {slot} {time}',
