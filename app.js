@@ -2175,7 +2175,7 @@ onAuthStateChanged(auth,async u=>{
 });
 
 // Osobní lokální klíče (jen v tomto zařízení); při přihlášení jiného účtu se smažou, aby se data nepřenesla
-const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list','lp_ai_intro'];
+const LOCAL_PERSONAL_KEYS = ['lp_meal_tab','lp_pantry','lp_weekly_report','lp_daily_mood','lp_focus','lp_focus_next','lp_focus_history','lp_fav_shop','lp_water','lp_daily_quote','lp_qs_dismissed','lp_qs_done','lp_last_remind','lp_checklists','lp_notif','lp_ih_shop','lp_ih_cal','lp_gn_intro','lp_inapp_off','lp_sh_day','lp_sh_closed','lp_game_intro','lp_praise','lp_avr','lp_perfect_day','lp_bdg_seen','lp_week_card','lp_share_name','lp_cta_off','lp_cta_inv','lp_cta_ch','lp_coach','lp_first_act','lp_na_snooze','lp_wt_intro','lp_wt_seen','lp_pc','lp_pc_hide','lp_pc_nick','lp_set_open','lp_hb_pending','lp_adm','lp_ai_low','lp_pet_sel','lp_fin_sel','lp_fin_tab','lp_fin_lastcat','lp_ct_tip','lp_ct_asked','lp_cta_tip','lp_hb_week','lp_gn_shop','lp_tk_list','lp_ai_intro','lp_goal_skip','lp_goal_qd'];
 // Datované klíče (…_YYYY-MM-DD): odeslané připomínky, narozeniny, události, hláška o neaktivitě
 const LOCAL_DATED_PREFIXES = ['lp_hrnotif_','lp_notif_ev_','lp_notif_bday_today_','lp_notif_bday_7d_','lp_inactivity_shown_','lp_tknotif_'];
 // Smaže datované klíče starší než 2 dny (olderThanDays=0 → všechny, při změně účtu)
@@ -7386,7 +7386,7 @@ window.saveNotifSettings = () => {
   if (ntg && CU && prof) {
     const gp = {};
     if (ntg.checked !== (glCfg().push === true)) Object.assign(gp, ntg.checked ? {push: true, asked: 1, quiet: 0} : {push: false, asked: 1});
-    if (ngt && TP_RE.test(ngt.value || '') && ngt.value !== glPt()) gp.pt = ngt.value;
+    if (ngt && TP_RE.test(ngt.value || '') && ngt.value !== glPt()) { if (glInRange(ngt.value)) gp.pt = ngt.value; else toast(t('gl.menu.range')); }
     if (Object.keys(gp).length) { glCfgSet(gp); glDashRefresh(); }
     glNotifUi();
   }
@@ -8049,7 +8049,7 @@ function sendEveningNotif() {
   const av = AVS.find(a => a.id === prof?.avatarId);
   // Cíl na zítra (5.18): ve stejný čas jedna notifikace místo dvou
   const gl = glPt() === (notifSettings.evening || '21:00') && glEveLocalDue();
-  if (gl) { body += ' ' + t('gl.n.eveAdd'); _glEveDone = today; }
+  if (gl) { body += ' ' + t('gl.n.eveAdd'); _glEveDone = today; glQuietLocal(); }
   sendNotif(t('ln.eveTitle', {emoji: av?.emoji || '⭐'}), body, av?.emoji || '🌙', {open: gl ? 'goal' : 'habits'}, [], 'evening');
 }
 
@@ -13368,7 +13368,7 @@ function subscribeGroupChecklist(gid) {
   const e = clGrp[gid] = {lists: [], ready: false, unsub: null};
   e.unsub = onSnapshot(collection(db,'families',gid,'checklists'), snap => {
     if(clGrp[gid] !== e) return;
-    e.lists = snap.docs.map(d => ({...d.data(), id: d.id, _family: true, _gid: gid}));
+    e.lists = snap.docs.map(d => clUniqDoc({...d.data(), id: d.id, _family: true, _gid: gid}));
     e.ready = true; e.err = 0;
     clMigrate53();
     clChanged();
@@ -19105,7 +19105,7 @@ function subChecklist() {
   createFireSub('checklist',
     query(collection(db,'users',CU.uid,'checklists'), orderBy('createdAt','asc')),
     snap => {
-      checklists = snap.docs.map(d => ({...d.data(), id: d.id}));
+      checklists = snap.docs.map(d => clUniqDoc({...d.data(), id: d.id}));
       if (!snap.metadata.fromCache) _clServer = true; // úkoly (5.15): seznam Úkoly a převod fokusu jen podle serveru
       if (familyId && familyData) fillChecklistSharedGid(familyId); // starší sdílené bez sharedGid
       clMigrate53(); // 4.53: jednorázové doplnění kopie ve skupině
@@ -19165,9 +19165,22 @@ const CL_MAX_LEN = 900000; // rezerva pod limitem dokumentu Firestore (1 MiB)
 function clTooBig(x) { try { return JSON.stringify(x).length > CL_MAX_LEN; } catch(e) { return true; } }
 function clErr(code) { const e = new Error(code); e.code = code; return e; }
 function clCopyItems(items) {
-  return (Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object')
+  return clUniq((Array.isArray(items) ? items : []).filter(i => i && typeof i === 'object'))
     .map(i => Array.isArray(i.photos) ? {...i, photos: [...i.photos]} : {...i});
 }
+// Jedna položka na id (5.18): starší offline arrayUnion mohl vytvořit dvojici; platí první, každý zápis dvojici uklidí
+function clUniq(items) {
+  if (!Array.isArray(items)) return items;
+  const seen = new Set();
+  let dup = false;
+  for (const i of items) { const id = i && i.id; if (id == null) continue; if (seen.has(id)) { dup = true; break; } seen.add(id); }
+  if (!dup) return items;
+  seen.clear();
+  return items.filter(i => { const id = i && i.id; if (id == null) return true; if (seen.has(id)) return false; seen.add(id); return true; });
+}
+const clUniqDoc = c => Array.isArray(c.items) ? {...c, items: clUniq(c.items)} : c;
+// Pevné id (cíl dne gl+YYYYMMDD) může vzniknout i na jiném zařízení: offline jen přes cache, ne arrayUnion
+const CL_FIXED_ID_RE = /^gl\d{8}$/;
 // Fronta zápisů na dokument: vlastní transakce stejného klienta se navzájem neruší
 const _clQ = new Map();
 function clQueue(key, job) {
@@ -19181,7 +19194,7 @@ function clIsOffline(e) {
 }
 // Offline / slabý signál: operace nad daty z cache, zápis bez await (dorazí po připojení); přidání přes arrayUnion
 async function clOfflineWrite(ref, fn, addItem) {
-  if (addItem) { updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()}).catch(clSaveErr); return; }
+  if (addItem && !CL_FIXED_ID_RE.test(String(addItem.id || ''))) { updateDoc(ref, {items: arrayUnion(addItem), updatedAt: Date.now()}).catch(clSaveErr); return; }
   const s = await getDocFromCache(ref);
   if (!s.exists()) throw clErr('not-found');
   const cur = clCopyItems(s.data().items);
@@ -19736,7 +19749,7 @@ const _tkPrevT = {};
 function tkReset() {
   _tkVer++; _tkMemo = null; _clServer = false; _tkOrd = {day: '', uid: '', m: new Map(), top: 0, touched: false};
   _tkAllOpen = false; _tkFlash = ''; _tkEd = null; _tkDayAdd = ''; _tkMigBusy = false;
-  _glEdit = ''; _glEveDone = ''; clearTimeout(_glRecT); // cíl dne (5.18)
+  _glEdit = ''; _glEveDone = ''; _glEveEarly = ''; clearTimeout(_glRecT); // cíl dne (5.18)
   Object.keys(_tkIgn).forEach(k => delete _tkIgn[k]);
 }
 // Karta Úkoly na Domů: všem (5.15, Q3); v jednoduchém režimu po odkrytí hlavního úkolu nebo se zapnutým Checklistem
@@ -20467,20 +20480,22 @@ window.tkDayAddOpen = ds => { _tkDayAdd = ds; showDaySheet(ds); document.getElem
 
 // 🎯  CÍL DNE (5.18, docs/NAVRH-CIL-ZITRA.md)
 // Cíl dne D = úkol s 🎯 (star) a termínem D v osobním nesdíleném seznamu; žádný nový druh záznamu.
-// Profil: goalEve (nastavení, quiet píše server), goal (ukazatel na poslední cíl, bez textu), goalLog (den → 1 nastaveno / 2 splněno),
+// Profil: goalEve (nastavení, quiet píše server, bez push tokenu appka), goal (ukazatel na poslední cíl, bez textu), goalLog (den → 1 nastaveno / 2 splněno),
 // goalList (osobní seznam pro cíle, když je seznam Úkoly sdílený do skupiny). Pravidla Firestore beze změny.
 const GL_LOG_MAX = 60;
-let _glEdit = '', _glSig = '', _glRecT = 0, _glEveDone = '';
+let _glEdit = '', _glSig = '', _glRecT = 0, _glEveDone = '', _glEveEarly = '';
 function glCfg() { const g = prof?.goalEve; return g && typeof g === 'object' && !Array.isArray(g) ? g : {}; }
 // Od kdy se ukazuje večerní otázka (15:00–23:30) a čas připomínky
 const glT = () => { const v = glCfg().t; return TP_RE.test(v || '') && v >= '15:00' && v <= '23:30' ? v : '18:00'; };
 const glPt = () => TP_RE.test(glCfg().pt || '') ? glCfg().pt : '21:00';
+// Čas otázky i připomínky jen 15:00–23:30 (nepřekročí půlnoc; starší hodnoty po půlnoci dál platí)
+const glInRange = v => TP_RE.test(v || '') && v >= '15:00' && v <= '23:30';
 // 04:00 = začátek dne pro cíl (po půlnoci je pořád „dnešní večer“)
 function glDay(d = new Date()) { const x = new Date(d); if (x.getHours() < 4) x.setDate(x.getDate() - 1); return toDS(x); }
 const glTmrw = () => addDays(glDay(), 1);
 function glIsEve(now = new Date()) {
   const [h, m] = glT().split(':').map(Number), mins = now.getHours() * 60 + now.getMinutes();
-  return mins < 240 || mins >= h * 60 + m;
+  return mins < 240 || mins >= h * 60 + m || _glEveEarly === glDay(now);
 }
 // Karta: všem; v jednoduchém režimu od 3. dne nebo po odkrytí (unl focus)
 const glCardOn = () => !isSimple() || accDay() >= 2 || unl('focus');
@@ -20548,7 +20563,12 @@ function glCfgSet(p) {
 }
 // Srovnání indexu s položkami v paměti (posledních 7 dní a zítřek): úkol s 🎯 přidaný jinde, odškrtnutí, změna termínu,
 // smazání dnešního / zítřejšího. Jen se serverovými daty osobních seznamů; zapisuje jen rozdíl.
-function glReconcileSoon() { clearTimeout(_glRecT); _glRecT = setTimeout(glReconcile, 1200); }
+// Jen když se funkce používá (karta zapnutá a neskrytá, nebo zapnutá připomínka) – jinak se do profilu nezapisuje
+function glReconcileSoon() {
+  clearTimeout(_glRecT);
+  if (!(glCardOn() && !dashLayout().hidden.includes('goal')) && glCfg().push !== true) return;
+  _glRecT = setTimeout(glReconcile, 1200);
+}
 function glReconcile() {
   if (!CU || !prof || !_clServer) return;
   const D0 = glDay(), T = addDays(D0, 1), log = glLog(), o = {log: {}};
@@ -20801,10 +20821,10 @@ function glMenuRender(focusSel) {
 }
 window.glMenuSet = (k, v) => {
   if (k === 't') {
-    if (!TP_RE.test(v || '') || v < '15:00' || v > '23:30') { toast(t('gl.menu.range')); glMenuRender('#gl-m-from'); return; }
+    if (!glInRange(v)) { toast(t('gl.menu.range')); glMenuRender('#gl-m-from'); return; }
     glCfgSet({t: v});
   } else if (k === 'pt') {
-    if (!TP_RE.test(v || '')) return;
+    if (!glInRange(v)) { if (TP_RE.test(v || '')) toast(t('gl.menu.range')); glMenuRender('#gl-m-pt'); return; }
     glCfgSet({pt: v});
     scheduleAllNotifications();
   } else if (k === 'push') {
@@ -20833,6 +20853,8 @@ function glNotifUi() {
 }
 // Klepnutí na notifikaci (open: 'goal'): Domů, posun na kartu, ve večerní otázce fokus do pole (iOS bez gesta jen posun)
 function glOpenFromNotif() {
+  // Připomínka (pt) může přijít dřív než otázka (t): od 15:00 se otázka ukáže hned, do 04:00 rána
+  if (new Date().getHours() >= 15 && !glIsEve()) { _glEveEarly = glDay(); if (document.getElementById('gl-dash')) glDashRefresh(); }
   window.sp('dashboard');
   const t0 = Date.now(), uid = CU?.uid, go = () => {
     if (!CU || CU.uid !== uid) return;
@@ -20850,10 +20872,22 @@ function glEveLocalDue() {
   const c = glCfg();
   return c.push === true && (Number(c.quiet) || 0) < 3 && _clServer && !glFind(glTmrw());
 }
+// Ztišení po 3 večerech i bez push tokenu: goalEve.quiet +1 z appky, jen když server nemá komu poslat
+// (jinak počítá server); jednou za večer v zařízení (lp_goal_qd)
+function glQuietLocal() {
+  if (!CU || !prof) return;
+  const ft = prof.fcmTokens && typeof prof.fcmTokens === 'object' ? Object.values(prof.fcmTokens) : [];
+  if (prof.fcmToken || ft.some(x => x && x.token)) return;
+  const d = glDay();
+  if (lsGet('lp_goal_qd', '') === d) return;
+  lsSave('lp_goal_qd', d);
+  prof.goalEve = {...glCfg(), quiet: (Number(glCfg().quiet) || 0) + 1};
+  updateDoc(doc(db, 'users', CU.uid, 'profile', 'main'), {'goalEve.quiet': increment(1)}).catch(e => console.warn('[LP] goalEve.quiet:', e?.code || e?.name));
+}
 function glLocalEve() {
   if (hasPushToken() || !notifGranted() || glCfg().push !== true) return;
   if (!_clServer) return _fireSubs['checklist'] ? false : undefined; // data ještě nejsou ze serveru → zkusit za minutu
-  const send = () => { if (_glEveDone !== toDS() && glEveLocalDue()) sendNotif(t('gl.n.eveT'), t('gl.n.eveB'), '🌙', {open: 'goal'}, [], 'goal-eve'); };
+  const send = () => { if (_glEveDone !== toDS() && glEveLocalDue()) { sendNotif(t('gl.n.eveT'), t('gl.n.eveB'), '🌙', {open: 'goal'}, [], 'goal-eve'); glQuietLocal(); } };
   // Ve stejný čas jako večerní shrnutí: věta se přidá k němu (sendEveningNotif), samostatně jen když shrnutí nepřišlo
   if (notifSettings.eveningDigest && glPt() === (notifSettings.evening || '21:00')) { notifTimers.push(setTimeout(send, 3000)); return; }
   send();

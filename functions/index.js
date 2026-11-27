@@ -1972,7 +1972,8 @@ exports.sendScheduledNotifications = onSchedule(
         const ge = prof.goalEve && typeof prof.goalEve === 'object' && !Array.isArray(prof.goalEve) ? prof.goalEve : null;
         const goalEveDue = !!(ge && ge.push === true && (Number(ge.quiet) || 0) < 3
           && isTimeMatch(h, m, typeof ge.pt === 'string' && HHMM_RE.test(ge.pt) ? ge.pt : '21:00')
-          && !(prof.goal && typeof prof.goal === 'object' && prof.goal.d === zn.tmrw));
+          // před 04:00 je pořád „dnešní večer“ (jako glDay v appce): zítřek = kalendářní dnešek (starší pt po půlnoci)
+          && !(prof.goal && typeof prof.goal === 'object' && prof.goal.d === (h < 4 ? zn.today : zn.tmrw)));
         let goalEveSent = false;
 
         // ── Týdenní souhrn: neděle v čase večerního souhrnu (undefined = zapnuto). Když se pošle, nahradí
